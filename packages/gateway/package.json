@@ -1,0 +1,14 @@
+{
+  "name": "@kp/gateway",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kp/connector-sdk": "0.3.0"
+  }
+}
