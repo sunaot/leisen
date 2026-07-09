@@ -114,6 +114,29 @@ describe("runRetentionPurge (削除実行の記録)", () => {
     expect(purgeLogs).toHaveLength(2);
   });
 
+  it("purges the telemetry store with its own retention (14 days default)", async () => {
+    const auditStore = new InMemoryAuditStore();
+    let purgedCutoff: string | null = null;
+    const telemetryStore = {
+      purgeBefore: async (cutoff: string) => {
+        purgedCutoff = cutoff;
+        return 3;
+      },
+    };
+    const logSink = new InMemoryAuditStore();
+    const logger = new AuditLogger({ write: (r) => logSink.writeBatch([r]) });
+    const results = await runRetentionPurge(
+      NOW,
+      resolveRetentionConfig(),
+      { auditStore, telemetryStore },
+      logger,
+    );
+    const telemetry = results.find((r) => r.target === "telemetry");
+    expect(telemetry?.retentionDays).toBe(14);
+    expect(telemetry?.deletedCount).toBe(3);
+    expect(purgedCutoff).toBe(retentionCutoffIso(NOW, 14));
+  });
+
   it("skips optional stores that are not configured", async () => {
     const auditStore = new InMemoryAuditStore();
     const logSink = new InMemoryAuditStore();

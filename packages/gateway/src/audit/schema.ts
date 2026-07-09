@@ -28,6 +28,18 @@ const isoTimestamp = z.iso.datetime({ offset: true });
 const identityString = (field: string) =>
   z.string().min(1, `missing required identity field: ${field}`);
 
+/**
+ * 正規化済みの理由/分類コード(例: source_unreachable, permission_denied)。
+ * 生の例外メッセージ・スタックトレースを入れない(TM-A2: 候補情報・トークン・
+ * 原文の混入経路になる)。例外は定義済みエラー型に変換してから記録する。
+ */
+const reasonCode = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9_.]{0,63}$/,
+    "must be a normalized reason code (lower snake_case), not raw error text",
+  );
+
 /** 呼び出し主体(ADR-015)。agent の場合は on-behalf-of チェーンを記録する。 */
 export const actorSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("human") }),
@@ -71,7 +83,8 @@ export const answerRunRecordSchema = z.strictObject({
   userFeedback: z.enum(["resolved", "unresolved"]).nullable(),
   searchedSources: z.array(z.string().min(1)),
   citedDocIds: z.array(z.string().min(1)),
-  failureReason: z.string().nullable(),
+  /** 正規化済みコードのみ。生のエラーメッセージ不可(TM-A2) */
+  failureReason: reasonCode.nullable(),
 });
 
 /** ツール呼び出し単位のレコード。 */
@@ -97,7 +110,8 @@ export const toolInvocationRecordSchema = z.strictObject({
   returnedHitCount: z.number().int().min(0).nullable(),
   fetchedDocCount: z.number().int().min(0),
   latencyMs: z.number().min(0),
-  errorClass: z.string().nullable(),
+  /** 正規化済みコードのみ。生のエラーメッセージ不可(TM-A2) */
+  errorClass: reasonCode.nullable(),
   retryCount: z.number().int().min(0),
 });
 
@@ -123,7 +137,7 @@ export const auditAccessRecordSchema = z.strictObject({
   /** アクセス先の区画 */
   target: z.enum(["audit_log", "raw_query", "telemetry"]),
   /** 抽出条件の要約(期間・対象ユーザー等)。閲覧結果の内容を書かない */
-  scopeDescription: z.string().nullable(),
+  scopeDescription: z.string().max(500).nullable(),
 });
 
 /**

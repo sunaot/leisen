@@ -159,10 +159,55 @@ describe("audit record validation (ADR-011, zod)", () => {
     expect(() => validateRecord(record)).not.toThrow();
   });
 
+  it("rejects raw error text in errorClass / failureReason (TM-A2)", () => {
+    expect(() =>
+      validateRecord({
+        ...baseInvocation(),
+        errorClass: "Error: ECONNRESET at fetchDoc (secret-report.pdf)",
+      } as AuditRecord),
+    ).toThrow(/reason code/);
+    expect(() =>
+      validateRecord({
+        ...baseInvocation(),
+        errorClass: "permission_denied",
+      } as AuditRecord),
+    ).not.toThrow();
+    expect(() =>
+      validateRecord({
+        ...baseRun(),
+        finalOutcome: "unresolved",
+        failureReason: "検索失敗: 四半期統合計画.docx が見つかりません",
+      } as AuditRecord),
+    ).toThrow(/reason code/);
+    expect(() =>
+      validateRecord({
+        ...baseRun(),
+        finalOutcome: "unresolved",
+        failureReason: "source_unreachable",
+      } as AuditRecord),
+    ).not.toThrow();
+  });
+
   it("parseAuditRecord returns a typed record for unknown input", () => {
     const parsed = parseAuditRecord(JSON.parse(JSON.stringify(baseInvocation())));
     expect(parsed.recordType).toBe("tool_invocation");
     expect(() => parseAuditRecord({ recordType: "bogus" })).toThrow();
+  });
+
+  it("parseAuditRecord rejects forbidden keys in unknown input", () => {
+    const tainted = {
+      ...JSON.parse(JSON.stringify(baseInvocation())),
+      token: "secret",
+    };
+    expect(() => parseAuditRecord(tainted)).toThrow(/forbidden/);
+  });
+
+  it("rejects raw query text fields on audit records (rawQuery belongs to its own table)", () => {
+    const record = {
+      ...baseInvocation(),
+      rawQuery: "四半期レビューの議事録",
+    } as AuditRecord;
+    expect(() => validateRecord(record)).toThrow(/forbidden/);
   });
 });
 

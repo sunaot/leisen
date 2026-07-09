@@ -118,6 +118,13 @@ describe("BufferedAuditSink (ADR-011 §4)", () => {
     expect(sink.bufferedCount()).toBe(0);
   });
 
+  it("StdoutDebugAuditSink validates records before writing", async () => {
+    const { StdoutDebugAuditSink } = await import("../src/audit/index.js");
+    const sink = new StdoutDebugAuditSink();
+    const bad = { ...invocation("req-1"), snippet: "本文断片" } as AuditRecord;
+    await expect(sink.write(bad)).rejects.toThrow(/forbidden/);
+  });
+
   it("store writer deduplicates at-least-once redelivery by idempotency key", async () => {
     const store = new InMemoryAuditStore();
     const record = invocation("req-1");
