@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kp/connector-sdk": "0.3.0"
+    "@kp/connector-sdk": "0.3.0",
+    "zod": "^4.4.3"
   }
 }
