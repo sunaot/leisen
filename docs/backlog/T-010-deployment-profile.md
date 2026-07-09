@@ -8,9 +8,9 @@ ADR-005の設定駆動アーキテクチャの中核。導入1件=deployment.yam
 
 ## 内容
 - `packages/gateway/src/config/` にスキーマ(zod)、ローダー、静的検証を実装
-- 項目: idp.adapter, connectors[](enabled, **privateScopes: excluded|consent|included(既定excluded)**, searchLayer.enabled/backend/authzCacheTtlSec), orchestrator(maxIterations, costLimit), audit(sink, **failureMode: fail-closed|fail-open(既定fail-closed)**, **rawQueryRetentionDays**), **agentExecution(ADR-015の区分設定の予約)**
+- 項目: idp.adapter, connectors[](enabled, **privateScopes: excluded|consent|included(既定excluded)**, searchLayer.enabled/backend/authzCacheTtlSec), orchestrator(maxIterations, costLimit), audit(sink, **failureMode: fail-closed|fail-open(既定fail-closed)**, **privateScopeDocIds: hashed|omitted(既定hashed、ADR-013)**, **retentionDays(既定365)**, **rawQueryRetentionDays(既定30)**, **telemetryRetentionDays(既定14)**), **chatHistory.retentionDays(既定90、ADR-013)**, **agentExecution(ADR-015の区分設定の予約)**
 - スキーマバージョンフィールドと将来のマイグレーション枠組み
-- 危険設定の起動時拒否: searchLayer.enabled=true かつ対象コネクタがingest capability未実装、authzCacheTtlSecの上限超過、audit.failureMode=fail-openかつ確認フラグなし 等
+- 危険設定の起動時拒否: searchLayer.enabled=true かつ対象コネクタがingest capability未実装、authzCacheTtlSecの上限超過、audit.failureMode=fail-openかつ確認フラグなし、**privateScopes: included かつ確認フラグなし(ADR-013 §1、TM-E4)** 等
 
 ## 受け入れ条件
 - [ ] 妥当な設定のサンプル(examples/deployment.yaml)が同梱され、READMEから参照される
