@@ -1,0 +1,14 @@
+# Keycloak参照実装のE2E用(T-002)。開発・CI専用であり本番構成ではない。
+# パスワード類はローカル専用のダミー値(実環境の秘密情報を書かないこと)。
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: dev-only-admin-password
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
