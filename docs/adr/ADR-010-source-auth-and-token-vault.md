@@ -1,6 +1,6 @@
 # ADR-010: ソース別認可方式とToken Vault(ADR-002の改訂)
 
-Status: Accepted(T-000a完了により確定。docs/auth-matrix.md を根拠とする) / Date: 2026-07-05 / Accepted: 2026-07-09
+Status: Proposed(決定内容はT-000a調査結果で確定済み。**docs/auth-matrix.md の人間レビュー完了をもってAccepted化する** — ゲート解除は人間判断) / Date: 2026-07-05 / 調査反映: 2026-07-09
 
 ## 文脈
 ADR-002はIdP起点のToken Exchange(RFC 8693)を基本方式、個別OAuthをフォールバックとした。しかしPhase 1の主要対象について、外部IdPトークンを各SaaSの本人アクセストークンへ交換する、公式に前提化できる汎用経路は確認できない(Google Workspace: 個別OAuth同意またはドメインワイド委任のみ。Slack: 本人のOAuth承認フローのみ。Entra ID→Graphのon-behalf-ofは成立)。「フォールバック」が実際の主経路であり、ADR-002の採用理由(トークン保管最小化、IdPでの一元失効)は前提から反転する。
@@ -20,7 +20,7 @@ ADR-002はIdP起点のToken Exchange(RFC 8693)を基本方式、個別OAuthを�
 5. **Auth Adapter の方式分類**(auth-matrix.md §12.1)を採用する: A. 個別OAuth(Vault要)/ B. token exchange(OBO、Vault不要)/ C. delegated identity(方式ごとにADR承認必須)/ D. サービスアカウント+本人判定(既定不採用、ソース別ADRで例外承認)
 
 ## 帰結
-- ADR-002 は本ADRにより **Superseded**
+- ADR-002 は本ADRの**Accepted化と同時に Superseded** となる
 - T-002はIdpAdapter IF(方式差の吸収)として実装する(旧T-011を統合)。IFは方式A/B/Cの差を吸収できること
 - T-002のKeycloak E2Eは実SaaS(Drive/Slack)の認可経路を検証しない。この限界をCI/READMEに明記する
 - T-004の前提・内容は auth-matrix.md の確定方式(Entra ID OBO / Google個別OAuth / Slack個別OAuth、GitHubはSCIM/EMU前提)に更新済み

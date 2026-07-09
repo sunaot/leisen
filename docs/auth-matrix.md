@@ -245,7 +245,7 @@ Notion を採用する場合、この限界を describe/README で利用者に�
 
 ## 13. 後続タスクへの反映
 
-- **ADR-010**: 本書をもって Accepted 化(ADR-002 は Superseded)
+- **ADR-010**: 本書の人間レビュー完了をもって Accepted 化(ADR-002 は同時に Superseded)
 - **T-002(IdP Adapter IF)**: 方式A/B/C の差を吸収するIFであること。Keycloak E2E は
   実SaaSの認可経路を検証しない限界を README/CI に明記(ADR-010 帰結)
 - **T-004(Auth Adapter 実接続)**: 前提を「Entra ID OBO(方式B)+ Google/Slack 個別
