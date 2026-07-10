@@ -1,0 +1,121 @@
+/**
+ * Deployment Profileローダー(T-010)。
+ *
+ * 読み込みパイプライン: YAMLパース → バージョン移行 → zodスキーマ検証 →
+ * 静的検証(危険設定の拒否)。どの段でも失敗は DeploymentConfigError に
+ * 集約し、起動を止める(ADR-005: 危険設定は起動時拒否)。
+ */
+import { readFileSync } from "node:fs";
+import YAML from "yaml";
+import type { IdpAdapterConfig } from "../idp/factory.js";
+import type { RetentionConfig } from "../audit/retention.js";
+import { applyMigrations, type MigrateOptions } from "./migrate.js";
+import {
+  deploymentConfigSchema,
+  type DeploymentConfig,
+  type IdpAdapterConfigSection,
+} from "./schema.js";
+import {
+  assertValidDeploymentConfig,
+  DeploymentConfigError,
+  type ConfigIssue,
+  type ValidateOptions,
+} from "./validate.js";
+
+export interface LoadOptions extends ValidateOptions, MigrateOptions {}
+
+/**
+ * YAMLテキストから検証済みのDeploymentConfigを得る。
+ * capability連動の検証を効かせるには options.capabilities を渡すこと
+ * (Gateway起動パスでは必須。省略はテスト・ツール用)。
+ */
+export function parseDeploymentConfig(
+  yamlText: string,
+  options: LoadOptions = {},
+): DeploymentConfig {
+  let raw: unknown;
+  try {
+    raw = YAML.parse(yamlText);
+  } catch (error) {
+    throw new DeploymentConfigError([
+      {
+        code: "schema_violation",
+        path: "(file)",
+        message: `invalid YAML: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    ]);
+  }
+
+  const migrated = applyMigrations(raw, options);
+
+  const parsed = deploymentConfigSchema.safeParse(migrated);
+  if (!parsed.success) {
+    // schema.ts は秘密情報のフィールドを持たないため、zodのissue(パスと
+    // 受領値の型情報を含む)をそのままエラーに載せてよい(不変条件6)
+    const issues: ConfigIssue[] = parsed.error.issues.map((issue) => ({
+      code: "schema_violation",
+      path: issue.path.map(String).join(".") || "(root)",
+      message: issue.message,
+    }));
+    throw new DeploymentConfigError(issues);
+  }
+
+  assertValidDeploymentConfig(parsed.data, options);
+  return parsed.data;
+}
+
+/** deployment.yaml をファイルから読み込む。 */
+export function loadDeploymentConfig(
+  filePath: string,
+  options: LoadOptions = {},
+): DeploymentConfig {
+  return parseDeploymentConfig(readFileSync(filePath, "utf8"), options);
+}
+
+/**
+ * 設定のIdPセクションを idp/factory.ts の IdpAdapterConfig に解決する。
+ * 秘密情報は設定ファイルに置かず環境変数名(clientSecretEnv)で参照する
+ * 方式のため、ここで初めて値を読む。戻り値は clientSecret を含むので、
+ * ログ・エラーに載せないこと(不変条件6)。
+ */
+export function resolveIdpAdapterConfig(
+  adapter: IdpAdapterConfigSection,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): IdpAdapterConfig {
+  switch (adapter.kind) {
+    case "mock":
+      return { kind: "mock" };
+    case "keycloak": {
+      const clientSecret = env[adapter.clientSecretEnv];
+      if (clientSecret === undefined || clientSecret === "") {
+        // エラーには環境変数の「名前」のみを載せる(値は存在しないか空)
+        throw new DeploymentConfigError([
+          {
+            code: "secret_env_missing",
+            path: "idp.adapter.clientSecretEnv",
+            message: `environment variable "${adapter.clientSecretEnv}" is not set or empty`,
+          },
+        ]);
+      }
+      return {
+        kind: "keycloak",
+        baseUrl: adapter.baseUrl,
+        realm: adapter.realm,
+        clientId: adapter.clientId,
+        clientSecret,
+        ...(adapter.timeoutMs !== undefined ? { timeoutMs: adapter.timeoutMs } : {}),
+      };
+    }
+  }
+}
+
+/** 監査セクションを保持期間設定(audit/retention.ts)に写す。 */
+export function retentionConfigFrom(
+  audit: DeploymentConfig["audit"],
+): RetentionConfig {
+  return {
+    auditRetentionDays: audit.retentionDays,
+    rawQueryRetentionDays: audit.rawQueryRetentionDays,
+    telemetryRetentionDays: audit.telemetryRetentionDays,
+  };
+}

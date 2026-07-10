@@ -16,6 +16,7 @@ npm test
 
 - `packages/connector-sdk` — コネクタ共通IF
 - `packages/gateway` — MCP Gateway(認証・監査・ルーティング)
+- `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `docs/adr` — 設計判断の記録
 - `docs/backlog` — Phase 1タスク(受け入れ条件付き)
 

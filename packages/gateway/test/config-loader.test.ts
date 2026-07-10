@@ -1,0 +1,167 @@
+/**
+ * ローダー・マイグレーション・秘密情報解決のテスト(T-010)。
+ */
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import {
+  applyMigrations,
+  CURRENT_SCHEMA_VERSION,
+  DeploymentConfigError,
+  loadDeploymentConfig,
+  parseDeploymentConfig,
+  resolveIdpAdapterConfig,
+  retentionConfigFrom,
+  type ConfigMigration,
+} from "../src/index.js";
+
+const EXAMPLE_PATH = fileURLToPath(
+  new URL("../../../examples/deployment.yaml", import.meta.url),
+);
+
+describe("examples/deployment.yaml", () => {
+  it("同梱サンプルがスキーマ・静的検証を通る", () => {
+    const config = loadDeploymentConfig(EXAMPLE_PATH, {
+      capabilities: {
+        gdrive: { nativeSearch: "full", ingest: false },
+        slack: { nativeSearch: "degraded", ingest: false },
+      },
+    });
+    expect(config.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(config.deployment.name).toBe("example-corp");
+    expect(config.connectors.map((c) => c.id)).toEqual(["gdrive", "slack"]);
+    // サンプルは安全側の既定を明示している
+    expect(config.connectors.every((c) => c.privateScopes === "excluded")).toBe(true);
+    expect(config.connectors.every((c) => !c.searchLayer.enabled)).toBe(true);
+    expect(config.audit.failureMode).toBe("fail-closed");
+  });
+});
+
+describe("スキーマバージョン移行", () => {
+  it("現行より新しいバージョンを拒否する", () => {
+    const yaml = `
+schemaVersion: ${CURRENT_SCHEMA_VERSION + 1}
+deployment:
+  name: acme
+idp:
+  adapter:
+    kind: mock
+`;
+    expect(() => parseDeploymentConfig(yaml)).toThrow(/newer than this build/);
+  });
+
+  it("移行関数を順次適用しschemaVersionを増分する", () => {
+    const migrations: Record<number, ConfigMigration> = {
+      1: (raw) => {
+        // 架空の例: v1のtopLevelNameをv2のdeployment.nameへ移動
+        const { topLevelName, ...rest } = raw as Record<string, unknown> & {
+          topLevelName?: string;
+        };
+        return { ...rest, deployment: { name: topLevelName } };
+      },
+    };
+    const migrated = applyMigrations(
+      { schemaVersion: 1, topLevelName: "acme" },
+      { migrations, targetVersion: 2 },
+    );
+    expect(migrated).toEqual({
+      schemaVersion: 2,
+      deployment: { name: "acme" },
+    });
+  });
+
+  it("移行パスがないバージョンを拒否する", () => {
+    expect(() =>
+      applyMigrations({ schemaVersion: 1 }, { migrations: {}, targetVersion: 2 }),
+    ).toThrow(/no migration path/);
+  });
+
+  it("トップレベルがマッピングでないYAMLを拒否する", () => {
+    expect(() => parseDeploymentConfig("- 1\n- 2\n")).toThrow(
+      DeploymentConfigError,
+    );
+  });
+});
+
+describe("resolveIdpAdapterConfig(秘密情報の環境変数解決)", () => {
+  const KEYCLOAK_YAML = `
+schemaVersion: 1
+deployment:
+  name: acme
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: http://localhost:8080
+    realm: acme
+    clientId: kp-gateway
+    clientSecretEnv: TEST_KC_SECRET
+`;
+
+  it("環境変数から秘密情報を解決する", () => {
+    const config = parseDeploymentConfig(KEYCLOAK_YAML);
+    const adapter = resolveIdpAdapterConfig(config.idp.adapter, {
+      TEST_KC_SECRET: "s3cret",
+    });
+    expect(adapter).toEqual({
+      kind: "keycloak",
+      baseUrl: "http://localhost:8080",
+      realm: "acme",
+      clientId: "kp-gateway",
+      clientSecret: "s3cret",
+    });
+  });
+
+  it("環境変数未設定はエラーになり、メッセージは変数名のみを含む", () => {
+    const config = parseDeploymentConfig(KEYCLOAK_YAML);
+    expect(() => resolveIdpAdapterConfig(config.idp.adapter, {})).toThrow(
+      /TEST_KC_SECRET/,
+    );
+  });
+
+  it("DeploymentConfig自体は秘密情報を一切保持しない(不変条件6)", () => {
+    const config = parseDeploymentConfig(KEYCLOAK_YAML, {});
+    // 設定オブジェクトを丸ごとシリアライズしても秘密の値は現れない
+    // (環境変数が設定済みでも、configは変数名しか持たない)
+    process.env["TEST_KC_SECRET"] = "s3cret-in-env";
+    try {
+      expect(JSON.stringify(config)).not.toContain("s3cret-in-env");
+    } finally {
+      delete process.env["TEST_KC_SECRET"];
+    }
+  });
+
+  it("mockはそのまま返す", () => {
+    const config = parseDeploymentConfig(`
+schemaVersion: 1
+deployment:
+  name: acme
+idp:
+  adapter:
+    kind: mock
+`);
+    expect(resolveIdpAdapterConfig(config.idp.adapter, {})).toEqual({
+      kind: "mock",
+    });
+  });
+});
+
+describe("retentionConfigFrom", () => {
+  it("auditセクションをRetentionConfigに写す", () => {
+    const config = parseDeploymentConfig(`
+schemaVersion: 1
+deployment:
+  name: acme
+idp:
+  adapter:
+    kind: mock
+audit:
+  retentionDays: 100
+  rawQueryRetentionDays: 7
+  telemetryRetentionDays: 3
+`);
+    expect(retentionConfigFrom(config.audit)).toEqual({
+      auditRetentionDays: 100,
+      rawQueryRetentionDays: 7,
+      telemetryRetentionDays: 3,
+    });
+  });
+});
