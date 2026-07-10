@@ -74,14 +74,24 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
     baseUrl: z.string().min(1),
     realm: z.string().min(1),
     clientId: z.string().min(1),
-    /** clientSecret を保持する環境変数の名前(値ではない) */
-    clientSecretEnv: z.string().min(1),
+    /**
+     * clientSecret を保持する環境変数の名前(値ではない)。
+     * 環境変数名の形式を強制することで、誤って秘密の値そのものを書いた
+     * 場合に高確率で弾き、エラー経由の値エコーを防ぐ(不変条件6)。
+     * エラーメッセージにも受領値を含めない。
+     */
+    clientSecretEnv: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
+        error: "clientSecretEnv must be an environment variable NAME, not a secret value",
+      }),
     timeoutMs: z.number().int().min(1).optional(),
   }),
 ]);
 
 const orchestratorSchema = z.strictObject({
-  maxIterations: z.number().int().min(1).default(6),
+  // 上限は探索ループのコスト・API呼び出し増幅の抑止(TM-D3、AT-5の過大設定)
+  maxIterations: z.number().int().min(1).max(20).default(6),
   /** 1質問あたりのLLMコスト上限(通貨単位は導入先の課金通貨)。消費者はT-007 */
   costLimitPerQuery: z.number().positive().optional(),
 });

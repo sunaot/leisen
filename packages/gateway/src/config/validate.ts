@@ -93,6 +93,9 @@ export function validateDeploymentConfig(
       });
     }
 
+    // backend欠落もprivateScopes同様「宣言時拒否」とする(enabled: falseでも
+    // 拒否)。無効化中に仕込まれた不完全な宣言が、有効化した瞬間に危険設定と
+    // して発現することを防ぐ
     if (connector.searchLayer.enabled && connector.searchLayer.backend === undefined) {
       issues.push({
         code: "search_layer_backend_missing",
@@ -130,6 +133,12 @@ export function validateDeploymentConfig(
         message: `connector "${connector.id}" does not implement the ingest capability`,
       });
     }
+
+    // TM-E7(Slack由来データの永続化)への注記: 現時点ではSlack系コネクタは
+    // ingest: false を宣言する前提のため、searchLayer有効化(=中央インデックス化
+    // =永続化)は上の search_layer_requires_ingest で間接的に拒否される。
+    // Slackコネクタ実装(T-006)で contentPersistence 系のcapabilityが確定したら
+    // (ADR-014/016)、capability宣言に依存しない名指しの構造的拒否をここに追加する
 
     // index-requiredクラス(nativeSearch: "none")は検索層とセットでのみ導入可
     // (ADR-007: ネイティブ検索のベースラインが存在せず、検索層OFFでは機能しない)

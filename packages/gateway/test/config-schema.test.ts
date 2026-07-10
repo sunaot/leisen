@@ -81,6 +81,11 @@ describe("deployment config schema rejection", () => {
     expect(() => parseDeploymentConfig(yaml)).toThrow(DeploymentConfigError);
   });
 
+  it("orchestrator.maxIterationsの上限超過を拒否する(TM-D3)", () => {
+    const yaml = MINIMAL_YAML + `orchestrator:\n  maxIterations: 21\n`;
+    expect(() => parseDeploymentConfig(yaml)).toThrow(DeploymentConfigError);
+  });
+
   it("不正YAMLを拒否する", () => {
     expect(() => parseDeploymentConfig("{{{")).toThrow(DeploymentConfigError);
   });

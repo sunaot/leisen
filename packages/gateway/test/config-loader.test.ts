@@ -117,6 +117,21 @@ idp:
     );
   });
 
+  it("clientSecretEnvに環境変数名でない値(秘密の値らしきもの)を拒否し、値をエコーしない", () => {
+    const yaml = KEYCLOAK_YAML.replace(
+      "clientSecretEnv: TEST_KC_SECRET",
+      "clientSecretEnv: hunter2-actual-secret!",
+    );
+    try {
+      parseDeploymentConfig(yaml);
+      expect.unreachable("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeploymentConfigError);
+      expect((error as Error).message).not.toContain("hunter2");
+      expect((error as Error).message).toContain("environment variable NAME");
+    }
+  });
+
   it("DeploymentConfig自体は秘密情報を一切保持しない(不変条件6)", () => {
     const config = parseDeploymentConfig(KEYCLOAK_YAML, {});
     // 設定オブジェクトを丸ごとシリアライズしても秘密の値は現れない
