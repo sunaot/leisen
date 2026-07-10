@@ -1,0 +1,49 @@
+{
+  "realm": "kp",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "clients": [
+    {
+      "clientId": "gateway",
+      "name": "Gateway (introspection client)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-only-gateway-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "e2e-cli",
+      "name": "E2E test client (password grant)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.test",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Example",
+      "credentials": [
+        { "type": "password", "value": "dev-only-alice-password", "temporary": false }
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.test",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Example",
+      "credentials": [
+        { "type": "password", "value": "dev-only-bob-password", "temporary": false }
+      ]
+    }
+  ]
+}
