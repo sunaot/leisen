@@ -1,6 +1,6 @@
 # ADR-010: ソース別認可方式とToken Vault(ADR-002の改訂)
 
-Status: Proposed(決定内容はT-000a調査結果で確定済み。**docs/auth-matrix.md の人間レビュー完了をもってAccepted化する** — ゲート解除は人間判断) / Date: 2026-07-05 / 調査反映: 2026-07-09
+Status: Accepted(2026-07-12 人間レビュー完了・承認。ADR-002は同時にSuperseded)/ Date: 2026-07-05 / 調査反映: 2026-07-09
 
 ## 文脈
 ADR-002はIdP起点のToken Exchange(RFC 8693)を基本方式、個別OAuthをフォールバックとした。しかしPhase 1の主要対象について、外部IdPトークンを各SaaSの本人アクセストークンへ交換する、公式に前提化できる汎用経路は確認できない(Google Workspace: 個別OAuth同意またはドメインワイド委任のみ。Slack: 本人のOAuth承認フローのみ。Entra ID→Graphのon-behalf-ofは成立)。「フォールバック」が実際の主経路であり、ADR-002の採用理由(トークン保管最小化、IdPでの一元失効)は前提から反転する。
