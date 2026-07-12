@@ -20,7 +20,8 @@ export type ConfigIssueCode =
   | "fail_open_requires_confirmation"
   | "private_scopes_included_requires_confirmation"
   | "agent_execution_not_allowed_in_phase1"
-  | "secret_env_missing";
+  | "secret_env_missing"
+  | "unknown_audit_sink";
 
 export interface ConfigIssue {
   code: ConfigIssueCode;

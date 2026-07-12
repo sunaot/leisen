@@ -29,3 +29,16 @@ jobs:
       - run: KEYCLOAK_E2E=1 npm test -w @kp/gateway
       - if: always()
         run: docker compose -f e2e/keycloak/docker-compose.yml down
+  # T-012: リファレンスデプロイの起動確認。クリーンなCIコンテナで
+  # gateway+keycloakをcompose起動し、smoke.sh(認可分岐とMCPセッション確立)を
+  # 通す。
+  reference-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f deploy/reference/docker-compose.yml up -d --build
+      - run: deploy/reference/smoke.sh
+      - if: always()
+        run: docker compose -f deploy/reference/docker-compose.yml logs gateway
+      - if: always()
+        run: docker compose -f deploy/reference/docker-compose.yml down

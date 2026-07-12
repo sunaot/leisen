@@ -1,0 +1,50 @@
+# リファレンスデプロイ(T-012): gateway + keycloak を docker compose up で起動する。
+#
+# 検索バックエンドはエンジン選定(T-016のPoC、ADR-006)後にprofile指定で追加する。
+# 全導入は検索層OFFで開始するため(ADR-006)、既定構成には含めない。
+#
+# Keycloakは開発・評価用の同梱IdP。実導入で既存IdPを使う場合は
+# deployment.yaml の idp セクションを差し替え、keycloakサービスを外す
+# (docs/install.md)。パスワード類はローカル専用のダミー値
+# (実環境の秘密情報をこのファイルに書かないこと、不変条件6)。
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: dev-only-admin-password
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      # 開発用realm(kp / alice / bob)。E2Eと同一定義を共有して乖離を防ぐ
+      - ../../e2e/keycloak/realm:/opt/keycloak/data/import:ro
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/reference/Dockerfile
+    environment:
+      KP_DEPLOYMENT_CONFIG: /etc/kp/deployment.yaml
+      # 同梱realmのconfidentialクライアント(gateway)のシークレット。
+      # 実導入では必ず環境変数・シークレットストアで上書きする
+      KP_KEYCLOAK_CLIENT_SECRET: ${KP_KEYCLOAK_CLIENT_SECRET:-dev-only-gateway-secret}
+    volumes:
+      # 導入ごとの全構成は deployment.yaml 1枚をvolume注入で差し替える(ADR-005)
+      - ./deployment.yaml:/etc/kp/deployment.yaml:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - keycloak
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12

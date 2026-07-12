@@ -1,0 +1,26 @@
+# リファレンスデプロイのdeployment.yaml(T-012)。
+# docker-compose.yml がGatewayコンテナの /etc/kp/deployment.yaml に注入する。
+# スキーマの正は packages/gateway/src/config/schema.ts、
+# 設定サンプルの説明は examples/deployment.yaml を参照。
+schemaVersion: 1
+
+deployment:
+  name: reference
+
+idp:
+  adapter:
+    kind: keycloak
+    # compose内のサービス名で解決する(コンテナ間ネットワーク)
+    baseUrl: http://keycloak:8080
+    realm: kp
+    clientId: gateway
+    # 秘密情報はこのファイルに書かない(不変条件6)。環境変数名で参照する
+    clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+
+# コネクタ実体は未登録(実装はT-005以降)。実体のないIDを宣言すると
+# 起動時に unknown_connector_id で拒否される
+connectors: []
+
+audit:
+  sink: stdout # 開発・検証用。本番は永続シンクに差し替える(docs/install.md)
+  failureMode: fail-closed
