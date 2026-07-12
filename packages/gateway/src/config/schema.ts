@@ -44,10 +44,27 @@ const searchLayerSchema = z.strictObject({
     .default(DEFAULT_AUTHZ_CACHE_TTL_SEC),
 });
 
+/** コネクタ呼び出しタイムアウトの既定(ms)。 */
+export const DEFAULT_CONNECTOR_TIMEOUT_MS = 30_000;
+
+/**
+ * ソース別のタイムアウト・レート制御(T-003)。外部SaaS呼び出しの制限値は
+ * コードに埋めず、Gateway設定から注入する(CLAUDE.md開発ルール)。
+ * レート制御はソース単位(APIクォータの保護が目的。TM-D3のコスト増幅抑止も
+ * orchestrator.maxIterationsと併せてここで受ける)。
+ */
+const connectorLimitsSchema = z.strictObject({
+  /** コネクタ呼び出し1回のタイムアウト(ms) */
+  timeoutMs: z.number().int().min(1).default(DEFAULT_CONNECTOR_TIMEOUT_MS),
+  /** Gateway側のソース別レート上限(リクエスト/分)。省略時は制限なし */
+  maxRequestsPerMinute: z.number().int().min(1).optional(),
+});
+
 const connectorSchema = z.strictObject({
   /** コネクタの sourceId(Connector.sourceId と一致させる) */
   id: z.string().min(1),
   enabled: z.boolean().default(true),
+  limits: connectorLimitsSchema.prefault({}),
   /**
    * DM・プライベートチャンネル・個人スコープの扱い(ADR-013 §1)。
    * 既定 excluded。consent は本人オプトイン同意モード。included への変更は
@@ -166,6 +183,7 @@ export const deploymentConfigSchema = z.strictObject({
 
 export type DeploymentConfig = z.infer<typeof deploymentConfigSchema>;
 export type ConnectorConfig = DeploymentConfig["connectors"][number];
+export type ConnectorLimits = ConnectorConfig["limits"];
 export type IdpAdapterConfigSection = DeploymentConfig["idp"]["adapter"];
 export type AuditConfig = DeploymentConfig["audit"];
 export type AgentExecutionConfig = DeploymentConfig["agentExecution"];
