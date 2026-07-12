@@ -1,6 +1,6 @@
 # ADR-002: 権限透過はIdP起点のToken Exchangeで実現する
 
-Status: Superseded予定(ADR-010のAccepted化と同時。docs/auth-matrix.md の人間レビュー待ち) / Date: 2026-07-04
+Status: Superseded by ADR-010(2026-07-12)/ Date: 2026-07-04
 
 ## 文脈
 検索は必ず利用者本人の権限で行う(プロダクト原則1)。実現方式として (a) 各ソースへの個別OAuth接続をユーザーごとに保持、(b) IdP(Okta/Entra ID)を起点とするToken Exchange(RFC 8693)/on-behalf-ofフロー、の2案。
@@ -22,3 +22,6 @@ Status: Superseded予定(ADR-010のAccepted化と同時。docs/auth-matrix.md �
 
 ## 追補(2026-07-09)
 T-000a(docs/auth-matrix.md)の調査完了により、本ADRの基本方式が前提化できないことは一次情報で確定した。auth-matrix.md の人間レビュー完了(ゲート解除)をもって本ADRは **ADR-010 に Superseded** となる。認可方式の正は ADR-010 と auth-matrix.md を参照。
+
+## 追補(2026-07-12)
+ADR-010の人間レビュー完了・Accepted化に伴い、本ADRは正式にSupersededとなった。
