@@ -1,0 +1,51 @@
+# deployment.yaml サンプル(T-010、ADR-005)
+#
+# 導入1件の全構成をこのファイル1枚で表現する(1デプロイ=1社)。
+# スキーマの正は packages/gateway/src/config/schema.ts。
+# 危険設定(検索層の不正な有効化、fail-open、privateScopes: included 等)は
+# 起動時に拒否される。詳細は packages/gateway/src/config/validate.ts。
+schemaVersion: 1
+
+deployment:
+  name: example-corp
+
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: http://localhost:8080
+    realm: example
+    clientId: kp-gateway
+    # 秘密情報はこのファイルに書かない(不変条件6)。環境変数名で参照する
+    clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+
+connectors:
+  - id: gdrive
+    enabled: true
+    # DM・プライベート領域は既定で検索対象外(ADR-013 §1)。
+    # included へ変更する場合は confirmPrivateScopesIncluded: true と
+    # 利用規程の整備(docs/usage-policy-template.md)が必須
+    privateScopes: excluded
+    searchLayer:
+      # 全導入は検索層OFFで開始し、昇格判定レポート(T-014)の証拠に
+      # 基づいて有効化する(ADR-006)
+      enabled: false
+  - id: slack
+    enabled: true
+    privateScopes: excluded
+    searchLayer:
+      enabled: false # ADR-014: Slackは原則オンデマンド検索のみ。中央インデックス化しない
+
+orchestrator:
+  maxIterations: 6
+  costLimitPerQuery: 0.5
+
+audit:
+  sink: stdout # 収集基盤は導入先の運用に委ねる。stdoutは開発用
+  failureMode: fail-closed # 監査レコードを書けないツール呼び出しは失敗させる(ADR-011)
+  privateScopeDocIds: hashed # プライベートスコープdocIdはHMACで秘匿化して記録(ADR-013 §2)
+  retentionDays: 365 # 監査ログ本体の保持(ADR-013 §3)
+  rawQueryRetentionDays: 30 # 生クエリの短期保持(ADR-011)
+  telemetryRetentionDays: 14 # 分離テレメトリ(ADR-011)
+
+chatHistory:
+  retentionDays: 90 # ADR-013 §4。エクスポート・共有機能は提供されない
