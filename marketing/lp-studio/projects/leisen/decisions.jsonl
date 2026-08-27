@@ -6,3 +6,4 @@
 {"type":"stage_approval","stage":"analysis","at":"2026-08-27","by":"agent (autonomous run)","note":"Skepticゲート+検証スプリントV1-V5完了。前提A-1〜A-11つきで承認"}
 {"type":"stage_approval","stage":"positioning","at":"2026-08-27","by":"agent (autonomous run)","selected":"positioning-a","note":"3案作成。選定理由はselection.md。A-1未検証のため最初の10件で検証しrevisit条件を明記"}
 {"type":"stage_approval","stage":"message","at":"2026-08-27","by":"agent (autonomous run)","selected":"ms-1 + arch-1","note":"戦略3案(Pain/Mechanism/Outcome-led)からms-1、アーキテクチャ3案からarch-1(審査同行型)。ms-2/ms-3とarch-2/3の要素は吸収"}
+{"type":"copy_gate","stage":"message","at":"2026-08-27","note":"Copy Ladder構築(Brand Copy不採用)。ブラインド理解監査2回ともPASS(4/4一致・裏付けなき主張0・致命的誤推論なし)。Hero v3で確定。残指摘(レイテンシ疑念・OSSなのに相談?)はsec6/sec8/FAQで処理"}

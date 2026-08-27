@@ -1,0 +1,133 @@
+# Stage 7 Copy Development(copy-development.schema.json 準拠)
+# 最適化目標: clarity × relevance × specificity × credibility ÷ cognitive load(最短・スローガン化はゴールではない)
+
+information_requirements:
+  - {statement: "社内のデータ・ナレッジをAI(LLM)から検索できるようにする『基盤』である(チャットボット完成品ではない)", priority: must}
+  - {statement: "検索は利用者本人の権限で行われ、権限のない情報は見えない", priority: must}
+  - {statement: "Google Drive・Slack・GitHub・wiki等の既存ツールを移行せずに接続する", priority: must}
+  - {statement: "次の行動: 導入相談またはデザインパートナー応募(詳細は下部)", priority: must}
+  - {statement: "権限データベースを複製・同期せず、アクセス可否は毎回元のツールが判定する(方式)", priority: helpful}
+  - {statement: "全アクセスが監査ログに残る", priority: helpful}
+  - {statement: "OSSであり自社環境に導入する(SaaSにデータを預けない)", priority: helpful}
+  - {statement: "導入実績・定量成果は掲げない(誠実性)/できないことも明示している", priority: later}
+
+reader_prior_knowledge:
+  product: none        # 未公開・無名
+  category: low        # 「エンタープライズ検索」「RAG」は既聞だが「権限透過の検索基盤」という枠は未形成
+  problem: high        # 接続の停止・審査・シャドーAIは読者の日常
+  terminology: low     # 「権限透過」「認可の委譲」「フェデレーテッド検索」は前提にできない
+  implication: "前提知識が低いため、Heroは既存ブランド並みの圧縮密度を採らない。カテゴリ・行為・結果を明示的に置く(policy: 情報密度の借用禁止)"
+
+copy_ladder:
+  product_truth: >-
+    社内の複数のデータソース(Google Drive、Slack、GitHub、社内wiki等)をMCPプロトコルのコネクタで接続し、
+    LLMが検索・取得を行う際、必ず利用者本人の資格情報でソースのAPIを呼び出すゲートウェイ基盤(OSS)。
+    独自の権限データベースやACLの複製を持たず、アクセス可否の判定は毎回、元のデータソースが行う。
+    全ツール呼び出しは監査ログに記録される。各社が自社環境にシングルテナントで導入する。
+  customer_value: >-
+    社員がAIに社内のことを聞けるようになる。そのとき見えるのは、その人がもともと見てよい情報だけ。
+    情シスは権限リストの複製・同期を管理する必要がなく、「誰が・どのソースに・何を問い合わせたか」を
+    監査ログで説明できる。既存ツールからの移行は不要で、データを外部SaaSに預けることもない。
+  plain_message: >-
+    社内データをAIにつないでも、見えるのは本人に権限がある情報だけ。権限をコピーせず、
+    アクセス可否は検索のたびに元のツールが判定します。すべての検索は監査ログに残ります。
+    Google Drive・Slack・GitHub・wikiを移行せずにつなぐ、自社環境に置くオープンソースの社内ナレッジ検索基盤です。
+  persuasive_copy: >-
+    (headline)社内データをAIにつなぐ計画、「権限」で止まっていませんか。
+    (subheadline)Leisen(仮称)は、Google Drive・Slack・GitHub・社内wikiを移行せずにつなぎ、
+    検索を常に本人の権限で行う、オープンソースの社内ナレッジ検索基盤。
+    権限データベースを複製せず、アクセス可否は毎回、元のツールが判定します。
+    すべての検索は監査ログに残り、自社環境で動きます。
+  brand_copy: ""   # 採用しない。unknown product × low terminology でBrand Copyは意味回復不能(policy準拠)
+  compression_notes:
+    - from: product_truth
+      to: customer_value
+      removed: ["MCPプロトコル", "コネクタ", "シングルテナント", "ゲートウェイという語"]
+      core_meaning_loss: low
+    - from: customer_value
+      to: plain_message
+      removed: ["情シスの管理負担軽減(暗黙化)", "『誰が何を』の監査粒度(『監査ログに残る』に圧縮)"]
+      core_meaning_loss: low
+    - from: plain_message
+      to: persuasive_copy
+      removed: ["『AIに聞ける』という利用イメージの明示(ヒーロー画像とsec3に委譲)", "SaaSに預けない(『自社環境で動きます』に圧縮)"]
+      core_meaning_loss: low
+      note: "Pain-led導入(停止状態への問いかけ)を追加。意味の発明ではなくarch-1 sec1の説得開始点の実装"
+
+hero_message_unit:
+  eyebrow: "オープンソースの社内ナレッジ検索基盤"
+  headline: "社内データをAIにつなぐ計画、「権限」で止まっていませんか。"
+  subheadline: >-
+    Leisen(仮称)は、Google Drive・Slack・GitHub・社内wikiを移行せずにつなぎ、検索を常に本人の権限で行う、
+    オープンソースの社内ナレッジ検索基盤。権限データベースを複製せず、アクセス可否は毎回、元のツールが判定します。
+    すべての検索は監査ログに残り、自社環境で動きます。
+  visual_job: >-
+    一枚のアーキテクチャ図: 利用者の質問 → Gateway(本人の資格情報・監査ログ)→ 各ツール(ここで権限判定)→ 回答。
+    「権限の判定が製品側でなくツール側にある」ことを視覚で証明する(装飾ではなく機構の証拠)
+  cta: "導入について相談する(30分)/ 設計ドキュメントを読む"
+  proof: "[placeholder] デザインパートナー第1期募集中(少数枠)— 募集条件は人間確定待ち。実績・数値クレームは置かない"
+  element_jobs:
+    eyebrow: "カテゴリ成立(情報要件1)— 基盤であること・OSSであること"
+    headline: "共感と選別(ms-1: 停止状態)— 問題の当事者だけを立ち止まらせる"
+    subheadline: "情報要件2,3,5,6,7を明示的に運ぶ(前提知識lowのため圧縮しない)"
+    visual: "方式(情報要件5)の証明"
+    cta: "情報要件4"
+
+blind_audit_1:
+  date: 2026-08-27
+  auditor: "隔離エージェント(Heroのみ提示、5秒露出想定)"
+  result: PASS
+  q_match: "Q1誰(high・一致) Q2何(high・一致) Q3何ができる(medium・一致) Q4何が良くなる(high・一致) → 4/4"
+  unsupported_claims: 0
+  critical_false_inference: "なし(『移行せず=インデックスなしライブ検索』は誤推論候補として報告されたが、Phase 1では事実であり誤りではない。ただしレイテンシ疑念が無回答で誘発される)"
+  valid_findings:
+    - "サブ見出しが1文4主張+2文で5秒帯域超過。保持されるのは『権限』『移行せずに』程度"
+    - "『AIにつなぐ』のAIの正体(同梱か持ち込みか)が不定 → LLM同梱と誤推論しうる"
+    - "『毎回判定』→性能疑念(遅くない?)が即座に湧くがHeroに回答なし → sec6/FAQでPhase1レイテンシ(10〜60秒)を正直開示することで処理"
+    - "『(仮称)』はサブ見出し内では信頼ノイズ → ロゴ部に移動"
+    - "OSSなのに『導入相談』→ビジネスモデル混乱 → sec8(提供形態)で回答"
+
+# ===== Hero v2(監査1の指摘反映: 密度削減・LLM境界の明示。意味の変更なし) =====
+hero_message_unit_v2:
+  eyebrow: "オープンソースの社内ナレッジ検索基盤"
+  headline: "社内データをAIにつなぐ計画、「権限」で止まっていませんか。"
+  subheadline: >-
+    Google Drive・Slack・GitHub・社内wikiを移行せずにつなぎ、AIからの検索を常に「本人の権限」で行う基盤。
+    アクセス可否は毎回、元のツールが判定します。LLMは同梱せず、お使いのAI(Claude等)から利用します。
+  supporting_chips: ["権限データベースの複製なし", "全アクセスが監査ログに残る", "自社環境で動作(データを預けない)"]
+  visual_job: "一枚のアーキテクチャ図(v1と同じ): 権限判定がツール側にあることの視覚証明"
+  cta: "導入について相談する(30分)/ 設計ドキュメントを読む"
+  proof: "[placeholder] デザインパートナー第1期募集中(少数枠)"
+  note: "製品名(仮称)はヘッダーロゴ部へ移動。監査ログ・自社環境はチップ化して1文ずつに分解(削除ではなく再配置、core_meaning_loss: none)"
+
+blind_audit_2:
+  date: 2026-08-27
+  auditor: "別の隔離エージェント(v2 Heroのみ提示)"
+  result: PASS
+  q_match: "Q1(medium-high・一致) Q2(high・一致、『完成品アプリではなくゲートウェイ』まで到達) Q3(medium・一致) Q4(high・一致) → 4/4"
+  unsupported_claims: 0
+  critical_false_inference: "なし。ただし図にLLMの箱が無いため『Gatewayが回答を生成する』誤推論を誘発(要修正)"
+  valid_findings:
+    - "図とテキストの矛盾: 『LLMは同梱しない』のに図の終点が『回答』→ 図に『お使いのAI』の箱を描く(最優先)"
+    - "チップ『権限データベースの複製なし』→『権限のコピー・同期をしない』へ(前提知識なしで読める言い換え)"
+    - "サブ3文目(LLM同梱せず)は話題転換で読み落とす → 図のキャプションに移動"
+    - "『設計ドキュメント』が何か不明 → 『アーキテクチャと設計判断(ADR)』と具体化"
+    - "『デザインパートナー』はジャーゴン → 言い換え併記"
+    - "『(仮称)』の信頼ノイズ → 名称確定(人間タスク)までヘッダーに極小表示で受容(brief制約)"
+    - "『導入相談』と『DP募集』の緊張(今買えるのか?)→ sec8提供形態とFAQで回答"
+
+# ===== Hero v3(確定版。監査2反映) =====
+hero_message_unit_v3:
+  eyebrow: "オープンソースの社内ナレッジ検索基盤"
+  headline: "社内データをAIにつなぐ計画、「権限」で止まっていませんか。"
+  subheadline: >-
+    Google Drive・Slack・GitHub・社内wikiを移行せずにつなぎ、AIからの検索を常に「本人の権限」で行う基盤。
+    アクセス可否は毎回、元のツールが判定します。
+  supporting_chips: ["権限のコピー・同期をしない", "全アクセスが監査ログに残る", "自社環境で動作(データを預けない)"]
+  visual_job: >-
+    一枚のアーキテクチャ図(v3): 利用者 → お使いのAI(Claude等)→ Gateway(本人の資格情報/監査ログ)→
+    各ツール(ここで権限判定)→ 回答はAIが生成。LLM非同梱の境界を図で明示
+  visual_caption: "LLMは同梱しません。お使いのAI・エージェントからMCPで利用します。"
+  cta: "導入について相談する(30分)/ アーキテクチャと設計判断(ADR)を読む"
+  proof: "[placeholder] デザインパートナー(共同検証パートナー)第1期募集中(少数枠)"
+  status: approved (2回のブラインド監査PASS)
