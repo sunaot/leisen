@@ -1,0 +1,60 @@
+# カテゴリ・フィンガープリント: 「社内ナレッジのAI検索」カテゴリ(JP主・US従)
+# 出典: pattern-matrix.csv / findings-a,b,c.md。すべて観察であり成果証拠ではない
+category_conventions:  # 従うかどうかを意識的に決めるべき慣習
+  - id: conv-01
+    convention: "ヒーロー=約束から始め、問題提起は含意にとどめる(明示するのはSlackなど少数)"
+    prevalence: "直接競合9件中ほぼ共通"
+  - id: conv-02
+    convention: "ヒーロー直下に社会的証明(ロゴ帯/導入社数/アワード)。国内は数値バッジ→ロゴ→ITreview等アワードの三層"
+    prevalence: "国内・海外とも支配的"
+  - id: conv-03
+    convention: "機構は3〜4項目のフレームワークに整形(Connect/Understand/Act等)"
+    prevalence: "直接競合で頻出"
+  - id: conv-04
+    convention: "『学習に使わない』『データはあなたのもの』は定型文化(書かないと減点の水準)。国内は+国内リージョン+ISMSの三点セット"
+    prevalence: "大手3社明文化・国内生成AI系ほぼ全て"
+  - id: conv-05
+    convention: "セキュリティ/ガバナンスは後段の専用節+FAQで反論処理"
+    prevalence: "大手共通"
+  - id: conv-06
+    convention: "国内はLP=稟議支援文書(縦長1枚に機能・権限・ROI試算・料金・FAQを完結、資料DL+デモの二段オファー)"
+    prevalence: "国内商用SaaSで支配的"
+  - id: conv-07
+    convention: "OSSはGitHubスター等コミュニティ指標+エンタープライズロゴの併置、Cloud/Self-host/CommunityのCTA並列。『資料DL』概念は不在"
+    prevalence: "OSS群共通"
+  - id: conv-08
+    convention: "ビジュアルは実プロダクトUI(スイート勢・OSS)か抽象ビジョン(独立系ハイタッチ)の2択"
+    prevalence: "全群"
+meaningful_variation:  # 意味のある分岐(どちらを選ぶかが戦略になる)
+  - id: var-01
+    variation: "権限の語り方4型: A=エンドユーザー視点言い切り(Glean) / B=アーキテクチャ差別化(Dashworks非インデックス) / C=管理者ガバナンス(Google/Atlassian) / D=沈黙・委譲(Coveo/Sana/Slack)"
+  - id: var-02
+    variation: "CTA摩擦: デモ一本ハイタッチ(価格非開示) ⇔ トライアル+価格開示 ⇔ 即時試行(docker run直載せ、フリーミアム)"
+  - id: var-03
+    variation: "OSSの位置: 見出し級(カテゴリ定義: Metabase) / 副文級(提供形態の透明化: Infisical) / 後退(規模証明に置換: PostHog)"
+  - id: var-04
+    variation: "証明の代替(実績ゼロでも可能な型): 標準準拠(Keycloak) / 機構の実演(docker run) / 思想と実名の声(Basecamp) / 検証可能性=ソース公開(AnythingLLM)"
+  - id: var-05
+    variation: "定着不安への応答: 導入支援・伴走の独立セクション(国内特有) ⇔ セルフサーブで語らない(US)"
+white_space:  # 観察範囲で誰もやっていない位置(機会仮説。成果の保証はない)
+  - id: ws-01
+    gap: "権限継承の『方式』の開示。『閲覧権限 継承』『権限維持検索』という名詞句は流通し始めたが、誰の資格情報で・同期か委譲か・どう検証可能かを機構レベルで説明するLPは観察範囲にゼロ"
+    supports: "本製品の中核(認可のソース委譲・本人資格情報・OSSで検証可能)"
+  - id: ws-02
+    gap: "監査可能性の訴求。『全アクセスが監査ログに残る』を差別化語彙として使うLPはほぼ無い(Difyが列挙する程度)。審査3問(pc-02)に正面から答えるLPが不在"
+    supports: "不変条件2(全数監査)・カナリア文書・レッドチーム"
+  - id: ws-03
+    gap: "『できないこと』の明示。プライベートスコープ既定除外・Slack非永続化のような制約を誠実に開示するLPは観察ゼロ(counterexample群の誠実さ戦略と接続可能)"
+    supports: "ADR-013/014。誠実性を信頼装置に転用する余地"
+  - id: ws-04
+    gap: "国内型(稟議支援・導入伴走)とOSS型(コード・self-host・検証可能性)のハイブリッド。国内でOSS+導入支援の型を取る社内AI検索LPは観察ゼロ(Onyxは英語のみ・導入支援概念なし)"
+    supports: "事業モデル(OSS+導入支援)そのもの"
+unsupported_performance_assumptions:  # 競合がやっている=効く、と誤読しやすい点
+  - "ロゴ帯・導入社数バッジがCVRを上げるという証拠は無い(全社採用しているが性能証拠ゼロ)"
+  - "デモ一本ハイタッチが高単価B2Bで最適という証拠は無い(Gleanの選択は観察のみ)"
+  - "ROI数値の直載せ(M365 241%等)が信頼を生むかは不明。出典が委託調査であることは読者にも見える"
+  - "抽象グラデーション+AI語彙のビジュアルは差別化にならない可能性が高い(全群で頻出=カテゴリノイズ)"
+competitor_owned_narratives:  # 既に特定競合が所有し、追随すると比較で負ける物語
+  - "『自社を理解するAI』(Glean) / 『仕事のあるその場所でAI』(Slack/M365) / 『チームの仕事を知り尽くしたAI』(Rovo)"
+  - "『非インデックス・リアルタイム』はDashworksが比較表ごと所有(※当製品のPhase1もインデックスレスだが、この語で戦うとDashworksの土俵)"
+  - "国内シェアNo.1・導入社数系の物語(exaBase等)— 実績ゼロの当製品には構造的に不可能"

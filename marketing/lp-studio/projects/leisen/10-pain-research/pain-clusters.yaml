@@ -1,1 +1,120 @@
-pain_clusters: []
+# 統合ペインクラスタ(トラックA=情報探索業務 / トラックB=生成AI統制職務)
+# product_fit はクラスタリング完了後にオーケストレータが採点(ブラインド研究者は採点していない)
+# origin: external = 製品Briefと独立の外部証拠 / product-derived hypothesis = 製品側の問題定義由来
+pain_clusters:
+  - id: pc-01
+    name: "シャドーAI — 統制の前に利用が始まっており、禁止すると検知可能性が消える"
+    track: B (C1)
+    evidence: [pev-b01, pev-b02, pev-b03, pev-b04]
+    evidence_strength: strong
+    origin: external
+    who_feels: "情シス・セキュリティ担当"
+    who_pays: "経営層(リスク承認)"
+    workarounds: ["受け皿方式", "免責つき自己申告", "伏せ字習慣", "軽量申請フロー"]
+    product_fit: high
+    product_fit_note: "『公式の受け皿』を権限透過+全数監査ログ付きで提供する構図に直結。ただし当製品は社内ナレッジ検索基盤であり、汎用の生成AI利用統制ツールではない — 受け皿の『社内データに触れる部分』に限定される"
+  - id: pc-02
+    name: "AIの可視性・監査証跡の空白 — 審査3問『見えないけど大丈夫?』『勝手にされない?』『説明できる?』に答える手段がない"
+    track: B (C5)
+    evidence: [pev-b11, pev-b12]
+    evidence_strength: moderate
+    origin: external
+    who_feels: "セキュリティ担当・審査対応者"
+    who_pays: "経営層"
+    workarounds: ["都度個別説明", "審査の長期化・保留"]
+    product_fit: high
+    product_fit_note: "全ツール呼び出しの監査ログ(不変条件2)・本人資格情報での認可(不変条件1)・human-in-the-loop既定(ADR-015)が審査3問への構造的回答になる。製品の中核設計と最も一致"
+  - id: pc-03
+    name: "情シス・バックオフィスへの問い合わせ集中 — 『同じ質問に何度も』で回答係が消耗"
+    track: A (クラスタ3) + A (クラスタ1の転嫁先)
+    evidence: [pev-a01, pev-a07, pev-a12, pev-a14]
+    evidence_strength: moderate
+    origin: external
+    who_feels: "情シス・総務・人事(1〜2名・兼任が多い)"
+    who_pays: "経営(ただし当事者に政治力が乏しく起票されにくい)"
+    workarounds: ["人に聞く(70.8%)", "社外コミュニティに逃がす"]
+    product_fit: medium-high
+    product_fit_note: "自己解決の受け皿になる。ただし『記録が存在しない』質問(pc-04)には効かない"
+  - id: pc-04
+    name: "属人化・引き継ぎ断絶 — 退職・異動で業務が止まる(記録の不存在)"
+    track: A (クラスタ2)
+    evidence: [pev-a04, pev-a05, pev-a06, pev-a17]
+    evidence_strength: moderate-strong
+    origin: external
+    who_feels: "後任者・残されたチーム"
+    who_pays: "管理職・経営(退職という離散イベントで痛む)"
+    workarounds: ["駆け込み文書化(失敗しがち)", "退職者へのSlack質問継続"]
+    product_fit: medium
+    product_fit_note: "存在する記録(過去のSlack/文書/リポジトリ)への到達は改善するが、『そもそも記録されていない』知識には構造的に無力。過大訴求禁止"
+  - id: pc-05
+    name: "探しても見つからず結局人に聞く — 日常の検索摩擦"
+    track: A (クラスタ1)
+    evidence: [pev-a01, pev-a02, pev-a03, pev-a15]
+    evidence_strength: moderate
+    origin: external
+    who_feels: "全知識労働者(薄く広く)"
+    who_pays: "組織(転嫁の総量として)"
+    workarounds: ["同僚に聞く(安価・即効)"]
+    product_fit: high
+    product_fit_note: "中核ユースケース。ただし個人の痛み自覚が薄く、単独ではLPの入口として弱い(反例3: 聞く側は痛くない)"
+  - id: pc-06
+    name: "蓄積しても壊れる — ナレッジベースの検索性劣化・ツール乗り換えの反復・『またツールか』"
+    track: A (クラスタ5) + A反例4
+    evidence: [pev-a08, pev-a10, pev-a11]
+    evidence_strength: moderate-strong
+    origin: external
+    who_feels: "ナレッジ管理担当・全社"
+    who_pays: "経営(ツール移行コスト)"
+    workarounds: ["数年周期のツール乗り換え", "専任オーナー配置"]
+    product_fit: medium-high
+    product_fit_note: "『いまあるツールを置き換えず、横断して探せるようにする』はこの疲弊への応答。同時に『またツールか』はこの製品自身への最大の反論でもある(両面性)"
+  - id: pc-07
+    name: "導入したのに使われない/効果が出ない — 定着と成果の乖離"
+    track: B (C2)
+    evidence: [pev-b06, pev-b07, pev-b08, pev-b09]
+    evidence_strength: strong
+    origin: external
+    who_feels: "DX推進責任者(定着KPI)・情シス"
+    who_pays: "経営・CFO"
+    workarounds: ["成功基準の切り下げ(1〜2割活用で成功)"]
+    product_fit: medium-low
+    product_fit_note: "定着そのものは製品では解決しない。導入支援・伴走(事業モデル)と監査ログによる利用実態計測が部分的応答。訴求主軸には不適"
+  - id: pc-08
+    name: "ROI・稟議の言語が合わない — 投資正当化の停滞"
+    track: B (C3)
+    evidence: [pev-b05, pev-b10]
+    evidence_strength: strong-moderate
+    origin: external
+    who_feels: "情シス部門長・DX責任者(稟議起案)"
+    who_pays: "CFO・経営層"
+    workarounds: ["PoC放棄(30%)", "小さく始める"]
+    product_fit: medium
+    product_fit_note: "OSS(ライセンス費ゼロで検証開始可)と段階導入(インデックスなしで開始)は初期投資の壁を下げる。ROIの定量約束はClaim Ledger上不可能"
+  - id: pc-09
+    name: "フロー情報の閉域埋没 — 知識の76%がprivate/DMに沈み検索可能領域に入らない"
+    track: A (クラスタ4)
+    evidence: [pev-a09, pev-a02]
+    evidence_strength: moderate
+    origin: external
+    who_feels: "全員(構造問題)"
+    who_pays: "組織"
+    workarounds: ["運用ルール(形骸化)"]
+    product_fit: low
+    product_fit_note: "当製品はプライベートスコープを既定除外(ADR-013)し、Slackデータは永続化しない(ADR-014)。閉域を開かない設計であり、このペインは解決しないと正直に扱う(誠実性の材料にはなる)"
+  - id: pc-10
+    name: "権限逸脱への不安で社内データをAIに接続できない"
+    track: 製品側の問題定義(外部では pc-01/pc-02 と市場語彙『閲覧権限 継承』『権限維持検索』の流通として間接的に現れる)
+    evidence: [pev-b02, pev-b12, obs-b24, obs-b30]
+    evidence_strength: moderate (直接の一次証言は薄い。市場語彙は競合観察でありペイン証拠ではない)
+    origin: product-derived hypothesis + partial external
+    who_feels: "情シス・セキュリティ"
+    who_pays: "経営層"
+    workarounds: ["参照範囲を製品内に限定(NotePM型)", "接続を先送り"]
+    product_fit: high
+    product_fit_note: "製品の存在理由そのもの。ただし外部証拠が審査3問(pc-02)経由の間接であるため、LPの入口にする場合は pc-01/pc-02 の外部証拠と束ねる"
+counterevidence:
+  - "小規模・SaaS整備済み組織は困っていない(pev-a13)— 対象規模の限定が必要"
+  - "聞く側の回避策は安価で痛み自覚が薄い(pev-a01解釈)— 『検索が大変』単独訴求は弱い"
+  - "M365 Copilot等スイート組込みで足りる企業は追加基盤ニーズを持たない可能性(pev-b15, 反証仮説)"
+  - "KM施策の約7割が成果未達・『またツールか』の学習性無力感 — 新ツール一般への強い障壁"
+  - "『ドキュメントは読まれなくてよい』という当事者の異議(pev-a16)"
