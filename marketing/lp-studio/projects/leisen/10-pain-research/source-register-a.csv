@@ -1,0 +1,15 @@
+source_id,source_type,actor,situation,url,notes
+psrc-a01,survey_stat,従業員2000人以上企業の正社員(n=400),社内情報の検索・問い合わせ,https://news.mynavi.jp/techplus/article/20230217-2594665/,Helpfeel委託調査のマイナビ記事。ベンダー委託調査のためバイアス留意。数値は具体的
+psrc-a02,survey_stat,週5日以上書類を検索する有職者(n=1031),紙書類の探索,https://prtimes.jp/main/html/rd/p/000000107.000023621.html,コクヨ2017年調査。紙書類限定・自社プレスリリースである点に留意
+psrc-a03,anonymous_diary,異動先で業務を引き受けた後任者,前任者転勤後の引き継ぎ不在,https://anond.hatelabo.jp/20260823114149,はてな匿名ダイアリー2026-08-23。一次の生の声。匿名単発
+psrc-a04,practitioner_blog,兼務PM(5人チーム統括)のエンジニア,ベテラン退職による知識喪失,https://qiita.com/fe1ix/items/231b49e6526b22fda94b,Qiita体験記「あの人しか知らない」が退職して詰んだ話。経緯と対策が具体的
+psrc-a05,practitioner_blog,エンジニア(同上筆者),口頭伝達文化と新人の苦労,https://qiita.com/fe1ix/items/bc94b14c646df43a8c24,「口頭で聞けばよくない？」文化の帰結を論じる。psrc-a04と同一筆者のため独立性は限定的
+psrc-a06,company_tech_blog,約80名企業の開発者(Feedforce),情報共有ツールの検索破綻と乗り換え,https://developer.feedforce.jp/entry/2019/08/22/141055,Qiita:Team→esa全社移行の当事者記録。移行コストを払った=深刻度シグナル
+psrc-a07,company_tech_blog,人材派遣会社のSlack管理者,客先常駐・リモート主体組織の情報分断,https://www.terrasky-tech.co.jp/post/20260702-slackprj01,2026年7月。private40%/DM36%/open24%という実測値あり。改善活動の失敗談も
+psrc-a08,practitioner_blog,開発チームのマネジメント担当,社内Wikiの散乱と改善,https://qiita.com/mkt_hanada/items/44c20c4db78db9d6c024,Qiita。Wiki形骸化の実態と運用改善の一次記録
+psrc-a09,practitioner_blog,Classmethodのエンジニア,過去の意思決定の経緯喪失,https://dev.classmethod.jp/articles/simple-method-to-record-project-decisions/,DevelopersIO。あるある状況の列挙+Decision Log提案。半分は解決策啓蒙
+psrc-a10,personal_note,約20名コンサル企業の一人情シス,一人情シス1年の体験記,https://note.com/yunosuke_t/n/n4d0c1f155339,note個人投稿。問い合わせ・評価されない苦労の一次記録。反例要素(小規模+SaaSなら回る)も含む
+psrc-a11,research_column,中途入社者/受け入れ企業,中途入社者の組織適応(オンボーディング),https://rc.persol-group.co.jp/thinktank/thinktank-column/202204220001/,パーソル総合研究所コラム。誰に聞けばいいかわからない問題とリアリティショック研究
+psrc-a12,survey_stat,情報システム部門所属の会社員(n=514),ひとり情シスの実態,https://enterprisezine.jp/news/detail/15208,メタップス調査のEnterpriseZine記事。「1人体制」11.4%
+psrc-a13,forum_post,Microsoft入社6ヶ月の社員(匿名),社内ドキュメントが見つからない,https://www.teamblind.com/post/no-wiki-at-microsoft-0zdujsgz,Blind(英語)。大手テックでも起きる例。匿名フォーラムのため強度は低め
+psrc-a14,practitioner_column,ベテランSE(エンジニアライフ連載),ドキュメントは読まれない論,https://el.jibun.atmarkit.co.jp/101sini/2016/07/post-f781.html,反例・反証用。「読まれなくてそれでいい」という当事者の主張。2016年

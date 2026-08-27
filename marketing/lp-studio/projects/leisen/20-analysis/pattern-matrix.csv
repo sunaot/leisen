@@ -1,0 +1,28 @@
+source_id,name,source_class,who,problem_framing,promise,mechanism,proof,objections_handled,offer_cta,persuasion_sequence,visual_role,permissions_talk
+src-a01,Glean,direct_competitor,エンタープライズ全社(決裁者寄り),汎用AIは自社を知らない(含意),自社を理解するエンタープライズAI,Connect/Understand/Actの3段フレーム,ロゴ20+・認証6種(ISO42001含む)・採用率/トークン節約カウンタ,セキュリティ/権限(permission-aware言い切り)・学習不使用,Get a demo一本(価格非開示),約束→ロゴ→機構→数値→統制→事例→CTA,抽象グラデーション+モックでスケール感,A型: 権限透過をエンドユーザー視点で言い切り
+src-a02,M365 Copilot,direct_competitor,既存M365企業のIT/決裁者,(スイート内蔵前提)AIを仕事の中へ,仕事のあるところにAI,既存テナント統合,ROI241%等の委託調査数値・事例,テナント権限継承・学習不使用・価格開示,価格開示+無償Chat入口(トライアル無し明記),実UI→価格→FAQ,実UIスクショ多数,スイート型: 既存権限の継承
+src-a03,Gemini Enterprise,direct_competitor,管理者・IT部門,ビジネスデータが分散,1プロンプトで全社データ検索,コネクタ+ガバナンス一元管理,Google親ブランド・数値クレーム,管理者統制・学習不使用・IT設定不要,30日トライアル+価格開示($21〜),約束→機構→統制→価格→FAQ,プロダクトUI,C型: 管理者ガバナンス主語
+src-a04,Slack AI,direct_competitor,Slack利用企業の現場+IT,AIの登場でかえって悩みが増えた(明示),仕事をしているその場所でAIがサポート,Slack内蔵AI,週97分節約(社内分析と注記)・ロゴ,データ所在・学習不使用,無料プランあり・既存ユーザーアップセル,問題明示→約束→デモ動画→数値→FAQ,アニメーションデモ動画,D型: 権限でなくデータ所在で処理
+src-a05,Atlassian Rovo,direct_competitor,Atlassian利用チーム,チームの文脈を知らないAI,チームの仕事を知り尽くしたAI,Teamwork Graph,ロゴ帯,管理者によるアクセス範囲コントロール,Premiumサインアップ誘導,約束→ロゴ→機構→統制,コンテキスト可視化アニメーション,C型: 管理者統制
+src-a06,Coveo,direct_competitor,大企業のデジタル部門,検索とパーソナライズの断絶,AI-searchとGenAIのプラットフォーム,Relevance/GenAIプラットフォーム,Gartner MQ Leader・G2・ロゴ,Trust Centerへ委譲,demo+free trial+chat,約束→アナリスト証明→機構→事例,アイコン+ロゴ中心,D型: LP本文では沈黙
+src-a07,Dashworks,direct_competitor,IT/ナレッジ管理者+現場,従来型検索のACL反映遅延・データ保持,全アプリを一度に検索,非インデックス・リアルタイムフェデレーション,87%自動化・SOC2/GDPR/HIPAA・ロゴ20+,ACL即時尊重・ゼロデータ保持を比較表で,ファーストビューにCTA置かず情報開示型,約束→機構差別化→比較表→認証,テキスト・比較表中心,B型: アーキテクチャ差別化(非インデックス)
+src-a08,Elastic,direct_competitor,開発者,(検索基盤の汎用問題),Search AIプラットフォーム,ハイブリッド検索/ベクトルDB,アナリスト評価流用・無料トライアル,RBAC/ドキュメントレベルセキュリティ(機能名として),PLG: トライアル4箇所+サンドボックス,機能→試用導線反復,イラスト化UIモック,開発者向け機能名として提示
+src-a09,Sana,direct_competitor,エンタープライズ決裁者,知識が行動につながらない,Find/Act/Build/Automate,エージェントプラットフォーム,ロゴ24・Workday傘下,Securityページへリンクのみ,Book an intro(価格非開示),約束→ロゴ→機構→事例,抽象ビジュアル,D型: LP本文では沈黙
+src-b01,Helpfeel,jp_competitor,CS/社内問い合わせ部門,問い合わせが減らない,検索ヒット率の高いFAQ/ナレッジ,独自の意図予測検索+RAG,導入社数・ロゴ・アワード,導入支援体制の明示,資料DL+デモの二段,数値バッジ→ロゴ→機構→事例→支援体制,プロダクトUI+図解,ほぼ語らず
+src-b02,Qast,jp_competitor,経営・ナレッジ推進部門,属人化・ナレッジ経営,ナレッジ経営の実現,AIナレッジプラットフォーム,導入社数・ロゴ・アワード三層,サポート3種,資料DL+デモ,抽象約束→証明三層→機能→支援,抽象+UI混合,自社製品内の権限設定
+src-b03,ナレカン,jp_competitor,非IT企業の情シス・現場管理職,情報が散らばり探せない,ナレッジの一元化,AI検索つき一元管理,ROI試算(1882時間/789万円)を直載せ,権限/セキュリティFAQをLP内蔵・「外部に漏れることはございません」,トライアル+資料DL,縦長1枚で機能→権限→ROI→FAQ完結,UIスクショ,自社製品内のフォルダ権限・IP制限・SSO
+src-b04,NotePM,jp_competitor,中堅企業の情報共有担当,社内wikiが続かない,使われる社内wiki+AI,wiki+AI(NotePM上の情報だけ参照),銀行・大学ロゴ・21段料金表全公開,「NotePM上の情報だけを参照するAI。だから安心」,トライアル前面,機能→料金→事例→FAQ,UIスクショ,参照範囲の限定で安心を作る
+src-b06,Neuron ES,jp_competitor,大企業・自治体の情シス,散在ファイルの全文検索,社内データの横断検索,エンタープライズサーチ,ITトレンド9年連続1位・LGWAN/自治体実績,「閲覧権限 継承」をヒーローバッジに,資料DL+問い合わせ・価格帯公開,バッジ→機構→実績→価格,UIスクショ,既存ソースの権限継承をヒーロー級で明示(国内唯一級)
+src-b07,ChatSense,adjacent_saas,法人の生成AI導入担当,セキュリティ不安で生成AIを使えない,学習されずにAI利用,RAG+「権限維持検索」(機能名化),官公庁・国立がん研究センター実績・匿名比較表,学習遮断・権限維持を比較軸に,フリーミアム(¥0+30秒登録),安心訴求→機能→比較表→実績,UIスクショ,権限維持検索を差別化軸に(方式は非開示)
+src-b08,exaBase生成AI,adjacent_saas,大企業DX部門,生成AIが定着しない,会社に定着する生成AI,社内データ連携+管理機能,国内シェアNo.1(出典明記)・ロゴ,国内サーバー処理・学習遮断,資料DL+デモ,No.1→定着→機構→統制,UI+図解,管理者統制寄り
+src-b10,Onyx,oss_adjacent,エンジニア/IT(OSS評価者),社内ナレッジがアプリに分散,オープンソースのエンタープライズAI検索,コネクタ+権限同期,GitHub stars 20k・グローバルロゴ・対ChatGPT 64% win rate自社ベンチ,"respects fine grained access controls"・SOC2・セルフホスト,Cloud/Self-host+Book a Demo,OSS証明→機構→統制→デプロイ3択,UIスクショ,権限同期を明示(方式の詳細は非開示)
+src-b11,Dify,oss_adjacent,開発者+調達部門,LLMアプリ開発の複雑さ,LLMアプリを速く作る,ビジュアルワークフロー,GitHub stars 153k・グローバルロゴ,Enterpriseカードに調達語彙(procurement/security/audit)直書き,Cloud/Enterprise/Community 3カード,OSS証明→機構→3カード,プロダクトUI,audit logs等を列挙
+src-b12,AnythingLLM,oss_adjacent,個人・小規模チーム,データを外に出したくない,データがデバイスを出ないAI,ローカルファースト実行,認証ゼロ・DL数,機構そのものが反論処理,Download無料,機構→プライバシー→DL,ミニマル,ローカル実行=構造的プライバシー
+src-c01,PostHog,oss_analogue,開発者,ツール分散・マーケ不信,全部入りの開発者向けプロダクト分析,統合スイート,500,000+ teams・自己言及的Social proof,マーケ的誠実さの演出(Talk to a human),無料クラウド+self-host,ジョーク混じり反慣習,実UI,OSS訴求はトップから後退
+src-c02,n8n,oss_analogue,技術チーム+決裁者,自動化の柔軟性とデータ保護の両立,Deploy on your infrastructure or ours,fair-codeワークフロー自動化,エンタープライズロゴ+GitHub star 202kの同帯併置,セルフホスト=データ保護の節・SOC2,クラウド無料が第一CTA+self-host導線,約束→ロゴ+コミュニティ→機構→統制,実キャンバスUI,セルフホストをデータ保護の手段として節立て
+src-c04,Metabase,oss_analogue,データチーム,BIの導入の重さ,Open source AI analytics you can verify,OSS BI,100,000+ companies・docker runコマンド直載せ,検証可能性(verify)を見出しに,Cloud free/Deploy OSSの2本並列CTA,OSS定義→規模→即時試行→統制,実ダッシュボード,OSS=検証可能性をヒーローで言語化
+src-c05,Keycloak,oss_analogue,エンジニア(認証基盤評価者),認証の自前実装コスト,Open Source Identity and Access Management,標準プロトコル準拠(OIDC/SAML),標準準拠ロゴ+CNCF(顧客証明ゼロ),標準準拠が信頼の代替,Download/Get Startedのみ(商用導線ゼロ),機構→標準準拠→DL,管理コンソールSS,認証基盤そのもの
+src-c06,Infisical,oss_analogue,セキュリティ/プラットフォームチーム,シークレットの第三者経由リスク,シークレット管理をOSSで,"self-hosting removes third-party transits of secrets"(因果文),10B secrets/day・SOC2,MITライセンス+self-host+Cloud US/EUを副文で言い切り,無料境界の数値明示,約束→ライセンス/デプロイ透明化→規模→統制,テキスト中心,セルフホスト=第三者非経由の因果を明文化
+src-c09,Oxide,counterexample,インフラ責任者,オンプレvsクラウドの既存二択,The cloud you own,実機ラック(ハード+ソフト統合),実機実写,既存二択への比較表で第三の選択肢化,問い合わせ,実在感→比較軸の再定義,実機ラック実写,所有=統制の物理的表現
+src-c10,ONCE,counterexample,反SaaS層,サブスク疲れ,買い切り+コード同梱,"you get the code, too",装飾の不在自体が思想の証明,退出権・所有権,購入のみ,テキストのみ,なし,コード所有=退出権
+src-c11,Basecamp,counterexample,中小企業の意思決定者,肥大化したPMツール,シンプルなプロジェクト管理,オールインワン,実名証言10件+運用実績数値+創業者の手紙,競合名指し批判,トライアル,長文で選別,控えめUI,なし
