@@ -1,0 +1,15 @@
+source_id,source_type,actor,situation,url,notes
+psrc-b01,practitioner_blog,中小企業の兼任(ひとり)情シス担当,経営から「AIのルール作っておいて」と指示され社内ルールを整備,https://qiita.com/hosinono62/items/5ef1effc455b484669db,Qiita一次投稿。全面禁止以外の現実解(受け皿方式)を自作した実務記録
+psrc-b02,practitioner_blog,AIエージェント導入を提案する技術者,情シス・セキュリティ部門にAIエージェント利用を通す場面,https://qiita.com/sharu389no/items/ede7d1c0be4a14024857,Qiita一次投稿。情シスから実際に問われる3つの質問と既存セキュリティ製品の空白を記述
+psrc-b03,gov_statistics,総務省(令和7年版情報通信白書),日本企業のAI利用状況・方針策定・懸念事項の全国調査,https://www.soumu.go.jp/johotsusintokei/whitepaper/ja/r07/html/nd112220.html,企業の生成AI利用率49.7%(2024年度)。「リスクを明確に定めていない」が過半数
+psrc-b04,gov_statistics,総務省(令和7年版情報通信白書),個人の生成AI利用経験の国際比較,https://www.soumu.go.jp/johotsusintokei/whitepaper/ja/r07/html/nd112210.html,日本26.7% vs 米国68.8% 中国81.2%。従業員側リテラシー基盤の薄さを示す
+psrc-b05,research_survey,PwC Japan(生成AI実態調査2025春 5カ国比較),売上500億円以上の企業の課長以上945名(日本)への調査,https://atmarkit.itmedia.co.jp/ait/articles/2507/01/news027.html,PwC本体ページ(pwc.com/jp/ja/knowledge/thoughtleadership/generative-ai-survey2025.html)は403のため@IT解説記事経由で参照
+psrc-b06,research_survey,Notion Labs Japan(ネオマーケティング実査),業務で生成AIを使う日本のナレッジワーカー1000人調査,https://webtan.impress.co.jp/n/2026/04/24/52550,定着の障壁1位スキル・トレーニング不足33%。企業規模で環境整備に2倍差
+psrc-b07,practitioner_interview,久松剛氏(情シス部長を2社経験),メディア寄稿として情シス向けに生成AI導入の勘所を解説,https://kn.itmedia.co.jp/kn/articles/2505/16/news007.html,キーマンズネット。2025年2月読者アンケート(半数で利用が進む)を併用。「野良AI」「PoC対象の1〜2割活用で成功」等の現場基準
+psrc-b08,analyst_via_media,ガートナー(Publickey報道),生成AI投資の正当化とPoC放棄予測,https://www.publickey1.jp/blog/24/ai20253.html,PoCの30%が2025年末までに放棄予測。CFOには間接的・長期的投資として許容が求められる
+psrc-b09,consultant_case_study,x3d株式会社(AI導入支援),従業員400名製造業でシャドーAIが発覚したケーススタディ,https://x3d.jp/knowledge/aix-lab/shadow-ai-hakkaku-taishoho,5部署60名超が未許可AI利用・公式環境は低調。ガートナージャパン「73%がシャドーAIを有効管理できず」を引用。支援業者のため事例の一般化には留保
+psrc-b10,analyst_press_release,ガートナージャパン,日本におけるクラウドとAIのハイプ・サイクル2025発表,https://www.gartner.co.jp/ja/newsroom/press-releases/pr-20250805-cloudai-hc,RAGは幻滅期・AIエージェントは過度な期待のピーク期(2025年8月)
+psrc-b11,practitioner_talk,メルカリ(AIガバナンス担当の登壇資料),Agentic AI時代のガバナンスとガードレール実装,https://speakerdeck.com/naoichihara/agentic-aishi-dai-niokeru-merukarinoaigabanansutogadorerushi-zhuang,従業員AIツール利用100%を前提にガードレールを実装。AI成熟企業の反例として記録
+psrc-b12,vendor_blog,JBCC(SIer),シャドーAI対策の解説記事,https://www.jbcc.co.jp/blog/column/shadow_ai_security.html,ベンダー記事のためカテゴリ語彙(シャドーAI/ガードレール/禁止ではなく管理/CASB・SWG)の記録のみに使用。痛みの証拠には不使用
+psrc-b13,vendor_case_study,Microsoft(JCB導入事例),Microsoft 365 Copilotの全社展開事例,https://www.microsoft.com/en/customers/story/25324-jcb-microsoft-365-copilot,ベンダーマーケティング。月間利用83%・月6時間節約の主張は反例候補として弱い証拠で記録
+psrc-b14,practitioner_column,越水法律事務所(弁護士),企業の生成AI社内ガイドライン整備支援の実務,https://koshimizu-law.com/column/generative-ai-guideline.html,個情法・著作権法・不競法の同時考慮/NDA抵触チェック/オプトアウト交渉に時間がかかると指摘
