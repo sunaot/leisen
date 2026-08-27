@@ -1,0 +1,13 @@
+source_id,source_class,name,url,captured_at,market,notes
+src-b01,jp_competitor,Helpfeel,https://www.helpfeel.com/,2026-08-27,ja-JP,検索SaaSからAIチャット×RAGへ軸足移動。FAQ/CS寄りだが社内ナレッジ活用も訴求
+src-b02,jp_competitor,Qast(any社),https://qast.jp/,2026-08-27,ja-JP,AIナレッジプラットフォーム。ナレッジ経営という抽象度高めの訴求
+src-b03,jp_competitor,ナレカン(Stock社),https://narekan.info/,2026-08-27,ja-JP,非IT企業向けAIナレッジツール。LP1枚に権限/セキュリティFAQまで詰め込む縦長型
+src-b04,jp_competitor,NotePM,https://notepm.jp/,2026-08-27,ja-JP,社内wiki+AI。料金表をLP上に全公開している点が特徴
+src-b05,jp_competitor,sAI Search(サイシード),https://saichat.jp/saisearch/,2026-08-27,ja-JP,AI搭載FAQシステム。LPは事例PDF DL中心の簡素な構成。セキュリティ訴求ほぼ無し
+src-b06,jp_competitor,Neuron ES(ブレインズテクノロジー),https://www.brains-tech.co.jp/neuron/,2026-08-27,ja-JP,エンタープライズサーチ。neuron.brains-tech.co.jpは503のため本URLで捕捉。閲覧権限継承をヒーローで明示する唯一の国内例
+src-b07,adjacent_saas,ChatSense(ナレッジセンス),https://chatsense.jp/,2026-08-27,ja-JP,法人向け生成AI。権限維持検索を機能名として掲げる。競合比較表あり
+src-b08,adjacent_saas,exaBase 生成AI(エクサウィザーズ/Exa Enterprise AI),https://exawizards.com/exabase/gpt/,2026-08-27,ja-JP,国内シェアNo.1訴求(出典明記)。lp.exawizards.comはJSレンダリングで本文取得不可のため本URLで捕捉
+src-b09,adjacent_saas,Graffer AI Studio,https://graffer-aistudio.jp/,2026-08-27,ja-JP,本文が完全JSレンダリングで取得不可。meta descriptionのみ観察(部分到達)。ai-studio.graffer.jpはDNS未解決
+src-b10,oss_adjacent,Onyx(旧Danswer),https://www.onyx.app/,2026-08-27,en-US,OSSエンタープライズAI検索。当プロダクトに最も近い直接参照対象。権限同期を明示
+src-b11,oss_adjacent,Dify,https://dify.ai/,2026-08-27,en-US,OSS LLMアプリ基盤。Cloud/Enterprise/Community3面展開の見本
+src-b12,oss_adjacent,AnythingLLM,https://anythingllm.com/,2026-08-27,en-US,ローカルファーストAIアプリ。プライバシー=物理的に外に出ない、という訴求構造
