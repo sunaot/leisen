@@ -1,6 +1,11 @@
 # 統合ペインクラスタ(トラックA=情報探索業務 / トラックB=生成AI統制職務)
 # product_fit はクラスタリング完了後にオーケストレータが採点(ブラインド研究者は採点していない)
 # origin: external = 製品Briefと独立の外部証拠 / product-derived hypothesis = 製品側の問題定義由来
+#
+# 採点基準(Skeptic指摘#1/#14を受けて二軸に分解。2026-08-27改訂):
+#   functional_fit: 製品の設計事実がそのペインに技術的に対処できる度合い(low/medium/high)
+#   purchase_drive: そのペインが予算・意思決定を実際に動かす度合いの証拠(low/medium/high)
+#   LPの入口候補になるのは両軸medium以上のみ。片軸のみhighは補助訴求。
 pain_clusters:
   - id: pc-01
     name: "シャドーAI — 統制の前に利用が始まっており、禁止すると検知可能性が消える"
@@ -11,8 +16,9 @@ pain_clusters:
     who_feels: "情シス・セキュリティ担当"
     who_pays: "経営層(リスク承認)"
     workarounds: ["受け皿方式", "免責つき自己申告", "伏せ字習慣", "軽量申請フロー"]
-    product_fit: high
-    product_fit_note: "『公式の受け皿』を権限透過+全数監査ログ付きで提供する構図に直結。ただし当製品は社内ナレッジ検索基盤であり、汎用の生成AI利用統制ツールではない — 受け皿の『社内データに触れる部分』に限定される"
+    functional_fit: medium
+    purchase_drive: high
+    product_fit_note: "Skeptic#3で降格(high→medium)。シャドーAI統制の比較集合はAIゲートウェイ/DLP/CASBであり当製品は載らない可能性。『公式の受け皿の、社内データに触れる部分』に限定。入口の共感までに使い、統制ソリューションとしての解決は約束しない(A-3)。73%統計は孫引き未確認"
   - id: pc-02
     name: "AIの可視性・監査証跡の空白 — 審査3問『見えないけど大丈夫?』『勝手にされない?』『説明できる?』に答える手段がない"
     track: B (C5)
@@ -22,8 +28,9 @@ pain_clusters:
     who_feels: "セキュリティ担当・審査対応者"
     who_pays: "経営層"
     workarounds: ["都度個別説明", "審査の長期化・保留"]
-    product_fit: high
-    product_fit_note: "全ツール呼び出しの監査ログ(不変条件2)・本人資格情報での認可(不変条件1)・human-in-the-loop既定(ADR-015)が審査3問への構造的回答になる。製品の中核設計と最も一致"
+    functional_fit: high
+    purchase_drive: medium
+    product_fit_note: "全ツール呼び出しの監査ログ(不変条件2)・本人資格情報での認可(不変条件1)・human-in-the-loop既定(ADR-015)が構造的回答になる。ただし『審査3問』はn=1(Skeptic#2)— V2で公開審査基準(ISMAP/FISC等)と突合するまでヘッドライン級には昇格させない。監査コピーはADR-014のSlack限定を織り込む(A-11)"
   - id: pc-03
     name: "情シス・バックオフィスへの問い合わせ集中 — 『同じ質問に何度も』で回答係が消耗"
     track: A (クラスタ3) + A (クラスタ1の転嫁先)
@@ -33,7 +40,8 @@ pain_clusters:
     who_feels: "情シス・総務・人事(1〜2名・兼任が多い)"
     who_pays: "経営(ただし当事者に政治力が乏しく起票されにくい)"
     workarounds: ["人に聞く(70.8%)", "社外コミュニティに逃がす"]
-    product_fit: medium-high
+    functional_fit: medium-high
+    purchase_drive: low-medium
     product_fit_note: "自己解決の受け皿になる。ただし『記録が存在しない』質問(pc-04)には効かない"
   - id: pc-04
     name: "属人化・引き継ぎ断絶 — 退職・異動で業務が止まる(記録の不存在)"
@@ -44,7 +52,8 @@ pain_clusters:
     who_feels: "後任者・残されたチーム"
     who_pays: "管理職・経営(退職という離散イベントで痛む)"
     workarounds: ["駆け込み文書化(失敗しがち)", "退職者へのSlack質問継続"]
-    product_fit: medium
+    functional_fit: medium
+    purchase_drive: medium-high
     product_fit_note: "存在する記録(過去のSlack/文書/リポジトリ)への到達は改善するが、『そもそも記録されていない』知識には構造的に無力。過大訴求禁止"
   - id: pc-05
     name: "探しても見つからず結局人に聞く — 日常の検索摩擦"
@@ -55,8 +64,9 @@ pain_clusters:
     who_feels: "全知識労働者(薄く広く)"
     who_pays: "組織(転嫁の総量として)"
     workarounds: ["同僚に聞く(安価・即効)"]
-    product_fit: high
-    product_fit_note: "中核ユースケース。ただし個人の痛み自覚が薄く、単独ではLPの入口として弱い(反例3: 聞く側は痛くない)"
+    functional_fit: high
+    purchase_drive: low
+    product_fit_note: "中核ユースケース(機能適合は最高)だが、個人の痛み自覚が薄く回避策が安価なため購買駆動は低い(Skeptic#14)。単独ではLPの入口にしない。数値(1日1時間5分等)はベンダー委託調査のためLP本文への引用禁止(A-8)"
   - id: pc-06
     name: "蓄積しても壊れる — ナレッジベースの検索性劣化・ツール乗り換えの反復・『またツールか』"
     track: A (クラスタ5) + A反例4
@@ -66,7 +76,8 @@ pain_clusters:
     who_feels: "ナレッジ管理担当・全社"
     who_pays: "経営(ツール移行コスト)"
     workarounds: ["数年周期のツール乗り換え", "専任オーナー配置"]
-    product_fit: medium-high
+    functional_fit: medium-high
+    purchase_drive: medium
     product_fit_note: "『いまあるツールを置き換えず、横断して探せるようにする』はこの疲弊への応答。同時に『またツールか』はこの製品自身への最大の反論でもある(両面性)"
   - id: pc-07
     name: "導入したのに使われない/効果が出ない — 定着と成果の乖離"
@@ -77,7 +88,8 @@ pain_clusters:
     who_feels: "DX推進責任者(定着KPI)・情シス"
     who_pays: "経営・CFO"
     workarounds: ["成功基準の切り下げ(1〜2割活用で成功)"]
-    product_fit: medium-low
+    functional_fit: low
+    purchase_drive: high
     product_fit_note: "定着そのものは製品では解決しない。導入支援・伴走(事業モデル)と監査ログによる利用実態計測が部分的応答。訴求主軸には不適"
   - id: pc-08
     name: "ROI・稟議の言語が合わない — 投資正当化の停滞"
@@ -88,10 +100,11 @@ pain_clusters:
     who_feels: "情シス部門長・DX責任者(稟議起案)"
     who_pays: "CFO・経営層"
     workarounds: ["PoC放棄(30%)", "小さく始める"]
-    product_fit: medium
+    functional_fit: medium
+    purchase_drive: medium-high
     product_fit_note: "OSS(ライセンス費ゼロで検証開始可)と段階導入(インデックスなしで開始)は初期投資の壁を下げる。ROIの定量約束はClaim Ledger上不可能"
   - id: pc-09
-    name: "フロー情報の閉域埋没 — 知識の76%がprivate/DMに沈み検索可能領域に入らない"
+    name: "フロー情報の閉域埋没 — 知識の多くがprivate/DMに沈み検索可能領域に入らない(※76%は一組織の実測値。一般化禁止/Skeptic#9)"
     track: A (クラスタ4)
     evidence: [pev-a09, pev-a02]
     evidence_strength: moderate
@@ -99,7 +112,8 @@ pain_clusters:
     who_feels: "全員(構造問題)"
     who_pays: "組織"
     workarounds: ["運用ルール(形骸化)"]
-    product_fit: low
+    functional_fit: low
+    purchase_drive: low
     product_fit_note: "当製品はプライベートスコープを既定除外(ADR-013)し、Slackデータは永続化しない(ADR-014)。閉域を開かない設計であり、このペインは解決しないと正直に扱う(誠実性の材料にはなる)"
   - id: pc-10
     name: "権限逸脱への不安で社内データをAIに接続できない"
@@ -110,8 +124,9 @@ pain_clusters:
     who_feels: "情シス・セキュリティ"
     who_pays: "経営層"
     workarounds: ["参照範囲を製品内に限定(NotePM型)", "接続を先送り"]
-    product_fit: high
-    product_fit_note: "製品の存在理由そのもの。ただし外部証拠が審査3問(pc-02)経由の間接であるため、LPの入口にする場合は pc-01/pc-02 の外部証拠と束ねる"
+    functional_fit: high
+    purchase_drive: unverified
+    product_fit_note: "Skeptic#1: 循環論法リスク。製品側仮説に対する需要の直接証拠(接続を止めた当事者証言)が未収集のため purchase_drive は unverified とし、V1検証の結果を待つ。pev-b02/b12 は pc-01/pc-02 と重複計上であり独立証拠に数えない(Skeptic#11)。A-1: 最初の10商談/10応募で検証し、外れたら入口を差し替える"
 counterevidence:
   - "小規模・SaaS整備済み組織は困っていない(pev-a13)— 対象規模の限定が必要"
   - "聞く側の回避策は安価で痛み自覚が薄い(pev-a01解釈)— 『検索が大変』単独訴求は弱い"
