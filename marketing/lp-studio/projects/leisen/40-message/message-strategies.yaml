@@ -1,0 +1,37 @@
+# Stage 5 メッセージ戦略3案(選定済みポジショニング positioning-a に対して)
+# 3案は「説得がどこから始まるか」が異なる(トーン差ではない)
+strategies:
+  - strategy_id: ms-1
+    type: Pain-led
+    target_situation: "情シス部門長/セキュリティ担当。経営・現場からのAI圧力と、権限・漏洩・監査不能の不安の板挟みで、社内データ接続の意思決定が止まっている"
+    starting_idea: "『繋ぎたい。でも、誰に何が見えるか保証できないから止めている』という現在の停止状態から始める"
+    intended_inference: "「うちの状況だ」→「止まっている原因(権限の保証)を方式で解く製品らしい」→「読み進める価値がある」"
+    evidence: ["V1(TDB33.5%・パナソニックコネクト段階接続・『監査ログ未対応で否決』)", "pev-b02(許可すると漏えいが怖い/禁止すると検知不能)", "target_context(brief)"]
+    product_truth: "認可をソースに委譲し本人資格情報で検索するため、『誰に何が見えるか』はソースの権限設定がそのまま答えになる(cl-01)"
+    likely_advantage: "観察したLPのほぼ全てが約束から始める(conv-01)中で、読者の現在の停止状態から始めるLPは不在。共感の固有性が高い"
+    comprehension_risk: "問題描写が長いと『で、何の製品?』が遅れる。Hero内で製品カテゴリを同時成立させる必要"
+    competitive_overlap_risk: "低。この停止状態を言語化しているLPは観察ゼロ"
+  - strategy_id: ms-2
+    type: Mechanism-led
+    target_situation: "同上(特に技術評価するエンジニア・セキュリティ担当)"
+    starting_idea: "『権限データベースを持たない。検索は、あなたの権限で行われる』という設計原則の宣言から始める"
+    intended_inference: "「権限をコピー・同期しないのか」→「だから権限逸脱が構造的に起きにくい」→「方式を確かめたい(docs/コードへ)」"
+    evidence: ["ws-01(方式開示の空白)", "obs-b24/b30(名詞句『閲覧権限 継承』は流通、方式は誰も語らない)", "findings-c 1.2(Infisicalの因果文型)"]
+    product_truth: "cl-01(独自権限モデル・ACL複製を持たない)、cl-02(単一経路・全数監査)"
+    likely_advantage: "評価エンジニアに対して最短で信頼を作る。docs/OSSへの導線と自然に接続"
+    comprehension_risk: "高。前提知識low(unknown product)の読者には『何ができる製品か』が最後まで分からない恐れ。カテゴリ理解を作る前に方式を語る順序リスク"
+    competitive_overlap_risk: "低(空白)。ただしDashworks『非インデックス』と混同される可能性"
+  - strategy_id: ms-3
+    type: Outcome-led
+    target_situation: "同上+DX推進(利用者価値で稟議を語る必要がある人)"
+    starting_idea: "『社内のことは、AIに聞けば分かる — 権限の心配なしに』という到達状態から始める"
+    intended_inference: "「実現したい状態そのものだ」→「ただし条件(権限)付きで実現するらしい」→「条件の中身を見る」"
+    evidence: ["pc-05/pc-03(探す摩擦と回答係の消耗)", "V3(全社AIの連携不足への不満83%)"]
+    product_truth: "cl-05(主要ソース横断)+cl-01(本人権限)"
+    likely_advantage: "価値が最も直感的。決裁者(非技術)にも一読で伝わる"
+    comprehension_risk: "中。『聞けば分かる』は競合の常套句でありAI疲れ読者に既視感"
+    competitive_overlap_risk: "高。Glean『自社を理解するAI』/Gemini『1つのプロンプトで全社検索』と同型に見える(競合所有の物語に接近)"
+selection:
+  selected: ms-1
+  rationale: "purchase評価者=情シスの現在状態(停止)への共感固有性が最も高く、競合重複が最も低い。ms-2は Hero直下の機構ブロックとして、ms-3はサブメッセージ(何ができるか)として吸収する。comprehension_riskはHero Message Unit設計(Stage 7)でeyebrow+subheadlineにカテゴリ/アウトカムを分担させて処理する"
+  recorded_by: "agent (autonomous run) — revisit可能"

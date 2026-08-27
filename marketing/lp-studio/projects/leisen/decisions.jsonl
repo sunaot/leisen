@@ -4,3 +4,5 @@
 {"type":"stage_approval","stage":"pain_research","at":"2026-08-27","by":"agent (autonomous run)","note":"クラスタ10件・反例5件。二軸採点で確定"}
 {"type":"stage_approval","stage":"market_research","at":"2026-08-27","by":"agent (autonomous run)","note":"34ソース・観察129件。広告ライブラリは到達不能を記録"}
 {"type":"stage_approval","stage":"analysis","at":"2026-08-27","by":"agent (autonomous run)","note":"Skepticゲート+検証スプリントV1-V5完了。前提A-1〜A-11つきで承認"}
+{"type":"stage_approval","stage":"positioning","at":"2026-08-27","by":"agent (autonomous run)","selected":"positioning-a","note":"3案作成。選定理由はselection.md。A-1未検証のため最初の10件で検証しrevisit条件を明記"}
+{"type":"stage_approval","stage":"message","at":"2026-08-27","by":"agent (autonomous run)","selected":"ms-1 + arch-1","note":"戦略3案(Pain/Mechanism/Outcome-led)からms-1、アーキテクチャ3案からarch-1(審査同行型)。ms-2/ms-3とarch-2/3の要素は吸収"}

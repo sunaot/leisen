@@ -1,0 +1,73 @@
+# Stage 6 メッセージ/情報アーキテクチャ3案(ms-1 Pain-led × positioning-a)
+# 3案は説得の順番と重心が異なる(セクションの並べ替えではなく、誰をどう動かすかの構造差)
+architectures:
+  - arch_id: arch-1
+    name: "審査同行型(稟議がそのまま書ける縦長1枚)"
+    intended_target_state: "情シス部門長が読了後、『これなら稟議・セキュリティ審査の説明が書ける』と感じ、相談/DP応募に進む"
+    hero_message: "止まっている接続を、権限の方式で動かす(コピーはStage 7で確定)"
+    sub_message: "いまあるGoogle Drive / Slack / GitHub / wikiを、移行せず、本人の権限のまま横断検索(ms-3吸収)"
+    primary_cta: "導入相談(30分)/デザインパートナー応募"
+    secondary_cta: "GitHub / アーキテクチャdocs(A-5前提、プレースホルダ)"
+    section_sequence:
+      - {sec: 1, name: Hero, job: "停止状態の言い切り+製品カテゴリ成立+CTA"}
+      - {sec: 2, name: 停止の構造, job: "共感の具体化: 許可すれば漏洩不安、禁止すれば野良AI(pc-01共感まで)。解決策の前に問題の構造を言語化"}
+      - {sec: 3, name: これは何か, job: "製品の平易な説明+接続ソース+『移行しない』(ms-3)。実UI/構成図"}
+      - {sec: 4, name: 方式, job: "ms-2吸収: 権限DBを持たない/本人資格情報/ソースが判定、を一文+図解。詳細はdocsへ(ws-01対抗仮説対応)"}
+      - {sec: 5, name: 審査に答える, job: "審査観点(アクセス制御/監査ログ/学習利用/説明可能性)への回答表(V2準拠)。全数監査・human-in-the-loop・カナリア"}
+      - {sec: 6, name: できないこと, job: "誠実開示: private既定除外・Slack非永続化・記録がない知識には無力・導入作業が必要(ws-03、設計原則の帰結として)"}
+      - {sec: 7, name: 進め方, job: "C案吸収: OSS無償検証→インデックスなしPhase1→証拠(昇格判定レポート)で拡張。導入伴走"}
+      - {sec: 8, name: 提供形態, job: "OSS+シングルテナント+導入支援。SaaSではない事の明示。対Copilot一文(A-4)"}
+      - {sec: 9, name: FAQ, job: "conv-05: 反論処理(Copilotとの違い/料金/体制/名称・公開時期)"}
+      - {sec: 10, name: DP募集+CTA, job: "V5型: 枠数の希少性・関与の約束・実ワークロード要求"}
+    proof_placement: "ロゴ・実績が無いため、証明は(a)方式の図解+コード公開(sec4)、(b)審査観点回答表(sec5)、(c)できないことの明示(sec6)に分散。数値クレームは置かない"
+    objection_handling: "sec5(審査)・sec6(過大期待の抑制)・sec9(FAQ)の3層"
+    friction_strategy: "資料DLゲートは設けない(OSS文法と矛盾)。相談は30分枠の軽量予約、DP応募はフォーム(要求を明示して自己選別)"
+    why_it_works: "国内の買われ方(LP=稟議支援文書 conv-06)に、OSS型の検証可能性を組み込む唯一の型(ws-04)。読者の仕事(審査を通す)を代行する構造"
+    evidence_refs: [conv-06, ws-01, ws-02, ws-03, ws-04, V2, V5]
+    assumptions: [A-1, A-4, A-5, A-7]
+    metrics: ["sec4/sec5到達率(スクロール)", "CTA別クリック(相談/DP/GitHub)", "相談・応募理由に占める権限・監査言及率(A-1検証)"]
+  - arch_id: arch-2
+    name: "評価エンジニア直行型(OSS文法)"
+    intended_target_state: "技術評価者が10分でアーキテクチャを理解し、リポジトリをcloneして触り、社内に持ち込む"
+    hero_message: "方式宣言(ms-2)を先頭に"
+    sub_message: "停止状態への言及は短く"
+    primary_cta: "GitHub / Get Started(docs)"
+    secondary_cta: "導入相談"
+    section_sequence:
+      - {sec: 1, name: Hero, job: "設計原則の宣言+GitHub CTA"}
+      - {sec: 2, name: アーキテクチャ図, job: "Gateway単一経路・コネクタ・IdP Adapterの全体図"}
+      - {sec: 3, name: Quickstart, job: "docker compose相当の即時試行(Metabase型)"}
+      - {sec: 4, name: 方式詳細, job: "認可委譲・Token Vault・post-filtering・監査2層"}
+      - {sec: 5, name: deployment.yaml, job: "設定例の直載せ(導入単位の宣言的設定)"}
+      - {sec: 6, name: 統制と限界, job: "監査・できないこと"}
+      - {sec: 7, name: 商用文脈, job: "導入支援・DP募集(決裁者向け最小ブロック)"}
+    proof_placement: "コードと設定例そのもの(実演的証明)"
+    objection_handling: "docsへの委譲が主"
+    friction_strategy: "ゼロゲート(すべて公開)"
+    why_it_works: "OSS採用の実務は現場エンジニアの持ち込みから始まるという想定(findings-c 1.3)"
+    evidence_refs: [conv-07, var-02, findings-c1.2]
+    assumptions: [A-5が強前提(公開前は成立しない), "持ち込み型採用が国内対象規模で機能する(未検証)"]
+    metrics: ["GitHub遷移率", "Quickstartコピー率"]
+  - arch_id: arch-3
+    name: "二読者分離型(決裁者ストーリー+技術パス分岐)"
+    intended_target_state: "決裁者と評価者が同一LPで各自の確信に到達する"
+    hero_message: "停止→解決の物語"
+    sub_message: "分岐ナビ『技術評価の方はこちら』"
+    primary_cta: "読者別2系統(相談/docs)"
+    section_sequence:
+      - {sec: 1, name: Hero+分岐, job: "共感+2パス提示"}
+      - {sec: 2, name: 決裁者パス, job: "停止の構造→約束→審査回答→進め方"}
+      - {sec: 3, name: 技術パス, job: "方式→図→Quickstart"}
+      - {sec: 4, name: 合流, job: "DP募集+FAQ"}
+    proof_placement: "パス別に最適化"
+    objection_handling: "パス内で完結"
+    friction_strategy: "分岐で自己選別"
+    why_it_works: "n8nのロゴ+stars同帯併置と同じ二重読者問題への構造的解"
+    evidence_refs: [findings-c1.4, ws-04]
+    assumptions: ["読者が自己分類してくれる(分岐UIの理解コスト)", A-5]
+    risks: ["1枚のLPとしての物語の一貫性が失われる", "スクロール型読者が片パスを見落とす"]
+    metrics: ["パス選択率", "パス別CV"]
+selection:
+  selected: arch-1
+  rationale: "一次CV(相談/DP応募)の意思決定者は情シス/DX責任者であり、国内の買われ方(稟議支援)への適合が最重要。arch-2はOSS公開未確定(A-5)の間は主軸にできず、技術要素はarch-1のsec3-5に吸収済み。arch-3は物語の一貫性を犠牲にする割に、arch-1でも読者別セクション(sec5=審査/sec4=技術)で同じ目的を達成できる"
+  recorded_by: "agent (autonomous run) — revisit可能"

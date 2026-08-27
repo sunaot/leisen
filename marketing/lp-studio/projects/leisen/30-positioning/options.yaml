@@ -1,0 +1,76 @@
+# Stage 4 ポジショニング3案(positioning-option.schema.json 準拠+拡張フィールド)
+# 3案は「説得がどの問題から始まるか」が実質的に異なる(色違い禁止ルール準拠)
+options:
+  - option_id: positioning-a
+    archetype: "Mechanism Differentiated(方式で信頼を作る)"
+    target: "情シス部門長・セキュリティ担当(生成AIの社内データ接続の稟議・審査を通す/止める人)"
+    context: "経営・現場からAI活用圧力がある一方、権限逸脱・漏洩・監査不能への不安で社内データ接続が先送りされている(TDB 33.5%、パナソニックコネクトの段階接続事例、サーバーワークス『監査ログ未対応で否決』)"
+    pain_cluster: "pc-10(接続不安)+pc-02(審査・監査証跡)。purchase_driveはA-1前提(unverified)"
+    evidence_strength: "機能適合: high / 購買駆動: 間接証拠+審査項目の公的裏付け(V2)"
+    category_frame: "社内ナレッジのAI検索基盤(権限透過)— 『AI検索』カテゴリに属しつつ、成立条件を『権限の扱い』で再定義"
+    core_problem: "社内データをAIに繋ぎたいが、『誰に何が見えるか』を保証も説明もできないため、接続の意思決定が止まる"
+    promise: "検索は常に本人の権限で行われ、すべてのアクセスが監査に残る。だから社内データをAIに接続する稟議が通せる"
+    unique_mechanism: "認可をデータソースに委譲(権限DBの複製を持たない)+本人資格情報でのAPI呼び出し+単一Gateway経由の全数監査ログ+OSSなので方式をコードで検証可能"
+    reason_to_believe:
+      - "cl-01(認可のソース委譲・本人資格情報)"
+      - "cl-02(単一経路・全数監査)"
+      - "cl-06(プライベートスコープ既定除外)"
+      - "cl-07(カナリア文書・レッドチーム)"
+      - "OSS公開後: コード自体(A-5前提。公開前はプレースホルダ)"
+    category_elements_to_follow:
+      - "conv-04(学習不使用・データ所在の入場券は明記)"
+      - "conv-06(稟議支援型の情報量: FAQ・構成図)"
+      - "conv-03(機構の3〜4項目フレーム化)"
+    elements_to_differentiate:
+      - "ws-01: 権限『方式』の開示(一文+図解に圧縮、詳細はdocsへ)"
+      - "ws-02: 監査可能性(反論処理ブロックで審査観点に正面回答)"
+      - "ws-03: できないこと(private既定除外・Slack非永続化)を設計原則の帰結として明示"
+    evidence_refs: [vev-V1群, vev-V2群, pev-b02, pev-b12, obs-b24, obs-b30, ws-01, ws-02]
+    assumptions: [A-1, A-2解消済み(V2), A-5, A-7, A-11]
+    risks:
+      - "セキュリティ製品と誤認され『検索の価値』が伝わらない"
+      - "purchase_drive未検証(A-1)— 接続不安が実は決裁の主因でない可能性"
+      - "方式の話が非エンジニア決裁者に重い"
+    testable_hypothesis: "情シス/セキュリティ読者の導入相談・DP応募理由の過半が『権限・監査の方式』に言及するか(最初の10件で検証)"
+
+  - option_id: positioning-b
+    archetype: "Alternative-led / Category Fluent(現状の代替行動=ツール分散と全社AIの不満から始める)"
+    target: "情シス部門長+DX推進(全社AIを導入済み/検討中で、社内データ連携の不足に不満を持つ)"
+    context: "日本企業は平均46アプリ(Okta)。全社標準AIツールの83%が『実務レベルに達していない』、最大不満は社内システム/ツールとの連携不足(SDE 2026/3, n=1014)。ナレッジ移行は『またツールか』の疲弊(pc-06)"
+    pain_cluster: "pc-06(ツール疲弊)+pc-05/pc-03(探せない・回答係)+V3(連携不足)"
+    evidence_strength: "購買駆動: 中立寄り調査で最も強い(83%・最大不満)。機能適合: medium-high"
+    category_frame: "『いまあるツールの上に足す』横断検索レイヤー — 移行を要求するナレッジツールと、単一スイートに閉じる組込みAIの両方への対抗"
+    core_problem: "ナレッジはGoogle Drive/Slack/GitHub/wikiに既に在るのに、全社AIはそこに届かず、移行型ツールは定着しない"
+    promise: "ナレッジを移さず、いまあるツールをそのまま、本人の権限で横断検索できる"
+    unique_mechanism: "MCP共通IFのコネクタ群+インデックスを作らないフェデレーテッド検索から開始(cl-04, cl-05)"
+    reason_to_believe: ["cl-05(主要ソース接続)", "cl-04(インデックスなし開始)", "cl-03(自社環境)"]
+    category_elements_to_follow: ["conv-01(約束から始める)", "conv-08(実UIビジュアル)"]
+    elements_to_differentiate: ["『置き換えない・移行しない』の明示", "対Copilot: 非Microsoftソースの横断"]
+    evidence_refs: [vev-V3群, pev-a08, pev-a10, obs-a27相当(Dashworks), pc-06]
+    assumptions: [A-4, A-9]
+    risks:
+      - "『全アプリを一度に検索』はDashworks/Glean/Geminiが所有済みの物語(competitor_owned)。実績ゼロで同じ土俵に立つと比較で負ける"
+      - "検索の日常摩擦は購買駆動が低い(pc-05: purchase_drive low)"
+      - "横断カバレッジの広さでは大手に将来も勝てない"
+    testable_hypothesis: "流入読者の滞在・CVが『接続ソース一覧』セクションで最大化するか"
+
+  - option_id: positioning-c
+    archetype: "Reframed(買い方・進め方の再定義: 製品でなく導入の意思決定構造を売る)"
+    target: "DX推進責任者・情シス部門長(稟議を起案し、PoC失敗の責任を負う人)"
+    context: "生成AI投資はCFOに説明しにくく、PoCの30%が放棄(Gartner)。『効果が分散し不可視』。国内LPは稟議支援文書化している(conv-06)"
+    pain_cluster: "pc-08(稟議・ROI)+pc-07(定着不安)+pc-06"
+    evidence_strength: "購買駆動: strong-moderate(統計)。機能適合: medium(製品は定着を直接解決しない)"
+    category_frame: "『一発導入』ではなく『証拠駆動の段階導入』という買い方そのものを提案"
+    core_problem: "AI投資を正当化する言語がなく、大きく買うと失敗し、小さく試すと成果が見えない"
+    promise: "OSSで無償検証から始め、利用ログの証拠で次の投資(検索層・ソース追加)を判断できる"
+    unique_mechanism: "監査ログ=投資判断データ(cl-08 昇格判定レポート)+検索層OFFで開始する段階設計(cl-04)+導入伴走(cl-10)"
+    reason_to_believe: ["cl-08", "cl-04", "cl-10", "V5(design partner型の希少性・関与の約束)"]
+    category_elements_to_follow: ["conv-06(稟議支援型)", "var-05(導入伴走の独立セクション=国内型)"]
+    elements_to_differentiate: ["『買う前に証拠』という進め方の再定義", "OSS=検証の入場無料"]
+    evidence_refs: [pev-b05, pev-b10, pev-b07, vev-V5群, conv-06]
+    assumptions: [A-5(OSS公開), A-10]
+    risks:
+      - "『これは何の製品か』が最後まで伝わらない恐れ(進め方の話が先行)"
+      - "定着(pc-07)は製品では解決せず、過大訴求リスク"
+      - "無償検証は情シスの工数ゼロを意味しない(導入作業が必要)— 誤解を生みやすい"
+    testable_hypothesis: "DP応募・相談の理由の過半が『小さく検証できる』に言及するか"
