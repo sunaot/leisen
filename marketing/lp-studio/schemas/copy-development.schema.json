@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "information_requirements",
+    "reader_prior_knowledge",
+    "copy_ladder",
+    "hero_message_unit"
+  ],
+  "properties": {
+    "information_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "statement",
+          "priority"
+        ],
+        "properties": {
+          "statement": {
+            "type": "string"
+          },
+          "priority": {
+            "enum": [
+              "must",
+              "helpful",
+              "later"
+            ]
+          }
+        }
+      }
+    },
+    "reader_prior_knowledge": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "category": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "problem": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "terminology": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    },
+    "copy_ladder": {
+      "type": "object",
+      "required": [
+        "product_truth",
+        "customer_value",
+        "plain_message"
+      ],
+      "properties": {
+        "product_truth": {
+          "type": "string"
+        },
+        "customer_value": {
+          "type": "string"
+        },
+        "plain_message": {
+          "type": "string"
+        },
+        "persuasive_copy": {
+          "type": "string"
+        },
+        "brand_copy": {
+          "type": "string"
+        },
+        "compression_notes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "core_meaning_loss": {
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "hero_message_unit": {
+      "type": "object",
+      "properties": {
+        "eyebrow": {
+          "type": "string"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "subheadline": {
+          "type": "string"
+        },
+        "visual_job": {
+          "type": "string"
+        },
+        "cta": {
+          "type": "string"
+        },
+        "proof": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

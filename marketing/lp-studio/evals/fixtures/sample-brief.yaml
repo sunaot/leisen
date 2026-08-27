@@ -1,0 +1,12 @@
+project_name: Sample B2B SaaS
+conversion_action: demo_request
+primary_target: operations managers at 100-500 person companies
+target_context: fragmented approval workflow and manual handoffs
+traffic_source: paid_search
+ad_promise: reduce approval lead time
+market: ja-JP
+primary_device: desktop
+constraints:
+  - no unsupported ROI claims
+open_questions:
+  - which proof assets can be published?

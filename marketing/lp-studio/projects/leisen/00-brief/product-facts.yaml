@@ -1,0 +1,47 @@
+# 出典: docs/product-design.md / -v2.md / -v3.md および docs/adr/(設計文書ベースの事実。
+# 実装状況はリポジトリ準拠: connector-sdk v0.3、Gateway骨格まで。性能・成果の事実は存在しない)
+product_name: "Leisen(仮称・商標未確定)"
+category: "社内ナレッジをLLMから権限透過で検索可能にするOSS基盤(MCP Gateway + コネクタ群 + Orchestrator + 汎用検索層)"
+facts:
+  - id: pf-01
+    fact: "認可は常にデータソースに委譲する。独自の権限モデル・ACLの複製や同期を持たず、ソースAPIは利用者本人の資格情報で呼ぶ(認可判定は常に本人に対して行われる)"
+    source: "CLAUDE.md 不変条件1 / product-design.md 原則1 / ADR-010"
+  - id: pf-02
+    fact: "全ツール呼び出しを監査ログに記録する。ソースアクセスはMCP Gatewayの単一経路のみ。監査はAnswerRun/ToolInvocationの2層モデル"
+    source: "不変条件2 / ADR-011"
+  - id: pf-03
+    fact: "接続プロトコルはMCPに統一。コネクタは search/fetch/list/describe の共通IF"
+    source: "product-design.md §3.1, §4.2 / ADR-016"
+  - id: pf-04
+    fact: "OSSとして公開予定で、各社が自社環境にシングルテナントで導入する。1デプロイ=1社。開発元はSaaS運営を行わず、導入支援・サポートを事業とする"
+    source: "product-design-v2.md §1"
+  - id: pf-05
+    fact: "個社差分は deployment.yaml(宣言的設定)と3つのプラグイン境界(Connector / IdP Adapter / Search Backend)のみで吸収する"
+    source: "ADR-005 / product-design-v2.md §2.1-2.2"
+  - id: pf-06
+    fact: "段階導入: Phase 1 フェデレーテッド検索(インデックスなし)→ Phase 2 証拠駆動で弱いソースのみ選択的インデックス(post-filtering認可)→ Phase 3 権限区画別ナレッジマップ。全導入は検索層OFFで開始"
+    source: "product-design.md 全体 / v2 §2.3"
+  - id: pf-07
+    fact: "Phase 2のインデックスでもACLを複製せず、返却前にソース認可APIを本人トークンで照会するpost-filtering方式。未認可候補はSearch Backend Adapterの外に出ない(件数含む)"
+    source: "product-design.md §5.3 / ADR-012"
+  - id: pf-08
+    fact: "監査ログは導入判断データを兼ね、ソース別未解決率から検索層有効化(昇格)を判定するレポート機能を持つ設計"
+    source: "product-design.md §4.4 / v2 §2.3 (T-014)"
+  - id: pf-09
+    fact: "レッドチームテスト項目とカナリア文書(特定ユーザーに見えてはいけない文書のヒット非出現の常時検証)を導入標準工程とする設計"
+    source: "product-design.md §7.2 / v3 §8 (T-013)"
+  - id: pf-10
+    fact: "プライバシー設計: DM・プライベートスコープは既定除外(privateScopes: excluded)。Slackデータは永続化しない(RTS API準拠)"
+    source: "ADR-013 / ADR-014"
+  - id: pf-11
+    fact: "対象組織規模は数百〜数千人。データソース10〜30種類程度を想定。数万人規模・eDiscoveryは非スコープ"
+    source: "product-design.md §1.2"
+  - id: pf-12
+    fact: "IdP連携はIdP Adapterで抽象化(Keycloak / Okta / Entra ID を想定)。資格情報はToken Vault(KMS連携・SCIM失効連動)で管理する設計"
+    source: "ADR-010 / v2 §2.2"
+limitations:
+  - "実装は初期段階(connector-sdk、Gateway骨格)。本番導入実績・顧客・定量成果は存在しない"
+  - "Phase 1は探索レイテンシ(1問あたり10〜60秒)とソースAPIレート制限を受容する設計"
+  - "SaaSではないため『申し込んで即利用』はできない。導入作業が必要"
+  - "OSS公開時期・ライセンス・名称は最終確定前"
+  - "構造化クエリ(DB/BIへのtext-to-query)とソースコード検索はv1.0スコープ外"

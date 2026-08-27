@@ -1,0 +1,48 @@
+# LPで使用してよい主張の台帳。type: design_fact(設計文書で裏付く事実)/ scope_fact(提供形態の事実)
+# 定量成果・顧客実績・比較優位の性能主張は現時点で一切存在しない → LPではプレースホルダ表記のみ可
+claims:
+  - id: cl-01
+    type: design_fact
+    text: "アクセス権限の判定は常に元のデータソースが、検索する本人の資格情報に対して行う。独自の権限データベースやACLのコピーを持たない"
+    evidence: "pf-01"
+  - id: cl-02
+    type: design_fact
+    text: "すべての検索・取得はMCP Gatewayを単一経路として通り、全ツール呼び出しが監査ログに記録される"
+    evidence: "pf-02"
+  - id: cl-03
+    type: scope_fact
+    text: "OSSとして各社の自社環境にシングルテナントで導入する。データを外部SaaSに預けない(1デプロイ=1社)"
+    evidence: "pf-04"
+  - id: cl-04
+    type: design_fact
+    text: "インデックス(検索層)なしのフェデレーテッド検索から始められ、インデックスを作る場合も権限はソース照会(post-filtering)で担保する"
+    evidence: "pf-06, pf-07"
+  - id: cl-05
+    type: design_fact
+    text: "Google Drive / Slack / GitHub / wiki 等のソースにMCP共通IF(search/fetch/list/describe)で接続する設計"
+    evidence: "pf-03"
+  - id: cl-06
+    type: design_fact
+    text: "DM・プライベートチャンネル等のプライベートスコープは既定で検索対象外(設定で明示的に変更しない限り含めない)"
+    evidence: "pf-10"
+  - id: cl-07
+    type: design_fact
+    text: "権限逸脱を検出するためのカナリア文書検証・レッドチームテスト項目を導入手順に組み込む設計"
+    evidence: "pf-09"
+  - id: cl-08
+    type: design_fact
+    text: "監査ログから『どのソースで何が解決しなかったか』を集計し、インデックス追加(検索層有効化)を証拠で判断できる"
+    evidence: "pf-08"
+  - id: cl-09
+    type: scope_fact
+    text: "個社の違いは設定ファイル(deployment.yaml)と3つのプラグイン境界(Connector / IdP Adapter / Search Backend)で吸収する"
+    evidence: "pf-05"
+  - id: cl-10
+    type: scope_fact
+    text: "開発元はSaaSを運営せず、導入アセスメント・初期導入支援・運用サポートを提供する"
+    evidence: "pf-04"
+forbidden_without_evidence:
+  - "導入社数・顧客ロゴ・利用者の声"
+  - "解決率・精度・工数削減などの定量成果"
+  - "『最も安全』『唯一の』等の比較優位の断定"
+  - "OSSライセンス種別の断定(Apache-2.0は推奨段階)"

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Positioning Option",
+  "type": "object",
+  "required": ["option_id", "target", "core_problem", "promise", "evidence_refs", "assumptions", "testable_hypothesis"],
+  "properties": {
+    "option_id": {"type": "string"},
+    "target": {"type": "string"},
+    "context": {"type": "string"},
+    "category_frame": {"type": "string"},
+    "core_problem": {"type": "string"},
+    "promise": {"type": "string"},
+    "unique_mechanism": {"type": "string"},
+    "reason_to_believe": {"type": "array", "items": {"type": "string"}},
+    "category_elements_to_follow": {"type": "array", "items": {"type": "string"}},
+    "elements_to_differentiate": {"type": "array", "items": {"type": "string"}},
+    "risks": {"type": "array", "items": {"type": "string"}},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+    "assumptions": {"type": "array", "items": {"type": "string"}},
+    "testable_hypothesis": {"type": "string"}
+  }
+}
