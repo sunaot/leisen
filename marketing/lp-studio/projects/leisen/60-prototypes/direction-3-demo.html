@@ -107,7 +107,7 @@
     </ul>
     <div class="cta-row">
       <a class="btn primary" href="#contact">導入について相談する(30分)</a>
-      <a class="btn" href="#mechanism">アーキテクチャと設計判断(ADR)を読む</a>
+      <a class="btn" href="#mechanism">設計方針を見る(ADR公開は準備中)</a>
     </div>
     <span class="badge">デザインパートナー(共同検証パートナー)第1期 募集中 — 少数枠 [募集条件は準備中]</span>
 
@@ -120,7 +120,7 @@
             最新は10月3日更新の「FY27予算編成方針 v3」です。
             <div class="hit">FY27予算編成方針 v3 <span class="m">Google Drive / 経営企画 &gt; 予算</span></div>
             <div class="hit">方針レビュー議事録 <span class="m">wiki / 経営会議</span></div>
-            <p class="verdict ui"><span class="ok">✓ gdrive: 許可(本人権限)</span> <span class="ok">✓ wiki: 許可(本人権限)</span></p>
+            <p class="verdict ui" aria-label="ソース別の照会結果"><span class="ok">✓ gdrive: 許可(本人権限)</span> <span class="ok">✓ wiki: 許可(本人権限)</span></p>
           </div>
         </div>
       </div>
@@ -130,8 +130,8 @@
           <div class="msg q">来期の予算編成方針、最新版はどれ?</div>
           <div class="msg a">
             アクセスできる範囲では、該当する文書が見つかりませんでした。
-            <div class="denyline"><b>表示なし</b> — 権限のない文書は、存在も内容も回答に含まれません(判定: 各データソース)</div>
-            <p class="verdict ui"><span class="ng">✗ gdrive: 権限なし</span> <span class="ok">✓ wiki: 該当なし</span></p>
+            <div class="denyline"><b>表示なし</b> — 権限のない文書は、存在しないのと区別がつかない形で、単に現れません(判定: 各データソース)</div>
+            <p class="verdict ui" aria-label="ソース別の照会結果"><span class="ok">✓ gdrive: 該当なし(本人権限で照会)</span> <span class="ok">✓ wiki: 該当なし</span></p>
           </div>
         </div>
       </div>
@@ -153,7 +153,7 @@
   <section aria-labelledby="s3h">
     <h2 id="s3h">いまあるツールの上に足す、検索の基盤</h2>
     <p>Leisen(仮称)は、社内のデータソースをMCPプロトコルでつなぎ、AIが社内情報を検索・取得できるようにするゲートウェイ基盤です。ナレッジの移行も、新しい置き場所も要りません。いまあるツールは、いまのまま。</p>
-    <p>チャットからも、業務エージェントからも使えます。回答には必ず原典へのリンクが付き、ワンクリックで元の文書に戻れます。</p>
+    <p>チャットからも、業務エージェントからも使えるように設計しています。回答には原典への参照を添えて返す設計で、ワンクリックで元の文書に戻れます。</p>
     <ul class="chips" aria-label="接続ソース"><li>Google Drive</li><li>Slack</li><li>GitHub</li><li>Confluence / Notion 等のwiki</li><li>+ コネクタ追加可</li></ul>
   </section>
 
@@ -165,7 +165,7 @@
       <li><span class="n ui">STEP 2</span><h3>本人の資格情報で検索</h3><p>AIからの検索・取得は、利用者本人の資格情報で各ツールのAPIを呼び出します。</p></li>
       <li><span class="n ui">STEP 3</span><h3>判定は元のツール</h3><p>アクセス可否は毎回、データソース自身が判定。ソース側の権限変更がそのまま反映されます。</p></li>
     </ol>
-    <p>この方式は、設計判断の記録(ADR)とコードで公開します。<span class="ui">[placeholder: OSS公開は準備中です]</span></p>
+    <p>この方式は、設計判断の記録(ADR)とコードで公開する方針です。<span class="ui">[placeholder: 公開の時期・形態は確定前です]</span></p>
   </section>
 
   <!-- sec5 審査に答える -->
@@ -175,12 +175,12 @@
       <tr><th scope="col">審査の観点</th><th scope="col">Leisenの設計</th></tr>
       <tr><td>アクセス制御</td><td>独自の権限モデルを持たず、判定は常にデータソースが本人に対して行う(権限の二重管理が発生しない)</td></tr>
       <tr><td>監査証跡</td><td>すべての検索・取得が単一経路(Gateway)を通り、会話単位・ツール呼び出し単位の2層で記録される</td></tr>
-      <tr><td>学習利用</td><td>基盤自体は社内データを学習・蓄積する機構を持たない。接続するLLM側の学習ポリシーは、各社のAI契約に従う</td></tr>
+      <tr><td>学習利用・蓄積</td><td>既定では社内データを蓄積しない(インデックスなしで開始)。検索層を有効化した場合もACLは複製せず、返却前に本人の権限でソースへ照会する。接続するLLM側の学習ポリシーは各社のAI契約に従う</td></tr>
       <tr><td>私的領域</td><td>DM・プライベートチャンネル等は既定で検索対象外(設定で明示しない限り含めない)</td></tr>
       <tr><td>逸脱の検証</td><td>「見えてはいけない文書が見えないこと」を継続確認するカナリア文書テストとレッドチーム項目を導入手順に同梱</td></tr>
-      <tr><td>人の関与</td><td>自律エージェントからの利用は、既定で人の確認(human-in-the-loop)を挟む</td></tr>
+      <tr><td>人の関与</td><td>自律実行は既定で無効。人の対話の中での利用(human-in-the-loop)のみを既定で許可する</td></tr>
     </table></div>
-    <p class="note">※ 第三者認証(ISMS等)の取得は現段階ではありません。設計文書と検証手順の全文公開で答えます。</p>
+    <p class="note">※ 第三者認証(ISMS等)の取得は現段階ではありません。設計文書と検証手順の開示で答えます(公開範囲・時期は確定前)。</p>
   </section>
 
   <!-- sec6 できないこと -->
@@ -189,7 +189,7 @@
     <ul class="no-list">
       <li><strong>記録されていない知識は探せません。</strong>誰かの頭の中にしかない情報は対象外です。</li>
       <li><strong>DM・プライベートチャンネルは既定で検索しません。</strong>私的領域を既定で対象にしない設計です。</li>
-      <li><strong>Slackのデータは保存・インデックスしません。</strong>規約に沿ったオンデマンド検索のみです。</li>
+      <li><strong>Slackのデータは保存・インデックスしません。</strong>保存・インデックスを行わない、利用規約に沿う設計のオンデマンド検索のみです。</li>
       <li><strong>初期構成は、速くありません。</strong>1つの質問に10〜60秒かかることがあります。権限の正しさを、速さより優先しています。</li>
       <li><strong>SaaSではありません。</strong>自社環境への導入作業が必要です(そこを支援するのが私たちの事業です)。</li>
       <li><strong>導入実績は、まだありません。</strong>だから、最初の数社を探しています(下のデザインパートナー募集)。</li>
@@ -200,7 +200,7 @@
   <section aria-labelledby="s7h">
     <h2 id="s7h">小さく入れて、証拠で広げる</h2>
     <ol class="steps">
-      <li><span class="n ui">PHASE 1</span><h3>検証</h3><p>OSSを自社環境に立てて、1部門・2ソースから。ライセンス費用はかかりません。</p></li>
+      <li><span class="n ui">PHASE 1</span><h3>検証</h3><p>自社環境に立てて、1部門・2ソースから。ソフトウェア本体は無償で利用できる想定です<span class="ui">[条件は確定前]</span>。</p></li>
       <li><span class="n ui">PHASE 2</span><h3>運用</h3><p>インデックスを作らないフェデレーテッド検索で本番開始。全アクセスが監査ログに残ります。</p></li>
       <li><span class="n ui">PHASE 3</span><h3>拡張</h3><p>「どのソースで何が解決しなかったか」のレポートで、ソース追加や検索層の有効化を判断。勘ではなく、記録で。</p></li>
     </ol>
@@ -213,7 +213,7 @@
     <div class="grid3">
       <div class="card"><p class="k">OSSコア</p><p>ゲートウェイ・コネクタ・監査ログはコードごと公開予定。方式は宣伝ではなく、読んで検証できる形で示します。<span class="ui">[ライセンスは調整中]</span></p></div>
       <div class="card"><p class="k">シングルテナント</p><p>1デプロイ=1社。データもログも自社環境から出ません。マルチテナントSaaSは提供しません。</p></div>
-      <div class="card"><p class="k">導入支援</p><p>アセスメント→PoC→全社展開の伴走とサポート契約が、開発元の事業です。ソフトは無償、支援が有償。</p></div>
+      <div class="card"><p class="k">導入支援</p><p>アセスメント→PoC→全社展開の伴走とサポート契約が、開発元の事業です。ソフトは無償公開の方針、支援が有償。<span class="ui">[GitHub / docs URLは準備中]</span></p></div>
     </div>
     <p>Microsoft 365 CopilotやGemini等のスイート内蔵AIは、そのスイートの中では強力な選択肢です。Leisenは、スイートをまたいで散らばるソースを「ひとつの権限規律・ひとつの監査ログ」で横断するための基盤で、併用できます。</p>
   </section>
@@ -225,7 +225,7 @@
     <details><summary>検索のたびに各ツールへ問い合わせるなら、遅くないですか?</summary><p>初期構成では1つの質問に10〜60秒かかることがあります。権限の正しさと導入の軽さを、応答速度より優先する設計です。速度が課題になったソースだけ、証拠(利用ログ)に基づいてインデックスを検討します。</p></details>
     <details><summary>OSSなのに、何を販売しているのですか?</summary><p>ソフトウェアは公開し、導入アセスメント・構築支援・運用サポートを有償で提供します。</p></details>
     <details><summary>どのAIから使えますか?</summary><p>MCPに対応したAI・エージェント(Claude等)から利用します。LLMは同梱しないため、既にお使いのAI契約をそのまま活かせます。</p></details>
-    <details><summary>料金は?</summary><p>OSS部分は無償です。導入支援・サポートは個別見積です。<span class="ui">[料金体系は準備中]</span></p></details>
+    <details><summary>料金は?</summary><p>ソフトウェア本体は無償公開の方針です。導入支援・サポートは個別見積です。<span class="ui">[料金体系は準備中]</span></p></details>
     <details><summary>いつから使えますか?</summary><p>OSS公開と正式名称は準備中です。デザインパートナー企業には先行してコードと支援を提供します。</p></details>
   </section>
 
@@ -241,9 +241,10 @@
       <a class="btn primary" href="#contact">導入について相談する(30分)</a>
       <a class="btn" href="#contact">デザインパートナーに応募する</a>
     </div>
+    <p class="note">ボタンの遷移先(問い合わせフォーム・予約リンク)は準備中のプレースホルダです。送信先・運用体制は確定前です。</p>
   </section>
 </main>
 
 <footer class="site">
-  <p>Leisen(仮称)— 名称・ライセンス・公開時期は確定前です。本ページはプロトタイプであり、デモの人物・データはすべて架空です。導入実績・成果数値の記載は意図的にありません。</p>
+  <p>Leisen(仮称)— 名称・ライセンス・公開時期は確定前です。本ページはプロトタイプであり、デモの人物・データはすべて架空です。記載の機能・接続ソースには設計・開発中のものを含みます。導入実績・成果数値の記載は意図的にありません。</p>
 </footer>

@@ -1,11 +1,11 @@
-current_stage: message
+current_stage: qa
 stages:
   brief: {status: approved, version: 1}
   pain_research: {status: approved, version: 1}
   market_research: {status: approved, version: 1}
   analysis: {status: approved, version: 1}
   positioning: {status: approved, version: 1, selected: positioning-a}
-  message: {status: in_progress, version: 1, selected: ms-1+arch-1}
-  design: {status: blocked, version: 0}
-  prototype: {status: blocked, version: 0}
-  qa: {status: blocked, version: 0}
+  message: {status: approved, version: 1, selected: ms-1+arch-1}
+  design: {status: approved, version: 1, selected: 3方向とも提示(選定は人間)}
+  prototype: {status: approved, version: 1}
+  qa: {status: approved, version: 1}
