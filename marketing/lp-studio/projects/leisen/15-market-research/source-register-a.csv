@@ -1,0 +1,11 @@
+source_id,source_class,name,url,captured_at,market,notes
+src-a01,direct_competitor,Glean,https://www.glean.com/,2026-08-27,en-US,"日本語LPなし(glean.com/ja は404)。英語トップページを観察"
+src-a02,direct_competitor,Microsoft 365 Copilot (Enterprise),https://www.microsoft.com/ja-jp/microsoft-365/copilot/enterprise,2026-08-27,ja-JP,"日本語エンタープライズ向けページ"
+src-a03,direct_competitor,Google Gemini Enterprise (旧Agentspace),https://cloud.google.com/gemini-enterprise?hl=ja,2026-08-27,ja-JP,"WebFetchでは切り詰めのためcurlで全文取得して観察。Agentspaceは本製品に統合"
+src-a04,direct_competitor,Slack AI,https://slack.com/intl/ja-jp/features/ai,2026-08-27,ja-JP,"日本語ページ"
+src-a05,direct_competitor,Atlassian Rovo,https://www.atlassian.com/ja/software/rovo,2026-08-27,ja-JP,"日本語ページ。取得コンテンツは後半一部切り詰めの可能性あり"
+src-a06,direct_competitor,Coveo,https://www.coveo.com/en,2026-08-27,en-US,"顧客成果の数値はlazy-load placeholderで '0%' 表示のまま取得(実数値は取得不能)"
+src-a07,direct_competitor,Dashworks,https://www.dashworks.ai/,2026-08-27,en-US,"英語のみ"
+src-a08,direct_competitor,Elastic (Elasticsearch / 旧Enterprise Search),https://www.elastic.co/jp/enterprise-search,2026-08-27,ja-JP,"旧enterprise-search URLはElasticsearchプラットフォーム(Search AI)ページに再ポジショニング済み。Workplace Searchの独立LPは存在せず"
+src-a09,direct_competitor,Sana (Sana AI / sanalabs),https://sanalabs.com/,2026-08-27,en-US,"sana.ai本体はJSレンダリングのみでコンテンツ取得不能。sanalabs.comを観察。『Sana is now part of Workday』表記あり"
+src-a10,direct_competitor,Qatalog,https://qatalog.com/,2026-08-27,en-US,"到達不能: 301で clickup.com/qatalog-acquisition へリダイレクト(ClickUpに買収済み)。LP観察不可のためスキップ"
