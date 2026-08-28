@@ -1,0 +1,1 @@
+{"ts":"2026-08-28","stage":"brief","decision":"Brief確定。ターゲット=数百〜数千人規模企業の情シス/CTO/セキュリティ担当。CV=デザインパートナー相談+GitHub。実装前ゲート段階のため定量成果・実績系claimは全面禁止(claim-ledger)。","by":"claude(autonomous run)","note":"ユーザー不在の自律実行のため、各選択ステージでは3案生成の上、推奨案を選定理由付きで採用し記録する。ユーザーはrevisit_stage.pyでいつでも差し戻し可能。"}

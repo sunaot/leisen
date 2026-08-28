@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "id",
+    "source_type",
+    "actor",
+    "situation",
+    "observation",
+    "evidence_strength"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "situation": {
+      "type": "string"
+    },
+    "observation": {
+      "type": "string"
+    },
+    "workaround": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "interpretation": {
+      "type": "string"
+    },
+    "pain_hypothesis": {
+      "type": "string"
+    },
+    "product_fit": {
+      "type": "string"
+    },
+    "evidence_strength": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  }
+}

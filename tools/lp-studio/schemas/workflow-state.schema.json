@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LP Workflow State",
+  "type": "object",
+  "required": ["current_stage", "stages"],
+  "properties": {
+    "current_stage": {"type": "string"},
+    "stages": {"type": "object"}
+  }
+}

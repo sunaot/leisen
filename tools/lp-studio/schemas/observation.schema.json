@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LP Observation",
+  "type": "object",
+  "required": ["id", "source_id", "observation", "evidence_class"],
+  "properties": {
+    "id": {"type": "string"},
+    "source_id": {"type": "string"},
+    "url": {"type": ["string", "null"]},
+    "captured_at": {"type": ["string", "null"]},
+    "market": {"type": ["string", "null"]},
+    "device": {"enum": ["desktop", "mobile", "unknown"]},
+    "dimension": {"type": ["string", "null"]},
+    "observation": {"type": "string"},
+    "interpretation": {"type": ["string", "null"]},
+    "evidence_class": {"enum": ["observation", "performance_evidence", "first_party_evidence"]},
+    "performance_support": {"enum": ["none", "weak", "moderate", "strong", "unknown"]},
+    "confidence": {"enum": ["low", "medium", "high"]}
+  }
+}

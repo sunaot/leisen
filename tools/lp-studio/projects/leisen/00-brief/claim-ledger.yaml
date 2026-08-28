@@ -1,0 +1,67 @@
+# LPの最終コピーで使用してよい主張の台帳。ここにない定量成果・顧客実績・性能主張は使用禁止。
+# status: usable = 設計文書に根拠がありLPで主張可 / placeholder = LP上で明示プレースホルダとしてのみ可 / forbidden = 使用禁止
+claims:
+  - id: clm-001
+    claim: "アクセス可否の最終判断は、常に元のデータソースが本人の資格情報に対して下す(権限の複製・同期をしない)"
+    basis: "fact-002, fact-007"
+    status: usable
+  - id: clm-002
+    claim: "すべての検索行為はGateway単一経路で監査ログに記録される設計"
+    basis: "fact-003"
+    status: usable
+  - id: clm-003
+    claim: "OSSであり、自社環境にシングルテナントで導入できる。データを外部SaaSに預けない"
+    basis: "fact-008"
+    status: usable
+  - id: clm-004
+    claim: "MCP標準準拠。コネクタ群は将来他のLLM/エージェント製品からも利用できる"
+    basis: "fact-004"
+    status: usable
+  - id: clm-005
+    claim: "インデックス同期パイプラインなしで始められる(Phase 1はインデックスを持たない)"
+    basis: "fact-005, fact-006"
+    status: usable
+  - id: clm-006
+    claim: "導入構成は deployment.yaml 1枚で宣言的に管理できる設計"
+    basis: "fact-009"
+    status: usable
+  - id: clm-007
+    claim: "回答は原典リンク付きで、ワンクリックで原文に到達できる"
+    basis: "fact-012"
+    status: usable
+  - id: clm-008
+    claim: "DM・プライベートチャンネルは既定で検索対象外。プライバシー方針を先に決めてから導入する方法論を同梱"
+    basis: "fact-014, fact-016"
+    status: usable
+  - id: clm-009
+    claim: "カナリア文書による権限逸脱の常時検証・レッドチーム手順を設計に組み込み済み"
+    basis: "fact-013"
+    status: usable
+  - id: clm-010
+    claim: "専任1〜2名で運用が回ることを成功条件として設計"
+    basis: "fact-011"
+    status: usable
+  - id: clm-011
+    claim: "対象は数百〜数千人規模の組織、10〜30種のデータソース"
+    basis: "fact-010"
+    status: usable
+  - id: clm-012
+    claim: "導入事例・稼働実績・解決率などの定量成果"
+    basis: "存在しない(lim-001)"
+    status: forbidden
+  - id: clm-013
+    claim: "顧客ロゴ・推薦の声(testimonial)"
+    basis: "存在しない(lim-001)"
+    status: forbidden
+  - id: clm-014
+    claim: "「デザインパートナー募集中(◯社限定)」等の募集枠数"
+    basis: "契約形態が人間の意思決定待ち"
+    status: placeholder
+  - id: clm-015
+    claim: "ライセンス表記(Apache-2.0)"
+    basis: "v2 §3.1で推奨だが最終決定は人間"
+    status: placeholder
+  - id: clm-016
+    claim: "権限逸脱ゼロ『を保証』する類の断定表現"
+    basis: "設計目標であり実績・保証ではない。『権限逸脱ゼロを設計目標とし、カナリア文書で常時検証する』の形なら clm-001/009 の範囲で可"
+    status: forbidden

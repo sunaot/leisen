@@ -1,0 +1,68 @@
+# すべて docs/product-design.md (v1) / -v2.md / -v3.md / CLAUDE.md に根拠を持つ設計上の事実。
+# 製品は実装前ゲート段階であり、以下は「設計として確定している事実」であって稼働実績ではない。
+product_name: "leisen(霊泉)※正式名称・商標は確保前(人間タスク)"
+category: "権限透過型・社内ナレッジ検索基盤(OSS)/ LLM向けMCPゲートウェイ+コネクタ群"
+facts:
+  - id: fact-001
+    fact: "社内ナレッジをLLMがAPI経由で検索・利用できる状態にする基盤。人間はチャット/エージェント経由で問い合わせる"
+    source: "product-design.md §1.1"
+  - id: fact-002
+    fact: "認可は常にデータソースに委譲する。独自の権限モデル・ACL複製・権限同期を実装しない。ソースAPIは利用者本人の資格情報で呼ぶ"
+    source: "CLAUDE.md 不変条件1 / product-design.md 原則1"
+  - id: fact-003
+    fact: "全ツール呼び出しをMCP Gateway単一経路で監査ログに記録する(誰の権限で・どのソースに・何を問い合わせ・何が返ったか)"
+    source: "CLAUDE.md 不変条件2 / product-design.md 原則4"
+  - id: fact-004
+    fact: "接続プロトコルはMCPに統一。コネクタは1ソース=1 MCPサーバーで search/fetch/list/describe の共通IF"
+    source: "product-design.md §3.1, §4.2"
+  - id: fact-005
+    fact: "Phase 1はインデックスを持たないフェデレーテッドAgentic Search。LLMの反復探索で検索品質を稼ぐ(可動部品最小の原則)"
+    source: "product-design.md 原則2・3, §4"
+  - id: fact-006
+    fact: "検索層(インデックス)はオプション機能。導入は検索層OFFで開始し、監査ログの実測(昇格判定レポート)に基づきソース単位で有効化する"
+    source: "product-design-v2.md §2.3"
+  - id: fact-007
+    fact: "インデックス利用時もACLは複製せず、返却前にソース認可APIを本人トークンで照会するpost-filtering方式"
+    source: "product-design.md §5.3"
+  - id: fact-008
+    fact: "OSSとして公開し、各社が自社環境にシングルテナントで導入する。マルチテナント機構なし(1デプロイ=1社)。開発元はSaaS運営を行わない"
+    source: "product-design-v2.md 前提"
+  - id: fact-009
+    fact: "導入1件の全構成を deployment.yaml(Deployment Profile)1枚の宣言的設定で表現する。個社差分は設定と3つのプラグイン境界(Connector / IdP Adapter / Search Backend)のみで吸収"
+    source: "product-design-v2.md §2.1-2.2 / CLAUDE.md 不変条件8"
+  - id: fact-010
+    fact: "対象組織規模は数百〜数千人。データソース10〜30種を想定。数万人規模・eDiscoveryは非スコープ"
+    source: "product-design.md §1.2"
+  - id: fact-011
+    fact: "運用は専任1〜2名で回ることを成功条件とする設計(Phase 1体制: エンジニア2名+PM0.5名)"
+    source: "product-design.md §1.3, §7.3"
+  - id: fact-012
+    fact: "回答には必ず原典への参照を含め、利用者がワンクリックで原文に到達できることを機能要件とする"
+    source: "product-design.md §4.1"
+  - id: fact-013
+    fact: "セキュリティ検証の設計: カナリア文書による権限逸脱の常時監視、四半期レッドチームテスト、プロンプトインジェクション多層防御"
+    source: "product-design.md §7.2 / v3 §8"
+  - id: fact-014
+    fact: "プライベートスコープ(DM・プライベートチャンネル等)は既定で検索対象外(privateScopes: excluded)。プライバシー方針を実装前に決定するプロセス(ADR-013)"
+    source: "product-design-v3.md §4"
+  - id: fact-015
+    fact: "Token Vault(暗号化保管・ローテーション・SCIM連動失効)を中核コンポーネントとするソース別認可設計"
+    source: "product-design-v3.md §1 / ADR-010"
+  - id: fact-016
+    fact: "提供物は OSSコア+リファレンスデプロイ(Docker Compose/Helm)+導入プレイブック の3点セット。事業は導入支援・サポート"
+    source: "product-design-v2.md §1.1, §1.3"
+  - id: fact-017
+    fact: "Slackデータは永続化しない(RTS/公式MCP、ADR-014)。オンデマンド検索のみで中央インデックス化しない"
+    source: "CLAUDE.md 不変条件7 / v3 §5"
+limitations:
+  - id: lim-001
+    limitation: "実装前ゲート段階。稼働実績・顧客事例・性能実測値は存在しない"
+  - id: lim-002
+    limitation: "探索レイテンシは1問あたり10〜60秒想定(ソースAPI依存)。即答型UXではない"
+    source: "product-design.md §4.5"
+  - id: lim-003
+    limitation: "ネイティブ検索が貧弱なソースではPhase 1の精度に限界(検索層有効化で補強する設計)"
+    source: "product-design.md §4.5"
+  - id: lim-004
+    limitation: "初回同意UX(ソースごとの本人OAuth接続)の摩擦が存在する"
+    source: "product-design-v3.md §1"

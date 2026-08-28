@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LP Prototype</title>
+  <style>
+    :root { --max: 1120px; --space: clamp(20px,4vw,64px); }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.6; }
+    main, header, footer { width: min(var(--max), calc(100% - 40px)); margin-inline: auto; }
+    section { padding-block: var(--space); }
+    h1 { font-size: clamp(2.2rem,6vw,5rem); line-height: 1.05; max-width: 14ch; }
+    h2 { font-size: clamp(1.6rem,3vw,2.6rem); line-height: 1.2; }
+    .eyebrow { font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
+    .cta { display:inline-block; padding:.9rem 1.2rem; border:2px solid currentColor; text-decoration:none; font-weight:700; }
+    .placeholder { border:1px dashed currentColor; padding:2rem; min-height:180px; }
+    .stack { display:grid; gap:1.25rem; }
+    @media (min-width: 760px) { .two { grid-template-columns: 1fr 1fr; } }
+    :focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <!-- Replace all placeholder copy/assets using an approved message architecture and Claim Ledger. -->
+  <header><p class="eyebrow">[Product / category]</p></header>
+  <main>
+    <section class="stack">
+      <h1>[Hero promise]</h1>
+      <p>[Sub-message grounded in approved evidence.]</p>
+      <div><a class="cta" href="#conversion">[Primary CTA]</a></div>
+      <div class="placeholder" role="img" aria-label="Placeholder for the direction's visual anchor">VISUAL ANCHOR PLACEHOLDER</div>
+    </section>
+
+    <section>
+      <h2>[Recognition / problem framing]</h2>
+      <p>[Explain why this is the target's situation.]</p>
+    </section>
+
+    <section class="stack two">
+      <div><h2>[Mechanism]</h2><p>[Why this approach can create the promised outcome.]</p></div>
+      <div class="placeholder">PRODUCT / PROCESS PROOF</div>
+    </section>
+
+    <section>
+      <h2>[Proof]</h2>
+      <p>[Only use approved claims or clearly labeled placeholders.]</p>
+    </section>
+
+    <section>
+      <h2>[Objections]</h2>
+      <p>[Answer the highest-priority objections identified in research.]</p>
+    </section>
+
+    <section id="conversion">
+      <h2>[Offer + CTA]</h2>
+      <a class="cta" href="#">[Conversion action]</a>
+    </section>
+  </main>
+  <footer><p>Prototype — not production copy.</p></footer>
+</body>
+</html>

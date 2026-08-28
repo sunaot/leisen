@@ -1,0 +1,11 @@
+current_stage: pain_research
+stages:
+  brief: {status: approved, version: 2}
+  pain_research: {status: in_progress, version: 1}
+  market_research: {status: blocked, version: 0}
+  analysis: {status: blocked, version: 0}
+  positioning: {status: blocked, version: 0}
+  message: {status: blocked, version: 0}
+  design: {status: blocked, version: 0}
+  prototype: {status: blocked, version: 0}
+  qa: {status: blocked, version: 0}
