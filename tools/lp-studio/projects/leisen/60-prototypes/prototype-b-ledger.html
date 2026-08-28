@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>leisen(霊泉)— 権限を複製しない、社内ナレッジのAI検索基盤(OSS)</title>
+<!--
+  Prototype B: 不変条件の台帳(Invariant Ledger) / visual-b
+  arch-1(原理直行型)× ms-2(Mechanism-led)× hero v2.1 — コピーはA案と同一、視覚言語のみ変更
+  ビジュアルアンカー: 条文体の巨大タイポグラフィ(監査台帳・規程文書のメタファ)。画像はほぼゼロ
+  コピー根拠・証拠参照はA案のHTMLコメントに同じ(40-message/copy-development.yaml, blind-audit.md)
+-->
+<style>
+  :root{
+    --paper:#f7f5f0; --ink:#1a1a18; --sub:#55534d; --rule:#cfccc2;
+    --vermilion:#b23a1a; --panel:#fffdf8;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP",serif;
+    --sans:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+    --mono:"SFMono-Regular",Consolas,Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:2;font-size:15.5px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:0 24px}
+  a{color:var(--ink)}
+  section{padding:88px 0;border-bottom:1px solid var(--rule)}
+  .no{font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--vermilion);margin-bottom:22px}
+  .clause{font-family:var(--serif);font-size:clamp(26px,4.2vw,40px);font-weight:600;line-height:1.6;margin-bottom:30px;letter-spacing:.01em}
+  .lead{color:var(--sub);max-width:680px}
+  .note{font-size:13px;color:var(--sub)}
+  header{position:sticky;top:0;background:rgba(247,245,240,.95);border-bottom:1px solid var(--rule);z-index:5}
+  .nav{display:flex;justify-content:space-between;align-items:center;padding:14px 0}
+  .brand{font-family:var(--serif);font-weight:600;font-size:17px}
+  .brand small{font-family:var(--sans);font-weight:400;font-size:11.5px;color:var(--sub);margin-left:10px}
+  .nav a.c{font-size:13px;text-decoration:none;border-bottom:1.5px solid var(--vermilion);padding-bottom:2px}
+  /* hero */
+  .hero{padding:104px 0 84px;border-bottom:1px solid var(--rule)}
+  .eyebrow{font-size:13px;letter-spacing:.28em;color:var(--sub);margin-bottom:30px}
+  .hero h1{font-family:var(--serif);font-weight:600;font-size:clamp(32px,6vw,58px);line-height:1.55;margin-bottom:34px}
+  .hero h1 em{font-style:normal;color:var(--vermilion)}
+  .hero .sub{max-width:700px;color:var(--sub);margin-bottom:34px}
+  .chips{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-bottom:38px}
+  .chip{font-size:13px;padding:12px 22px 12px 0;color:var(--ink)}
+  .chip+.chip{padding-left:22px;border-left:1px solid var(--rule)}
+  .chip::before{content:"◦ ";color:var(--vermilion)}
+  .btn{display:inline-block;text-decoration:none;font-size:15px;font-weight:600;padding:15px 34px;border:1.5px solid var(--ink)}
+  .btn-primary{background:var(--ink);color:var(--paper)}
+  .btn-primary:hover{background:#000}
+  .btn-ghost{color:var(--ink);margin-left:12px}
+  .btn small{display:block;font-weight:400;font-size:11px;opacity:.7}
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  /* ledger rows */
+  .ledger{border-top:2px solid var(--ink);margin-top:40px}
+  .row{display:grid;grid-template-columns:120px 1fr;gap:26px;padding:34px 0;border-bottom:1px solid var(--rule)}
+  .row .kanji{font-family:var(--serif);font-size:44px;line-height:1.2;color:var(--ink)}
+  .row .kanji small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--vermilion);letter-spacing:.12em;margin-top:8px}
+  .row h3{font-family:var(--serif);font-size:22px;font-weight:600;margin-bottom:10px}
+  .row p{color:var(--sub);font-size:14.5px}
+  /* failure list */
+  .fails{margin-top:36px;border-top:2px solid var(--ink)}
+  .fail{display:grid;grid-template-columns:56px 1fr;gap:20px;padding:26px 0;border-bottom:1px solid var(--rule)}
+  .fail .fno{font-family:var(--mono);color:var(--vermilion);font-size:13px;padding-top:6px}
+  .fail h3{font-size:17px;margin-bottom:6px;font-weight:700}
+  .fail p{color:var(--sub);font-size:14.5px}
+  .verdict{margin-top:38px;font-family:var(--serif);font-size:19px;line-height:2;border-left:2px solid var(--vermilion);padding-left:24px;max-width:680px}
+  /* steps */
+  .steps{margin-top:36px;border-top:2px solid var(--ink)}
+  .step{display:grid;grid-template-columns:56px 1fr;gap:20px;padding:24px 0;border-bottom:1px solid var(--rule)}
+  .step .sno{font-family:var(--mono);font-size:13px;color:var(--ink);padding-top:6px}
+  .step h3{font-size:16.5px;font-weight:700;margin-bottom:4px}
+  .step p{color:var(--sub);font-size:14.5px}
+  .aside{margin-top:34px;padding:24px 28px;background:var(--panel);border:1px solid var(--rule);max-width:720px}
+  .aside strong{color:var(--vermilion)}
+  /* sources */
+  .srclist{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:30px 0}
+  .srclist span{padding:14px 26px 14px 0;font-family:var(--serif);font-size:17px}
+  .srclist span+span{padding-left:26px;border-left:1px solid var(--rule)}
+  /* compare */
+  .tbl-wrap{overflow-x:auto;margin-top:34px;border-top:2px solid var(--ink)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+  th,td{border-bottom:1px solid var(--rule);padding:16px 18px 16px 0;text-align:left;vertical-align:top}
+  th{font-size:12.5px;color:var(--sub);font-weight:600;letter-spacing:.06em}
+  td:first-child{font-weight:700;white-space:nowrap;font-family:var(--serif)}
+  td.you{color:var(--ink);font-weight:600}
+  th.you{color:var(--vermilion)}
+  /* limits */
+  .limits{margin-top:30px;border-top:2px solid var(--ink);max-width:760px}
+  .limits li{list-style:none;padding:16px 0;border-bottom:1px solid var(--rule);color:var(--sub);font-size:14.5px}
+  .limits li::before{content:"― ";color:var(--vermilion)}
+  .partner{margin-top:44px;border:1.5px solid var(--ink);padding:34px;background:var(--panel)}
+  .partner h3{font-family:var(--serif);font-size:22px;margin-bottom:12px}
+  /* faq */
+  details{border-bottom:1px solid var(--rule);max-width:760px}
+  details:first-of-type{border-top:2px solid var(--ink);margin-top:30px}
+  summary{cursor:pointer;font-weight:700;padding:18px 0;font-size:15px}
+  details p{padding:0 0 20px;color:var(--sub);font-size:14.5px}
+  .final{text-align:center;padding:110px 0}
+  .final h2{font-family:var(--serif);font-size:clamp(26px,4.4vw,40px);font-weight:600;line-height:1.7;margin-bottom:36px}
+  footer{padding:40px 0 56px;font-size:13px;color:var(--sub)}
+  .proto-note{font-family:var(--mono);font-size:12px;border:1px dashed var(--rule);padding:10px 14px;margin-top:18px;display:inline-block}
+  .minidiagram{margin-top:40px;overflow-x:auto}
+  @media(max-width:560px){
+    section{padding:64px 0}
+    .row{grid-template-columns:72px 1fr}
+    .row .kanji{font-size:32px}
+    .chips{flex-direction:column}
+    .chip+.chip{border-left:none;padding-left:0;border-top:1px solid var(--rule)}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <div class="brand">霊泉 <small>leisen — 社内ナレッジのAI検索基盤</small></div>
+    <a class="c" href="#contact">導入について相談する</a>
+  </div>
+</header>
+
+<!-- ===== Hero (v2.1) ===== -->
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">社内ナレッジのAI検索基盤(OSS・自社環境で導入)</p>
+    <h1>権限を<em>複製しない</em>。<br>AIは、本人に見える情報だけで答える。</h1>
+    <p class="sub">leisen(霊泉)は、Google Drive・Slack・GitHub・wiki に散らばる社内ナレッジを、LLMが横断検索するための基盤です。社員はチャットとAPIから質問でき、検索はつねに質問者本人の権限で行われ、アクセスの可否は元のデータソースが判断します。オープンソースとして自社環境に導入でき、ナレッジのコピーを外部に蓄積しません。</p>
+    <div class="chips">
+      <span class="chip">権限リストの複製・同期なし</span>
+      <span class="chip">すべての検索を監査ログに記録</span>
+      <span class="chip">自社環境で完結・他社と混ざりません</span>
+    </div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#contact">導入について相談する</a>
+      <a class="btn btn-ghost" href="#contact">設計ドキュメントを読む<small>GitHub 公開準備中</small></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S2 問題の構造 ===== -->
+<section id="problem">
+  <div class="wrap">
+    <p class="no">第一 — 問題の所在</p>
+    <h2 class="clause">社内AIが審査で止まる理由は、<br>モデルの性能ではなく「権限の複製」にある</h2>
+    <p class="lead">社内データをAIにつなぐとき、多くの実装は、アクセス権限のリストをAI側のデータベースへ複製し、同期し続けようとします。この方式は構造的に壊れます。</p>
+    <div class="fails">
+      <div class="fail"><div class="fno">壊れ方 一</div><div><h3>複製した瞬間から古い</h3><p>権限は毎日変わります。異動、退職、共有設定の変更。コピーした権限リストは、変わり続ける現実に追いつけません。</p></div></div>
+      <div class="fail"><div class="fno">壊れ方 二</div><div><h3>例外ほど翻訳を誤る</h3><p>DM、プライベートチャンネル、限定共有のフォルダ。例外的な共有ほど権限の翻訳が難しく、「見えないはず」の内容が回答に混ざる事故が実際に報告されています。</p></div></div>
+      <div class="fail"><div class="fno">壊れ方 三</div><div><h3>収集の権限が広すぎる</h3><p>サービスアカウントの全権でデータを集めてインデックスを作ると、元の権限が反映されない「ザルRAG」構成になりやすい——実装現場で繰り返し指摘されている難所です。</p></div></div>
+    </div>
+    <p class="verdict">権限外の情報がAIの回答に混ざる。情報システム部門が社内AIを止めるのは、この一点に説明が付かないからです。leisenはこの構造を、権限をうまく複製することではなく、<strong>複製そのものをやめる</strong>ことで断ちます。</p>
+  </div>
+</section>
+
+<!-- ===== S3 設計原則(このデザインの主役) ===== -->
+<section id="principles">
+  <div class="wrap">
+    <p class="no">第二 — 不変条件</p>
+    <h2 class="clause">機能ではなく、破ってはならない制約として</h2>
+    <p class="lead">以下はleisenのリポジトリに明文化された不変条件です。違反するコードは書かれません。</p>
+    <div class="ledger">
+      <div class="row">
+        <div class="kanji">一<small>INVARIANT 01</small></div>
+        <div>
+          <h3>権限を複製しない</h3>
+          <p>検索・取得は、質問者本人の資格情報で各データソースのAPIに問い合わせる。アクセス可否の最終判断は、つねに元のデータソースが本人に対して下す。独自の権限モデルを持たない。</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="kanji">二<small>INVARIANT 02</small></div>
+        <div>
+          <h3>すべての検索を記録する</h3>
+          <p>全ツール呼び出しはGatewayの単一経路を通り、「誰の権限で・どのソースに・何を問い合わせ・何が返ったか」が監査ログに残る。Gatewayを迂回するアクセス経路を作らない。監査に書けなければ、実行しない。</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="kanji">三<small>INVARIANT 03</small></div>
+        <div>
+          <h3>データを抱え込まない</h3>
+          <p>インデックスも同期パイプラインも持たずに始める。ナレッジのコピーを蓄積しないから、漏れる場所も、鮮度が腐る場所も増えない。検索層が必要になったソースだけ、実測に基づいて後から有効化する。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S4 動作の流れ ===== -->
+<section id="how">
+  <div class="wrap">
+    <p class="no">第三 — 動作</p>
+    <h2 class="clause">質問から回答まで</h2>
+    <div class="steps">
+      <div class="step"><div class="sno">〇一</div><div><h3>質問する</h3><p>社員がチャットまたはAPIで、自然言語のまま質問します。</p></div></div>
+      <div class="step"><div class="sno">〇二</div><div><h3>本人の権限で検索する</h3><p>LLMがソースの当たりをつけ、質問者本人の資格情報で検索します。ヒットが薄ければ、言い換え・英日変換・期間指定を変えて粘り強く再検索します。</p></div></div>
+      <div class="step"><div class="sno">〇三</div><div><h3>原典を読んで組み立てる</h3><p>有望な文書だけ本文を読み、固有名詞やリンクを手がかりにさらに辿ります。</p></div></div>
+      <div class="step"><div class="sno">〇四</div><div><h3>出典付きで答える</h3><p>回答には必ず原典リンクが付き、ワンクリックで原文に到達できます。確信が持てないときは、探索した範囲と限界を明示します。</p></div></div>
+    </div>
+    <div class="aside"><strong>正直な注記:</strong> 回答には10〜60秒かかります。検索のたびに、本人の権限で各ソースへ問い合わせているためです。この待ち時間は「権限の複製を持たない」ことの対価であり、leisenはこれを隠しません。</div>
+  </div>
+</section>
+
+<!-- ===== S5 対応ソース ===== -->
+<section id="sources">
+  <div class="wrap">
+    <p class="no">第四 — 対象</p>
+    <h2 class="clause">散らばったまま、つなぐ</h2>
+    <p class="lead">利用密度の高いソースから接続します。初期対象として設計しているのは:</p>
+    <div class="srclist">
+      <span>Google Drive</span><span>Slack</span><span>GitHub</span><span>wiki(Confluence・Notion 等)</span>
+    </div>
+    <p class="lead">コネクタは1ソースにつき1つのMCP(Model Context Protocol)標準サーバーとして実装され、統一インターフェースで追加できます。MCP標準のため、コネクタ群は将来、別のLLM製品・エージェント製品からもそのまま利用できます。</p>
+    <p class="note" style="margin-top:14px">Slackは公式APIの利用条件に従い、取得したデータを保存しないオンデマンド検索として扱います(本文もメタデータも蓄積しません)。</p>
+  </div>
+</section>
+
+<!-- ===== S6 比較 ===== -->
+<section id="compare">
+  <div class="wrap">
+    <p class="no">第五 — 代替との関係</p>
+    <h2 class="clause">「Copilot でよくないか」——よい場合と、そうでない場合</h2>
+    <p class="lead">社内の情報が Microsoft 365 や Notion など1つのスイートにほぼ収まっているなら、そのスイート内蔵のAIが最適です。leisenの出番はありません。leisenが解くのは、Drive にも Slack にも GitHub にも wiki にもナレッジがある——スイートの外側をまたぐときの権限問題です。</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th></th><th>スイート内蔵AI</th><th>自前RAG構築</th><th class="you">leisen</th></tr></thead>
+        <tbody>
+          <tr><td>対象範囲</td><td>そのスイートの内側</td><td>つないだ範囲すべて</td><td class="you">複数ソース横断(10〜30種を想定)</td></tr>
+          <tr><td>権限の扱い</td><td>スイート内の権限を継承(外側には届かない)</td><td>権限フィルタを自前で設計・実装・保守</td><td class="you">複製せず、本人の権限でソースに委譲</td></tr>
+          <tr><td>運用負担</td><td>小(ベンダー任せ)</td><td>大(同期・鮮度・精度改善に専任)</td><td class="you">インデックスなしで開始。専任1〜2名で回る設計</td></tr>
+          <tr><td>データの置き場所</td><td>ベンダーのクラウド</td><td>自社設計に依存</td><td class="you">自社環境。コピーを蓄積しない</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="aside">すでにRAGを内製しているチームへ: leisenは「作るな」とは言いません。内製で最もつらい<strong>権限連携・コネクタ・監査</strong>を標準実装として引き受け、探索品質とデータ整備に集中できるようにする、という分担の提案です。</div>
+  </div>
+</section>
+
+<!-- ===== S7 導入の進め方 ===== -->
+<section id="rollout">
+  <div class="wrap">
+    <p class="no">第六 — 導入</p>
+    <h2 class="clause">小さく入れて、実測で広げる</h2>
+    <p class="lead">PoCで止まる最大の理由は、次に進む判断材料がないことです。leisenは導入の各段階が、次の段階の証拠を生むように設計されています。</p>
+    <div class="steps">
+      <div class="step"><div class="sno">壱</div><div><h3>設定1枚で宣言する</h3><p>コネクタ・IdP・監査・プライバシー方針(DM等は既定で対象外)を deployment.yaml 1枚で宣言します。導入担当が触るのは原則このファイルとソース側の管理画面だけです。</p></div></div>
+      <div class="step"><div class="sno">弐</div><div><h3>インデックスなしで開始</h3><p>検索層はOFFで始めます。同期パイプラインがないので、初期の可動部品とセキュリティ審査の対象が最小になります。</p></div></div>
+      <div class="step"><div class="sno">参</div><div><h3>監査ログで広げる</h3><p>「どのソースで、何度探しても解決しないか」を監査ログが実測します。その証拠に基づき、必要なソースだけ検索層を有効化します。</p></div></div>
+    </div>
+    <p class="note" style="margin-top:18px">専任1〜2名で運用が回り続けることを設計目標としています。導入プレイブック(アセスメント→PoC→全社展開→検索層判定)を同梱予定です。</p>
+  </div>
+</section>
+
+<!-- ===== S8 限界と現在地 ===== -->
+<section id="status">
+  <div class="wrap">
+    <p class="no">第七 — 限界の開示</p>
+    <h2 class="clause">いま、できないことも書いておきます</h2>
+    <p class="lead">leisenは現在、設計を確定し実装前の検証ゲートを通過している段階です。誇張しないこともこのプロジェクトの設計原則です。</p>
+    <ul class="limits">
+      <li>稼働実績・導入事例はまだありません。このページに導入ロゴや削減率が並んでいないのはそのためです</li>
+      <li>回答まで10〜60秒かかります(即答型のUXではありません)</li>
+      <li>各ソースの初回利用時に、本人によるアカウント接続(OAuth同意)が必要です</li>
+      <li>検索精度は各ソースのネイティブ検索とLLMの反復探索に依存します。文書が存在しない領域は魔法のようには解決しません</li>
+      <li>DM・プライベートチャンネルは既定で検索対象外です(方針は設定で明示的に変更)</li>
+    </ul>
+    <div class="partner">
+      <h3>この段階から、一緒に検証してくれる企業を探しています</h3>
+      <p class="lead" style="max-width:none">数百〜数千人規模で、ナレッジが複数のツールに分散している企業のデザインパートナーを募集しています。設計レビューへの参加と引き換えに、導入支援を提供します。権限・監査の要件が厳しい組織ほど、検証相手として歓迎します。</p>
+      <div class="cta-row" style="margin-top:20px"><a class="btn btn-primary" href="#contact">導入について相談する</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S9 FAQ ===== -->
+<section id="faq">
+  <div class="wrap">
+    <p class="no">第八 — 問答</p>
+    <h2 class="clause">よくある質問</h2>
+    <details>
+      <summary>回答の生成にLLMを使うなら、結局データは外に出るのでは?</summary>
+      <p>回答生成にはクラウドのLLM API(Claude API 等)を利用します。LLMに送られるのは「質問者本人が閲覧権限を持つ検索結果」のみで、leisen自体はナレッジのコピーを保存・蓄積しません。モデル学習への利用有無は各LLMベンダーとの契約条件に従います。完全に閉じた環境が必要な場合の構成はご相談ください。</p>
+    </details>
+    <details>
+      <summary>ライセンスと料金は?</summary>
+      <p>OSSとして無償公開する予定です(ライセンスは Apache-2.0 を軸に最終決定中。確定次第ここに明記します)。開発元はSaaS運営を行わず、導入アセスメント・初期導入支援・運用サポートを事業とします。「OSSなのに相談CTAがある」のはこの事業構造のためです。</p>
+    </details>
+    <details>
+      <summary>既存のSSO(IdP)と接続できますか?</summary>
+      <p>Okta / Microsoft Entra ID / Keycloak を IdP Adapter として接続する設計です。各データソースへの接続は、ソースごとに本人のOAuth同意を経て、トークンは暗号化保管・失効管理されます(退職・異動時はIdPの無効化イベントに連動して失効させる設計)。</p>
+    </details>
+    <details>
+      <summary>DMや個人的なファイルまで検索されてしまいませんか?</summary>
+      <p>DM・プライベートチャンネルなどの私的領域は既定で検索対象外です。対象範囲の方針は deployment.yaml に明示的に記述し、監査ログの閲覧権限・保持期間とあわせて、導入時に労務・法務と合意して規程化することを標準の導入手順に含めています。</p>
+    </details>
+    <details>
+      <summary>権限逸脱が絶対に起きないと保証できますか?</summary>
+      <p>「絶対」は主張しません。leisenが約束するのは構造です: 権限の複製を持たないため、複製の陳腐化による漏洩経路が存在しません。加えて、特定ユーザーに見えてはならないカナリア文書を常設して非出現を継続検証する仕組みと、四半期のレッドチームテストを導入手順に組み込む設計です。</p>
+    </details>
+  </div>
+</section>
+
+<!-- ===== S10 Final CTA ===== -->
+<section class="final" id="contact">
+  <div class="wrap">
+    <h2>権限の複製をやめるところから、<br>社内AIを前に進めませんか。</h2>
+    <div class="cta-row" style="justify-content:center">
+      <a class="btn btn-primary" href="#" aria-disabled="true">導入について相談する</a>
+      <a class="btn btn-ghost" href="#" aria-disabled="true">設計ドキュメントを読む<small>GitHub 公開準備中</small></a>
+    </div>
+    <p class="proto-note">[プロトタイプ注記] 相談フォーム(社名・メール・関心の3項目)およびGitHubリンクは公開時に接続します</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><strong>leisen(霊泉)</strong> — 社内ナレッジのAI検索基盤(OSS)。</p>
+    <p style="margin-top:6px">※本ページは製品LPプロトタイプ(visual-b: 不変条件の台帳)です。製品名・ライセンスは確定前であり、記載内容は公開済みの設計文書(製品設計書・ADR)に基づきます。導入実績・性能数値は記載していません——まだ存在しないためです。</p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,51 @@
+# Stage 8 — ビジュアルコミュニケーション3方向(ビジュアルアンカーが異なる。色違いではない)
+# 共通: arch-1の10セクション構成とhero v2.1コピーは3案で同一。視覚的説得の機構だけを変える。
+# 共通の禁止: 顧客ロゴ・数値バッジ・認証マークの捏造、AI-SaaS定番の紫グラデ宇宙(研究が支持しない限り: art-director指針)
+
+directions:
+  - id: visual-a
+    name: "設計図(Blueprint)"
+    visual_anchor: "注釈付きアーキテクチャ図。ヒーローの主役は製図風の機構フロー図(質問→Gateway→各ソース判断→回答)で、コピーは図に従属する"
+    attention_hierarchy: "図 → 見出し → チップ → CTA。読者の視線を『構造を確かめる』動きに誘導"
+    typography_role: "本文はゴシック(可読)、図の注釈と技術要素は等幅フォント。見出しは太いが装飾しない。図面のラベルのような扱い"
+    imagery_role: "全セクションの図解を同じ製図言語(細線・単色ライン・注釈引き出し線)で統一。写真・イラストは使わない。UIモックも線画"
+    density_whitespace: "方眼紙を思わせる薄いグリッド背景。余白は広め、1画面1概念"
+    motion_role: "なし(静的)。信頼対象は構造であり動きではない"
+    category_relation: "AI-SaaSのグラデ・3Dイラスト慣習(conv-01)を意図的に破る。Keycloak/Elasticの技術図文化(conv-06)に接続"
+    differentiation: "『機構を開示する』というメッセージ自体を美術言語にする(図面=検証可能・隠していない)"
+    why_target_trusts: "情シス/エンジニアは構成図で製品を理解する職能。装飾の少なさが『審査に出せる資料』の質感を作る(仮説)"
+    imitation_risk: "低。競合は機構を見せられないため図面言語を模倣しにくい"
+    implementation_cost: "中(SVG図версの作り込み。ただし線画なので軽量)"
+
+  - id: visual-b
+    name: "不変条件の台帳(Invariant Ledger)"
+    visual_anchor: "タイポグラフィそのもの。番号付き不変条件(『一、権限を複製しない』)を巨大な組版で見せる。図はほぼ使わない"
+    attention_hierarchy: "言葉 → 言葉 → 言葉。大級数の規律文が各セクションの扉になり、説明文がぶら下がる"
+    typography_role: "明朝(見出し・規律文)×ゴシック(本文)の対比。監査文書・契約書・条文の格調を借りる。数字は等幅"
+    imagery_role: "画像ゼロに近い。罫線と番号だけで構造化(監査台帳のメタファ)。唯一の図はフッター近くの小さな構成図"
+    density_whitespace: "極端に静的な余白。黒に近い墨色+紙白+1アクセント(朱)のみ"
+    motion_role: "なし"
+    category_relation: "カテゴリの機能加算型レイアウト(conv-02の証明の賑やかさ)への最大の反行。反例Keycloakよりさらに禁欲的"
+    differentiation: "『しないことの約束』(ws-03)を、引き算の美術で体現する。日本語の条文体が「霊泉」の和名とも整合"
+    why_target_trusts: "セキュリティ審査者・稟議者は規律の文書化を評価する職能。ただし華がなく、途中離脱リスクは3案で最大(仮説)"
+    imitation_risk: "低〜中(様式は真似できるが、実際に不変条件を持たない製品には空虚になる)"
+    implementation_cost: "低(ほぼ組版のみ)"
+
+  - id: visual-c
+    name: "対話の実演(Conversation Proof)"
+    visual_anchor: "チャットの実演モック。ヒーローの主役は『質問→検索中(ソースごとの権限確認の可視化)→原典リンク付き回答』のチャットUIで、権限なしソースがスキップされる瞬間を見せる"
+    attention_hierarchy: "チャットUI → 見出し → CTA。『使うとこう見える』を最初に成立させる"
+    typography_role: "UIタイポ(ゴシック中心)。コピーはUIの説明者として控えめ"
+    imagery_role: "各セクションにUI断片(監査ログのテーブル、deployment.yamlのコード片、接続画面)を配置。すべて『プロトタイプの想定画面』とラベル明記(捏造防止)"
+    density_whitespace: "SaaS的な情報密度。カード・パネルで区切る"
+    motion_role: "控えめなCSSアニメーション(チャットの逐次表示)を想定可。プロトタイプでは静的+注記でも可"
+    category_relation: "カテゴリ主流のプロダクトUI実写慣習(Glean/Notion型)に最も近い=読みやすさは最大"
+    differentiation: "UIの見せ場を『生成の派手さ』ではなく『権限確認の過程』に置く(競合UIは結果だけを見せる)"
+    why_target_trusts: "非技術の意思決定者にも体験が想像できる。ただし実装前の製品でUIモックを主役にする以上、全モックにプレースホルダ明示が必須(Evidence QAの重点)"
+    imitation_risk: "中〜高(UI提示自体は誰でもできる。権限確認の可視化という中身で差別化)"
+    implementation_cost: "中〜高(UIモックの精度が信頼を左右)"
+
+selection_note: >
+  3案ともプロトタイプ化する(SKILL.md Stage 8の要件)。推奨はQA後に決定するが、
+  仮説としては visual-a(設計図)が ms-2(機構起点)との整合が最も高く、
+  visual-c は ts-1(非技術寄り意思決定者)の理解速度で優位、visual-b は差別化の純度で優位。

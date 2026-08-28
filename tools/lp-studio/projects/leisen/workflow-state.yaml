@@ -1,4 +1,4 @@
-current_stage: design
+current_stage: qa
 stages:
   brief: {status: approved, version: 2}
   pain_research: {status: approved, version: 2}
@@ -6,6 +6,6 @@ stages:
   analysis: {status: approved, version: 2}
   positioning: {status: approved, version: 2, selected: positioning-a}
   message: {status: approved, version: 1, selected: ms-2/arch-1}
-  design: {status: in_progress, version: 1}
-  prototype: {status: blocked, version: 0}
-  qa: {status: blocked, version: 0}
+  design: {status: approved, version: 1}
+  prototype: {status: approved, version: 1}
+  qa: {status: in_progress, version: 1}
