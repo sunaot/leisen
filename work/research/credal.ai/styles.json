@@ -1,0 +1,139 @@
+{
+  "h1": {
+    "family": "\"Ginto Nord\", \"DM Sans\", sans-serif",
+    "size": "50px",
+    "weight": "400",
+    "color": "rgb(37, 38, 43)"
+  },
+  "fonts": [
+    {
+      "value": "DM Sans",
+      "weight": 6040
+    },
+    {
+      "value": "DM Mono",
+      "weight": 1155
+    },
+    {
+      "value": "Ginto Nord",
+      "weight": 203
+    }
+  ],
+  "sizes": [
+    {
+      "value": "18px",
+      "weight": 1732
+    },
+    {
+      "value": "14px",
+      "weight": 1094
+    },
+    {
+      "value": "12px",
+      "weight": 942
+    },
+    {
+      "value": "16px",
+      "weight": 872
+    },
+    {
+      "value": "15px",
+      "weight": 655
+    },
+    {
+      "value": "17px",
+      "weight": 312
+    },
+    {
+      "value": "20px",
+      "weight": 238
+    },
+    {
+      "value": "10px",
+      "weight": 211
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgba(37, 38, 43, 0.7)",
+      "weight": 2187
+    },
+    {
+      "value": "rgb(37, 38, 43)",
+      "weight": 1558
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.65)",
+      "weight": 740
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 539
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.58)",
+      "weight": 490
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.62)",
+      "weight": 347
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 5564437
+    },
+    {
+      "value": "rgb(37, 38, 43)",
+      "weight": 4169084
+    },
+    {
+      "value": "rgb(250, 245, 243)",
+      "weight": 2624377
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(255, 255, 255) 0%, rgb(244, 250, 255) 100%)",
+      "weight": 1178100
+    },
+    {
+      "value": "rgb(250, 252, 255)",
+      "weight": 1030815
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.05)",
+      "weight": 324631
+    },
+    {
+      "value": "rgb(22, 23, 28)",
+      "weight": 260345
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.04)",
+      "weight": 197657
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "20px",
+      "weight": 20
+    },
+    {
+      "value": "9px",
+      "weight": 16
+    },
+    {
+      "value": "64px",
+      "weight": 13
+    },
+    {
+      "value": "16px",
+      "weight": 13
+    },
+    {
+      "value": "11px",
+      "weight": 10
+    }
+  ],
+  "darkMode": true
+}

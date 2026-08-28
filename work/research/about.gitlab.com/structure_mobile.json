@@ -1,0 +1,45 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Ship faster. With trust.",
+        "y": 253
+      },
+      {
+        "tag": "h2",
+        "text": "GitLabの最新情報",
+        "y": 819
+      }
+    ],
+    "ctas": [
+      {
+        "text": "無料トライアルを開始",
+        "y": 8,
+        "bg": "rgb(23, 19, 33)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://gitlab.com/-/trial_registrations/new?glm_source=about.gitlab.com/ja-jp&glm_content=default-saas-trial/"
+      },
+      {
+        "text": "無料で試す",
+        "y": 461,
+        "bg": "rgb(23, 19, 33)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://gitlab.com/-/trial_registrations/new/"
+      },
+      {
+        "text": "詳細はこちら",
+        "y": 540,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(23, 19, 33)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [],
+    "text": "Ship faster. With trust. 無料トライアルを開始 GitLab Orbitが登場: AIエージェントのためのコンテキストレイヤー Ship faster. With trust. DevSecOpsのためのAI統合プラットフォーム 無料で試す 詳細はこちら 19.3 GitLabの最新情報 AIやセキュリティをはじめ、60以上の機能改善 GitLab Duo 開発ライフサイクル全体を支える、AI搭載のDevSecOps セキュリティをビルトイン すべてのパイプラインでSAST、DAST、コンプライアンスチェックを実施 チームの働き方に合わせて構築 5,000万人以上のGi"
+  },
+  "screens": 11.8
+}

@@ -1,0 +1,56 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Operational Sovereignty for National Security and Critical Infrastructure",
+        "y": 411
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Talk to an Expert",
+        "y": 742,
+        "bg": "rgb(255, 188, 31)",
+        "color": "rgb(27, 29, 34)",
+        "tag": "a",
+        "href": "/contact-sales/"
+      },
+      {
+        "text": "Cookies Settings",
+        "y": 794,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(54, 58, 69)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Reject Optional Cookies",
+        "y": 743,
+        "bg": "rgb(28, 88, 217)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Allow All Cookies",
+        "y": 743,
+        "bg": "rgb(28, 88, 217)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Collaborative intelligence team​",
+        "src": "https://mattermost.com/wp-content/uploads/2026/02/operational-security-background-scaled.webp",
+        "w": 390,
+        "h": 703
+      }
+    ],
+    "text": "Skip to content Introducing Mattermost Enterprise Advanced: The Future of Multi-Domain Secure Operations – Learn More Operational Sovereignty for National Security and Critical Infrastructure Collaboration, automation and AI for air-gapped, on-prem and private cloud environments. Trusted by governme"
+  },
+  "screens": 16.4
+}

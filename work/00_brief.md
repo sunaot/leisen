@@ -1,0 +1,26 @@
+# 00 Brief
+
+- Product: leisen(霊泉)— 社内ナレッジ検索基盤(OSS)
+- What it does (3 lines, product's own words):
+  - 社内のナレッジ(Google Drive / Slack / GitHub / wiki 等 10〜30ソース)を、LLM が権限透過で検索・利用できるようにする基盤。MCP Gateway + コネクタ群 + Orchestrator + 汎用検索層のモノレポ。
+  - 独自の権限モデルを持たない。認可は常にデータソースに委譲し、検索は必ず利用者本人の資格情報で行う。全ツール呼び出しを監査ログに記録する。
+  - OSS として公開し、各社が自社環境にシングルテナントで導入する。開発元は SaaS 運営を行わず、導入支援・運用サポートを事業とする。導入 1 件 = deployment.yaml 1 枚。
+- Target action (conversion): GitHub リポジトリ閲覧(Star / 評価開始)+ 導入支援・デザインパートナーの問い合わせ (assumed: v2 §1.3「OSS の採用数がパイプラインの源泉」「採用の摩擦を最小化することが事業上の最優先」より。SaaS ではないので無料トライアル/サインアップは存在しない)
+- Primary audience (role / company size / situation): 数百〜数千人規模の企業の情報システム部門・CTO/VPoE・セキュリティ責任者。社内に散在するナレッジを AI で検索させたいが、権限逸脱による情報漏洩と、SaaS に全文書を渡すことへの懸念で止まっている。あるいは Glean 等の海外 SaaS の見積もり・データ所在で稟議が通らない (assumed)
+- Secondary audience: 導入企業側のプラットフォームエンジニア(自社運用者)、OSS を評価する開発者 (assumed)
+- Traffic source the LP is built for: 検索(「社内ナレッジ検索 AI」「エンタープライズサーチ OSS」等)+ GitHub/技術記事からの参照 (assumed)
+- Known competitors / adjacent products: Glean、Microsoft 365 Copilot、Gemini Enterprise(docs の Buy 比較表 day-0 項目)。OSS 系: Onyx(旧 Danswer)、AnythingLLM 等。国内 SaaS: Helpfeel、Qast、sAI Search、Neuron ES、QuickSolution 等 (assumed: 国内勢は文書に明記なし)
+- Real differences vs competitors (claimed by user, docs から):
+  - 権限モデルを複製・同期しない。ACL 同期ではなく本人トークン委譲 + post-filtering(不変条件 1)
+  - シングルテナント自社導入。データもインデックスも監査ログも自社環境から出ない(1 デプロイ = 1 社)
+  - 全検索行為の監査ログ(AnswerRun / ToolInvocation 2 層)、カナリア文書による常時検証
+  - MCP 標準。コネクタ群は他の LLM 製品からもそのまま使える
+  - 証拠駆動: 検索層(インデックス)は既定 OFF、昇格判定レポートに基づき有効化
+  - OSS(Apache-2.0 推奨、ADR-004 未確定)+ 導入プレイブック
+- Constraints (brand, language, region, legal, assets available):
+  - 日本語 LP、国内企業向け (assumed)。プロジェクト名・商標は未確定(v2 §7 人間タスク)→ LP では「leisen(霊泉)」を仮使用
+  - ライセンスは ADR-004 未確定(Apache-2.0 推奨)→ LP で断定しない
+  - 顧客ロゴ・導入実績・定量メトリクスはまだ存在しない(実装前ゲート段階)→ 実績系の proof は placeholder 化し、偽造しない
+  - Slack の扱いは ADR-014 の制約下(オンデマンド検索のみ)→ 「全ソースをインデックス」とは主張できない
+- Success metric: GitHub 遷移率 / 問い合わせ数 (assumed: v1 の KPI は基盤自体のものであり LP 用ではない)
+- Items marked (assumed) are inferred, not stated by the user.

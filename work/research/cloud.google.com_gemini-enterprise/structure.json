@@ -1,0 +1,336 @@
+{
+  "title": "Gemini Enterprise app: ビジネスに最適な Google AI | Google Cloud",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に",
+      "y": 319
+    },
+    {
+      "tag": "h3",
+      "text": "自社のビジネスデータに基づく AI で、生産性を向上",
+      "y": 831
+    },
+    {
+      "tag": "h3",
+      "text": "エージェント型タスクフォースの構築に必要なすべて",
+      "y": 1459
+    },
+    {
+      "tag": "h3",
+      "text": "自信を持ってエージェントをデプロイ",
+      "y": 1887
+    },
+    {
+      "tag": "h3",
+      "text": "組織全体の日常業務を変革",
+      "y": 2035
+    },
+    {
+      "tag": "h2",
+      "text": "Gemini Enterprise app のエディションと料金",
+      "y": 2859
+    },
+    {
+      "tag": "h2",
+      "text": "Business エディション",
+      "y": 3067
+    },
+    {
+      "tag": "h3",
+      "text": "主なメリット:",
+      "y": 3355
+    },
+    {
+      "tag": "h2",
+      "text": "Standard / Plus エディション",
+      "y": 3067
+    },
+    {
+      "tag": "h3",
+      "text": "Business エディションの全機能に次の機能をプラス:",
+      "y": 3471
+    },
+    {
+      "tag": "h3",
+      "text": "Google Workspace の生産性向上アプリにご関心をお持ちですか？",
+      "y": 4483
+    },
+    {
+      "tag": "h2",
+      "text": "セキュリティとガバナンス",
+      "y": 4683
+    },
+    {
+      "tag": "h3",
+      "text": "Google AI を活用している大手組織の事例",
+      "y": 5347
+    },
+    {
+      "tag": "h2",
+      "text": "Gemini Enterprise app で従業員を支援",
+      "y": 7103
+    }
+  ],
+  "sections": [
+    {
+      "y": 213,
+      "height": 494,
+      "heading": "Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に",
+      "textLength": 176,
+      "images": 5,
+      "ctas": 2
+    },
+    {
+      "y": 807,
+      "height": 528,
+      "heading": "自社のビジネスデータに基づく AI で、生産性を向上",
+      "textLength": 744,
+      "images": 12,
+      "ctas": 0
+    },
+    {
+      "y": 1435,
+      "height": 500,
+      "heading": "エージェント型タスクフォースの構築に必要なすべて",
+      "textLength": 497,
+      "images": 8,
+      "ctas": 3
+    },
+    {
+      "y": 2035,
+      "height": 636,
+      "heading": "組織全体の日常業務を変革",
+      "textLength": 288,
+      "images": 30,
+      "ctas": 1
+    },
+    {
+      "y": 2771,
+      "height": 1812,
+      "heading": "Gemini Enterprise app のエディションと料金",
+      "textLength": 1289,
+      "images": 22,
+      "ctas": 10
+    },
+    {
+      "y": 4683,
+      "height": 532,
+      "heading": "セキュリティとガバナンス",
+      "textLength": 401,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 5315,
+      "height": 272,
+      "heading": "Google AI を活用している大手組織の事例",
+      "textLength": 205,
+      "images": 6,
+      "ctas": 3
+    },
+    {
+      "y": 5687,
+      "height": 280,
+      "heading": null,
+      "textLength": 17,
+      "images": 8,
+      "ctas": 2
+    },
+    {
+      "y": 6067,
+      "height": 780,
+      "heading": null,
+      "textLength": 2479,
+      "images": 1,
+      "ctas": 6
+    },
+    {
+      "y": 6099,
+      "height": 780,
+      "heading": null,
+      "textLength": 2479,
+      "images": 1,
+      "ctas": 6
+    },
+    {
+      "y": 6947,
+      "height": 532,
+      "heading": "Gemini Enterprise app で従業員を支援",
+      "textLength": 52,
+      "images": 2,
+      "ctas": 2
+    }
+  ],
+  "ctas": [
+    {
+      "text": "OK",
+      "y": 848,
+      "bg": "rgb(26, 115, 232)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "実際に試す",
+      "y": 3996,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(32, 81, 218)",
+      "tag": "a",
+      "href": "https://business.gemini.google"
+    },
+    {
+      "text": "Google Cloud のセールス アソシエイトにお問い合わせください",
+      "y": 4245,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(32, 81, 218)",
+      "tag": "a",
+      "href": "https://cloud.google.com/contact/gemini-enterprise"
+    },
+    {
+      "text": "セールスチームにお問い合わせください",
+      "y": 4522,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 110, 243)",
+      "tag": "a",
+      "href": "https://cloud.google.com/contact/gemini-enterprise"
+    },
+    {
+      "text": "pause",
+      "y": 5935,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(68, 71, 70)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "すべて開く",
+      "y": 6099,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Business エディションを 30 日間無料で試す",
+      "y": 6664,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(32, 81, 218)",
+      "tag": "a",
+      "href": "https://business.gemini.google"
+    },
+    {
+      "text": "Standard エディションまたは Plus エディションを 30 日間無料で試す",
+      "y": 6688,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(32, 81, 218)",
+      "tag": "a",
+      "href": "https://console.cloud.google.com/freetrial?redirectPath=gemini-enterprise"
+    },
+    {
+      "text": "Google Cloud の営業担当者にお問い合わせ",
+      "y": 6752,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(32, 81, 218)",
+      "tag": "a",
+      "href": "https://cloud.google.com/contact/gemini-enterprise"
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 64,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(32, 81, 218)",
+      "tag": "a",
+      "href": "https://cloud.google.com/contact/gemini-enterprise"
+    },
+    {
+      "text": "ログイン",
+      "y": 65,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に",
+        "y": 319
+      },
+      {
+        "tag": "h3",
+        "text": "自社のビジネスデータに基づく AI で、生産性を向上",
+        "y": 831
+      }
+    ],
+    "ctas": [
+      {
+        "text": "OK",
+        "y": 848,
+        "bg": "rgb(26, 115, 232)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "お問い合わせ",
+        "y": 64,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(32, 81, 218)",
+        "tag": "a",
+        "href": "https://cloud.google.com/contact/gemini-enterprise"
+      },
+      {
+        "text": "ログイン",
+        "y": 65,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Gemini Enterprise app のインターフェース",
+        "src": "https://www.gstatic.com/bricks/image/e13e28cd-59ae-4059-9747-912b4dcb8852.png",
+        "w": 636,
+        "h": 438
+      },
+      {
+        "tag": "img",
+        "alt": "Workspace アプリを接続",
+        "src": "https://www.gstatic.com/bricks/image/a102fd37-b4ca-4e59-b842-03f5e9a2476e.png",
+        "w": 636,
+        "h": 318
+      }
+    ],
+    "text": "cloud.google.com では、サービスの提供および品質向上とトラフィックの分析に Google の Cookie が使用されています。 詳細 OK 【Next Tokyo】基調講演を含むセッションをアーカイブ公開中！最新の AI フルスタック環境や事例など、注目のテクノロジーをいつでもご視聴いただけます。 Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に Microsoft 365 や Google Workspace などに安全に接続 複数ステップ、複数アプリにわたるワークフローを自動化するエージェント お客様のデータはお"
+  },
+  "nav": [
+    "Gemini Enterprise app",
+    "概要",
+    "エージェント",
+    "コネクタ",
+    "リソース",
+    "お問い合わせ",
+    "Google について",
+    "プライバシー",
+    "サイトの利用規約",
+    "Google Cloud の用語",
+    "Google の 30 年の気候変動対策: ご参加ください"
+  ],
+  "forms": [
+    {
+      "y": 15,
+      "fields": [
+        "q"
+      ]
+    }
+  ],
+  "pageHeight": 7664,
+  "viewportHeight": 900,
+  "screens": 8.5
+}

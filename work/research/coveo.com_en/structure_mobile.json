@@ -1,0 +1,88 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "AI-Search & Conversational Discovery built for enterprise ROI",
+        "y": 188
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Get Report",
+        "y": 18,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/en/resources/reports/gartner-magic-quadrant-search-product-discovery"
+      },
+      {
+        "text": "Contact Us",
+        "y": 577,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(14, 15, 18)",
+        "tag": "a",
+        "href": "/en/contact"
+      },
+      {
+        "text": "Start a free trial",
+        "y": 474,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(14, 15, 18)",
+        "tag": "a",
+        "href": "/en/free-trial"
+      },
+      {
+        "text": "Demo Hub",
+        "y": 172,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(17, 105, 218)",
+        "tag": "a",
+        "href": "/en/demo-video-hub"
+      },
+      {
+        "text": "Ebook & Whitepapers",
+        "y": 441,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(14, 15, 18)",
+        "tag": "a",
+        "href": "/en/search#f-resourcetypecategoryname=Ebooks%20%26%20Whitepapers"
+      },
+      {
+        "text": "Demo",
+        "y": 262,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(14, 15, 18)",
+        "tag": "a",
+        "href": "https://www.coveo.com/en/search#q=demo"
+      },
+      {
+        "text": "Schedule a Demo",
+        "y": 532,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(14, 15, 18)",
+        "tag": "a",
+        "href": "/en/contact/demo"
+      },
+      {
+        "text": "Cookies Settings",
+        "y": 796,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(40, 40, 41)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "OK",
+        "y": 796,
+        "bg": "rgb(39, 0, 84)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [],
+    "text": "👉 Get Report Coveo is named as a Leader in the 2026 Gartner® Magic Quadrant Coveo Platform Industries Customers Pricing Developers Resources Company Partners Community & Support Contact Us Log in Platform Our Platform Coveo AI-Relevance Platform Conversational Search New Conversational Product Disc"
+  },
+  "screens": 15.9
+}

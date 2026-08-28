@@ -1,0 +1,27 @@
+TITLE: Dashworks | AI Assistant for Workplace Questions
+SCREENS: 7.5 NAV(2): ['Customer Love', 'Pricing']
+HEADINGS:
+  h1 y=190: AI that answers all your team’s questions
+  h2 y=1223: Dashworks powers AI answers for 100s of industry leaders, from hypergrowth startups to Fortune 500.
+  h2 y=2757: Your AI assistant for workplace questions
+  h2 y=3804: Legacy enterprise search duplicates your entire data
+  h2 y=3804: Agentic enterprise search finds the latest data live
+  h2 y=4991: One AI assistant, customizable for every team’s needs
+  h2 y=5458: Reduce response times, increase satisfaction
+AF-TEXT: Dashworks Is Joining Forces With HubSpot 🚀 Product Customer Love Solutions Resources Pricing Company Log in AI that answers all your team’s questions Automate 87% of internal questions with an AI that searches all your team’s knowledge and apps at once. Dashworks powers AI answers for 100s of indus
+AF-CTAS: [('Dashworks Is Joining Forces With HubSpot 🚀', 12)]
+AF-IMGS: [('img', '', 1037, 583)]
+CTAS: ['Dashworks Is Joining Forces With HubSpot 🚀']
+SECTIONS:
+  y=0 h=1127 ctas=0 imgs=2 | AI that answers all your team’s questions
+  y=1127 h=762 ctas=0 imgs=30 | Dashworks powers AI answers for 100s of industry leaders, from hypergrowth start
+  y=1889 h=772 ctas=0 imgs=12 | None
+  y=2661 h=1052 ctas=8 imgs=8 | Your AI assistant for workplace questions
+  y=3714 h=1229 ctas=2 imgs=10 | Legacy enterprise search duplicates your entire data
+  y=4943 h=1028 ctas=5 imgs=8 | One AI assistant, customizable for every team’s needs
+  y=5971 h=204 ctas=0 imgs=61 | None
+FORMS: []
+H1STYLE: {'family': '"Victor Serif", sans-serif', 'size': '72px', 'weight': '400', 'color': 'rgb(255, 255, 255)'}
+FONTS: [{'value': 'Manrope', 'weight': 3274}, {'value': 'Victor Serif', 'weight': 382}]
+BGS: [{'value': 'rgb(79, 13, 82)', 'weight': 2210448}, {'value': 'GRADIENT:linear-gradient(rgb(57, 3, 61), rgb(118, 37, 151) 36%, rgb(125, 60, 127))', 'weight': 1623150}, {'value': 'rgb(255, 255, 255)', 'weight': 1232793}, {'value': 'rgb(245, 245, 244)', 'weight': 739373}]
+DARK: False RADII: [{'value': '100px', 'weight': 6}]

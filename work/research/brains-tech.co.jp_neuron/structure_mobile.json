@@ -1,0 +1,63 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "オンプレもクラウドも横断検索！ 企業内検索システム Neuron エンタープライズサーチ 生成AI連携 RAG対応 オンプレ 提供可能 閲覧権限 継承",
+        "y": 100
+      }
+    ],
+    "ctas": [
+      {
+        "text": "お役立ち資料",
+        "y": -610,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/neuron/document-n/"
+      },
+      {
+        "text": "資料請求",
+        "y": -434,
+        "bg": "rgb(247, 42, 72)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/neuron/document-n/neurones/"
+      },
+      {
+        "text": "お問い合わせ",
+        "y": -360,
+        "bg": "rgb(247, 42, 72)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/neuron/help/"
+      },
+      {
+        "text": "まずは資料をダウンロード",
+        "y": 389,
+        "bg": "rgb(247, 42, 72)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/neuron/document-n/neurones/"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "事例公開80社以上、ITトレンド年間ランキング9年連続1位",
+        "src": "/wp-content/uploads/2026/04/awords_2026.png",
+        "w": 245,
+        "h": 91
+      },
+      {
+        "tag": "img",
+        "alt": "Neuron main_visual",
+        "src": "/wp-content/uploads/2026/04/main_visual_2026.png",
+        "w": 350,
+        "h": 213
+      }
+    ],
+    "text": "機能 生成AI連携 導入効果 導入事例 価格 セミナー 販売パートナー 会社情報 お役立ち資料 コラム 導入効果シミュレータ よくある質問 資料請求 お問い合わせ オンプレもクラウドも横断検索！ 企業内検索システム Neuron エンタープライズサーチ 生成AI連携 RAG対応 オンプレ 提供可能 閲覧権限 継承 まずは資料をダウンロード 新着情報 2026/05/29 Neuron ES、MCPサーバー対応によりMicrosoft 365 Copilotからオンプレ・クラウド問わず“AI検索”を可能に 2026/06/01 株式会社ネオジャパン様と「Neuron ES」販売店契約を締結いたし"
+  },
+  "screens": 21.9
+}

@@ -1,0 +1,37 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "AI that answers all your team’s questions",
+        "y": 175
+      },
+      {
+        "tag": "h2",
+        "text": "Dashworks powers AI answers for 100s of industry leaders, from hypergrowth startups to Fortune 500.",
+        "y": 835
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Dashworks Is Joining Forces With HubSpot 🚀",
+        "y": 13,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(239, 236, 233)",
+        "tag": "a",
+        "href": "https://www.dashworks.ai/blog/dashworks-is-joining-forces-with-hubspot"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn.prod.website-files.com/6564f1a6b003d2f4a39394ed/66922c468a3a4cc00a1f869e_homepage.jpg",
+        "w": 325,
+        "h": 183
+      }
+    ],
+    "text": "Dashworks Is Joining Forces With HubSpot 🚀 AI that answers all your team’s questions Automate 87% of internal questions with an AI that searches all your team’s knowledge and apps at once. Dashworks powers AI answers for 100s of industry leaders, from hypergrowth startups to Fortune 500. Thomas Man"
+  },
+  "screens": 14.4
+}

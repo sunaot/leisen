@@ -1,0 +1,59 @@
+TITLE: Microsoft 365 Copilot | AI Productivity Tools for Work
+SCREENS: 10.5 NAV(70): ['Microsoft 365 Copilot', 'Plans and pricing', 'Open Copilot Chat', 'Download the app', 'Work IQ', 'Chat + Cowork', 'Search', 'Agents', 'Notebooks', 'Create', 'What’s new', 'Security', 'See plans and pricing', 'Open Copilot Chat']
+HEADINGS:
+  h1 y=306: AI built for work
+  h2 y=877: Microsoft 365 Copilot, powered by Work IQ
+  h2 y=1883: Chat + Cowork
+  h2 y=2803: Search
+  h2 y=3637: Agents
+  h2 y=4539: Notebooks
+  h2 y=5397: Create
+  h2 y=6206: What’s new
+  h3 y=6716: Copilot Cowork is here: built for your hardest tasks
+  h3 y=6716: 2026 Work Trend Index Report
+  h3 y=6716: AI built for work: Making Frontier Transformation real
+  h2 y=7083: Secure by design
+  h3 y=7784: Built-in data privacy
+  h3 y=7784: Governed access
+  h3 y=7784: Control at every level
+  h2 y=8081: Trusted by industry leaders
+  h2 y=8567: Get started with Microsoft 365 Copilot
+  h2 y=8928: Follow Microsoft 365
+  h2 y=9011: What's new
+  h2 y=9011: Microsoft Store
+  h2 y=9011: Education
+  h2 y=9011: Business
+  h2 y=9011: Developer & IT
+  h2 y=9011: Company
+AF-TEXT: Skip to main content Microsoft 365 Copilot How it works Plans and pricing Learn how to use it Resources More Open Copilot Chat Download the app Sign in ME Copilot Cowork is available—delegate your hardest tasks today. Read the blog MICROSOFT 365 COPILOT AI built for work Turn data into insights in t
+AF-CTAS: [('How it works', 0), ('Learn how to use it', 0), ('Resources', 0), ('More', 0), ('Download the app', 12), ('ME', 9), ('Notebooks', 728), ('Feedback', 832)]
+AF-IMGS: [('img', '', 1440, 612), ('img', '', 1440, 1006)]
+CTAS: ['How it works', 'Learn how to use it', 'Resources', 'More', 'Download the app', 'ME', 'Notebooks', 'Chat', 'Cowork', 'Try Copilot', 'Ready to use', 'Build your own', 'Download Center', 'Contact Microsoft']
+SECTIONS:
+  y=0 h=9426 ctas=112 imgs=33 | AI built for work
+  y=100 h=612 ctas=0 imgs=1 | None
+  y=769 h=1006 ctas=1 imgs=1 | Microsoft 365 Copilot, powered by Work IQ
+  y=769 h=1006 ctas=0 imgs=1 | None
+  y=1209 h=566 ctas=0 imgs=0 | None
+  y=1775 h=920 ctas=4 imgs=1 | Chat + Cowork
+  y=1775 h=920 ctas=0 imgs=1 | None
+  y=2695 h=833 ctas=2 imgs=1 | Search
+  y=2695 h=833 ctas=0 imgs=1 | None
+  y=3529 h=903 ctas=5 imgs=1 | Agents
+  y=3529 h=903 ctas=0 imgs=1 | None
+  y=4431 h=857 ctas=2 imgs=1 | Notebooks
+  y=4431 h=857 ctas=0 imgs=1 | None
+  y=5289 h=809 ctas=2 imgs=1 | Create
+  y=5289 h=809 ctas=0 imgs=1 | None
+  y=6098 h=877 ctas=3 imgs=4 | What’s new
+  y=6098 h=877 ctas=0 imgs=1 | None
+  y=6382 h=593 ctas=3 imgs=3 | Copilot Cowork is here: built for your hardest tasks
+  y=6975 h=986 ctas=1 imgs=5 | Secure by design
+  y=6975 h=986 ctas=0 imgs=1 | None
+  y=7319 h=642 ctas=0 imgs=4 | Built-in data privacy
+  y=7961 h=470 ctas=1 imgs=7 | Trusted by industry leaders
+FORMS: []
+H1STYLE: {'family': '"Segoe UI Variable Display", "Segoe UI", segoeui, "Helvetica Neue", helvetica, arial, sans-serif', 'size': '62px', 'weight': '500', 'color': 'rgb(14, 23, 38)'}
+FONTS: [{'value': 'Segoe UI', 'weight': 1237}, {'value': 'Segoe UI Variable Text', 'weight': 1217}, {'value': 'Segoe UI Variable Display', 'weight': 438}]
+BGS: [{'value': 'rgb(254, 254, 254)', 'weight': 1770840}, {'value': 'rgb(255, 253, 251)', 'weight': 1449158}, {'value': 'rgb(244, 250, 253)', 'weight': 1298932}, {'value': 'rgb(0, 0, 0)', 'weight': 826932}]
+DARK: False RADII: [{'value': '8px', 'weight': 28}, {'value': '24px', 'weight': 15}, {'value': '16px', 'weight': 12}]

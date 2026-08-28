@@ -1,0 +1,40 @@
+TITLE: Helpfeel（ヘルプフィール）｜AIチャット×RAGでVoc分析も疑問解決
+SCREENS: 11.3 NAV(8): ['契約者さまログイン', '用途・課題から探す', '活用事例・実績', 'Helpfeelでできること', '会社概要', '料金', '資料ダウンロード', 'お問い合わせ・デモ依頼']
+HEADINGS:
+  h2 y=312: Welcome to Helpfeel
+  h1 y=259: AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現
+  h2 y=1191: Helpfeelとは？ 対顧客・社内からも。 問い合わせの逼迫・人手不足問題を AIでまるっと解決するサービスです
+  h2 y=2477: どうやって解決してくれるの？ 自己解決に特化したAIが、あらゆるタッチポイントで 疑問を解消し、ナレッジ構築まで実行します
+  h2 y=3563: サポートを自動化する、HelpfeelのAIソリューション
+  h2 y=4925: 導入時にサポートは受けられるの？ Helpfeelはサポート力が根幹です。 独自のメソッドと専属チームの伴走で、 導入から運用・課題解決までサポートします
+  h2 y=5980: 導入実績は？ 企業規模・業種業態問わず 900サイト以上で活用され、効果が実証されています
+  h2 y=6978: Helpfeelの信頼性は？ 高い顧客満足度と万全のセキュリティで、 安心して導入いただけます
+  h3 y=7778: 信頼を守る、国際基準のセキュリティ
+  h2 y=8085: NEWS
+  h3 y=8233: Human to AIからAI to AI時代の到来を見据え、顧客接点を収益に変える「Helpfeel Growth」提供開始
+  h3 y=8326: Helpfeel調査、生成AI経由のヘルプサイト流入数が1年で3.2倍 ゼロクリック時代の新たな顧客接点に
+  h3 y=8419: Helpfeel、「ITトレンド上半期ランキング2026」にてチャットボット・FAQ・VOCカテゴリの4部門で第1位を獲得
+  h3 y=8765: AIを導入して終わりにしません。 技術と伴走で、成果が出るところまで支援します。
+AF-TEXT: Welcome to Helpfeel Based on your language settings we recommend our English language site. Enter site > 契約者さまログイン 用途・課題から探す 活用事例・実績 Helpfeelでできること 会社概要 料金 資料ダウンロード お問い合わせ・デモ依頼 AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現 顧客対応・社内サポートなどの場面で、社内のドキュメントをUPするだけでAIが回答を生成。問い合わせ対応の負荷を減らしながら、顧客・ユーザー体験
+AF-CTAS: [('資料ダウンロード', 59), ('お問い合わせ・デモ依頼', 59), ('3分でわかる資料を見る', 567)]
+AF-IMGS: [('img', '', 642, 296), ('img', '', 376, 296), ('img', '', 251, 296)]
+CTAS: ['資料ダウンロード', 'お問い合わせ・デモ依頼', '3分でわかる資料を見る', '分析 Helpfeel Analytics コールログ分析 AI活用の特許技術で問い合わせ削減・UX改善', '資料をメールで受け取る', '検討資料・ホワイトペーパー', '問い合わせ削減シミュレーション', 'お問い合わせ', '日本語']
+SECTIONS:
+  y=0 h=900 ctas=2 imgs=2 | Welcome to Helpfeel
+  y=0 h=9220 ctas=21 imgs=80 | AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現
+  y=0 h=909 ctas=0 imgs=0 | None
+  y=610 h=280 ctas=0 imgs=0 | None
+  y=1111 h=1286 ctas=4 imgs=9 | Helpfeelとは？ 対顧客・社内からも。 問い合わせの逼迫・人手不足問題を AIでまるっと解決するサービスです
+  y=2397 h=2448 ctas=5 imgs=13 | どうやって解決してくれるの？ 自己解決に特化したAIが、あらゆるタッチポイントで 疑問を解消し、ナレッジ構築まで実行します
+  y=4845 h=1054 ctas=2 imgs=4 | 導入時にサポートは受けられるの？ Helpfeelはサポート力が根幹です。 独自のメソッドと専属チームの伴走で、 導入から運用・課題解決までサポートします
+  y=5900 h=998 ctas=5 imgs=11 | 導入実績は？ 企業規模・業種業態問わず 900サイト以上で活用され、効果が実証されています
+  y=6898 h=1108 ctas=0 imgs=5 | Helpfeelの信頼性は？ 高い顧客満足度と万全のセキュリティで、 安心して導入いただけます
+  y=8005 h=640 ctas=1 imgs=0 | NEWS
+  y=8199 h=279 ctas=0 imgs=0 | Human to AIからAI to AI時代の到来を見据え、顧客接点を収益に変える「Helpfeel Growth」提供開始
+  y=8645 h=486 ctas=2 imgs=0 | AIを導入して終わりにしません。 技術と伴走で、成果が出るところまで支援します。
+  y=9220 h=954 ctas=36 imgs=6 | None
+FORMS: []
+H1STYLE: {'family': '"Noto Sans JP", sans-serif', 'size': '56px', 'weight': '500', 'color': 'rgb(0, 0, 0)'}
+FONTS: [{'value': 'Noto Sans JP', 'weight': 1603}, {'value': '-apple-system', 'weight': 90}, {'value': 'Poppins', 'weight': 10}]
+BGS: [{'value': 'rgb(36, 36, 36)', 'weight': 1576440}, {'value': 'rgba(0, 0, 0, 0.7)', 'weight': 1322041}, {'value': 'GRADIENT:linear-gradient(rgb(255, 255, 255), rgb(236, 240, 255))', 'weight': 1275740}, {'value': 'GRADIENT:linear-gradient(rgb(255, 255, 255), rgba(77, 107, 213, 0.1))', 'weight': 921600}]
+DARK: True RADII: [{'value': '16px', 'weight': 15}, {'value': '4px', 'weight': 12}, {'value': '32px', 'weight': 5}]

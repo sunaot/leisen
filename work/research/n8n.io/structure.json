@@ -1,0 +1,432 @@
+{
+  "title": "AI Workflow Automation Platform - n8n",
+  "headings": [
+    {
+      "tag": "h2",
+      "text": "AI agents and workflows you can see and control",
+      "y": 240
+    },
+    {
+      "tag": "h2",
+      "text": "Plug AI into your own data & over 500 integrations",
+      "y": 1773
+    },
+    {
+      "tag": "h2",
+      "text": "Build AI agents you can actually follow",
+      "y": 2394
+    },
+    {
+      "tag": "h3",
+      "text": "Build complex AI without getting boxed in",
+      "y": 2645
+    },
+    {
+      "tag": "h3",
+      "text": "Runs where you decide",
+      "y": 3030
+    },
+    {
+      "tag": "h3",
+      "text": "Let people and logic guide AI decisions",
+      "y": 2618
+    },
+    {
+      "tag": "h2",
+      "text": "Code when you need it, UI when you don't",
+      "y": 3556
+    },
+    {
+      "tag": "h2",
+      "text": "Move fast. Break nothing.",
+      "y": 4238
+    },
+    {
+      "tag": "h2",
+      "text": "Case Studies",
+      "y": 4894
+    },
+    {
+      "tag": "h2",
+      "text": "Reliable. Scalable. Secure.",
+      "y": 5852
+    },
+    {
+      "tag": "h3",
+      "text": "Security and control",
+      "y": 6140
+    },
+    {
+      "tag": "h3",
+      "text": "Observability and transparency",
+      "y": 6244
+    },
+    {
+      "tag": "h3",
+      "text": "Developer experience",
+      "y": 6348
+    },
+    {
+      "tag": "h3",
+      "text": "AI governance",
+      "y": 6428
+    },
+    {
+      "tag": "h2",
+      "text": "Simple enough to see. Powerful enough to ship.",
+      "y": 7283
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 767,
+      "heading": "AI agents and workflows you can see and control",
+      "textLength": 327,
+      "images": 15,
+      "ctas": 2
+    },
+    {
+      "y": 767,
+      "height": 703,
+      "heading": null,
+      "textLength": 232,
+      "images": 1,
+      "ctas": 5
+    },
+    {
+      "y": 831,
+      "height": 575,
+      "heading": null,
+      "textLength": 232,
+      "images": 1,
+      "ctas": 5
+    },
+    {
+      "y": 1470,
+      "height": 239,
+      "heading": null,
+      "textLength": 210,
+      "images": 3,
+      "ctas": 3
+    },
+    {
+      "y": 1709,
+      "height": 596,
+      "heading": "Plug AI into your own data & over 500 integrations",
+      "textLength": 157,
+      "images": 80,
+      "ctas": 1
+    },
+    {
+      "y": 1796,
+      "height": 372,
+      "heading": null,
+      "textLength": 9102,
+      "images": 4,
+      "ctas": 22
+    },
+    {
+      "y": 2305,
+      "height": 1076,
+      "heading": "Build AI agents you can actually follow",
+      "textLength": 1074,
+      "images": 13,
+      "ctas": 1
+    },
+    {
+      "y": 3381,
+      "height": 1376,
+      "heading": "Code when you need it, UI when you don't",
+      "textLength": 736,
+      "images": 4,
+      "ctas": 1
+    },
+    {
+      "y": 4757,
+      "height": 926,
+      "heading": "Case Studies",
+      "textLength": 700,
+      "images": 5,
+      "ctas": 2
+    },
+    {
+      "y": 5006,
+      "height": 638,
+      "heading": null,
+      "textLength": 670,
+      "images": 4,
+      "ctas": 2
+    },
+    {
+      "y": 5657,
+      "height": 853,
+      "heading": null,
+      "textLength": 0,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 5683,
+      "height": 953,
+      "heading": "Reliable. Scalable. Secure.",
+      "textLength": 874,
+      "images": 7,
+      "ctas": 4
+    },
+    {
+      "y": 6140,
+      "height": 312,
+      "heading": "Security and control",
+      "textLength": 413,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 6166,
+      "height": 414,
+      "heading": null,
+      "textLength": 168,
+      "images": 2,
+      "ctas": 1
+    },
+    {
+      "y": 6191,
+      "height": 414,
+      "heading": null,
+      "textLength": 168,
+      "images": 2,
+      "ctas": 1
+    },
+    {
+      "y": 6255,
+      "height": 286,
+      "heading": null,
+      "textLength": 168,
+      "images": 2,
+      "ctas": 1
+    },
+    {
+      "y": 6636,
+      "height": 494,
+      "heading": null,
+      "textLength": 2199,
+      "images": 10,
+      "ctas": 10
+    },
+    {
+      "y": 7130,
+      "height": 506,
+      "heading": "Simple enough to see. Powerful enough to ship.",
+      "textLength": 128,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 7636,
+      "height": 428,
+      "heading": null,
+      "textLength": 349,
+      "images": 7,
+      "ctas": 28
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Use cases",
+      "y": 1540,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Community",
+      "y": 1540,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Sign in",
+      "y": 1553,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://app.n8n.cloud/login"
+    },
+    {
+      "text": "Get Started",
+      "y": 1553,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://app.n8n.cloud/register"
+    },
+    {
+      "text": "Get started for free",
+      "y": 360,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://app.n8n.cloud/register"
+    },
+    {
+      "text": "Talk to sales",
+      "y": 360,
+      "bg": "oklab(0.715461 0.0000325143 0.0000143051 / 0.2)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://n8n-community.typeform.com/to/y9X2YuGa?ld_bookit_log_id=00DKB000000IOni2AG_1787939034358_7369017869084218"
+    },
+    {
+      "text": "IT Ops can On-board new employees",
+      "y": 835,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(209, 206, 206)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Sec Ops can Enrich security incident tickets",
+      "y": 934,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(209, 206, 206)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Dev Ops can Convert natural language into API calls",
+      "y": 1033,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(209, 206, 206)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Sales can Generate customer insights from reviews",
+      "y": 1156,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(209, 206, 206)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "You can Watch this video to hear our pitch",
+      "y": 1279,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(209, 206, 206)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Talk to sales",
+      "y": 6044,
+      "bg": "oklab(0.715461 0.0000325143 0.0000143051 / 0.2)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://n8n-community.typeform.com/to/y9X2YuGa?ld_bookit_log_id=00DKB000000IOni2AG_1787939034358_7369017869084218"
+    },
+    {
+      "text": "Start building",
+      "y": 7493,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://app.n8n.cloud/register"
+    },
+    {
+      "text": "Contact",
+      "y": 7716,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/contact/"
+    },
+    {
+      "text": "Join user tests, get a gift",
+      "y": 7776,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://internal.users.n8n.cloud/form/n8n-usability-test-signup"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h2",
+        "text": "AI agents and workflows you can see and control",
+        "y": 240
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Get started for free",
+        "y": 360,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://app.n8n.cloud/register"
+      },
+      {
+        "text": "Talk to sales",
+        "y": 360,
+        "bg": "oklab(0.715461 0.0000325143 0.0000143051 / 0.2)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://n8n-community.typeform.com/to/y9X2YuGa?ld_bookit_log_id=00DKB000000IOni2AG_1787939034358_7369017869084218"
+      },
+      {
+        "text": "IT Ops can On-board new employees",
+        "y": 835,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(209, 206, 206)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Hero image",
+        "src": "/images/hero-bg.webp",
+        "w": 1896,
+        "h": 719
+      },
+      {
+        "tag": "video",
+        "alt": "",
+        "src": "",
+        "w": 2786,
+        "h": 805
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://n8niostorageaccount.blob.core.windows.net/n8nio-strapi-blobs-prod/assets/workflow_it_ops_4783c9ca96.svg",
+        "w": 984,
+        "h": 575
+      }
+    ],
+    "text": "AI Workflow Automation Platform - n8n n8n.io Product Use cases Docs Community Enterprise Pricing 202,692 Sign in Get Started See llms.txt for all machine-readable content. AI agents and workflows you can see and control Build visually, go deep with code, connect to anything. Every step of your agent"
+  },
+  "nav": [
+    "n8n.io",
+    "Product",
+    "Docs",
+    "Enterprise",
+    "Pricing",
+    "202,692",
+    "Sign in",
+    "Get Started",
+    "Get started for free",
+    "Talk to sales",
+    "Explore AI"
+  ],
+  "forms": [],
+  "pageHeight": 8064,
+  "viewportHeight": 900,
+  "screens": 9
+}

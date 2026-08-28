@@ -1,0 +1,328 @@
+{
+  "title": "Credal | Context in. Accurate, cost-efficient agents out.",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Context in. Accurate, cost-efficient agents out.",
+      "y": 262
+    },
+    {
+      "tag": "h2",
+      "text": "AI is only as good as the context you give it",
+      "y": 1361
+    },
+    {
+      "tag": "h3",
+      "text": "How Checkr jumped 73% in Salesforce data accuracy using Credal's MCP",
+      "y": 1990
+    },
+    {
+      "tag": "h2",
+      "text": "Connect every system and data source",
+      "y": 2357
+    },
+    {
+      "tag": "h2",
+      "text": "Scope agents down to what they actually need",
+      "y": 2990
+    },
+    {
+      "tag": "h2",
+      "text": "Know exactly where AI spend comes from, then cut it",
+      "y": 3656
+    },
+    {
+      "tag": "h2",
+      "text": "Your rules follow through across every chat surface",
+      "y": 4532
+    },
+    {
+      "tag": "h2",
+      "text": "Share skills company-wide",
+      "y": 5304
+    },
+    {
+      "tag": "h3",
+      "text": "Ground in your context",
+      "y": 5518
+    },
+    {
+      "tag": "h3",
+      "text": "Compose & govern",
+      "y": 5636
+    },
+    {
+      "tag": "h3",
+      "text": "Cut duplicate work and spend",
+      "y": 5754
+    },
+    {
+      "tag": "h2",
+      "text": "One registry to govern every agent and MCP server",
+      "y": 6079
+    },
+    {
+      "tag": "h2",
+      "text": "Move fast without compromising control",
+      "y": 6721
+    },
+    {
+      "tag": "h3",
+      "text": "Permissions inherited at the source",
+      "y": 6708
+    },
+    {
+      "tag": "h3",
+      "text": "Control who can do what",
+      "y": 6708
+    },
+    {
+      "tag": "h3",
+      "text": "Human-in-the-loop approvals",
+      "y": 6949
+    },
+    {
+      "tag": "h3",
+      "text": "Agents only see what they need",
+      "y": 6949
+    },
+    {
+      "tag": "h2",
+      "text": "Meet teams where they already work",
+      "y": 7362
+    },
+    {
+      "tag": "h3",
+      "text": "Any chat surface",
+      "y": 7722
+    },
+    {
+      "tag": "h3",
+      "text": "Deploy in your cloud",
+      "y": 7700
+    },
+    {
+      "tag": "h3",
+      "text": "APIs & automation",
+      "y": 7722
+    },
+    {
+      "tag": "h2",
+      "text": "Better agents start with better context.",
+      "y": 8054
+    }
+  ],
+  "sections": [
+    {
+      "y": 76,
+      "height": 818,
+      "heading": "Context in. Accurate, cost-efficient agents out.",
+      "textLength": 662,
+      "images": 16,
+      "ctas": 1
+    },
+    {
+      "y": 894,
+      "height": 349,
+      "heading": null,
+      "textLength": 43,
+      "images": 10,
+      "ctas": 10
+    },
+    {
+      "y": 1242,
+      "height": 673,
+      "heading": "AI is only as good as the context you give it",
+      "textLength": 359,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 1915,
+      "height": 290,
+      "heading": "How Checkr jumped 73% in Salesforce data accuracy using Credal's MCP",
+      "textLength": 148,
+      "images": 4,
+      "ctas": 1
+    },
+    {
+      "y": 2205,
+      "height": 648,
+      "heading": "Connect every system and data source",
+      "textLength": 632,
+      "images": 9,
+      "ctas": 0
+    },
+    {
+      "y": 2853,
+      "height": 707,
+      "heading": "Scope agents down to what they actually need",
+      "textLength": 879,
+      "images": 15,
+      "ctas": 0
+    },
+    {
+      "y": 3560,
+      "height": 826,
+      "heading": "Know exactly where AI spend comes from, then cut it",
+      "textLength": 980,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 4386,
+      "height": 787,
+      "heading": "Your rules follow through across every chat surface",
+      "textLength": 981,
+      "images": 13,
+      "ctas": 0
+    },
+    {
+      "y": 5172,
+      "height": 760,
+      "heading": "Share skills company-wide",
+      "textLength": 758,
+      "images": 5,
+      "ctas": 0
+    },
+    {
+      "y": 5933,
+      "height": 585,
+      "heading": "One registry to govern every agent and MCP server",
+      "textLength": 635,
+      "images": 9,
+      "ctas": 0
+    },
+    {
+      "y": 6518,
+      "height": 700,
+      "heading": "Move fast without compromising control",
+      "textLength": 937,
+      "images": 4,
+      "ctas": 0
+    },
+    {
+      "y": 7217,
+      "height": 716,
+      "heading": "Meet teams where they already work",
+      "textLength": 529,
+      "images": 3,
+      "ctas": 0
+    },
+    {
+      "y": 7933,
+      "height": 546,
+      "heading": "Better agents start with better context.",
+      "textLength": 226,
+      "images": 0,
+      "ctas": 1
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Get a demo",
+      "y": 16,
+      "bg": "rgb(37, 38, 43)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/get-started"
+    },
+    {
+      "text": "Get a demo",
+      "y": 569,
+      "bg": "rgb(37, 38, 43)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/get-started"
+    },
+    {
+      "text": "Get a demo",
+      "y": 8309,
+      "bg": "rgb(37, 38, 43)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/get-started"
+    },
+    {
+      "text": "Agent Registry",
+      "y": 8659,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgba(255, 255, 255, 0.8)",
+      "tag": "a",
+      "href": "/products/agent-registry"
+    },
+    {
+      "text": "Accept All",
+      "y": 835,
+      "bg": "rgb(56, 28, 136)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Customize Settings",
+      "y": 835,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(37, 38, 43)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Context in. Accurate, cost-efficient agents out.",
+        "y": 262
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Get a demo",
+        "y": 16,
+        "bg": "rgb(37, 38, 43)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/get-started"
+      },
+      {
+        "text": "Get a demo",
+        "y": 569,
+        "bg": "rgb(37, 38, 43)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/get-started"
+      },
+      {
+        "text": "Accept All",
+        "y": 835,
+        "bg": "rgb(56, 28, 136)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Customize Settings",
+        "y": 835,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(37, 38, 43)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [],
+    "text": "Platform Security Case Studies Careers About Docs Pricing Get a demo Context in. Accurate, cost-efficient agents out. Credal is the enterprise platform where teams build and govern MCP servers, with curated context, tools, and cost-to-accuracy evals per workflow. Get a demo COMPATIBLE WITH +1000 rev"
+  },
+  "nav": [
+    "Security",
+    "Case Studies",
+    "Careers",
+    "Docs",
+    "Pricing",
+    "Get a demo"
+  ],
+  "forms": [],
+  "pageHeight": 8854,
+  "viewportHeight": 900,
+  "screens": 9.8
+}

@@ -1,0 +1,131 @@
+{
+  "h1": {
+    "family": "Verdana, \"Hiragino Kaku Gothic ProN\", \"Hiragino Sans\", Meiryo, sans-serif",
+    "size": "16px",
+    "weight": "700",
+    "color": "rgb(11, 49, 143)"
+  },
+  "fonts": [
+    {
+      "value": "Verdana",
+      "weight": 3118
+    }
+  ],
+  "sizes": [
+    {
+      "value": "16px",
+      "weight": 1750
+    },
+    {
+      "value": "18px",
+      "weight": 493
+    },
+    {
+      "value": "14px",
+      "weight": 248
+    },
+    {
+      "value": "15px",
+      "weight": 193
+    },
+    {
+      "value": "32px",
+      "weight": 137
+    },
+    {
+      "value": "20px",
+      "weight": 114
+    },
+    {
+      "value": "12px",
+      "weight": 54
+    },
+    {
+      "value": "13px",
+      "weight": 43
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(10, 22, 46)",
+      "weight": 1930
+    },
+    {
+      "value": "rgb(69, 69, 69)",
+      "weight": 605
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 217
+    },
+    {
+      "value": "rgb(0, 0, 238)",
+      "weight": 172
+    },
+    {
+      "value": "rgb(137, 137, 137)",
+      "weight": 92
+    },
+    {
+      "value": "rgb(11, 49, 143)",
+      "weight": 50
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 2563553
+    },
+    {
+      "value": "rgb(237, 245, 250)",
+      "weight": 2218019
+    },
+    {
+      "value": "rgb(11, 49, 143)",
+      "weight": 883445
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(237, 245, 250) 80%, rgba(0, 0, 0, 0) 100%)",
+      "weight": 784336
+    },
+    {
+      "value": "rgb(248, 248, 248)",
+      "weight": 613690
+    },
+    {
+      "value": "GRADIENT:linear-gradient(90deg, rgb(10, 22, 46), rgb(10, 22, 46))",
+      "weight": 185373
+    },
+    {
+      "value": "rgb(255, 142, 49)",
+      "weight": 74742
+    },
+    {
+      "value": "rgb(255, 250, 228)",
+      "weight": 63194
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "3px",
+      "weight": 141
+    },
+    {
+      "value": "1px",
+      "weight": 5
+    },
+    {
+      "value": "100px",
+      "weight": 4
+    },
+    {
+      "value": "19px",
+      "weight": 2
+    },
+    {
+      "value": "50px",
+      "weight": 1
+    }
+  ],
+  "darkMode": true
+}

@@ -1,0 +1,40 @@
+TITLE: Coveo: AI-Search for Enterprises: The AI Relevance™ Platform
+SCREENS: 11.4 NAV(90): ['Get Report', 'Partners', 'Contact Us', 'Log in', 'Pricing', 'Coveo AI-Relevance Platform', 'Conversational Search New', 'Conversational Product Discovery New', 'Agentic AI & Retrieval', 'Generative Answering', 'Passage Retrieval API', 'AI Search', 'AI Recommendations', 'Personalization']
+HEADINGS:
+  h1 y=243: AI-Search & Conversational Discovery built for enterprise ROI
+  h2 y=1320: AI-Search that turns your data into relevant, profitable generative experiences
+  h3 y=1703: 
+  h3 y=1757: 
+  h3 y=2059: 
+  h3 y=2107: 
+  h2 y=3996: Your tech stack, finally in sync
+  h2 y=4475: Why top enterprises choose Coveo over everyone else
+  h3 y=5547: See Coveo in Action
+  h2 y=6443: Analysts agree – Coveo leads
+  h3 y=7873: Be part of what’s next in AI‑Relevance
+  h3 y=8666: You’ve just seen AI‑Relevance’s impact – Now, let’s talk
+AF-TEXT: 👉 Get Report Coveo is named as a Leader in the 2026 Gartner® Magic Quadrant Company Partners Community & Support Contact Us Log in Platform Industries Customers Pricing Developers Resources Our Platform Coveo AI-Relevance Platform Conversational Search New Conversational Product Discovery New Agent
+AF-CTAS: [('Get Report', 18), ('Company', -0.0), ('Community & Support', -0.0), ('Contact Us', 3), ('Start a free trial', 425), ('Ebook & Whitepapers', 315), ('Demo Hub', 464), ('Demo', 279)]
+AF-IMGS: [('img', '', 160, 90), ('img', '', 160, 90), ('img', '', 160, 90)]
+CTAS: ['Get Report', 'Company', 'Community & Support', 'Contact Us', 'Start a free trial', 'Ebook & Whitepapers', 'Demo Hub', 'Demo', 'Ebooks The AI Guide For Search & Product Discovery', 'Talk to sales', 'Schedule a Demo', 'Download report', 'See all Coveo demos', 'Previous']
+SECTIONS:
+  y=131 h=1125 ctas=2 imgs=14 | AI-Search & Conversational Discovery built for enterprise ROI
+  y=1256 h=1158 ctas=4 imgs=13 | AI-Search that turns your data into relevant, profitable generative experiences
+  y=1622 h=728 ctas=4 imgs=12 | 
+  y=1670 h=324 ctas=1 imgs=3 | 
+  y=1978 h=324 ctas=1 imgs=3 | 
+  y=2026 h=324 ctas=1 imgs=3 | 
+  y=2414 h=262 ctas=1 imgs=1 | None
+  y=2676 h=1176 ctas=5 imgs=6 | None
+  y=3852 h=511 ctas=1 imgs=69 | Your tech stack, finally in sync
+  y=4363 h=1152 ctas=1 imgs=4 | Why top enterprises choose Coveo over everyone else
+  y=5515 h=864 ctas=1 imgs=102 | See Coveo in Action
+  y=6379 h=834 ctas=3 imgs=58 | Analysts agree – Coveo leads
+  y=7213 h=548 ctas=8 imgs=12 | None
+  y=7761 h=724 ctas=21 imgs=6 | Be part of what’s next in AI‑Relevance
+  y=8565 h=385 ctas=1 imgs=2 | You’ve just seen AI‑Relevance’s impact – Now, let’s talk
+FORMS: []
+H1STYLE: {'family': 'canada-type-gibson, Arial, sans-serif', 'size': '100px', 'weight': '500', 'color': 'rgb(14, 15, 18)'}
+FONTS: [{'value': 'canada-type-gibson', 'weight': 5528}]
+BGS: [{'value': 'rgb(249, 249, 255)', 'weight': 7068008}, {'value': 'rgb(255, 255, 255)', 'weight': 4198776}, {'value': 'rgb(57, 0, 118)', 'weight': 4029286}, {'value': 'GRADIENT:linear-gradient(rgb(24, 0, 55) 0px, rgb(57, 0, 118) 42.57%)', 'weight': 1659128}]
+DARK: False RADII: [{'value': '50%', 'weight': 100}, {'value': '24px', 'weight': 92}, {'value': '50px', 'weight': 29}]

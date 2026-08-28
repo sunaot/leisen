@@ -1,0 +1,6 @@
+*.png
+*.jpg
+capture_summary.json
+urls_one.txt
+urls_test.txt
+urls_retry.txt

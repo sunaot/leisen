@@ -1,0 +1,131 @@
+{
+  "h1": {
+    "family": "Manrope, -apple-system, blinkmacsystemfont, \"Segoe UI\", roboto, \"Helvetica Neue\", arial, \"Noto Sans\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "size": "56px",
+    "weight": "600",
+    "color": "rgb(11, 33, 56)"
+  },
+  "fonts": [
+    {
+      "value": "Manrope",
+      "weight": 5239
+    }
+  ],
+  "sizes": [
+    {
+      "value": "16px",
+      "weight": 2347
+    },
+    {
+      "value": "14px",
+      "weight": 844
+    },
+    {
+      "value": "18px",
+      "weight": 796
+    },
+    {
+      "value": "20px",
+      "weight": 442
+    },
+    {
+      "value": "40px",
+      "weight": 343
+    },
+    {
+      "value": "14.4px",
+      "weight": 125
+    },
+    {
+      "value": "32px",
+      "weight": 89
+    },
+    {
+      "value": "56px",
+      "weight": 77
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(63, 76, 96)",
+      "weight": 3203
+    },
+    {
+      "value": "rgb(11, 33, 56)",
+      "weight": 1309
+    },
+    {
+      "value": "rgb(90, 102, 120)",
+      "weight": 617
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 64
+    },
+    {
+      "value": "rgb(0, 190, 172)",
+      "weight": 39
+    },
+    {
+      "value": "rgb(141, 151, 164)",
+      "weight": 7
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(230, 235, 239)",
+      "weight": 13949194
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 13481615
+    },
+    {
+      "value": "rgba(0, 0, 0, 0.7)",
+      "weight": 1322041
+    },
+    {
+      "value": "rgb(248, 249, 250)",
+      "weight": 1084287
+    },
+    {
+      "value": "GRADIENT:radial-gradient(circle, rgb(230, 235, 239) 1px, rgba(0, 0, 0, 0) 1px)",
+      "weight": 837687
+    },
+    {
+      "value": "GRADIENT:linear-gradient(139deg, rgb(225, 248, 245) 0%, rgb(234, 244, 248) 38.35%, rgb(23",
+      "weight": 494244
+    },
+    {
+      "value": "rgb(0, 190, 172)",
+      "weight": 10403
+    },
+    {
+      "value": "rgb(120, 102, 207)",
+      "weight": 5010
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "8px",
+      "weight": 92
+    },
+    {
+      "value": "800px",
+      "weight": 18
+    },
+    {
+      "value": "16px",
+      "weight": 9
+    },
+    {
+      "value": "25px",
+      "weight": 1
+    },
+    {
+      "value": "0px 0px 8px 8px",
+      "weight": 1
+    }
+  ],
+  "darkMode": false
+}

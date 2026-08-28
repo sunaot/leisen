@@ -1,0 +1,131 @@
+{
+  "h1": {
+    "family": "canada-type-gibson, Arial, sans-serif",
+    "size": "100px",
+    "weight": "500",
+    "color": "rgb(14, 15, 18)"
+  },
+  "fonts": [
+    {
+      "value": "canada-type-gibson",
+      "weight": 5528
+    }
+  ],
+  "sizes": [
+    {
+      "value": "18px",
+      "weight": 1576
+    },
+    {
+      "value": "16px",
+      "weight": 1549
+    },
+    {
+      "value": "14px",
+      "weight": 1318
+    },
+    {
+      "value": "24px",
+      "weight": 360
+    },
+    {
+      "value": "13px",
+      "weight": 340
+    },
+    {
+      "value": "48px",
+      "weight": 231
+    },
+    {
+      "value": "100px",
+      "weight": 60
+    },
+    {
+      "value": "32px",
+      "weight": 47
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(14, 15, 18)",
+      "weight": 3891
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 861
+    },
+    {
+      "value": "rgb(103, 109, 122)",
+      "weight": 315
+    },
+    {
+      "value": "rgb(17, 105, 218)",
+      "weight": 253
+    },
+    {
+      "value": "rgb(149, 156, 171)",
+      "weight": 93
+    },
+    {
+      "value": "rgb(28, 235, 207)",
+      "weight": 54
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(249, 249, 255)",
+      "weight": 7068008
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 4198776
+    },
+    {
+      "value": "rgb(57, 0, 118)",
+      "weight": 4029286
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(24, 0, 55) 0px, rgb(57, 0, 118) 42.57%)",
+      "weight": 1659128
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(255, 255, 255) 0px, rgb(241, 241, 249) 100%)",
+      "weight": 1620270
+    },
+    {
+      "value": "rgb(39, 0, 84)",
+      "weight": 1504224
+    },
+    {
+      "value": "rgb(249, 249, 251)",
+      "weight": 968700
+    },
+    {
+      "value": "rgb(247, 247, 249)",
+      "weight": 784320
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "50%",
+      "weight": 100
+    },
+    {
+      "value": "24px",
+      "weight": 92
+    },
+    {
+      "value": "50px",
+      "weight": 29
+    },
+    {
+      "value": "8px",
+      "weight": 27
+    },
+    {
+      "value": "4px",
+      "weight": 11
+    }
+  ],
+  "darkMode": false
+}

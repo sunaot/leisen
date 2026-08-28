@@ -1,0 +1,143 @@
+{
+  "h1": {
+    "family": "\"Segoe UI Variable Display\", \"Segoe UI\", segoeui, \"Helvetica Neue\", helvetica, arial, sans-serif",
+    "size": "62px",
+    "weight": "500",
+    "color": "rgb(14, 23, 38)"
+  },
+  "fonts": [
+    {
+      "value": "Segoe UI",
+      "weight": 1237
+    },
+    {
+      "value": "Segoe UI Variable Text",
+      "weight": 1217
+    },
+    {
+      "value": "Segoe UI Variable Display",
+      "weight": 438
+    },
+    {
+      "value": "Segoe Sans",
+      "weight": 8
+    }
+  ],
+  "sizes": [
+    {
+      "value": "11px",
+      "weight": 1052
+    },
+    {
+      "value": "16px",
+      "weight": 851
+    },
+    {
+      "value": "15px",
+      "weight": 381
+    },
+    {
+      "value": "24px",
+      "weight": 192
+    },
+    {
+      "value": "14px",
+      "weight": 162
+    },
+    {
+      "value": "48px",
+      "weight": 131
+    },
+    {
+      "value": "13px",
+      "weight": 57
+    },
+    {
+      "value": "20px",
+      "weight": 35
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(97, 97, 97)",
+      "weight": 1115
+    },
+    {
+      "value": "rgb(23, 37, 61)",
+      "weight": 871
+    },
+    {
+      "value": "rgb(14, 23, 38)",
+      "weight": 300
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 246
+    },
+    {
+      "value": "rgb(5, 17, 24)",
+      "weight": 130
+    },
+    {
+      "value": "rgb(36, 36, 36)",
+      "weight": 106
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(254, 254, 254)",
+      "weight": 1770840
+    },
+    {
+      "value": "rgb(255, 253, 251)",
+      "weight": 1449158
+    },
+    {
+      "value": "rgb(244, 250, 253)",
+      "weight": 1298932
+    },
+    {
+      "value": "rgb(0, 0, 0)",
+      "weight": 826932
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.1)",
+      "weight": 792508
+    },
+    {
+      "value": "rgb(242, 242, 242)",
+      "weight": 597600
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 437042
+    },
+    {
+      "value": "GRADIENT:linear-gradient(90deg, rgb(0, 85, 151) 0%, rgb(38, 62, 101) 100%)",
+      "weight": 359282
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "8px",
+      "weight": 28
+    },
+    {
+      "value": "24px",
+      "weight": 15
+    },
+    {
+      "value": "16px",
+      "weight": 12
+    },
+    {
+      "value": "4px",
+      "weight": 8
+    },
+    {
+      "value": "200px",
+      "weight": 4
+    }
+  ],
+  "darkMode": false
+}

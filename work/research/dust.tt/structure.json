@@ -1,0 +1,504 @@
+{
+  "title": "Dust - Multiplayer AI for human-agent collaboration",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Multiplayer AI for human-agent collaboration",
+      "y": 324
+    },
+    {
+      "tag": "h2",
+      "text": "Trusted by teams at 3,000+ global organizations",
+      "y": 870
+    },
+    {
+      "tag": "h2",
+      "text": "AI that uses your context to do real work",
+      "y": 1373
+    },
+    {
+      "tag": "h2",
+      "text": "One system for your company's AI work",
+      "y": 2679
+    },
+    {
+      "tag": "h3",
+      "text": "Agents with company context",
+      "y": 3001
+    },
+    {
+      "tag": "h3",
+      "text": "Multiplayer AI for cross-functional work",
+      "y": 3001
+    },
+    {
+      "tag": "h3",
+      "text": "Model flexibility",
+      "y": 3239
+    },
+    {
+      "tag": "h3",
+      "text": "AI-native governance",
+      "y": 3239
+    },
+    {
+      "tag": "h2",
+      "text": "Work that moves between people and AI",
+      "y": 3626
+    },
+    {
+      "tag": "h2",
+      "text": "Use AI on your terms, without giving up control of your data",
+      "y": 4388
+    },
+    {
+      "tag": "h2",
+      "text": "One platform, every team, compounding value",
+      "y": 5220
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 5592
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 5592
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 5592
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 5592
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 5592
+    },
+    {
+      "tag": "h3",
+      "text": "Engineering Operations",
+      "y": 5592
+    },
+    {
+      "tag": "h2",
+      "text": "News and announcements",
+      "y": 6393
+    },
+    {
+      "tag": "h1",
+      "text": "The best teams aren't just using AI. They're running it.",
+      "y": 6908
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 7431,
+      "heading": "Multiplayer AI for human-agent collaboration",
+      "textLength": 5024,
+      "images": 76,
+      "ctas": 28
+    },
+    {
+      "y": 0,
+      "height": 909,
+      "heading": null,
+      "textLength": 0,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 822,
+      "height": 320,
+      "heading": "Trusted by teams at 3,000+ global organizations",
+      "textLength": 179,
+      "images": 36,
+      "ctas": 12
+    },
+    {
+      "y": 1142,
+      "height": 656,
+      "heading": "AI that uses your context to do real work",
+      "textLength": 290,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 1799,
+      "height": 733,
+      "heading": null,
+      "textLength": 116,
+      "images": 9,
+      "ctas": 2
+    },
+    {
+      "y": 2531,
+      "height": 947,
+      "heading": "One system for your company's AI work",
+      "textLength": 1074,
+      "images": 4,
+      "ctas": 0
+    },
+    {
+      "y": 3478,
+      "height": 762,
+      "heading": "Work that moves between people and AI",
+      "textLength": 588,
+      "images": 3,
+      "ctas": 0
+    },
+    {
+      "y": 4240,
+      "height": 831,
+      "heading": "Use AI on your terms, without giving up control of your data",
+      "textLength": 918,
+      "images": 3,
+      "ctas": 1
+    },
+    {
+      "y": 5072,
+      "height": 1182,
+      "heading": "One platform, every team, compounding value",
+      "textLength": 628,
+      "images": 14,
+      "ctas": 5
+    },
+    {
+      "y": 6253,
+      "height": 459,
+      "heading": "News and announcements",
+      "textLength": 273,
+      "images": 4,
+      "ctas": 4
+    },
+    {
+      "y": 6712,
+      "height": 719,
+      "heading": "The best teams aren't just using AI. They're running it.",
+      "textLength": 434,
+      "images": 0,
+      "ctas": 1
+    },
+    {
+      "y": 7431,
+      "height": 350,
+      "heading": null,
+      "textLength": 328,
+      "images": 1,
+      "ctas": 21
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Product",
+      "y": 70,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Solutions",
+      "y": 70,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Resources",
+      "y": 70,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Get Started",
+      "y": 163,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+      "tag": "a",
+      "href": "https://docs.dust.tt/docs/intro"
+    },
+    {
+      "text": "Sign in",
+      "y": 72,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/api/workos/login?returnTo=%2Fapi%2Flogin&posthog_id=a00b3489-24f0-4564-80f9-e6a2ad4959c1"
+    },
+    {
+      "text": "Try for free",
+      "y": 72,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.444 0.011 78.213)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Contact sales",
+      "y": 72,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/home/contact?posthog_id=a00b3489-24f0-4564-80f9-e6a2ad4959c1"
+    },
+    {
+      "text": "Request a demo",
+      "y": 642,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/home/contact"
+    },
+    {
+      "text": "Request a demo",
+      "y": 642,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Try for free →",
+      "y": 642,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.444 0.011 78.213)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Engineering",
+      "y": 5461,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.147 0.004 49.25)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Customer Support",
+      "y": 5461,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.444 0.011 78.213)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Sales",
+      "y": 5461,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.444 0.011 78.213)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Marketing & Content",
+      "y": 5461,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.444 0.011 78.213)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Data & analytics",
+      "y": 5461,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.444 0.011 78.213)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "AXIOS · MAY 18, 2026 Agentic AI startup Dust raises $40M",
+      "y": 6438,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "https://www.axios.com/pro/enterprise-software-deals/2026/05/18/agentic-ai-dust-snowflake-sequoia"
+    },
+    {
+      "text": "reject non-essential cookies",
+      "y": 844,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.704 0.04 256.788)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Accept All Cookies",
+      "y": 795,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Multiplayer AI for human-agent collaboration",
+        "y": 324
+      },
+      {
+        "tag": "h2",
+        "text": "Trusted by teams at 3,000+ global organizations",
+        "y": 870
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Product",
+        "y": 70,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Solutions",
+        "y": 70,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Resources",
+        "y": 70,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Get Started",
+        "y": 163,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+        "tag": "a",
+        "href": "https://docs.dust.tt/docs/intro"
+      },
+      {
+        "text": "Sign in",
+        "y": 72,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/api/workos/login?returnTo=%2Fapi%2Flogin&posthog_id=a00b3489-24f0-4564-80f9-e6a2ad4959c1"
+      },
+      {
+        "text": "Try for free",
+        "y": 72,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.444 0.011 78.213)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Contact sales",
+        "y": 72,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/home/contact?posthog_id=a00b3489-24f0-4564-80f9-e6a2ad4959c1"
+      },
+      {
+        "text": "Request a demo",
+        "y": 642,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/home/contact"
+      },
+      {
+        "text": "Request a demo",
+        "y": 642,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Try for free →",
+        "y": 642,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.444 0.011 78.213)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "reject non-essential cookies",
+        "y": 844,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.704 0.04 256.788)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Accept All Cookies",
+        "y": 795,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "svg",
+        "alt": "",
+        "src": "",
+        "w": 789,
+        "h": 542
+      }
+    ],
+    "text": "NEW Dust announces Series B to fuel next chapter of growth Product Product Chrome Extension Frames Integrations Solutions DEPARTMENTS Sales Customer Support Marketing & Content Engineering Data & Analytics Knowledge IT Legal People Productivity INDUSTRIES B2B SaaS Consulting Financial Services Insur"
+  },
+  "nav": [
+    "Product",
+    "Chrome Extension",
+    "Frames",
+    "Integrations",
+    "Sales",
+    "Customer Support",
+    "Marketing & Content",
+    "Engineering",
+    "Data & Analytics",
+    "Knowledge",
+    "IT",
+    "Legal",
+    "People",
+    "Productivity",
+    "B2B SaaS",
+    "Consulting",
+    "Financial Services",
+    "Insurance",
+    "Marketplaces",
+    "Retail & E-commerce",
+    "Get Started",
+    "Guides & Tutorials",
+    "Academy",
+    "Blog",
+    "Online Events",
+    "Events",
+    "Customer Stories",
+    "Slack Community",
+    "Support",
+    "Become a Partner",
+    "Security",
+    "Pricing"
+  ],
+  "forms": [],
+  "pageHeight": 7781,
+  "viewportHeight": 900,
+  "screens": 8.6
+}

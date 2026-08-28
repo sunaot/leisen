@@ -1,0 +1,76 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "ナレッジの資産化が、 企業の未来をつくり出す",
+        "y": 121
+      },
+      {
+        "tag": "h2",
+        "text": "利用ユーザー数98,000人超！ 幅広い業界の企業様に ご活用いただいています。",
+        "y": 716
+      }
+    ],
+    "ctas": [
+      {
+        "text": "お役立ち資料",
+        "y": 150,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/resources/"
+      },
+      {
+        "text": "資料をダウンロードする",
+        "y": 534,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/document"
+      },
+      {
+        "text": "無料デモを申し込む",
+        "y": 600,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(75, 75, 210)",
+        "tag": "a",
+        "href": "https://register.qast.jp/"
+      },
+      {
+        "text": "資料をダウンロードする",
+        "y": 300,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://qast.jp/document/"
+      },
+      {
+        "text": "無料デモを申し込む",
+        "y": 364,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(75, 75, 210)",
+        "tag": "a",
+        "href": "https://register.qast.jp/"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "kv-img",
+        "src": "https://qast.jp/wp-content/themes/any-qast/assets/img/topKv.webp",
+        "w": 364,
+        "h": 232
+      },
+      {
+        "tag": "img",
+        "alt": "company-logos",
+        "src": "https://qast.jp/wp-content/uploads/2026/04/logos_sp_202604.webp",
+        "w": 334,
+        "h": 290
+      }
+    ],
+    "text": "Qastとは Qastの特徴 機能 課題別活用例 セキュリティ TOP Qastの特徴 機能 課題別活用例 セキュリティ 料金 導入事例 お役立ち資料 セミナー・イベント お知らせ ナレッジマネジメント 情報メディア Qast Lab お問合せ ログイン ヘルプ 資料をダウンロードする 無料デモを申し込む Qast Clone 運営会社 利用規約 プライバシーポリシー 特定商取引法にもとづく表記 ナレッジの資産化が、 企業の未来をつくり出す Qastは社内に埋もれる個人の知識や経験を引き出し、 業務の効率化と企業価値の向上を実現する AIナレッジプラットフォームです。 資料をダウンロードする "
+  },
+  "screens": 13.1
+}

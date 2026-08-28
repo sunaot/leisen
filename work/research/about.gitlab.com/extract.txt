@@ -1,0 +1,59 @@
+TITLE: Ship faster. With trust.
+SCREENS: 9.1 NAV(19): ['価格', 'デモをリクエスト', '無料トライアルを開始', 'サインイン', 'GitLab Orbitが登場: AIエージェントのためのコンテキストレイヤー 詳細はこちら', 'お問い合わせ', 'サポートを受ける', 'カスタマーポータル', 'ステータス', '利用規約', 'プライバシーに関する声明', 'CI/CD', 'GitOps', 'DevOps']
+HEADINGS:
+  h3 y=152: 
+  h3 y=152: 
+  h3 y=152: 
+  h3 y=152: 
+  h3 y=152: 
+  h3 y=152: 
+  h3 y=152: 
+  h1 y=305: Ship faster. With trust.
+  h2 y=720: GitLabの最新情報
+  h2 y=728: GitLab Duo
+  h2 y=722: セキュリティをビルトイン
+  h2 y=1108: チームの働き方に合わせて構築
+  h3 y=1332: 5,000万人以上のGitLabユーザーに加わりましょう。
+  h3 y=1657: チームとAIエージェントの連携方法を定義
+  h3 y=2235: エンドツーエンドのDevOpsプロセスを1つの場所で
+  h3 y=2814: セキュリティは、後付けではなくビルトイン
+  h3 y=3392: 一度の契約で、いつでも柔軟に調整できる価格設定
+  h2 y=3916: 業界特有のニーズに対応
+  h3 y=4323: 金融サービス
+  h3 y=4323: 公共部門
+  h3 y=4323: 通信
+  h3 y=4657: 自動車
+  h3 y=4657: 教育
+  h3 y=4657: 航空宇宙
+  h2 y=5656: チームの規模を問わないプラットフォーム
+  h2 y=6805: 今すぐ開発をスピードアップ
+  h2 y=7407: フッターリンク
+  h3 y=7407: 価格
+  h3 y=7563: お問い合わせ
+  h3 y=7407: 製品
+  h3 y=7555: トピック
+  h3 y=7407: ソリューション
+AF-TEXT: Ship faster. With trust. プラットフォーム 製品 価格 関連リソース 企業情報 お問い合わせ デモをリクエスト 無料トライアルを開始 サインイン GitLab Orbitが登場: AIエージェントのためのコンテキストレイヤー 詳細はこちら Ship faster. With trust. DevSecOpsのためのAI統合プラットフォーム 無料で試す 詳細はこちら 19.3 GitLabの最新情報 AIやセキュリティをはじめ、60以上の機能改善 GitLab Duo 開発ライフサイクル全体を支える、AI搭載のDevSecOps セキュリティをビルトイン すべてのパイプラ
+AF-CTAS: [('プラットフォーム', 79), ('製品', 79), ('関連リソース', 79), ('企業情報', 79), ('お問い合わせ', 79), ('デモをリクエスト', 70), ('無料トライアルを開始', 69), ('詳細はこちら', 9)]
+AF-IMGS: []
+CTAS: ['プラットフォーム', '製品', '関連リソース', '企業情報', 'お問い合わせ', 'デモをリクエスト', '無料トライアルを開始', '詳細はこちら', '無料で試す', 'Cookie 優先設定']
+SECTIONS:
+  y=0 h=8208 ctas=199 imgs=96 | 
+  y=124 h=769 ctas=5 imgs=3 | Ship faster. With trust.
+  y=651 h=242 ctas=3 imgs=2 | GitLabの最新情報
+  y=1107 h=397 ctas=1 imgs=0 | チームの働き方に合わせて構築
+  y=1503 h=2316 ctas=4 imgs=8 | チームとAIエージェントの連携方法を定義
+  y=3819 h=1042 ctas=6 imgs=12 | 業界特有のニーズに対応
+  y=4909 h=650 ctas=7 imgs=4 | None
+  y=5559 h=1080 ctas=19 imgs=19 | チームの規模を問わないプラットフォーム
+  y=6639 h=727 ctas=2 imgs=1 | 今すぐ開発をスピードアップ
+  y=7407 h=468 ctas=12 imgs=0 | ソリューション
+  y=7407 h=484 ctas=14 imgs=0 | リソース
+  y=7407 h=460 ctas=11 imgs=0 | 会社情報
+  y=7555 h=292 ctas=8 imgs=0 | トピック
+  y=7563 h=284 ctas=7 imgs=0 | お問い合わせ
+FORMS: []
+H1STYLE: {'family': '"GitLab Sans", sans-serif', 'size': '96px', 'weight': '660', 'color': 'rgb(23, 19, 33)'}
+FONTS: [{'value': 'GitLab Sans', 'weight': 2907}]
+BGS: [{'value': 'rgb(255, 255, 255)', 'weight': 3641473}, {'value': 'rgb(23, 19, 33)', 'weight': 3033755}, {'value': 'rgb(31, 28, 46)', 'weight': 2314622}, {'value': 'GRADIENT:linear-gradient(rgba(23, 19, 33, 0), rgba(23, 19, 33, 0) 179px, rgb(23, 19, 33) ', 'weight': 1555200}]
+DARK: True RADII: [{'value': '8px', 'weight': 50}, {'value': '16px', 'weight': 30}, {'value': '4px', 'weight': 29}]

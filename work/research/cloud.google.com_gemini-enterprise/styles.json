@@ -1,0 +1,147 @@
+{
+  "h1": {
+    "family": "\"Google Sans\", Roboto, Arial, sans-serif",
+    "size": "45px",
+    "weight": "500",
+    "color": "rgb(33, 34, 38)"
+  },
+  "fonts": [
+    {
+      "value": "Google Sans Text",
+      "weight": 3522
+    },
+    {
+      "value": "Google Sans",
+      "weight": 1690
+    },
+    {
+      "value": "Google Sans Flex",
+      "weight": 122
+    },
+    {
+      "value": "Roboto",
+      "weight": 93
+    },
+    {
+      "value": "Material Icons Extended",
+      "weight": 9
+    }
+  ],
+  "sizes": [
+    {
+      "value": "16px",
+      "weight": 4101
+    },
+    {
+      "value": "20px",
+      "weight": 564
+    },
+    {
+      "value": "18px",
+      "weight": 276
+    },
+    {
+      "value": "14px",
+      "weight": 141
+    },
+    {
+      "value": "45px",
+      "weight": 131
+    },
+    {
+      "value": "36px",
+      "weight": 99
+    },
+    {
+      "value": "12px",
+      "weight": 76
+    },
+    {
+      "value": "28px",
+      "weight": 39
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(95, 99, 104)",
+      "weight": 2644
+    },
+    {
+      "value": "rgb(33, 34, 38)",
+      "weight": 2283
+    },
+    {
+      "value": "rgb(32, 81, 218)",
+      "weight": 211
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 70
+    },
+    {
+      "value": "rgb(32, 33, 36)",
+      "weight": 70
+    },
+    {
+      "value": "rgb(68, 71, 70)",
+      "weight": 44
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 4310306
+    },
+    {
+      "value": "rgb(248, 249, 252)",
+      "weight": 3775704
+    },
+    {
+      "value": "rgba(0, 0, 0, 0.4)",
+      "weight": 1296000
+    },
+    {
+      "value": "rgb(220, 241, 255)",
+      "weight": 651607
+    },
+    {
+      "value": "rgb(248, 249, 250)",
+      "weight": 358020
+    },
+    {
+      "value": "rgb(11, 87, 208)",
+      "weight": 85305
+    },
+    {
+      "value": "rgb(252, 255, 173)",
+      "weight": 69120
+    },
+    {
+      "value": "rgb(239, 242, 247)",
+      "weight": 39054
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "4px",
+      "weight": 73
+    },
+    {
+      "value": "9999px",
+      "weight": 64
+    },
+    {
+      "value": "0px 25px 25px 0px",
+      "weight": 33
+    },
+    {
+      "value": "20px",
+      "weight": 21
+    },
+    {
+      "value": "12px",
+      "weight": 8
+    }
+  ],
+  "darkMode": false
+}

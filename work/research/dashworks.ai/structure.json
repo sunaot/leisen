@@ -1,0 +1,145 @@
+{
+  "title": "Dashworks | AI Assistant for Workplace Questions",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "AI that answers all your team’s questions",
+      "y": 190
+    },
+    {
+      "tag": "h2",
+      "text": "Dashworks powers AI answers for 100s of industry leaders, from hypergrowth startups to Fortune 500.",
+      "y": 1223
+    },
+    {
+      "tag": "h2",
+      "text": "Your AI assistant for workplace questions",
+      "y": 2757
+    },
+    {
+      "tag": "h2",
+      "text": "Legacy enterprise search duplicates your entire data",
+      "y": 3804
+    },
+    {
+      "tag": "h2",
+      "text": "Agentic enterprise search finds the latest data live",
+      "y": 3804
+    },
+    {
+      "tag": "h2",
+      "text": "One AI assistant, customizable for every team’s needs",
+      "y": 4991
+    },
+    {
+      "tag": "h2",
+      "text": "Reduce response times, increase satisfaction",
+      "y": 5458
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 1127,
+      "heading": "AI that answers all your team’s questions",
+      "textLength": 147,
+      "images": 2,
+      "ctas": 0
+    },
+    {
+      "y": 1127,
+      "height": 762,
+      "heading": "Dashworks powers AI answers for 100s of industry leaders, from hypergrowth startups to Fortune 500.",
+      "textLength": 99,
+      "images": 30,
+      "ctas": 0
+    },
+    {
+      "y": 1889,
+      "height": 772,
+      "heading": null,
+      "textLength": 1598,
+      "images": 12,
+      "ctas": 0
+    },
+    {
+      "y": 2661,
+      "height": 1052,
+      "heading": "Your AI assistant for workplace questions",
+      "textLength": 1275,
+      "images": 8,
+      "ctas": 8
+    },
+    {
+      "y": 3714,
+      "height": 1229,
+      "heading": "Legacy enterprise search duplicates your entire data",
+      "textLength": 622,
+      "images": 10,
+      "ctas": 2
+    },
+    {
+      "y": 4943,
+      "height": 1028,
+      "heading": "One AI assistant, customizable for every team’s needs",
+      "textLength": 507,
+      "images": 8,
+      "ctas": 5
+    },
+    {
+      "y": 5971,
+      "height": 204,
+      "heading": null,
+      "textLength": 0,
+      "images": 61,
+      "ctas": 0
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Dashworks Is Joining Forces With HubSpot 🚀",
+      "y": 12,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(239, 236, 233)",
+      "tag": "a",
+      "href": "https://www.dashworks.ai/blog/dashworks-is-joining-forces-with-hubspot"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "AI that answers all your team’s questions",
+        "y": 190
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Dashworks Is Joining Forces With HubSpot 🚀",
+        "y": 12,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(239, 236, 233)",
+        "tag": "a",
+        "href": "https://www.dashworks.ai/blog/dashworks-is-joining-forces-with-hubspot"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn.prod.website-files.com/6564f1a6b003d2f4a39394ed/66922c468a3a4cc00a1f869e_homepage.jpg",
+        "w": 1037,
+        "h": 583
+      }
+    ],
+    "text": "Dashworks Is Joining Forces With HubSpot 🚀 Product Customer Love Solutions Resources Pricing Company Log in AI that answers all your team’s questions Automate 87% of internal questions with an AI that searches all your team’s knowledge and apps at once. Dashworks powers AI answers for 100s of indus"
+  },
+  "nav": [
+    "Customer Love",
+    "Pricing"
+  ],
+  "forms": [],
+  "pageHeight": 6725,
+  "viewportHeight": 900,
+  "screens": 7.5
+}

@@ -1,0 +1,47 @@
+TITLE: エンタープライズ向け AI アシスタント – Amazon Q Business – AWS
+SCREENS: 10.3 NAV(7): ['お問い合わせ', 'AWS Marketplace', 're:Invent', 'コンソールにサインイン', 'アカウントの作成', '生成 AI', 'Amazon Q']
+HEADINGS:
+  h1 y=273: Amazon Q Business
+  h2 y=629: Amazon Q Business の次の進化
+  h2 y=1173: Amazon Q Business
+  h2 y=1549: 機能
+  h3 y=1817: システムやデータ全体で統合的に検索
+  h2 y=2223: ユースケース
+  h3 y=2223: コンテンツ作成を加速する
+  h3 y=2295: 複雑なワークフローを自動化
+  h3 y=2368: アプリケーション全体でアクションを実行
+  h3 y=2441: 重要なインサイトを抽出する
+  h3 y=2514: Amazon Q Business からのデータをアプリケーションに統合
+  h2 y=2699: セキュリティとプライバシーを念頭に置いてゼロから構築
+  h3 y=2843: ロールベースの権限
+  h3 y=2843: トピックのフィルタリング
+  h2 y=3234: Amazon Q in QuickSight を使用する
+  h2 y=3821: 料金プラン
+  h2 y=4083: Amazon Q Business のよくある質問
+  h3 y=4083: AI アシスタントは何をしますか?
+  h3 y=4155: Amazon Q Business はパーソナライズされた応答を生成できますか?
+  h3 y=4252: Amazon Q Apps とは何ですか?
+  h3 y=4325: ソフトウェアプロバイダーは Amazon Q Business をどのように活用できますか?
+  h2 y=4534: Amazon Q Business で従業員が力を発揮できるようにしているお客様
+  h2 y=5126: Deriv が Amazon Q Business でオンボーディング時間を 45% 短縮
+  h2 y=5146: Smartsheet が Amazon Q Business を使ってナレッジ共有を効率化した方法をご覧ください
+  h2 y=5202: Bayer Crop Science、AWS 生成 AI で再生農業を拡大
+  h2 y=5186: お客様が Amazon Q Business を現在どのように利用しているかをご覧ください
+  h2 y=7410: Amazon Q Business を開始する
+  h2 y=7834: Amazon Q Business の機能を詳しく見る
+  h2 y=7834: Amazon Q Business の料金の詳細を見る
+  h2 y=8228: 今日お探しの情報は見つかりましたか?
+  h2 y=8638: 学ぶ
+  h2 y=8638: リソース
+AF-TEXT: メインコンテンツに移動 日本語 お問い合わせ AWS Marketplace サポート マイアカウント re:Invent AWS について知る 製品 ソリューション 料金 リソース 検索 コンソールにサインイン アカウントの作成 Amazon Q Business 概要 統合 料金 よくある質問 生成 AI Amazon Q Q Business Amazon Q Business Amazon Q Business を利用して、職場で生成 AI の力を解き放ちましょう Amazon Q Business を今すぐ開始する スペシャリストとつながる Amazon Q Business の次の
+AF-CTAS: [('日本語', 8), ('お問い合わせ', 8), ('サポート', 8), ('マイアカウント', 8), ('AWS について知る', 68), ('製品', 68), ('ソリューション', 68), ('料金', 68)]
+AF-IMGS: [('img', '抽象的な画像', 328, 218), ('img', '抽象的な画像', 328, 218), ('img', '抽象的な画像', 328, 218), ('img', '抽象的なイラスト', 296, 222), ('img', 'alt', 105, 111), ('img', 'alt', 105, 111), ('svg', '', 481, 244), ('img', 'Missing alt text value', 584, 328)]
+CTAS: ['日本語', 'お問い合わせ', 'サポート', 'マイアカウント', 'AWS について知る', '製品', 'ソリューション', '料金', 'リソース', '検索', '統合インサイト', 'アプリケーションを作成', 'タスクを完了', 'ワークフローを自動化']
+SECTIONS:
+  y=125 h=8349 ctas=41 imgs=32 | Amazon Q Business
+  y=8474 h=762 ctas=48 imgs=12 | 学ぶ
+FORMS: [{'y': 132, 'fields': ['探しているのは...']}]
+H1STYLE: {'family': '"Amazon Ember Display", "Amazon Ember", "Helvetica Neue", Helvetica, Arial, sans-serif', 'size': '40px', 'weight': '500', 'color': 'rgb(22, 29, 38)'}
+FONTS: [{'value': 'Amazon Ember Display', 'weight': 2772}, {'value': 'Hiragino Kaku Gothic Pro', 'weight': 21}, {'value': 'ヒラギノ角ゴ Pro W3', 'weight': 11}]
+BGS: [{'value': 'GRADIENT:radial-gradient(rgba(19, 25, 32, 0.5) 0px, rgba(19, 25, 32, 0) 70%)', 'weight': 8082720}, {'value': 'rgb(51, 56, 67)', 'weight': 3072000}, {'value': 'rgb(255, 255, 255)', 'weight': 2601104}, {'value': 'rgb(15, 20, 26)', 'weight': 1098147}]
+DARK: True RADII: [{'value': '8px', 'weight': 240}, {'value': '40px', 'weight': 24}, {'value': '24px', 'weight': 16}]

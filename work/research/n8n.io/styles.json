@@ -1,0 +1,134 @@
+{
+  "h1": null,
+  "fonts": [
+    {
+      "value": "Open Sans",
+      "weight": 7987
+    },
+    {
+      "value": "geomanist",
+      "weight": 3467
+    },
+    {
+      "value": "geomanist-book",
+      "weight": 951
+    }
+  ],
+  "sizes": [
+    {
+      "value": "11px",
+      "weight": 7524
+    },
+    {
+      "value": "16px",
+      "weight": 2330
+    },
+    {
+      "value": "14px",
+      "weight": 710
+    },
+    {
+      "value": "18px",
+      "weight": 618
+    },
+    {
+      "value": "20px",
+      "weight": 450
+    },
+    {
+      "value": "15px",
+      "weight": 364
+    },
+    {
+      "value": "48px",
+      "weight": 171
+    },
+    {
+      "value": "24px",
+      "weight": 143
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(111, 111, 111)",
+      "weight": 7379
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 2104
+    },
+    {
+      "value": "rgb(209, 206, 206)",
+      "weight": 2062
+    },
+    {
+      "value": "rgb(157, 151, 151)",
+      "weight": 649
+    },
+    {
+      "value": "rgb(75, 75, 75)",
+      "weight": 136
+    },
+    {
+      "value": "rgb(238, 79, 39)",
+      "weight": 39
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(14, 9, 24)",
+      "weight": 2673856
+    },
+    {
+      "value": "rgb(26, 22, 36)",
+      "weight": 2366000
+    },
+    {
+      "value": "rgba(17, 17, 17, 0.5)",
+      "weight": 1296000
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(14, 9, 24) 5%, rgba(14, 9, 24, 0) 40%), linear-gradient(rgba",
+      "weight": 1076400
+    },
+    {
+      "value": "GRADIENT:radial-gradient(65% 75%, rgba(81, 89, 217, 0.24) 0px, rgba(81, 89, 217, 0) 70%)",
+      "weight": 960000
+    },
+    {
+      "value": "GRADIENT:linear-gradient(90deg, rgb(14, 9, 24) 10%, rgba(14, 9, 24, 0) 30%, rgba(14, 9, 2",
+      "weight": 943328
+    },
+    {
+      "value": "rgb(27, 23, 40)",
+      "weight": 847819
+    },
+    {
+      "value": "GRADIENT:radial-gradient(126.99% 234.27% at 10.15% 142.35%, rgba(217, 126, 75, 0.133) 0px",
+      "weight": 793056
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "12px",
+      "weight": 80
+    },
+    {
+      "value": "8px",
+      "weight": 29
+    },
+    {
+      "value": "3.35544e+07px",
+      "weight": 16
+    },
+    {
+      "value": "16px",
+      "weight": 13
+    },
+    {
+      "value": "24px",
+      "weight": 10
+    }
+  ],
+  "darkMode": true
+}

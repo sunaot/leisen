@@ -1,0 +1,131 @@
+{
+  "h1": {
+    "family": "trade-gothic-next, sans-serif",
+    "size": "61px",
+    "weight": "800",
+    "color": "rgb(255, 255, 255)"
+  },
+  "fonts": [
+    {
+      "value": "trade-gothic-next",
+      "weight": 11023
+    }
+  ],
+  "sizes": [
+    {
+      "value": "18px",
+      "weight": 4003
+    },
+    {
+      "value": "24px",
+      "weight": 1500
+    },
+    {
+      "value": "32px",
+      "weight": 1435
+    },
+    {
+      "value": "15px",
+      "weight": 1288
+    },
+    {
+      "value": "21px",
+      "weight": 760
+    },
+    {
+      "value": "14px",
+      "weight": 711
+    },
+    {
+      "value": "13.008px",
+      "weight": 625
+    },
+    {
+      "value": "26px",
+      "weight": 184
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(27, 29, 34)",
+      "weight": 3959
+    },
+    {
+      "value": "rgb(54, 58, 69)",
+      "weight": 2847
+    },
+    {
+      "value": "rgb(90, 96, 114)",
+      "weight": 2268
+    },
+    {
+      "value": "rgb(235, 235, 239)",
+      "weight": 691
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 452
+    },
+    {
+      "value": "rgb(197, 210, 236)",
+      "weight": 428
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 14410306
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.9)",
+      "weight": 3564487
+    },
+    {
+      "value": "rgb(172, 176, 186)",
+      "weight": 2852010
+    },
+    {
+      "value": "rgb(235, 235, 239)",
+      "weight": 1131480
+    },
+    {
+      "value": "rgb(27, 29, 34)",
+      "weight": 1123200
+    },
+    {
+      "value": "rgb(30, 50, 92)",
+      "weight": 808634
+    },
+    {
+      "value": "rgb(255, 188, 31)",
+      "weight": 628634
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgba(25, 42, 77, 0), rgb(25, 42, 77) 53.79%)",
+      "weight": 430177
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "5px",
+      "weight": 30
+    },
+    {
+      "value": "50%",
+      "weight": 14
+    },
+    {
+      "value": "4px",
+      "weight": 4
+    },
+    {
+      "value": "5px 5px 0px 0px",
+      "weight": 4
+    },
+    {
+      "value": "0px 0px 5px 5px",
+      "weight": 4
+    }
+  ],
+  "darkMode": true
+}

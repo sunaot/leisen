@@ -1,0 +1,47 @@
+TITLE: AI Workflow Automation Platform - n8n
+SCREENS: 9 NAV(11): ['n8n.io', 'Product', 'Docs', 'Enterprise', 'Pricing', '202,692', 'Sign in', 'Get Started', 'Get started for free', 'Talk to sales', 'Explore AI']
+HEADINGS:
+  h2 y=240: AI agents and workflows you can see and control
+  h2 y=1773: Plug AI into your own data & over 500 integrations
+  h2 y=2394: Build AI agents you can actually follow
+  h3 y=2645: Build complex AI without getting boxed in
+  h3 y=3030: Runs where you decide
+  h3 y=2618: Let people and logic guide AI decisions
+  h2 y=3556: Code when you need it, UI when you don't
+  h2 y=4238: Move fast. Break nothing.
+  h2 y=4894: Case Studies
+  h2 y=5852: Reliable. Scalable. Secure.
+  h3 y=6140: Security and control
+  h3 y=6244: Observability and transparency
+  h3 y=6348: Developer experience
+  h3 y=6428: AI governance
+  h2 y=7283: Simple enough to see. Powerful enough to ship.
+AF-TEXT: AI Workflow Automation Platform - n8n n8n.io Product Use cases Docs Community Enterprise Pricing 202,692 Sign in Get Started See llms.txt for all machine-readable content. AI agents and workflows you can see and control Build visually, go deep with code, connect to anything. Every step of your agent
+AF-CTAS: [('Get started for free', 360), ('Talk to sales', 360), ('IT Ops can On-board new employees', 835)]
+AF-IMGS: [('img', 'Hero image', 1896, 719), ('video', '', 2786, 805), ('img', '', 984, 575)]
+CTAS: ['Use cases', 'Community', 'Sign in', 'Get Started', 'Get started for free', 'Talk to sales', 'IT Ops can On-board new employees', 'Sec Ops can Enrich security incident tickets', 'Dev Ops can Convert natural language into API calls', 'Sales can Generate customer insights from reviews', 'You can Watch this video to hear our pitch', 'Start building', 'Contact', 'Join user tests, get a gift']
+SECTIONS:
+  y=0 h=767 ctas=2 imgs=15 | AI agents and workflows you can see and control
+  y=767 h=703 ctas=5 imgs=1 | None
+  y=831 h=575 ctas=5 imgs=1 | None
+  y=1470 h=239 ctas=3 imgs=3 | None
+  y=1709 h=596 ctas=1 imgs=80 | Plug AI into your own data & over 500 integrations
+  y=1796 h=372 ctas=22 imgs=4 | None
+  y=2305 h=1076 ctas=1 imgs=13 | Build AI agents you can actually follow
+  y=3381 h=1376 ctas=1 imgs=4 | Code when you need it, UI when you don't
+  y=4757 h=926 ctas=2 imgs=5 | Case Studies
+  y=5006 h=638 ctas=2 imgs=4 | None
+  y=5657 h=853 ctas=0 imgs=0 | None
+  y=5683 h=953 ctas=4 imgs=7 | Reliable. Scalable. Secure.
+  y=6140 h=312 ctas=0 imgs=0 | Security and control
+  y=6166 h=414 ctas=1 imgs=2 | None
+  y=6191 h=414 ctas=1 imgs=2 | None
+  y=6255 h=286 ctas=1 imgs=2 | None
+  y=6636 h=494 ctas=10 imgs=10 | None
+  y=7130 h=506 ctas=1 imgs=1 | Simple enough to see. Powerful enough to ship.
+  y=7636 h=428 ctas=28 imgs=7 | None
+FORMS: []
+H1STYLE: None
+FONTS: [{'value': 'Open Sans', 'weight': 7987}, {'value': 'geomanist', 'weight': 3467}, {'value': 'geomanist-book', 'weight': 951}]
+BGS: [{'value': 'rgb(14, 9, 24)', 'weight': 2673856}, {'value': 'rgb(26, 22, 36)', 'weight': 2366000}, {'value': 'rgba(17, 17, 17, 0.5)', 'weight': 1296000}, {'value': 'GRADIENT:linear-gradient(rgb(14, 9, 24) 5%, rgba(14, 9, 24, 0) 40%), linear-gradient(rgba', 'weight': 1076400}]
+DARK: True RADII: [{'value': '12px', 'weight': 80}, {'value': '8px', 'weight': 29}, {'value': '3.35544e+07px', 'weight': 16}]

@@ -1,0 +1,44 @@
+TITLE: Dust - Multiplayer AI for human-agent collaboration
+SCREENS: 8.6 NAV(32): ['Product', 'Chrome Extension', 'Frames', 'Integrations', 'Sales', 'Customer Support', 'Marketing & Content', 'Engineering', 'Data & Analytics', 'Knowledge', 'IT', 'Legal', 'People', 'Productivity']
+HEADINGS:
+  h1 y=324: Multiplayer AI for human-agent collaboration
+  h2 y=870: Trusted by teams at 3,000+ global organizations
+  h2 y=1373: AI that uses your context to do real work
+  h2 y=2679: One system for your company's AI work
+  h3 y=3001: Agents with company context
+  h3 y=3001: Multiplayer AI for cross-functional work
+  h3 y=3239: Model flexibility
+  h3 y=3239: AI-native governance
+  h2 y=3626: Work that moves between people and AI
+  h2 y=4388: Use AI on your terms, without giving up control of your data
+  h2 y=5220: One platform, every team, compounding value
+  h3 y=5592: 
+  h3 y=5592: 
+  h3 y=5592: 
+  h3 y=5592: 
+  h3 y=5592: 
+  h3 y=5592: Engineering Operations
+  h2 y=6393: News and announcements
+  h1 y=6908: The best teams aren't just using AI. They're running it.
+AF-TEXT: NEW Dust announces Series B to fuel next chapter of growth Product Product Chrome Extension Frames Integrations Solutions DEPARTMENTS Sales Customer Support Marketing & Content Engineering Data & Analytics Knowledge IT Legal People Productivity INDUSTRIES B2B SaaS Consulting Financial Services Insur
+AF-CTAS: [('Product', 70), ('Solutions', 70), ('Resources', 70), ('Get Started', 163), ('Sign in', 72), ('Try for free', 72), ('Contact sales', 72), ('Request a demo', 642)]
+AF-IMGS: [('svg', '', 789, 542)]
+CTAS: ['Product', 'Solutions', 'Resources', 'Get Started', 'Sign in', 'Try for free', 'Contact sales', 'Request a demo', 'Try for free →', 'Engineering', 'Customer Support', 'Sales', 'Marketing & Content', 'Data & analytics']
+SECTIONS:
+  y=0 h=7431 ctas=28 imgs=77 | Multiplayer AI for human-agent collaboration
+  y=0 h=909 ctas=0 imgs=0 | None
+  y=822 h=320 ctas=12 imgs=36 | Trusted by teams at 3,000+ global organizations
+  y=1142 h=656 ctas=0 imgs=1 | AI that uses your context to do real work
+  y=1799 h=733 ctas=2 imgs=9 | None
+  y=2531 h=947 ctas=0 imgs=4 | One system for your company's AI work
+  y=3478 h=762 ctas=0 imgs=3 | Work that moves between people and AI
+  y=4240 h=831 ctas=1 imgs=3 | Use AI on your terms, without giving up control of your data
+  y=5072 h=1182 ctas=5 imgs=14 | One platform, every team, compounding value
+  y=6253 h=459 ctas=4 imgs=4 | News and announcements
+  y=6712 h=719 ctas=1 imgs=0 | The best teams aren't just using AI. They're running it.
+  y=7431 h=350 ctas=21 imgs=1 | None
+FORMS: []
+H1STYLE: {'family': 'Geist, sans-serif', 'size': '69.12px', 'weight': '550', 'color': 'oklch(0.147 0.004 49.25)'}
+FONTS: [{'value': 'Geist', 'weight': 4799}, {'value': '__Source_Serif_4_25ee46', 'weight': 210}, {'value': 'Geist Mono', 'weight': 64}]
+BGS: [{'value': 'oklch(1 0 0)', 'weight': 10231707}, {'value': 'rgba(0, 0, 0, 0.7)', 'weight': 1322041}, {'value': 'oklch(0.129 0.042 264.695)', 'weight': 1035630}, {'value': 'oklch(0.9681 0.0183 232.5)', 'weight': 722026}]
+DARK: True RADII: [{'value': '3.35544e+07px', 'weight': 50}, {'value': '16px', 'weight': 11}, {'value': '15px', 'weight': 4}]

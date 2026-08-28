@@ -1,0 +1,601 @@
+{
+  "title": "エンタープライズ向け AI アシスタント – Amazon Q Business – AWS",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Amazon Q Business",
+      "y": 273
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business の次の進化",
+      "y": 629
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business",
+      "y": 1173
+    },
+    {
+      "tag": "h2",
+      "text": "機能",
+      "y": 1549
+    },
+    {
+      "tag": "h3",
+      "text": "システムやデータ全体で統合的に検索",
+      "y": 1817
+    },
+    {
+      "tag": "h2",
+      "text": "ユースケース",
+      "y": 2223
+    },
+    {
+      "tag": "h3",
+      "text": "コンテンツ作成を加速する",
+      "y": 2223
+    },
+    {
+      "tag": "h3",
+      "text": "複雑なワークフローを自動化",
+      "y": 2295
+    },
+    {
+      "tag": "h3",
+      "text": "アプリケーション全体でアクションを実行",
+      "y": 2368
+    },
+    {
+      "tag": "h3",
+      "text": "重要なインサイトを抽出する",
+      "y": 2441
+    },
+    {
+      "tag": "h3",
+      "text": "Amazon Q Business からのデータをアプリケーションに統合",
+      "y": 2514
+    },
+    {
+      "tag": "h2",
+      "text": "セキュリティとプライバシーを念頭に置いてゼロから構築",
+      "y": 2699
+    },
+    {
+      "tag": "h3",
+      "text": "ロールベースの権限",
+      "y": 2843
+    },
+    {
+      "tag": "h3",
+      "text": "トピックのフィルタリング",
+      "y": 2843
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q in QuickSight を使用する",
+      "y": 3234
+    },
+    {
+      "tag": "h2",
+      "text": "料金プラン",
+      "y": 3821
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business のよくある質問",
+      "y": 4083
+    },
+    {
+      "tag": "h3",
+      "text": "AI アシスタントは何をしますか?",
+      "y": 4083
+    },
+    {
+      "tag": "h3",
+      "text": "Amazon Q Business はパーソナライズされた応答を生成できますか?",
+      "y": 4155
+    },
+    {
+      "tag": "h3",
+      "text": "Amazon Q Apps とは何ですか?",
+      "y": 4252
+    },
+    {
+      "tag": "h3",
+      "text": "ソフトウェアプロバイダーは Amazon Q Business をどのように活用できますか?",
+      "y": 4325
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business で従業員が力を発揮できるようにしているお客様",
+      "y": 4534
+    },
+    {
+      "tag": "h2",
+      "text": "Deriv が Amazon Q Business でオンボーディング時間を 45% 短縮",
+      "y": 5126
+    },
+    {
+      "tag": "h2",
+      "text": "Smartsheet が Amazon Q Business を使ってナレッジ共有を効率化した方法をご覧ください",
+      "y": 5146
+    },
+    {
+      "tag": "h2",
+      "text": "Bayer Crop Science、AWS 生成 AI で再生農業を拡大",
+      "y": 5202
+    },
+    {
+      "tag": "h2",
+      "text": "お客様が Amazon Q Business を現在どのように利用しているかをご覧ください",
+      "y": 5186
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business を開始する",
+      "y": 7410
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business の機能を詳しく見る",
+      "y": 7834
+    },
+    {
+      "tag": "h2",
+      "text": "Amazon Q Business の料金の詳細を見る",
+      "y": 7834
+    },
+    {
+      "tag": "h2",
+      "text": "今日お探しの情報は見つかりましたか?",
+      "y": 8228
+    },
+    {
+      "tag": "h2",
+      "text": "学ぶ",
+      "y": 8638
+    },
+    {
+      "tag": "h2",
+      "text": "リソース",
+      "y": 8638
+    },
+    {
+      "tag": "h2",
+      "text": "デベロッパー",
+      "y": 8638
+    },
+    {
+      "tag": "h2",
+      "text": "ヘルプ",
+      "y": 8638
+    }
+  ],
+  "sections": [
+    {
+      "y": 125,
+      "height": 8349,
+      "heading": "Amazon Q Business",
+      "textLength": 2682,
+      "images": 32,
+      "ctas": 41
+    },
+    {
+      "y": 8474,
+      "height": 762,
+      "heading": "学ぶ",
+      "textLength": 655,
+      "images": 12,
+      "ctas": 48
+    }
+  ],
+  "ctas": [
+    {
+      "text": "日本語",
+      "y": 8,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 8,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/contact-us/?nc2=h_ut_cu"
+    },
+    {
+      "text": "サポート",
+      "y": 8,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "マイアカウント",
+      "y": 8,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "AWS について知る",
+      "y": 68,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(35, 43, 55)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "製品",
+      "y": 68,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(35, 43, 55)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "ソリューション",
+      "y": 68,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(35, 43, 55)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "料金",
+      "y": 68,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(35, 43, 55)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "リソース",
+      "y": 68,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(35, 43, 55)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "検索",
+      "y": 68,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "統合インサイト",
+      "y": 1658,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "アプリケーションを作成",
+      "y": 1658,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "タスクを完了",
+      "y": 1658,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "ワークフローを自動化",
+      "y": 1658,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "コンテンツ作成を加速する",
+      "y": 2223,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "複雑なワークフローを自動化",
+      "y": 2296,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "アプリケーション全体でアクションを実行",
+      "y": 2369,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "重要なインサイトを抽出する",
+      "y": 2442,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Amazon Q Business からのデータをアプリケーションに統合",
+      "y": 2515,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "AI アシスタントは何をしますか?",
+      "y": 4083,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Amazon Q Business はパーソナライズされた応答を生成できますか?",
+      "y": 4156,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Amazon Q Apps とは何ですか?",
+      "y": 4253,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "ソフトウェアプロバイダーは Amazon Q Business をどのように活用できますか?",
+      "y": 4326,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "はい",
+      "y": 8240,
+      "bg": "rgb(22, 29, 38)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "いいえ",
+      "y": 8240,
+      "bg": "rgb(22, 29, 38)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 8680,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(164, 164, 173)",
+      "tag": "a",
+      "href": "/jp/contact-us/?nc1=f_m"
+    },
+    {
+      "text": "日本語",
+      "y": 8530,
+      "bg": "rgb(6, 8, 10)",
+      "color": "rgb(51, 51, 51)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "先頭に戻る",
+      "y": 9026,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Amazon Q Business",
+        "y": 273
+      },
+      {
+        "tag": "h2",
+        "text": "Amazon Q Business の次の進化",
+        "y": 629
+      }
+    ],
+    "ctas": [
+      {
+        "text": "日本語",
+        "y": 8,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "お問い合わせ",
+        "y": 8,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/jp/contact-us/?nc2=h_ut_cu"
+      },
+      {
+        "text": "サポート",
+        "y": 8,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "マイアカウント",
+        "y": 8,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "AWS について知る",
+        "y": 68,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(35, 43, 55)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "製品",
+        "y": 68,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(35, 43, 55)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "ソリューション",
+        "y": 68,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(35, 43, 55)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "料金",
+        "y": 68,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(35, 43, 55)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "リソース",
+        "y": 68,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(35, 43, 55)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "検索",
+        "y": 68,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(51, 51, 51)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "抽象的な画像",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/homepage/global-nav/reinvent-register.3822079bac49f",
+        "w": 328,
+        "h": 218
+      },
+      {
+        "tag": "img",
+        "alt": "抽象的な画像",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/homepage/global-nav/data-heroes.d572b9b4f358fea331a",
+        "w": 328,
+        "h": 218
+      },
+      {
+        "tag": "img",
+        "alt": "抽象的な画像",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/homepage/global-nav/isv.bce7bdc05328153704c0c2a90d7",
+        "w": 328,
+        "h": 218
+      },
+      {
+        "tag": "img",
+        "alt": "抽象的なイラスト",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/global-nav/aws-library_illustration_innovation_8_12",
+        "w": 296,
+        "h": 222
+      },
+      {
+        "tag": "img",
+        "alt": "alt",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/global-nav/aws-library_illustration_culture_2_1200.",
+        "w": 105,
+        "h": 111
+      },
+      {
+        "tag": "img",
+        "alt": "alt",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/global-nav/aws-library_illustration_culture_11_1200",
+        "w": 105,
+        "h": 111
+      },
+      {
+        "tag": "svg",
+        "alt": "",
+        "src": "",
+        "w": 481,
+        "h": 244
+      },
+      {
+        "tag": "img",
+        "alt": "Missing alt text value",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/product-categories/ai-ml/artificial-intelligence/ap",
+        "w": 584,
+        "h": 328
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/product-categories/ai-ml/artificial-intelligence/ap",
+        "w": 584,
+        "h": 328
+      }
+    ],
+    "text": "メインコンテンツに移動 日本語 お問い合わせ AWS Marketplace サポート マイアカウント re:Invent AWS について知る 製品 ソリューション 料金 リソース 検索 コンソールにサインイン アカウントの作成 Amazon Q Business 概要 統合 料金 よくある質問 生成 AI Amazon Q Q Business Amazon Q Business Amazon Q Business を利用して、職場で生成 AI の力を解き放ちましょう Amazon Q Business を今すぐ開始する スペシャリストとつながる Amazon Q Business の次の"
+  },
+  "nav": [
+    "お問い合わせ",
+    "AWS Marketplace",
+    "re:Invent",
+    "コンソールにサインイン",
+    "アカウントの作成",
+    "生成 AI",
+    "Amazon Q"
+  ],
+  "forms": [
+    {
+      "y": 132,
+      "fields": [
+        "探しているのは..."
+      ]
+    }
+  ],
+  "pageHeight": 9236,
+  "viewportHeight": 900,
+  "screens": 10.3
+}

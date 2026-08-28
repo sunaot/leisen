@@ -1,0 +1,665 @@
+{
+  "title": "Mattermost | Collaboration Platform for Mission Critical Work",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Operational Sovereignty for National Security and Critical Infrastructure",
+      "y": 418
+    },
+    {
+      "tag": "h2",
+      "text": "Control in a Connected World",
+      "y": 1132
+    },
+    {
+      "tag": "h2",
+      "text": "Talk to a specialist in your region:",
+      "y": 2098
+    },
+    {
+      "tag": "h2",
+      "text": "Built for real-world mission success",
+      "y": 2981
+    },
+    {
+      "tag": "h2",
+      "text": "Proven in Mission-Critical Environments",
+      "y": 3834
+    },
+    {
+      "tag": "h2",
+      "text": "Enelyst powers a global energy intelligence community with Mattermost",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "Air Mobility Command uses ChatOps to support largest-ever readiness exercise",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "European public agency chooses Mattermost & Pexip for secure collaboration, replacing Skype for Business",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "Fujitsu Customers with Biodrug Design Accelerator (BDA) use Mattermost to power secure collaboration",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "Enelyst powers a global energy intelligence community with Mattermost",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "Air Mobility Command uses ChatOps to support largest-ever readiness exercise",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "European public agency chooses Mattermost & Pexip for secure collaboration, replacing Skype for Business",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "Fujitsu Customers with Biodrug Design Accelerator (BDA) use Mattermost to power secure collaboration",
+      "y": 4105
+    },
+    {
+      "tag": "h2",
+      "text": "Purpose-built for critical infrastructure use cases:",
+      "y": 4666
+    },
+    {
+      "tag": "h3",
+      "text": "Self Sovereign Collaboration",
+      "y": 4982
+    },
+    {
+      "tag": "h3",
+      "text": "Integrated Security Operations",
+      "y": 4952
+    },
+    {
+      "tag": "h3",
+      "text": "Command + Control",
+      "y": 4982
+    },
+    {
+      "tag": "h3",
+      "text": "Out of Band Incident Response",
+      "y": 5515
+    },
+    {
+      "tag": "h3",
+      "text": "Real-Time DevSecOps Collaboration",
+      "y": 5515
+    },
+    {
+      "tag": "h3",
+      "text": "Purpose Built Collaboration",
+      "y": 5546
+    },
+    {
+      "tag": "h2",
+      "text": "The Intelligent Mission Environment",
+      "y": 5991
+    },
+    {
+      "tag": "h2",
+      "text": "Microsoft Teams Interoperability",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "See It All in Action",
+      "y": 6270
+    },
+    {
+      "tag": "h2",
+      "text": "Secure Messaging & Channels",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Workflow & Playbook Automation",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Audio & Screenshare",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Project & Task Management",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Human-Machine Teaming",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Integration & AI Platform",
+      "y": 6270
+    },
+    {
+      "tag": "h2",
+      "text": "Sovereign, Integrated Language Translation",
+      "y": 6249
+    },
+    {
+      "tag": "h2",
+      "text": "Advanced Information Controls",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Microsoft Teams Interoperability",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "See It All in Action",
+      "y": 6270
+    },
+    {
+      "tag": "h2",
+      "text": "Secure Messaging & Channels",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Workflow & Playbook Automation",
+      "y": 6284
+    },
+    {
+      "tag": "h2",
+      "text": "Deploy anywhere. Control everything.",
+      "y": 6826
+    },
+    {
+      "tag": "h2",
+      "text": "Designed for teams with stringent security & privacy requirements",
+      "y": 7083
+    },
+    {
+      "tag": "h2",
+      "text": "Take command of your operations",
+      "y": 7866
+    }
+  ],
+  "sections": [
+    {
+      "y": 120,
+      "height": 780,
+      "heading": "Operational Sovereignty for National Security and Critical Infrastructure",
+      "textLength": 278,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 692,
+      "height": 208,
+      "heading": null,
+      "textLength": 628,
+      "images": 0,
+      "ctas": 4
+    },
+    {
+      "y": 900,
+      "height": 1098,
+      "heading": "Control in a Connected World",
+      "textLength": 392,
+      "images": 8,
+      "ctas": 1
+    },
+    {
+      "y": 1334,
+      "height": 614,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 2191,
+      "height": 600,
+      "heading": null,
+      "textLength": 374,
+      "images": 8,
+      "ctas": 8
+    },
+    {
+      "y": 2841,
+      "height": 892,
+      "heading": "Built for real-world mission success",
+      "textLength": 773,
+      "images": 5,
+      "ctas": 0
+    },
+    {
+      "y": 3734,
+      "height": 882,
+      "heading": "Proven in Mission-Critical Environments",
+      "textLength": 2129,
+      "images": 25,
+      "ctas": 12
+    },
+    {
+      "y": 3954,
+      "height": 662,
+      "heading": "Enelyst powers a global energy intelligence community with Mattermost",
+      "textLength": 1906,
+      "images": 24,
+      "ctas": 12
+    },
+    {
+      "y": 4763,
+      "height": 1127,
+      "heading": "Self Sovereign Collaboration",
+      "textLength": 2598,
+      "images": 6,
+      "ctas": 6
+    },
+    {
+      "y": 5891,
+      "height": 786,
+      "heading": "The Intelligent Mission Environment",
+      "textLength": 2480,
+      "images": 14,
+      "ctas": 14
+    },
+    {
+      "y": 6111,
+      "height": 566,
+      "heading": "Microsoft Teams Interoperability",
+      "textLength": 2255,
+      "images": 14,
+      "ctas": 14
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "See It All in Action",
+      "textLength": 196,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Secure Messaging & Channels",
+      "textLength": 147,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Workflow & Playbook Automation",
+      "textLength": 140,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Audio & Screenshare",
+      "textLength": 122,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Project & Task Management",
+      "textLength": 139,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Human-Machine Teaming",
+      "textLength": 122,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Integration & AI Platform",
+      "textLength": 215,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Sovereign, Integrated Language Translation",
+      "textLength": 192,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6151,
+      "height": 404,
+      "heading": "Advanced Information Controls",
+      "textLength": 167,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6776,
+      "height": 918,
+      "heading": "Deploy anywhere. Control everything.",
+      "textLength": 713,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 7130,
+      "height": 564,
+      "heading": "Designed for teams with stringent security & privacy requirements",
+      "textLength": 388,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 7745,
+      "height": 384,
+      "heading": "Take command of your operations",
+      "textLength": 49,
+      "images": 1,
+      "ctas": 1
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Playbooks",
+      "y": 292,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(27, 29, 34)",
+      "tag": "a",
+      "href": "https://mattermost.com/playbooks/"
+    },
+    {
+      "text": "Demos",
+      "y": 292,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(27, 29, 34)",
+      "tag": "a",
+      "href": "https://mattermost.com/resources/?filter=demos"
+    },
+    {
+      "text": "Playbooks Guide",
+      "y": 292,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(27, 29, 34)",
+      "tag": "a",
+      "href": "https://docs.mattermost.com/guides/repeatable-processes.html"
+    },
+    {
+      "text": "Join Community",
+      "y": 207,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(27, 29, 34)",
+      "tag": "a",
+      "href": "https://mattermost.com/community/"
+    },
+    {
+      "text": "Try Mattermost",
+      "y": 65,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(74, 105, 172)",
+      "tag": "a",
+      "href": "javascript:void(0);"
+    },
+    {
+      "text": "Contact Sales",
+      "y": 65,
+      "bg": "rgb(74, 105, 172)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://mattermost.com/contact-sales/"
+    },
+    {
+      "text": "Talk to an Expert",
+      "y": 763,
+      "bg": "rgb(255, 188, 31)",
+      "color": "rgb(27, 29, 34)",
+      "tag": "a",
+      "href": "/contact-sales/"
+    },
+    {
+      "text": "Talk to an Expert",
+      "y": 7953,
+      "bg": "rgb(30, 50, 92)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://mattermost.com/contact-sales/"
+    },
+    {
+      "text": "Playbooks",
+      "y": 8427,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(197, 210, 236)",
+      "tag": "a",
+      "href": "https://mattermost.com/playbooks/"
+    },
+    {
+      "text": "Playbooks Guide",
+      "y": 8427,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(197, 210, 236)",
+      "tag": "a",
+      "href": "https://docs.mattermost.com/guides/playbooks.html"
+    },
+    {
+      "text": "Contact Us",
+      "y": 8541,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(197, 210, 236)",
+      "tag": "a",
+      "href": "/contact-us/"
+    },
+    {
+      "text": "Cookies Settings",
+      "y": 727,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(54, 58, 69)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Reject Optional Cookies",
+      "y": 777,
+      "bg": "rgb(28, 88, 217)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Allow All Cookies",
+      "y": 828,
+      "bg": "rgb(28, 88, 217)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Operational Sovereignty for National Security and Critical Infrastructure",
+        "y": 418
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Playbooks",
+        "y": 292,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(27, 29, 34)",
+        "tag": "a",
+        "href": "https://mattermost.com/playbooks/"
+      },
+      {
+        "text": "Demos",
+        "y": 292,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(27, 29, 34)",
+        "tag": "a",
+        "href": "https://mattermost.com/resources/?filter=demos"
+      },
+      {
+        "text": "Playbooks Guide",
+        "y": 292,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(27, 29, 34)",
+        "tag": "a",
+        "href": "https://docs.mattermost.com/guides/repeatable-processes.html"
+      },
+      {
+        "text": "Join Community",
+        "y": 207,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(27, 29, 34)",
+        "tag": "a",
+        "href": "https://mattermost.com/community/"
+      },
+      {
+        "text": "Try Mattermost",
+        "y": 65,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(74, 105, 172)",
+        "tag": "a",
+        "href": "javascript:void(0);"
+      },
+      {
+        "text": "Contact Sales",
+        "y": 65,
+        "bg": "rgb(74, 105, 172)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://mattermost.com/contact-sales/"
+      },
+      {
+        "text": "Talk to an Expert",
+        "y": 763,
+        "bg": "rgb(255, 188, 31)",
+        "color": "rgb(27, 29, 34)",
+        "tag": "a",
+        "href": "/contact-sales/"
+      },
+      {
+        "text": "Cookies Settings",
+        "y": 727,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(54, 58, 69)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Reject Optional Cookies",
+        "y": 777,
+        "bg": "rgb(28, 88, 217)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Allow All Cookies",
+        "y": 828,
+        "bg": "rgb(28, 88, 217)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Collaborative intelligence team​",
+        "src": "https://mattermost.com/wp-content/uploads/2026/02/operational-security-background-scaled.webp",
+        "w": 1600,
+        "h": 900
+      }
+    ],
+    "text": "Skip to content Introducing Mattermost Enterprise Advanced: The Future of Multi-Domain Secure Operations – Learn More Platform PLATFORM Overview Channels Playbooks Integrations Mobile AI Security Trust Center INTEROPERABILITY MS Teams Atlassian GitLab FLEXIBLE DEPLOYMENT On-Premise Cloud Solutions U"
+  },
+  "nav": [
+    "Platform",
+    "Overview",
+    "Channels",
+    "Playbooks",
+    "Integrations",
+    "Mobile",
+    "AI",
+    "Security",
+    "Trust Center",
+    "MS Teams",
+    "Atlassian",
+    "GitLab",
+    "On-Premise",
+    "Cloud",
+    "Solutions",
+    "Integrated Security Operations",
+    "Out-of-Band Incident Response",
+    "Self-Sovereign Collaboration",
+    "Mission-Critical ChatOps",
+    "Real-Time DevSecOps Collaboration",
+    "Purpose-Built Collaboration Hub",
+    "Critical Infrastructure",
+    "Defense",
+    "Technology",
+    "Global Public Sector",
+    "Financial Services",
+    "Energy and Utilities",
+    "Transportation and Logistics",
+    "Pricing",
+    "Partners",
+    "Become a Partner",
+    "Partner Program",
+    "Resources",
+    "Resource Library",
+    "Blog",
+    "Demos",
+    "Events",
+    "Customers",
+    "Academy",
+    "Channels Guide",
+    "Playbooks Guide",
+    "Admin",
+    "Docs",
+    "API Reference",
+    "Release Notes",
+    "Join Community",
+    "Contribute",
+    "Deploy",
+    "Integrate",
+    "Install",
+    "Login",
+    "My Workspace",
+    "Admin Portal",
+    "Apps",
+    "Support",
+    "Try Mattermost",
+    "Integrated Security Operations",
+    "Out-of-Band Incident Response",
+    "Self-Sovereign Collaboration",
+    "Mission-Critical ChatOps",
+    "Real-Time DevSecOps Collaboration",
+    "Purpose-Built Collaboration Hub",
+    "Contact Sales"
+  ],
+  "forms": [],
+  "pageHeight": 8762,
+  "viewportHeight": 900,
+  "screens": 9.7
+}

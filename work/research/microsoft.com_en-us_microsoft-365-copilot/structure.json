@@ -1,0 +1,638 @@
+{
+  "title": "Microsoft 365 Copilot | AI Productivity Tools for Work",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "AI built for work",
+      "y": 306
+    },
+    {
+      "tag": "h2",
+      "text": "Microsoft 365 Copilot, powered by Work IQ",
+      "y": 877
+    },
+    {
+      "tag": "h2",
+      "text": "Chat + Cowork",
+      "y": 1883
+    },
+    {
+      "tag": "h2",
+      "text": "Search",
+      "y": 2803
+    },
+    {
+      "tag": "h2",
+      "text": "Agents",
+      "y": 3637
+    },
+    {
+      "tag": "h2",
+      "text": "Notebooks",
+      "y": 4539
+    },
+    {
+      "tag": "h2",
+      "text": "Create",
+      "y": 5397
+    },
+    {
+      "tag": "h2",
+      "text": "What’s new",
+      "y": 6206
+    },
+    {
+      "tag": "h3",
+      "text": "Copilot Cowork is here: built for your hardest tasks",
+      "y": 6716
+    },
+    {
+      "tag": "h3",
+      "text": "2026 Work Trend Index Report",
+      "y": 6716
+    },
+    {
+      "tag": "h3",
+      "text": "AI built for work: Making Frontier Transformation real",
+      "y": 6716
+    },
+    {
+      "tag": "h2",
+      "text": "Secure by design",
+      "y": 7083
+    },
+    {
+      "tag": "h3",
+      "text": "Built-in data privacy",
+      "y": 7784
+    },
+    {
+      "tag": "h3",
+      "text": "Governed access",
+      "y": 7784
+    },
+    {
+      "tag": "h3",
+      "text": "Control at every level",
+      "y": 7784
+    },
+    {
+      "tag": "h2",
+      "text": "Trusted by industry leaders",
+      "y": 8081
+    },
+    {
+      "tag": "h2",
+      "text": "Get started with Microsoft 365 Copilot",
+      "y": 8567
+    },
+    {
+      "tag": "h2",
+      "text": "Follow Microsoft 365",
+      "y": 8928
+    },
+    {
+      "tag": "h2",
+      "text": "What's new",
+      "y": 9011
+    },
+    {
+      "tag": "h2",
+      "text": "Microsoft Store",
+      "y": 9011
+    },
+    {
+      "tag": "h2",
+      "text": "Education",
+      "y": 9011
+    },
+    {
+      "tag": "h2",
+      "text": "Business",
+      "y": 9011
+    },
+    {
+      "tag": "h2",
+      "text": "Developer & IT",
+      "y": 9011
+    },
+    {
+      "tag": "h2",
+      "text": "Company",
+      "y": 9011
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 9426,
+      "heading": "AI built for work",
+      "textLength": 4875,
+      "images": 33,
+      "ctas": 112
+    },
+    {
+      "y": 100,
+      "height": 612,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 769,
+      "height": 1006,
+      "heading": "Microsoft 365 Copilot, powered by Work IQ",
+      "textLength": 279,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 769,
+      "height": 1006,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 1209,
+      "height": 566,
+      "heading": null,
+      "textLength": 0,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 1775,
+      "height": 920,
+      "heading": "Chat + Cowork",
+      "textLength": 252,
+      "images": 1,
+      "ctas": 4
+    },
+    {
+      "y": 1775,
+      "height": 920,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 2695,
+      "height": 833,
+      "heading": "Search",
+      "textLength": 237,
+      "images": 1,
+      "ctas": 2
+    },
+    {
+      "y": 2695,
+      "height": 833,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 3529,
+      "height": 903,
+      "heading": "Agents",
+      "textLength": 305,
+      "images": 1,
+      "ctas": 5
+    },
+    {
+      "y": 3529,
+      "height": 903,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 4431,
+      "height": 857,
+      "heading": "Notebooks",
+      "textLength": 320,
+      "images": 1,
+      "ctas": 2
+    },
+    {
+      "y": 4431,
+      "height": 857,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 5289,
+      "height": 809,
+      "heading": "Create",
+      "textLength": 198,
+      "images": 1,
+      "ctas": 2
+    },
+    {
+      "y": 5289,
+      "height": 809,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6098,
+      "height": 877,
+      "heading": "What’s new",
+      "textLength": 655,
+      "images": 4,
+      "ctas": 3
+    },
+    {
+      "y": 6098,
+      "height": 877,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 6382,
+      "height": 593,
+      "heading": "Copilot Cowork is here: built for your hardest tasks",
+      "textLength": 495,
+      "images": 3,
+      "ctas": 3
+    },
+    {
+      "y": 6975,
+      "height": 986,
+      "heading": "Secure by design",
+      "textLength": 654,
+      "images": 5,
+      "ctas": 1
+    },
+    {
+      "y": 6975,
+      "height": 986,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 7319,
+      "height": 642,
+      "heading": "Built-in data privacy",
+      "textLength": 448,
+      "images": 4,
+      "ctas": 0
+    },
+    {
+      "y": 7961,
+      "height": 470,
+      "heading": "Trusted by industry leaders",
+      "textLength": 52,
+      "images": 7,
+      "ctas": 1
+    },
+    {
+      "y": 7961,
+      "height": 470,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 8431,
+      "height": 420,
+      "heading": "Get started with Microsoft 365 Copilot",
+      "textLength": 189,
+      "images": 2,
+      "ctas": 2
+    },
+    {
+      "y": 8431,
+      "height": 420,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    }
+  ],
+  "ctas": [
+    {
+      "text": "How it works",
+      "y": 0,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(38, 38, 38)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Learn how to use it",
+      "y": 0,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(38, 38, 38)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Resources",
+      "y": 0,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(38, 38, 38)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "More",
+      "y": 0,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(38, 38, 38)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Download the app",
+      "y": 12,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(38, 38, 38)",
+      "tag": "a",
+      "href": "ms-windows-store://pdp/?ProductId=9wzdncrd29v9"
+    },
+    {
+      "text": "ME",
+      "y": 9,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(38, 38, 38)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Notebooks",
+      "y": 728,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 103, 184)",
+      "tag": "a",
+      "href": "#notebooks"
+    },
+    {
+      "text": "Chat",
+      "y": 1971,
+      "bg": "rgb(6, 22, 31)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": "#tabs-2_tab0"
+    },
+    {
+      "text": "Cowork",
+      "y": 1971,
+      "bg": "rgba(6, 22, 31, 0.1)",
+      "color": "rgb(5, 17, 24)",
+      "tag": "button",
+      "href": "#tabs-2_tab1"
+    },
+    {
+      "text": "Try Copilot",
+      "y": 3445,
+      "bg": "rgb(9, 31, 44)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://go.microsoft.com/fwlink/?linkid=2331666&clcid=0x409&culture=en-us&country=us"
+    },
+    {
+      "text": "Ready to use",
+      "y": 3725,
+      "bg": "rgb(6, 22, 31)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": "#tabs_tab0"
+    },
+    {
+      "text": "Build your own",
+      "y": 3725,
+      "bg": "rgba(6, 22, 31, 0.1)",
+      "color": "rgb(5, 17, 24)",
+      "tag": "button",
+      "href": "#tabs_tab1"
+    },
+    {
+      "text": "Try Copilot",
+      "y": 5205,
+      "bg": "rgb(9, 31, 44)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://go.microsoft.com/fwlink/?linkid=2331666&clcid=0x409&culture=en-us&country=us"
+    },
+    {
+      "text": "Try Copilot",
+      "y": 6014,
+      "bg": "rgb(9, 31, 44)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://go.microsoft.com/fwlink/?linkid=2331666&clcid=0x409&culture=en-us&country=us"
+    },
+    {
+      "text": "Download Center",
+      "y": 9111,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(97, 97, 97)",
+      "tag": "a",
+      "href": "https://www.microsoft.com/en-us/download"
+    },
+    {
+      "text": "Contact Microsoft",
+      "y": 9379,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(97, 97, 97)",
+      "tag": "a",
+      "href": "https://support.microsoft.com/contactus"
+    },
+    {
+      "text": "Feedback",
+      "y": 832,
+      "bg": "rgb(9, 31, 44)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "AI built for work",
+        "y": 306
+      },
+      {
+        "tag": "h2",
+        "text": "Microsoft 365 Copilot, powered by Work IQ",
+        "y": 877
+      }
+    ],
+    "ctas": [
+      {
+        "text": "How it works",
+        "y": 0,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Learn how to use it",
+        "y": 0,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Resources",
+        "y": 0,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "More",
+        "y": 0,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Download the app",
+        "y": 12,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "a",
+        "href": "ms-windows-store://pdp/?ProductId=9wzdncrd29v9"
+      },
+      {
+        "text": "ME",
+        "y": 9,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Notebooks",
+        "y": 728,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 103, 184)",
+        "tag": "a",
+        "href": "#notebooks"
+      },
+      {
+        "text": "Feedback",
+        "y": 832,
+        "bg": "rgb(9, 31, 44)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn-dynmedia-1.microsoft.com/is/image/microsoftcorp/3404169-HeroBG-Desktop-1600x612?resMode=sharp2&op_usm=1.5,0.",
+        "w": 1440,
+        "h": 612
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn-dynmedia-1.microsoft.com/is/image/microsoftcorp/6-BG-What_s-New?resMode=sharp2&op_usm=1.5,0.65,15,0&wid=2000",
+        "w": 1440,
+        "h": 1006
+      }
+    ],
+    "text": "Skip to main content Microsoft 365 Copilot How it works Plans and pricing Learn how to use it Resources More Open Copilot Chat Download the app Sign in ME Copilot Cowork is available—delegate your hardest tasks today. Read the blog MICROSOFT 365 COPILOT AI built for work Turn data into insights in t"
+  },
+  "nav": [
+    "Microsoft 365 Copilot",
+    "Plans and pricing",
+    "Open Copilot Chat",
+    "Download the app",
+    "Work IQ",
+    "Chat + Cowork",
+    "Search",
+    "Agents",
+    "Notebooks",
+    "Create",
+    "What’s new",
+    "Security",
+    "See plans and pricing",
+    "Open Copilot Chat",
+    "Surface Pro",
+    "Surface Laptop",
+    "Surface Laptop Ultra",
+    "Surface RTX Spark Dev Box",
+    "Copilot for organizations",
+    "Copilot for personal use",
+    "Explore Microsoft products",
+    "Windows 11 apps",
+    "Account profile",
+    "Download Center",
+    "Microsoft Store support",
+    "Returns",
+    "Order tracking",
+    "Certified Refurbished",
+    "Microsoft Store Promise",
+    "Flexible Payments",
+    "Microsoft in education",
+    "Devices for education",
+    "Microsoft Teams for Education",
+    "Microsoft 365 Education",
+    "How to buy for your school",
+    "Educator training and development",
+    "Deals for students and parents",
+    "AI for education",
+    "Microsoft AI",
+    "Microsoft Security",
+    "Dynamics 365",
+    "Microsoft 365",
+    "Microsoft Power Platform",
+    "Microsoft Teams",
+    "Microsoft 365 Copilot",
+    "Small Business",
+    "Azure",
+    "Microsoft Developer",
+    "Microsoft Learn",
+    "Support for AI marketplace apps",
+    "Microsoft Tech Community",
+    "Microsoft Marketplace",
+    "Software companies",
+    "Visual Studio",
+    "Careers",
+    "About Microsoft",
+    "Company news",
+    "Privacy at Microsoft",
+    "Investors",
+    "Diversity and inclusion",
+    "Accessibility",
+    "Sustainability",
+    "Sitemap",
+    "Contact Microsoft",
+    "Privacy",
+    "Terms of use",
+    "Trademarks",
+    "Safety & eco",
+    "Recycling",
+    "About our ads"
+  ],
+  "forms": [],
+  "pageHeight": 9426,
+  "viewportHeight": 900,
+  "screens": 10.5
+}

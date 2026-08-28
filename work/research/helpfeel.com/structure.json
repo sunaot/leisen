@@ -1,0 +1,341 @@
+{
+  "title": "Helpfeel（ヘルプフィール）｜AIチャット×RAGでVoc分析も疑問解決",
+  "headings": [
+    {
+      "tag": "h2",
+      "text": "Welcome to Helpfeel",
+      "y": 312
+    },
+    {
+      "tag": "h1",
+      "text": "AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現",
+      "y": 259
+    },
+    {
+      "tag": "h2",
+      "text": "Helpfeelとは？ 対顧客・社内からも。 問い合わせの逼迫・人手不足問題を AIでまるっと解決するサービスです",
+      "y": 1191
+    },
+    {
+      "tag": "h2",
+      "text": "どうやって解決してくれるの？ 自己解決に特化したAIが、あらゆるタッチポイントで 疑問を解消し、ナレッジ構築まで実行します",
+      "y": 2477
+    },
+    {
+      "tag": "h2",
+      "text": "サポートを自動化する、HelpfeelのAIソリューション",
+      "y": 3563
+    },
+    {
+      "tag": "h2",
+      "text": "導入時にサポートは受けられるの？ Helpfeelはサポート力が根幹です。 独自のメソッドと専属チームの伴走で、 導入から運用・課題解決までサポートします",
+      "y": 4925
+    },
+    {
+      "tag": "h2",
+      "text": "導入実績は？ 企業規模・業種業態問わず 900サイト以上で活用され、効果が実証されています",
+      "y": 5980
+    },
+    {
+      "tag": "h2",
+      "text": "Helpfeelの信頼性は？ 高い顧客満足度と万全のセキュリティで、 安心して導入いただけます",
+      "y": 6978
+    },
+    {
+      "tag": "h3",
+      "text": "信頼を守る、国際基準のセキュリティ",
+      "y": 7778
+    },
+    {
+      "tag": "h2",
+      "text": "NEWS",
+      "y": 8085
+    },
+    {
+      "tag": "h3",
+      "text": "Human to AIからAI to AI時代の到来を見据え、顧客接点を収益に変える「Helpfeel Growth」提供開始",
+      "y": 8233
+    },
+    {
+      "tag": "h3",
+      "text": "Helpfeel調査、生成AI経由のヘルプサイト流入数が1年で3.2倍 ゼロクリック時代の新たな顧客接点に",
+      "y": 8326
+    },
+    {
+      "tag": "h3",
+      "text": "Helpfeel、「ITトレンド上半期ランキング2026」にてチャットボット・FAQ・VOCカテゴリの4部門で第1位を獲得",
+      "y": 8419
+    },
+    {
+      "tag": "h3",
+      "text": "AIを導入して終わりにしません。 技術と伴走で、成果が出るところまで支援します。",
+      "y": 8765
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 900,
+      "heading": "Welcome to Helpfeel",
+      "textLength": 106,
+      "images": 2,
+      "ctas": 2
+    },
+    {
+      "y": 0,
+      "height": 9220,
+      "heading": "AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現",
+      "textLength": 1838,
+      "images": 80,
+      "ctas": 21
+    },
+    {
+      "y": 0,
+      "height": 909,
+      "heading": null,
+      "textLength": 0,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 610,
+      "height": 280,
+      "heading": null,
+      "textLength": 0,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 1111,
+      "height": 1286,
+      "heading": "Helpfeelとは？ 対顧客・社内からも。 問い合わせの逼迫・人手不足問題を AIでまるっと解決するサービスです",
+      "textLength": 341,
+      "images": 9,
+      "ctas": 4
+    },
+    {
+      "y": 2397,
+      "height": 2448,
+      "heading": "どうやって解決してくれるの？ 自己解決に特化したAIが、あらゆるタッチポイントで 疑問を解消し、ナレッジ構築まで実行します",
+      "textLength": 409,
+      "images": 13,
+      "ctas": 5
+    },
+    {
+      "y": 4845,
+      "height": 1054,
+      "heading": "導入時にサポートは受けられるの？ Helpfeelはサポート力が根幹です。 独自のメソッドと専属チームの伴走で、 導入から運用・課題解決までサポートします",
+      "textLength": 131,
+      "images": 4,
+      "ctas": 2
+    },
+    {
+      "y": 5900,
+      "height": 998,
+      "heading": "導入実績は？ 企業規模・業種業態問わず 900サイト以上で活用され、効果が実証されています",
+      "textLength": 56,
+      "images": 11,
+      "ctas": 5
+    },
+    {
+      "y": 6898,
+      "height": 1108,
+      "heading": "Helpfeelの信頼性は？ 高い顧客満足度と万全のセキュリティで、 安心して導入いただけます",
+      "textLength": 335,
+      "images": 5,
+      "ctas": 0
+    },
+    {
+      "y": 8005,
+      "height": 640,
+      "heading": "NEWS",
+      "textLength": 218,
+      "images": 0,
+      "ctas": 1
+    },
+    {
+      "y": 8199,
+      "height": 279,
+      "heading": "Human to AIからAI to AI時代の到来を見据え、顧客接点を収益に変える「Helpfeel Growth」提供開始",
+      "textLength": 207,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 8645,
+      "height": 486,
+      "heading": "AIを導入して終わりにしません。 技術と伴走で、成果が出るところまで支援します。",
+      "textLength": 65,
+      "images": 0,
+      "ctas": 2
+    },
+    {
+      "y": 9220,
+      "height": 954,
+      "heading": null,
+      "textLength": 600,
+      "images": 6,
+      "ctas": 36
+    }
+  ],
+  "ctas": [
+    {
+      "text": "資料ダウンロード",
+      "y": 59,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/download_resource/helpfeel_service_guide?bannername=header-cta"
+    },
+    {
+      "text": "お問い合わせ・デモ依頼",
+      "y": 59,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(249, 115, 22)",
+      "tag": "a",
+      "href": "/cntct?bannername=header-cta"
+    },
+    {
+      "text": "3分でわかる資料を見る",
+      "y": 567,
+      "bg": "rgb(0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://www.helpfeel.com/download_resource/helpfeel_service_guide?bannername=fv_cta"
+    },
+    {
+      "text": "分析 Helpfeel Analytics コールログ分析 AI活用の特許技術で問い合わせ削減・UX改善",
+      "y": 4034,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "https://www.helpfeel.com/analytics"
+    },
+    {
+      "text": "お問い合わせ・デモ依頼",
+      "y": 8935,
+      "bg": "rgb(241, 240, 240)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://cta-na2.hubspot.com/web-interactives/public/v1/track/click?encryptedPayload=AVxigLIzEPhnuYX6F2uZxnN5HvoQlap%2BdwtzNdfF7HWTPU0Fk%2FHQEf17VpjfRUuud2pdCtg4qQL1xZQcYi4ldmWXdYVIYvjAM%2Fg7XLI1d2UfOXzuJ%2Fj2sLqn01amSpPAb63O2HWpxa0tje4P2f%2FrnDlxA2D7iJqRKl4YhpVjA%2FY5aJhCmg%3D%3D&portalId=7282826&webInteractiveContentId=314459952882&webInteractiveId=717527187136&containerType=EMBEDDED&campaignId=&pageUrl=https%3A%2F%2Fwww.helpfeel.com%2F&pageTitle=Helpfeel%EF%BC%88%E3%83%98%E3%83%AB%E3%83%97%E3%83%95%E3%82%A3%E3%83%BC%E3%83%AB%EF%BC%89%EF%BD%9CAI%E3%83%81%E3%83%A3%E3%83%83%E3%83%88%C3%97RAG%E3%81%A7Voc%E5%88%86%E6%9E%90%E3%82%82%E7%96%91%E5%95%8F%E8%A7%A3%E6%B1%BA&referrer=&userAgent=Mozilla%2F5.0+%28X11%3B+Linux+x86_64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+HeadlessChrome%2F141.0.0.0+Safari%2F537.36&hutk=6d30fa28148b2772d82878ef4c87db1f&hssc=231522585.1.1787938980165&hstc=231522585.6d30fa28148b2772d82878ef4c87db1f.1787938980164.1787938980164.1787938980164.1&pageId=318883097318&analyticsPageId=318883097318&hsfp=c4934d32cd8015d7f048402a63ae8b96&canonicalUrl=https%3A%2F%2Fwww.helpfeel.com&contentType=standard-page"
+    },
+    {
+      "text": "資料をメールで受け取る",
+      "y": 8935,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(249, 115, 22)",
+      "tag": "a",
+      "href": "https://cta-na2.hubspot.com/web-interactives/public/v1/track/click?encryptedPayload=AVxigLJrSFD73e2byRhAs45kpkcal2Ol23RocgG9ounUflQWM5Oh%2F9bgLZM8YG2%2Bd41wAK0%2F6E36ZlWI%2BJNwhxT8Cv8xWB%2BBdBCOvcmduWQ%2FS2Ki8Bda8DS6fYYHAvPbdxEAHvQDRhy5iAwB1vKph7L0mMCI%2F0WbGUX1MSpVv19KG%2BW9IMbttkBvhGR8WX7rwonrQSHurgR4HFhGxL0MB%2BM%2FC7EDq24V&portalId=7282826&webInteractiveContentId=314459952882&webInteractiveId=717527187136&containerType=EMBEDDED&campaignId=&pageUrl=https%3A%2F%2Fwww.helpfeel.com%2F&pageTitle=Helpfeel%EF%BC%88%E3%83%98%E3%83%AB%E3%83%97%E3%83%95%E3%82%A3%E3%83%BC%E3%83%AB%EF%BC%89%EF%BD%9CAI%E3%83%81%E3%83%A3%E3%83%83%E3%83%88%C3%97RAG%E3%81%A7Voc%E5%88%86%E6%9E%90%E3%82%82%E7%96%91%E5%95%8F%E8%A7%A3%E6%B1%BA&referrer=&userAgent=Mozilla%2F5.0+%28X11%3B+Linux+x86_64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+HeadlessChrome%2F141.0.0.0+Safari%2F537.36&hutk=6d30fa28148b2772d82878ef4c87db1f&hssc=231522585.1.1787938980165&hstc=231522585.6d30fa28148b2772d82878ef4c87db1f.1787938980164.1787938980164.1787938980164.1&pageId=318883097318&analyticsPageId=318883097318&hsfp=c4934d32cd8015d7f048402a63ae8b96&canonicalUrl=https%3A%2F%2Fwww.helpfeel.com&contentType=standard-page"
+    },
+    {
+      "text": "検討資料・ホワイトペーパー",
+      "y": 9600,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/download_resource"
+    },
+    {
+      "text": "問い合わせ削減シミュレーション",
+      "y": 9668,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/simulation-reduction"
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 10085,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://www.helpfeel.com/cntct"
+    },
+    {
+      "text": "日本語",
+      "y": 10086,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h2",
+        "text": "Welcome to Helpfeel",
+        "y": 312
+      },
+      {
+        "tag": "h1",
+        "text": "AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現",
+        "y": 259
+      }
+    ],
+    "ctas": [
+      {
+        "text": "資料ダウンロード",
+        "y": 59,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/download_resource/helpfeel_service_guide?bannername=header-cta"
+      },
+      {
+        "text": "お問い合わせ・デモ依頼",
+        "y": 59,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(249, 115, 22)",
+        "tag": "a",
+        "href": "/cntct?bannername=header-cta"
+      },
+      {
+        "text": "3分でわかる資料を見る",
+        "y": 567,
+        "bg": "rgb(0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.helpfeel.com/download_resource/helpfeel_service_guide?bannername=fv_cta"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://www.helpfeel.com/hubfs/00_door/202602fv/fv1.webp",
+        "w": 642,
+        "h": 296
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://www.helpfeel.com/hubfs/00_door/202602fv/fv2.webp",
+        "w": 376,
+        "h": 296
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://www.helpfeel.com/hubfs/00_door/202602fv/fv3.webp",
+        "w": 251,
+        "h": 296
+      }
+    ],
+    "text": "Welcome to Helpfeel Based on your language settings we recommend our English language site. Enter site > 契約者さまログイン 用途・課題から探す 活用事例・実績 Helpfeelでできること 会社概要 料金 資料ダウンロード お問い合わせ・デモ依頼 AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが 24/365サポートを実現 顧客対応・社内サポートなどの場面で、社内のドキュメントをUPするだけでAIが回答を生成。問い合わせ対応の負荷を減らしながら、顧客・ユーザー体験"
+  },
+  "nav": [
+    "契約者さまログイン",
+    "用途・課題から探す",
+    "活用事例・実績",
+    "Helpfeelでできること",
+    "会社概要",
+    "料金",
+    "資料ダウンロード",
+    "お問い合わせ・デモ依頼"
+  ],
+  "forms": [],
+  "pageHeight": 10174,
+  "viewportHeight": 900,
+  "screens": 11.3
+}

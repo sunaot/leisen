@@ -1,0 +1,53 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h2",
+        "text": "Welcome to Helpfeel",
+        "y": 246
+      },
+      {
+        "tag": "h1",
+        "text": "AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが24/365サポートを実現",
+        "y": 160
+      }
+    ],
+    "ctas": [
+      {
+        "text": "資料ダウンロード",
+        "y": 25,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/download_resource/helpfeel_service_guide?bannername=header-cta"
+      },
+      {
+        "text": "デモ依頼",
+        "y": 25,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(249, 115, 22)",
+        "tag": "a",
+        "href": "/cntct?bannername=header-cta"
+      },
+      {
+        "text": "3分でわかる資料を見る",
+        "y": 489,
+        "bg": "rgb(0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.helpfeel.com/download_resource/helpfeel_service_guide?bannername=fv_cta"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Helpfeelの導入実績：シェア成長率No.1、問い合わせ削減実績70%、継続率99%、導入サイト数800以上",
+        "src": "https://www.helpfeel.com/hubfs/00_door/jisseki%20sp.svg",
+        "w": 342,
+        "h": 226
+      }
+    ],
+    "text": "Welcome to Helpfeel Based on your language settings we recommend our English language site. Enter site > 資料ダウンロード デモ依頼 AIチャットボット・FAQ・VoC分析が完結 ナレッジ・RAG検索 AIが24/365サポートを実現 顧客対応・社内サポートなどの場面で、社内のドキュメントをUPするだけでAIが回答を生成。問い合わせ対応の負荷を減らしながら、顧客・ユーザー体験を高めます。 3分でわかる資料を見る 特集：ナレッジ整備から応対業務の自動（オートパイロット）化まで！AIとプロが伴走"
+  },
+  "screens": 16
+}

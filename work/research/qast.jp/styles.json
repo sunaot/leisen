@@ -1,0 +1,99 @@
+{
+  "h1": {
+    "family": "YakuHanJP, Lato, \"Noto Sans JP\", sans-serif",
+    "size": "36px",
+    "weight": "700",
+    "color": "rgb(0, 0, 0)"
+  },
+  "fonts": [
+    {
+      "value": "YakuHanJP",
+      "weight": 1979
+    }
+  ],
+  "sizes": [
+    {
+      "value": "14px",
+      "weight": 585
+    },
+    {
+      "value": "16px",
+      "weight": 551
+    },
+    {
+      "value": "15px",
+      "weight": 487
+    },
+    {
+      "value": "18px",
+      "weight": 155
+    },
+    {
+      "value": "12px",
+      "weight": 62
+    },
+    {
+      "value": "10px",
+      "weight": 54
+    },
+    {
+      "value": "30px",
+      "weight": 33
+    },
+    {
+      "value": "36px",
+      "weight": 21
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(0, 0, 0)",
+      "weight": 1895
+    },
+    {
+      "value": "rgb(75, 75, 210)",
+      "weight": 51
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 33
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 19220716
+    },
+    {
+      "value": "GRADIENT:linear-gradient(105deg, rgb(244, 244, 255), rgb(255, 242, 249) 50%, rgb(255, 241",
+      "weight": 4058061
+    },
+    {
+      "value": "rgb(75, 75, 210)",
+      "weight": 28372
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "12px",
+      "weight": 19
+    },
+    {
+      "value": "6px",
+      "weight": 7
+    },
+    {
+      "value": "4px",
+      "weight": 6
+    },
+    {
+      "value": "8px",
+      "weight": 6
+    },
+    {
+      "value": "50px",
+      "weight": 5
+    }
+  ],
+  "darkMode": false
+}

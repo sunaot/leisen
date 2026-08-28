@@ -1,0 +1,38 @@
+TITLE: Gemini Enterprise app: ビジネスに最適な Google AI | Google Cloud
+SCREENS: 8.5 NAV(11): ['Gemini Enterprise app', '概要', 'エージェント', 'コネクタ', 'リソース', 'お問い合わせ', 'Google について', 'プライバシー', 'サイトの利用規約', 'Google Cloud の用語', 'Google の 30 年の気候変動対策: ご参加ください']
+HEADINGS:
+  h1 y=319: Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に
+  h3 y=831: 自社のビジネスデータに基づく AI で、生産性を向上
+  h3 y=1459: エージェント型タスクフォースの構築に必要なすべて
+  h3 y=1887: 自信を持ってエージェントをデプロイ
+  h3 y=2035: 組織全体の日常業務を変革
+  h2 y=2859: Gemini Enterprise app のエディションと料金
+  h2 y=3067: Business エディション
+  h3 y=3355: 主なメリット:
+  h2 y=3067: Standard / Plus エディション
+  h3 y=3471: Business エディションの全機能に次の機能をプラス:
+  h3 y=4483: Google Workspace の生産性向上アプリにご関心をお持ちですか？
+  h2 y=4683: セキュリティとガバナンス
+  h3 y=5347: Google AI を活用している大手組織の事例
+  h2 y=7103: Gemini Enterprise app で従業員を支援
+AF-TEXT: cloud.google.com では、サービスの提供および品質向上とトラフィックの分析に Google の Cookie が使用されています。 詳細 OK 【Next Tokyo】基調講演を含むセッションをアーカイブ公開中！最新の AI フルスタック環境や事例など、注目のテクノロジーをいつでもご視聴いただけます。 Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に Microsoft 365 や Google Workspace などに安全に接続 複数ステップ、複数アプリにわたるワークフローを自動化するエージェント お客様のデータはお
+AF-CTAS: [('OK', 848), ('お問い合わせ', 64), ('ログイン', 65)]
+AF-IMGS: [('img', 'Gemini Enterprise app のインターフェー', 636, 438), ('img', 'Workspace アプリを接続', 636, 318)]
+CTAS: ['OK', '実際に試す', 'Google Cloud のセールス アソシエイトにお問い合わせください', 'セールスチームにお問い合わせください', 'pause', 'すべて開く', 'Business エディションを 30 日間無料で試す', 'Standard エディションまたは Plus エディションを 30 日間無料で試す', 'Google Cloud の営業担当者にお問い合わせ', 'お問い合わせ', 'ログイン']
+SECTIONS:
+  y=213 h=494 ctas=2 imgs=5 | Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に
+  y=807 h=528 ctas=0 imgs=12 | 自社のビジネスデータに基づく AI で、生産性を向上
+  y=1435 h=500 ctas=3 imgs=8 | エージェント型タスクフォースの構築に必要なすべて
+  y=2035 h=636 ctas=1 imgs=30 | 組織全体の日常業務を変革
+  y=2771 h=1812 ctas=10 imgs=22 | Gemini Enterprise app のエディションと料金
+  y=4683 h=532 ctas=1 imgs=1 | セキュリティとガバナンス
+  y=5315 h=272 ctas=3 imgs=6 | Google AI を活用している大手組織の事例
+  y=5687 h=280 ctas=2 imgs=8 | None
+  y=6067 h=780 ctas=6 imgs=1 | None
+  y=6099 h=780 ctas=6 imgs=1 | None
+  y=6947 h=532 ctas=2 imgs=2 | Gemini Enterprise app で従業員を支援
+FORMS: [{'y': 15, 'fields': ['q']}]
+H1STYLE: {'family': '"Google Sans", Roboto, Arial, sans-serif', 'size': '45px', 'weight': '500', 'color': 'rgb(33, 34, 38)'}
+FONTS: [{'value': 'Google Sans Text', 'weight': 3522}, {'value': 'Google Sans', 'weight': 1690}, {'value': 'Google Sans Flex', 'weight': 122}]
+BGS: [{'value': 'rgb(255, 255, 255)', 'weight': 4310306}, {'value': 'rgb(248, 249, 252)', 'weight': 3775704}, {'value': 'rgba(0, 0, 0, 0.4)', 'weight': 1296000}, {'value': 'rgb(220, 241, 255)', 'weight': 651607}]
+DARK: False RADII: [{'value': '4px', 'weight': 73}, {'value': '9999px', 'weight': 64}, {'value': '0px 25px 25px 0px', 'weight': 33}]

@@ -1,0 +1,127 @@
+{
+  "h1": {
+    "family": "\"GitLab Sans\", sans-serif",
+    "size": "96px",
+    "weight": "660",
+    "color": "rgb(23, 19, 33)"
+  },
+  "fonts": [
+    {
+      "value": "GitLab Sans",
+      "weight": 2907
+    }
+  ],
+  "sizes": [
+    {
+      "value": "18px",
+      "weight": 1329
+    },
+    {
+      "value": "14px",
+      "weight": 564
+    },
+    {
+      "value": "32px",
+      "weight": 379
+    },
+    {
+      "value": "16px",
+      "weight": 310
+    },
+    {
+      "value": "24px",
+      "weight": 101
+    },
+    {
+      "value": "40px",
+      "weight": 89
+    },
+    {
+      "value": "96px",
+      "weight": 81
+    },
+    {
+      "value": "64px",
+      "weight": 54
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(116, 113, 122)",
+      "weight": 1199
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 1015
+    },
+    {
+      "value": "rgb(23, 19, 33)",
+      "weight": 600
+    },
+    {
+      "value": "rgb(209, 208, 211)",
+      "weight": 89
+    },
+    {
+      "value": "rgb(252, 109, 38)",
+      "weight": 4
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 3641473
+    },
+    {
+      "value": "rgb(23, 19, 33)",
+      "weight": 3033755
+    },
+    {
+      "value": "rgb(31, 28, 46)",
+      "weight": 2314622
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgba(23, 19, 33, 0), rgba(23, 19, 33, 0) 179px, rgb(23, 19, 33) ",
+      "weight": 1555200
+    },
+    {
+      "value": "rgba(0, 0, 0, 0.1)",
+      "weight": 1296000
+    },
+    {
+      "value": "GRADIENT:linear-gradient(90deg, rgb(238, 231, 253) 2.53%, rgba(246, 243, 254, 0.83) 50.98",
+      "weight": 1057455
+    },
+    {
+      "value": "GRADIENT:url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' ",
+      "weight": 1046160
+    },
+    {
+      "value": "rgb(235, 234, 236)",
+      "weight": 939600
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "8px",
+      "weight": 50
+    },
+    {
+      "value": "16px",
+      "weight": 30
+    },
+    {
+      "value": "4px",
+      "weight": 29
+    },
+    {
+      "value": "50%",
+      "weight": 5
+    },
+    {
+      "value": "999px",
+      "weight": 5
+    }
+  ],
+  "darkMode": true
+}

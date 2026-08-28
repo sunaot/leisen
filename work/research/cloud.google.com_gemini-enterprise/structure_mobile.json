@@ -1,0 +1,56 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に",
+        "y": 371
+      }
+    ],
+    "ctas": [
+      {
+        "text": "OK",
+        "y": 792,
+        "bg": "rgb(26, 115, 232)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "menu",
+        "y": 21,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgba(0, 0, 0, 0.65)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "ログイン",
+        "y": 65,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "close",
+        "y": 20,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(95, 99, 104)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "お問い合わせ",
+        "y": 319,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(95, 99, 104)",
+        "tag": "a",
+        "href": "https://cloud.google.com/contact/gemini-enterprise"
+      }
+    ],
+    "images": [],
+    "text": "cloud.google.com では、サービスの提供および品質向上とトラフィックの分析に Google の Cookie が使用されています。 詳細 OK 【Next Tokyo】基調講演を含むセッションをアーカイブ公開中！最新の AI フルスタック環境や事例など、注目のテクノロジーをいつでもご視聴いただけます。 Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に Microsoft 365 や Google Workspace などに安全に接続 複数ステップ、複数アプリにわたるワークフローを自動化するエージェント お客様のデータはお"
+  },
+  "screens": 14.6
+}

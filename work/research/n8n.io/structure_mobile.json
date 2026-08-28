@@ -1,0 +1,56 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h2",
+        "text": "AI agents and workflows you can see and control",
+        "y": 208
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Get your ticket →",
+        "y": 26,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://n8n.io/intheloop/?utm_source=site&utm_medium=organic&utm_campaign=2026_in_the_loop&utm_content=ecosystemday&utm_term=banner"
+      },
+      {
+        "text": "Get Started",
+        "y": 104,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://app.n8n.cloud/register"
+      },
+      {
+        "text": "Get started for free",
+        "y": 424,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://app.n8n.cloud/register"
+      },
+      {
+        "text": "Talk to sales",
+        "y": 480,
+        "bg": "oklab(0.715461 0.0000325143 0.0000143051 / 0.2)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://n8n-community.typeform.com/to/y9X2YuGa?ld_bookit_log_id=00DKB000000IOni2AG_1787939034358_7369017869084218"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Hero image",
+        "src": "/images/hero-bg.webp",
+        "w": 1248,
+        "h": 473
+      }
+    ],
+    "text": "AI Workflow Automation Platform - n8n In The Loop 2026, Berlin, October 14. Early bird tickets are now on sale. Get your ticket → n8n.io Get Started See llms.txt for all machine-readable content. AI agents and workflows you can see and control Build visually, go deep with code, connect to anything. "
+  },
+  "screens": 13.7
+}

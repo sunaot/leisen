@@ -1,0 +1,48 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Context in. Accurate, cost-efficient agents out.",
+        "y": 137
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Get a demo",
+        "y": 14,
+        "bg": "rgb(37, 38, 43)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/get-started"
+      },
+      {
+        "text": "Get a demo",
+        "y": 465,
+        "bg": "rgb(37, 38, 43)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/get-started"
+      },
+      {
+        "text": "Accept All",
+        "y": 733,
+        "bg": "rgb(56, 28, 136)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Customize Settings",
+        "y": 784,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(37, 38, 43)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [],
+    "text": "Get a demo Context in. Accurate, cost-efficient agents out. Credal is the enterprise platform where teams build and govern MCP servers, with curated context, tools, and cost-to-accuracy evals per workflow. Get a demo COMPATIBLE WITH +1000 revops-mcp-server SCOPED TOOLS 4 of 87 get_opportunities Sale"
+  },
+  "screens": 17.3
+}

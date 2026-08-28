@@ -1,0 +1,8 @@
+{
+  "url": "https://saisearch.sciseed.jp/",
+  "captured_at": "2026-08-28T17:42:28.407150Z",
+  "errors": [
+    "desktop: Page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://saisearch.sciseed.jp/\nCall log:\n  - navigating to \"https://saisearch.sciseed.jp/\", waiting until \"load\"\n",
+    "mobile: Page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://saisearch.sciseed.jp/\nCall log:\n  - navigating to \"https://saisearch.sciseed.jp/\", waiting until \"load\"\n"
+  ]
+}

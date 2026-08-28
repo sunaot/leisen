@@ -1,0 +1,56 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "AI built for work",
+        "y": 361
+      }
+    ],
+    "ctas": [
+      {
+        "text": "ME",
+        "y": 9,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Microsoft 365 Copilot",
+        "y": 54,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(38, 38, 38)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Notebooks",
+        "y": 785,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 103, 184)",
+        "tag": "a",
+        "href": null
+      },
+      {
+        "text": "Feedback",
+        "y": 776,
+        "bg": "rgb(9, 31, 44)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn-dynmedia-1.microsoft.com/is/image/microsoftcorp/6-BG-What_s-New?resMode=sharp2&op_usm=1.5,0.65,15,0&wid=2000",
+        "w": 390,
+        "h": 666
+      }
+    ],
+    "text": "Skip to main content ME Microsoft 365 Copilot Copilot Cowork is available—delegate your hardest tasks today. Read the blog MICROSOFT 365 COPILOT AI built for work Turn data into insights in the apps you already know with Microsoft 365 Copilot. See plans and pricing Open Microsoft 365 Copilot Noteboo"
+  },
+  "screens": 13.4
+}

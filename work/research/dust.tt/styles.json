@@ -1,0 +1,143 @@
+{
+  "h1": {
+    "family": "Geist, sans-serif",
+    "size": "69.12px",
+    "weight": "550",
+    "color": "oklch(0.147 0.004 49.25)"
+  },
+  "fonts": [
+    {
+      "value": "Geist",
+      "weight": 4777
+    },
+    {
+      "value": "__Source_Serif_4_25ee46",
+      "weight": 210
+    },
+    {
+      "value": "Geist Mono",
+      "weight": 64
+    },
+    {
+      "value": "ui-serif",
+      "weight": 7
+    }
+  ],
+  "sizes": [
+    {
+      "value": "14px",
+      "weight": 1801
+    },
+    {
+      "value": "16px",
+      "weight": 1788
+    },
+    {
+      "value": "18px",
+      "weight": 739
+    },
+    {
+      "value": "48px",
+      "weight": 262
+    },
+    {
+      "value": "24px",
+      "weight": 118
+    },
+    {
+      "value": "13px",
+      "weight": 78
+    },
+    {
+      "value": "56px",
+      "weight": 77
+    },
+    {
+      "value": "11px",
+      "weight": 57
+    }
+  ],
+  "textColors": [
+    {
+      "value": "oklch(0.444 0.011 78.213)",
+      "weight": 2399
+    },
+    {
+      "value": "oklch(0.147 0.004 49.25)",
+      "weight": 1583
+    },
+    {
+      "value": "oklab(0.147 0.00261104 0.00303026 / 0.7)",
+      "weight": 346
+    },
+    {
+      "value": "oklab(0.999994 0.0000455677 0.0000200868 / 0.7)",
+      "weight": 225
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 134
+    },
+    {
+      "value": "oklch(0.2511 0.0227 262.42)",
+      "weight": 83
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "oklch(1 0 0)",
+      "weight": 10231707
+    },
+    {
+      "value": "rgba(0, 0, 0, 0.7)",
+      "weight": 1322041
+    },
+    {
+      "value": "oklch(0.129 0.042 264.695)",
+      "weight": 1035630
+    },
+    {
+      "value": "oklch(0.9681 0.0183 232.5)",
+      "weight": 722026
+    },
+    {
+      "value": "oklch(0.986 0.002 67.802)",
+      "weight": 505296
+    },
+    {
+      "value": "oklab(0.208 -0.00310889 -0.0418848 / 0.9)",
+      "weight": 246240
+    },
+    {
+      "value": "oklch(0.929 0.013 255.508)",
+      "weight": 231982
+    },
+    {
+      "value": "oklch(0.9708 0.0169 349.48)",
+      "weight": 108105
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "3.35544e+07px",
+      "weight": 50
+    },
+    {
+      "value": "16px",
+      "weight": 11
+    },
+    {
+      "value": "15px",
+      "weight": 4
+    },
+    {
+      "value": "24px",
+      "weight": 4
+    },
+    {
+      "value": "12px",
+      "weight": 3
+    }
+  ],
+  "darkMode": true
+}

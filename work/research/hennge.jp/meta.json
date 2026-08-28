@@ -1,0 +1,8 @@
+{
+  "url": "https://hennge.jp/",
+  "captured_at": "2026-08-28T17:44:11.943339Z",
+  "errors": [
+    "desktop: Page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://hennge.jp/\nCall log:\n  - navigating to \"https://hennge.jp/\", waiting until \"load\"\n",
+    "mobile: Page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://hennge.jp/\nCall log:\n  - navigating to \"https://hennge.jp/\", waiting until \"load\"\n"
+  ]
+}

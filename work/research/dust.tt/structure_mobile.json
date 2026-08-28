@@ -1,0 +1,77 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Multiplayer AI for human-agent collaboration",
+        "y": 200
+      },
+      {
+        "tag": "h2",
+        "text": "Trusted by teams at 3,000+ global organizations",
+        "y": 631
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Sign in",
+        "y": 72,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/api/workos/login?returnTo=%2Fapi%2Flogin&posthog_id=a00b3489-24f0-4564-80f9-e6a2ad4959c1"
+      },
+      {
+        "text": "Try for free",
+        "y": 72,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.444 0.011 78.213)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Request a demo",
+        "y": 495,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/home/contact"
+      },
+      {
+        "text": "Request a demo",
+        "y": 495,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Try for free →",
+        "y": 495,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.444 0.011 78.213)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "reject non-essential cookies",
+        "y": 708,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "oklch(0.704 0.04 256.788)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Accept All Cookies",
+        "y": 772,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [],
+    "text": "NEW Dust announces Series B to fuel next chapter of growth Sign in Try for free Multiplayer AI for human-agent collaboration Dust connects your company knowledge, tools, and teams so you can create, share, and run agents across real workflows. Use different models for different tasks, with people in"
+  },
+  "screens": 11.7
+}

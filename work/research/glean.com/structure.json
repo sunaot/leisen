@@ -1,0 +1,431 @@
+{
+  "title": "あらゆる業務にWork AIを：エージェント、アシスタント、検索を統合するAIプラットフォーム",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Gleanは企業の知識、システム、 コンテキストをつなぎ、AIをエンタープライズ規模で活用できます。",
+      "y": 229
+    },
+    {
+      "tag": "h2",
+      "text": "世界を代表する企業がGleanでAIを活用しています。",
+      "y": 1286
+    },
+    {
+      "tag": "h2",
+      "text": "AI導入は加速し、 AIコストはさらに速いペースで増加しています。 ‍Gleanはビジネスとビジネスに必要なものを理解します。",
+      "y": 1898
+    },
+    {
+      "tag": "h2",
+      "text": "Gleanは企業の知識を アクションへと変換し、モデル利用コストの 肥大化を防ぎます。",
+      "y": 2816
+    },
+    {
+      "tag": "h2",
+      "text": "初日からエンタープライズ向けに構築。AIは、回答が安全で説明可能かつ権限を考慮している場合にのみ企業で機能します。",
+      "y": 3393
+    },
+    {
+      "tag": "h2",
+      "text": "実際に利用されるWork AI。モデルに柔軟に対応し、 企業全体から信頼されています。",
+      "y": 4099
+    },
+    {
+      "tag": "h3",
+      "text": "35種類以上 ユニークなLLMモデルに対応 （今後も拡大予定）",
+      "y": 4321
+    },
+    {
+      "tag": "h3",
+      "text": "110 時間 1ユーザーあたり年間の削減時間（節約時間）",
+      "y": 4321
+    },
+    {
+      "tag": "h3",
+      "text": "93% 2年未満で全社導入を実現",
+      "y": 4321
+    },
+    {
+      "tag": "h3",
+      "text": "275+ Connects to work apps and data sources",
+      "y": 4592
+    },
+    {
+      "tag": "h3",
+      "text": "3+ billion 社内サポートチケット数を削減",
+      "y": 4592
+    },
+    {
+      "tag": "h3",
+      "text": "99.9%+ Uptime across core search and AI services",
+      "y": 4592
+    },
+    {
+      "tag": "h2",
+      "text": "Work AIであらゆる部門を変革する。",
+      "y": 4988
+    },
+    {
+      "tag": "h3",
+      "text": "14,000人 従業員数",
+      "y": 5253
+    },
+    {
+      "tag": "h3",
+      "text": "初の全社導入 AIプラットフォーム",
+      "y": 5253
+    },
+    {
+      "tag": "h3",
+      "text": "50万件以上 月間アンケート回答数",
+      "y": 5253
+    },
+    {
+      "tag": "h3",
+      "text": "1.5時間以上 ユーザー1人あたりの週間削減時間",
+      "y": 5660
+    },
+    {
+      "tag": "h3",
+      "text": "80% 導入率",
+      "y": 5660
+    },
+    {
+      "tag": "h3",
+      "text": "3,400以上 エージェント数",
+      "y": 5660
+    },
+    {
+      "tag": "h3",
+      "text": "100年 以上 にわたるコンテンツを一元管理",
+      "y": 5757
+    },
+    {
+      "tag": "h3",
+      "text": "3週間 導入開始まで",
+      "y": 5757
+    },
+    {
+      "tag": "h3",
+      "text": "5ヶ月 全社統合まで",
+      "y": 5757
+    },
+    {
+      "tag": "h3",
+      "text": "20,000人以上 AIトレーニングを受講した従業員数",
+      "y": 5882
+    },
+    {
+      "tag": "h3",
+      "text": "2,700以上 導入済みエージェント数（継続的に増加中）",
+      "y": 5882
+    },
+    {
+      "tag": "h3",
+      "text": "ハイブリッド AIガバナンス",
+      "y": 5882
+    },
+    {
+      "tag": "h3",
+      "text": "1億人 以上 ユーザーを支援",
+      "y": 6006
+    },
+    {
+      "tag": "h3",
+      "text": "週2〜3時間 ユーザー1人あたりの業務時間を削減",
+      "y": 6006
+    },
+    {
+      "tag": "h3",
+      "text": "90% 以上 一部チームで利用率を達成",
+      "y": 6006
+    },
+    {
+      "tag": "h2",
+      "text": "Trusted by today’s leaders",
+      "y": 6200
+    },
+    {
+      "tag": "h2",
+      "text": "仕事を前進させるための 横断型AIプラットフォーム",
+      "y": 6547
+    },
+    {
+      "tag": "h2",
+      "text": "働き方の未来に向き合うための支援をします。",
+      "y": 7825
+    },
+    {
+      "tag": "h3",
+      "text": "Glean コミュニティから学ぶ",
+      "y": 8944
+    },
+    {
+      "tag": "h3",
+      "text": "戦略立案から 導入展開まで、専門家がサポート",
+      "y": 8944
+    },
+    {
+      "tag": "h3",
+      "text": "必要なときに、必要な答えを。",
+      "y": 8988
+    },
+    {
+      "tag": "h2",
+      "text": "Gleanの最新情報と注目コンテンツ",
+      "y": 9249
+    },
+    {
+      "tag": "h3",
+      "text": "The intelligence era is here: Efficient, governed, and proactive AI powered by enterprise context",
+      "y": 9596
+    },
+    {
+      "tag": "h2",
+      "text": "See Enterprise AI in action",
+      "y": 9807
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 900,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 64,
+      "height": 1184,
+      "heading": "Gleanは企業の知識、システム、 コンテキストをつなぎ、AIをエンタープライズ規模で活用できます。",
+      "textLength": 177,
+      "images": 12,
+      "ctas": 1
+    },
+    {
+      "y": 638,
+      "height": 238,
+      "heading": null,
+      "textLength": 124,
+      "images": 1,
+      "ctas": 3
+    },
+    {
+      "y": 1361,
+      "height": 438,
+      "heading": null,
+      "textLength": 134,
+      "images": 2,
+      "ctas": 2
+    },
+    {
+      "y": 1799,
+      "height": 708,
+      "heading": "AI導入は加速し、 AIコストはさらに速いペースで増加しています。 ‍Gleanはビジネスとビジネスに必要なものを理解します。",
+      "textLength": 874,
+      "images": 5,
+      "ctas": 0
+    },
+    {
+      "y": 2507,
+      "height": 765,
+      "heading": "Gleanは企業の知識を アクションへと変換し、モデル利用コストの 肥大化を防ぎます。",
+      "textLength": 137,
+      "images": 5,
+      "ctas": 0
+    },
+    {
+      "y": 3272,
+      "height": 730,
+      "heading": "初日からエンタープライズ向けに構築。AIは、回答が安全で説明可能かつ権限を考慮している場合にのみ企業で機能します。",
+      "textLength": 237,
+      "images": 10,
+      "ctas": 1
+    },
+    {
+      "y": 4002,
+      "height": 828,
+      "heading": "実際に利用されるWork AI。モデルに柔軟に対応し、 企業全体から信頼されています。",
+      "textLength": 322,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 4830,
+      "height": 1274,
+      "heading": "Work AIであらゆる部門を変革する。",
+      "textLength": 1133,
+      "images": 25,
+      "ctas": 6
+    },
+    {
+      "y": 6104,
+      "height": 317,
+      "heading": "Trusted by today’s leaders",
+      "textLength": 26,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 6421,
+      "height": 1253,
+      "heading": "仕事を前進させるための 横断型AIプラットフォーム",
+      "textLength": 169,
+      "images": 8,
+      "ctas": 1
+    },
+    {
+      "y": 7674,
+      "height": 830,
+      "heading": "働き方の未来に向き合うための支援をします。",
+      "textLength": 198,
+      "images": 11,
+      "ctas": 4
+    },
+    {
+      "y": 8504,
+      "height": 649,
+      "heading": "Glean コミュニティから学ぶ",
+      "textLength": 125,
+      "images": 7,
+      "ctas": 3
+    },
+    {
+      "y": 9152,
+      "height": 613,
+      "heading": "Gleanの最新情報と注目コンテンツ",
+      "textLength": 121,
+      "images": 6,
+      "ctas": 3
+    },
+    {
+      "y": 9891,
+      "height": 1209,
+      "heading": null,
+      "textLength": 1299,
+      "images": 15,
+      "ctas": 73
+    },
+    {
+      "y": 9987,
+      "height": 765,
+      "heading": null,
+      "textLength": 756,
+      "images": 12,
+      "ctas": 70
+    }
+  ],
+  "ctas": [
+    {
+      "text": "設定の管理",
+      "y": 806,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "デモを依頼",
+      "y": 73,
+      "bg": "rgb(52, 59, 237)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/get-a-demo"
+    },
+    {
+      "text": "デモを依頼",
+      "y": 554,
+      "bg": "rgb(0, 0, 0)",
+      "color": "rgb(254, 254, 254)",
+      "tag": "a",
+      "href": "/jp/get-a-demo"
+    },
+    {
+      "text": "Get a demo",
+      "y": 9807,
+      "bg": "rgb(0, 0, 0)",
+      "color": "rgb(254, 254, 254)",
+      "tag": "a",
+      "href": "/jp/get-a-demo"
+    },
+    {
+      "text": "開発者向け資料",
+      "y": 10270,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://developers.glean.com/"
+    },
+    {
+      "text": "Booking.com",
+      "y": 10501,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/resources/customer-stories/booking-com"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Gleanは企業の知識、システム、 コンテキストをつなぎ、AIをエンタープライズ規模で活用できます。",
+        "y": 229
+      }
+    ],
+    "ctas": [
+      {
+        "text": "設定の管理",
+        "y": 806,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "デモを依頼",
+        "y": 73,
+        "bg": "rgb(52, 59, 237)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/jp/get-a-demo"
+      },
+      {
+        "text": "デモを依頼",
+        "y": 554,
+        "bg": "rgb(0, 0, 0)",
+        "color": "rgb(254, 254, 254)",
+        "tag": "a",
+        "href": "/jp/get-a-demo"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn.prod.website-files.com/6127a84dfe068e153ef20572/6a043d7504d9c6465590e3eb_Hero-Glean-Bg.webp",
+        "w": 1376,
+        "h": 498
+      }
+    ],
+    "text": "___ このウェブサイトでは、Cookie などのテクノロジーを利用して、サイトの重要な機能や、分析、パーソナライゼーション、および ターゲットを絞った広告 を有効にしています。 詳細については、次のリンクをご覧ください。 プライバシーポリシー 設定の管理 インテリジェンスの時代が到来しました。重要な仕事にもっと時間を使えるようにしましょう。 Glean:GOを詳しく見る 製品 お客様 ソリューション リソース 会社情報 サインイン デモを依頼 あなたの会社を理解するWork AI Gleanは企業の知識、システム、 コンテキストをつなぎ、AIをエンタープライズ規模で活用できます。 デモを依頼"
+  },
+  "nav": [
+    "Glean:GOを詳しく見る",
+    "サインイン",
+    "デモを依頼"
+  ],
+  "forms": [
+    {
+      "y": 79,
+      "fields": [
+        "name"
+      ]
+    }
+  ],
+  "pageHeight": 11101,
+  "viewportHeight": 900,
+  "screens": 12.3
+}

@@ -1,0 +1,48 @@
+TITLE: Credal | Context in. Accurate, cost-efficient agents out.
+SCREENS: 9.8 NAV(6): ['Security', 'Case Studies', 'Careers', 'Docs', 'Pricing', 'Get a demo']
+HEADINGS:
+  h1 y=262: Context in. Accurate, cost-efficient agents out.
+  h2 y=1361: AI is only as good as the context you give it
+  h3 y=1990: How Checkr jumped 73% in Salesforce data accuracy using Credal's MCP
+  h2 y=2357: Connect every system and data source
+  h2 y=2990: Scope agents down to what they actually need
+  h2 y=3656: Know exactly where AI spend comes from, then cut it
+  h2 y=4532: Your rules follow through across every chat surface
+  h2 y=5304: Share skills company-wide
+  h3 y=5518: Ground in your context
+  h3 y=5636: Compose & govern
+  h3 y=5754: Cut duplicate work and spend
+  h2 y=6079: One registry to govern every agent and MCP server
+  h2 y=6721: Move fast without compromising control
+  h3 y=6708: Permissions inherited at the source
+  h3 y=6708: Control who can do what
+  h3 y=6949: Human-in-the-loop approvals
+  h3 y=6949: Agents only see what they need
+  h2 y=7362: Meet teams where they already work
+  h3 y=7722: Any chat surface
+  h3 y=7700: Deploy in your cloud
+  h3 y=7722: APIs & automation
+  h2 y=8054: Better agents start with better context.
+AF-TEXT: Platform Security Case Studies Careers About Docs Pricing Get a demo Context in. Accurate, cost-efficient agents out. Credal is the enterprise platform where teams build and govern MCP servers, with curated context, tools, and cost-to-accuracy evals per workflow. Get a demo COMPATIBLE WITH +1000 rev
+AF-CTAS: [('Get a demo', 16), ('Get a demo', 569), ('Accept All', 835), ('Customize Settings', 835)]
+AF-IMGS: []
+CTAS: ['Get a demo', 'Agent Registry', 'Accept All', 'Customize Settings']
+SECTIONS:
+  y=76 h=818 ctas=1 imgs=16 | Context in. Accurate, cost-efficient agents out.
+  y=894 h=349 ctas=10 imgs=10 | None
+  y=1242 h=673 ctas=0 imgs=0 | AI is only as good as the context you give it
+  y=1915 h=290 ctas=1 imgs=4 | How Checkr jumped 73% in Salesforce data accuracy using Credal's MCP
+  y=2205 h=648 ctas=0 imgs=9 | Connect every system and data source
+  y=2853 h=707 ctas=0 imgs=15 | Scope agents down to what they actually need
+  y=3560 h=826 ctas=0 imgs=1 | Know exactly where AI spend comes from, then cut it
+  y=4386 h=787 ctas=0 imgs=13 | Your rules follow through across every chat surface
+  y=5172 h=760 ctas=0 imgs=5 | Share skills company-wide
+  y=5933 h=585 ctas=0 imgs=9 | One registry to govern every agent and MCP server
+  y=6518 h=700 ctas=0 imgs=4 | Move fast without compromising control
+  y=7217 h=716 ctas=0 imgs=3 | Meet teams where they already work
+  y=7933 h=546 ctas=1 imgs=0 | Better agents start with better context.
+FORMS: []
+H1STYLE: {'family': '"Ginto Nord", "DM Sans", sans-serif', 'size': '50px', 'weight': '400', 'color': 'rgb(37, 38, 43)'}
+FONTS: [{'value': 'DM Sans', 'weight': 6040}, {'value': 'DM Mono', 'weight': 1155}, {'value': 'Ginto Nord', 'weight': 203}]
+BGS: [{'value': 'rgb(255, 255, 255)', 'weight': 5564437}, {'value': 'rgb(37, 38, 43)', 'weight': 4169084}, {'value': 'rgb(250, 245, 243)', 'weight': 2624377}, {'value': 'GRADIENT:linear-gradient(rgb(255, 255, 255) 0%, rgb(244, 250, 255) 100%)', 'weight': 1178100}]
+DARK: True RADII: [{'value': '20px', 'weight': 20}, {'value': '9px', 'weight': 16}, {'value': '64px', 'weight': 13}]

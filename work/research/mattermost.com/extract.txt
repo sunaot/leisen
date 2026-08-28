@@ -1,0 +1,67 @@
+TITLE: Mattermost | Collaboration Platform for Mission Critical Work
+SCREENS: 9.7 NAV(63): ['Platform', 'Overview', 'Channels', 'Playbooks', 'Integrations', 'Mobile', 'AI', 'Security', 'Trust Center', 'MS Teams', 'Atlassian', 'GitLab', 'On-Premise', 'Cloud']
+HEADINGS:
+  h1 y=418: Operational Sovereignty for National Security and Critical Infrastructure
+  h2 y=1132: Control in a Connected World
+  h2 y=2098: Talk to a specialist in your region:
+  h2 y=2981: Built for real-world mission success
+  h2 y=3834: Proven in Mission-Critical Environments
+  h2 y=4105: Enelyst powers a global energy intelligence community with Mattermost
+  h2 y=4105: Air Mobility Command uses ChatOps to support largest-ever readiness exercise
+  h2 y=4105: European public agency chooses Mattermost & Pexip for secure collaboration, replacing Skype for Busi
+  h2 y=4105: Fujitsu Customers with Biodrug Design Accelerator (BDA) use Mattermost to power secure collaboration
+  h2 y=4105: Enelyst powers a global energy intelligence community with Mattermost
+  h2 y=4105: Air Mobility Command uses ChatOps to support largest-ever readiness exercise
+  h2 y=4105: European public agency chooses Mattermost & Pexip for secure collaboration, replacing Skype for Busi
+  h2 y=4105: Fujitsu Customers with Biodrug Design Accelerator (BDA) use Mattermost to power secure collaboration
+  h2 y=4666: Purpose-built for critical infrastructure use cases:
+  h3 y=4982: Self Sovereign Collaboration
+  h3 y=4952: Integrated Security Operations
+  h3 y=4982: Command + Control
+  h3 y=5515: Out of Band Incident Response
+  h3 y=5515: Real-Time DevSecOps Collaboration
+  h3 y=5546: Purpose Built Collaboration
+  h2 y=5991: The Intelligent Mission Environment
+  h2 y=6284: Microsoft Teams Interoperability
+  h2 y=6270: See It All in Action
+  h2 y=6284: Secure Messaging & Channels
+  h2 y=6284: Workflow & Playbook Automation
+  h2 y=6284: Audio & Screenshare
+  h2 y=6284: Project & Task Management
+  h2 y=6284: Human-Machine Teaming
+  h2 y=6270: Integration & AI Platform
+  h2 y=6249: Sovereign, Integrated Language Translation
+  h2 y=6284: Advanced Information Controls
+  h2 y=6284: Microsoft Teams Interoperability
+AF-TEXT: Skip to content Introducing Mattermost Enterprise Advanced: The Future of Multi-Domain Secure Operations – Learn More Platform PLATFORM Overview Channels Playbooks Integrations Mobile AI Security Trust Center INTEROPERABILITY MS Teams Atlassian GitLab FLEXIBLE DEPLOYMENT On-Premise Cloud Solutions U
+AF-CTAS: [('Playbooks', 292), ('Demos', 292), ('Playbooks Guide', 292), ('Join Community', 207), ('Try Mattermost', 65), ('Contact Sales', 65), ('Talk to an Expert', 763), ('Cookies Settings', 727)]
+AF-IMGS: [('img', 'Collaborative intelligence tea', 1600, 900)]
+CTAS: ['Playbooks', 'Demos', 'Playbooks Guide', 'Join Community', 'Try Mattermost', 'Contact Sales', 'Talk to an Expert', 'Contact Us', 'Cookies Settings', 'Reject Optional Cookies', 'Allow All Cookies']
+SECTIONS:
+  y=120 h=780 ctas=1 imgs=1 | Operational Sovereignty for National Security and Critical Infrastructure
+  y=692 h=208 ctas=4 imgs=0 | None
+  y=900 h=1098 ctas=1 imgs=8 | Control in a Connected World
+  y=1334 h=614 ctas=1 imgs=1 | None
+  y=2191 h=600 ctas=8 imgs=8 | None
+  y=2841 h=892 ctas=0 imgs=5 | Built for real-world mission success
+  y=3734 h=882 ctas=12 imgs=25 | Proven in Mission-Critical Environments
+  y=3954 h=662 ctas=12 imgs=24 | Enelyst powers a global energy intelligence community with Mattermost
+  y=4763 h=1127 ctas=6 imgs=6 | Self Sovereign Collaboration
+  y=5891 h=786 ctas=14 imgs=14 | The Intelligent Mission Environment
+  y=6111 h=566 ctas=14 imgs=14 | Microsoft Teams Interoperability
+  y=6151 h=404 ctas=1 imgs=1 | See It All in Action
+  y=6151 h=404 ctas=0 imgs=1 | Secure Messaging & Channels
+  y=6151 h=404 ctas=0 imgs=1 | Workflow & Playbook Automation
+  y=6151 h=404 ctas=0 imgs=1 | Audio & Screenshare
+  y=6151 h=404 ctas=0 imgs=1 | Project & Task Management
+  y=6151 h=404 ctas=0 imgs=1 | Human-Machine Teaming
+  y=6151 h=404 ctas=0 imgs=1 | Integration & AI Platform
+  y=6151 h=404 ctas=0 imgs=1 | Sovereign, Integrated Language Translation
+  y=6151 h=404 ctas=0 imgs=1 | Advanced Information Controls
+  y=6776 h=918 ctas=0 imgs=1 | Deploy anywhere. Control everything.
+  y=7130 h=564 ctas=0 imgs=1 | Designed for teams with stringent security & privacy requirements
+FORMS: []
+H1STYLE: {'family': 'trade-gothic-next, sans-serif', 'size': '61px', 'weight': '800', 'color': 'rgb(255, 255, 255)'}
+FONTS: [{'value': 'trade-gothic-next', 'weight': 11023}]
+BGS: [{'value': 'rgb(255, 255, 255)', 'weight': 14410306}, {'value': 'rgba(255, 255, 255, 0.9)', 'weight': 3564487}, {'value': 'rgb(172, 176, 186)', 'weight': 2852010}, {'value': 'rgb(235, 235, 239)', 'weight': 1131480}]
+DARK: True RADII: [{'value': '5px', 'weight': 30}, {'value': '50%', 'weight': 14}, {'value': '4px', 'weight': 4}]
