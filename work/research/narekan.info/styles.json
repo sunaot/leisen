@@ -1,0 +1,111 @@
+{
+  "h1": {
+    "family": "\"Noto Sans JP\", sans-serif",
+    "size": "46px",
+    "weight": "700",
+    "color": "rgb(255, 255, 255)"
+  },
+  "fonts": [
+    {
+      "value": "Noto Sans JP",
+      "weight": 2149
+    }
+  ],
+  "sizes": [
+    {
+      "value": "14px",
+      "weight": 973
+    },
+    {
+      "value": "16px",
+      "weight": 745
+    },
+    {
+      "value": "20px",
+      "weight": 209
+    },
+    {
+      "value": "18px",
+      "weight": 67
+    },
+    {
+      "value": "12px",
+      "weight": 37
+    },
+    {
+      "value": "30px",
+      "weight": 33
+    },
+    {
+      "value": "34px",
+      "weight": 27
+    },
+    {
+      "value": "24px",
+      "weight": 22
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(0, 91, 100)",
+      "weight": 1434
+    },
+    {
+      "value": "rgb(249, 168, 37)",
+      "weight": 339
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 335
+    },
+    {
+      "value": "rgb(0, 131, 143)",
+      "weight": 41
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 9932908
+    },
+    {
+      "value": "rgb(249, 248, 246)",
+      "weight": 9391086
+    },
+    {
+      "value": "rgb(0, 131, 143)",
+      "weight": 1440360
+    },
+    {
+      "value": "rgb(249, 168, 37)",
+      "weight": 258802
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgba(0, 0, 0, 0) 70%, rgb(252, 215, 156) 30%)",
+      "weight": 123594
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "6px",
+      "weight": 29
+    },
+    {
+      "value": "10px",
+      "weight": 21
+    },
+    {
+      "value": "12px",
+      "weight": 12
+    },
+    {
+      "value": "8px",
+      "weight": 7
+    },
+    {
+      "value": "5px",
+      "weight": 6
+    }
+  ],
+  "darkMode": true
+}

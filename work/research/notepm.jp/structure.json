@@ -1,0 +1,625 @@
+{
+  "title": "NotePM - AI・マニュアル作成・ナレッジ管理",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "社内の知りたい、 すぐ見つかる。",
+      "y": 198
+    },
+    {
+      "tag": "h2",
+      "text": "こんな お 悩 み ありませんか？",
+      "y": 878
+    },
+    {
+      "tag": "h2",
+      "text": "“ 属人化した情報 ” を “ 会社のナレッジ ” に",
+      "y": 1513
+    },
+    {
+      "tag": "h3",
+      "text": "カンタン・シンプル",
+      "y": 1722
+    },
+    {
+      "tag": "h3",
+      "text": "わかりやすい操作性",
+      "y": 1781
+    },
+    {
+      "tag": "h3",
+      "text": "誰でも手軽にキレイに",
+      "y": 2183
+    },
+    {
+      "tag": "h3",
+      "text": "マニュアル作成",
+      "y": 2242
+    },
+    {
+      "tag": "h3",
+      "text": "もう検索で困らない",
+      "y": 2681
+    },
+    {
+      "tag": "h3",
+      "text": "全文検索・関連度検索",
+      "y": 2739
+    },
+    {
+      "tag": "h3",
+      "text": "AIがあらゆる文章を、",
+      "y": 3186
+    },
+    {
+      "tag": "h3",
+      "text": "ナレッジに変える",
+      "y": 3245
+    },
+    {
+      "tag": "h3",
+      "text": "社内ナレッジを調べて",
+      "y": 3700
+    },
+    {
+      "tag": "h3",
+      "text": "答えるAIチャットボット",
+      "y": 3759
+    },
+    {
+      "tag": "h3",
+      "text": "銀行・大学も導入",
+      "y": 4145
+    },
+    {
+      "tag": "h3",
+      "text": "強固なセキュリティ",
+      "y": 4197
+    },
+    {
+      "tag": "h2",
+      "text": "NotePMは、 ナレッジやノウハウを一元管理できる ナレッジマネジメントツールです。",
+      "y": 5412
+    },
+    {
+      "tag": "h2",
+      "text": "活用シーン",
+      "y": 6116
+    },
+    {
+      "tag": "h3",
+      "text": "社内マニュアル",
+      "y": 6384
+    },
+    {
+      "tag": "h3",
+      "text": "業務手順書",
+      "y": 6384
+    },
+    {
+      "tag": "h3",
+      "text": "お知らせ・社内報",
+      "y": 6384
+    },
+    {
+      "tag": "h3",
+      "text": "社内FAQ",
+      "y": 6384
+    },
+    {
+      "tag": "h3",
+      "text": "日報",
+      "y": 6384
+    },
+    {
+      "tag": "h3",
+      "text": "議事録",
+      "y": 6628
+    },
+    {
+      "tag": "h3",
+      "text": "営業ノウハウ",
+      "y": 6628
+    },
+    {
+      "tag": "h3",
+      "text": "入社後OJT",
+      "y": 6628
+    },
+    {
+      "tag": "h3",
+      "text": "目標管理・OKR",
+      "y": 6628
+    },
+    {
+      "tag": "h3",
+      "text": "効率化Tips",
+      "y": 6628
+    },
+    {
+      "tag": "h3",
+      "text": "士業",
+      "y": 6872
+    },
+    {
+      "tag": "h3",
+      "text": "コールセンター",
+      "y": 6872
+    },
+    {
+      "tag": "h3",
+      "text": "システム開発",
+      "y": 6872
+    },
+    {
+      "tag": "h3",
+      "text": "医療クリニック",
+      "y": 6872
+    },
+    {
+      "tag": "h3",
+      "text": "設計・製造・商品",
+      "y": 6872
+    },
+    {
+      "tag": "h2",
+      "text": "プラン別料金表",
+      "y": 7222
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 8401
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 8401
+    },
+    {
+      "tag": "h3",
+      "text": "",
+      "y": 8676
+    },
+    {
+      "tag": "h2",
+      "text": "実績でみるNotePM",
+      "y": 9055
+    },
+    {
+      "tag": "h3",
+      "text": "銀行・大学も導入",
+      "y": 9954
+    },
+    {
+      "tag": "h3",
+      "text": "高水準のセキュリティ",
+      "y": 10006
+    },
+    {
+      "tag": "h2",
+      "text": "導入事例",
+      "y": 10441
+    },
+    {
+      "tag": "h3",
+      "text": "【ドコモSMTBネット銀行】組織変革を支える社内wikiツール",
+      "y": 10893
+    },
+    {
+      "tag": "h3",
+      "text": "【ラクス】検索時間が4割削減！急成長SaaSが実践するナレッジ共有",
+      "y": 10871
+    },
+    {
+      "tag": "h3",
+      "text": "【PayPay銀行】カスタマーセンターの課題が解決！検索機能向上で満足度UP",
+      "y": 10871
+    },
+    {
+      "tag": "h2",
+      "text": "サポートコンテンツ",
+      "y": 11348
+    },
+    {
+      "tag": "h3",
+      "text": "ヘルプセンター",
+      "y": 11829
+    },
+    {
+      "tag": "h3",
+      "text": "使い方の解説や セミナーの様子を公開",
+      "y": 11592
+    },
+    {
+      "tag": "h3",
+      "text": "資料を ダウンロード",
+      "y": 11774
+    },
+    {
+      "tag": "h2",
+      "text": "NotePMに興味をお持ちの方へ",
+      "y": 12040
+    }
+  ],
+  "sections": [
+    {
+      "y": 119,
+      "height": 494,
+      "heading": "社内の知りたい、 すぐ見つかる。",
+      "textLength": 135,
+      "images": 5,
+      "ctas": 0
+    },
+    {
+      "y": 798,
+      "height": 626,
+      "heading": "こんな お 悩 み ありませんか？",
+      "textLength": 227,
+      "images": 10,
+      "ctas": 0
+    },
+    {
+      "y": 1424,
+      "height": 3168,
+      "heading": "“ 属人化した情報 ” を “ 会社のナレッジ ” に",
+      "textLength": 1038,
+      "images": 12,
+      "ctas": 1
+    },
+    {
+      "y": 4591,
+      "height": 784,
+      "heading": null,
+      "textLength": 242,
+      "images": 5,
+      "ctas": 1
+    },
+    {
+      "y": 5375,
+      "height": 477,
+      "heading": "NotePMは、 ナレッジやノウハウを一元管理できる ナレッジマネジメントツールです。",
+      "textLength": 219,
+      "images": 4,
+      "ctas": 2
+    },
+    {
+      "y": 6036,
+      "height": 1106,
+      "heading": "活用シーン",
+      "textLength": 568,
+      "images": 15,
+      "ctas": 1
+    },
+    {
+      "y": 7142,
+      "height": 1422,
+      "heading": "プラン別料金表",
+      "textLength": 1009,
+      "images": 10,
+      "ctas": 4
+    },
+    {
+      "y": 8564,
+      "height": 394,
+      "heading": null,
+      "textLength": 46,
+      "images": 4,
+      "ctas": 2
+    },
+    {
+      "y": 8959,
+      "height": 1402,
+      "heading": "実績でみるNotePM",
+      "textLength": 515,
+      "images": 16,
+      "ctas": 1
+    },
+    {
+      "y": 10361,
+      "height": 907,
+      "heading": "導入事例",
+      "textLength": 422,
+      "images": 12,
+      "ctas": 4
+    },
+    {
+      "y": 11268,
+      "height": 700,
+      "heading": "サポートコンテンツ",
+      "textLength": 128,
+      "images": 5,
+      "ctas": 3
+    },
+    {
+      "y": 11968,
+      "height": 476,
+      "heading": "NotePMに興味をお持ちの方へ",
+      "textLength": 217,
+      "images": 3,
+      "ctas": 3
+    }
+  ],
+  "ctas": [
+    {
+      "text": "無料オンライン相談会",
+      "y": -119,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://notepm.jp/help/online-demo"
+    },
+    {
+      "text": "お問い合わせ",
+      "y": -119,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://help.notepm.jp/hc/ja/requests/new"
+    },
+    {
+      "text": "無料でお試し",
+      "y": -61,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "資料ダウンロード",
+      "y": -62,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "無料でお試し",
+      "y": 629,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "資料ダウンロード",
+      "y": 629,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "無料でお試し",
+      "y": 5756,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "資料ダウンロード",
+      "y": 5756,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "無料でお試し",
+      "y": 8851,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "資料ダウンロード",
+      "y": 8851,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "無料でお試し",
+      "y": 12292,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "資料ダウンロード",
+      "y": 12292,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "問い合わせる",
+      "y": 12292,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://help.notepm.jp/hc/ja/requests/new"
+    },
+    {
+      "text": "無料でお試し",
+      "y": 12725,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "資料ダウンロード",
+      "y": 12785,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(60, 140, 220)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "30日間無料でお試し",
+      "y": 12550,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://notepm.jp/register"
+    },
+    {
+      "text": "サービス紹介資料",
+      "y": 12578,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://notepm.jp/pamphlet"
+    },
+    {
+      "text": "無料オンライン相談会",
+      "y": 12606,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://notepm.jp/help/online-demo"
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 12634,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://help.notepm.jp/hc/ja/requests/new"
+    },
+    {
+      "text": "お役立ち資料集",
+      "y": 12606,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(40, 50, 60)",
+      "tag": "a",
+      "href": "https://notepm.jp/resources"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "社内の知りたい、 すぐ見つかる。",
+        "y": 198
+      },
+      {
+        "tag": "h2",
+        "text": "こんな お 悩 み ありませんか？",
+        "y": 878
+      }
+    ],
+    "ctas": [
+      {
+        "text": "無料オンライン相談会",
+        "y": -119,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(40, 50, 60)",
+        "tag": "a",
+        "href": "https://notepm.jp/help/online-demo"
+      },
+      {
+        "text": "お問い合わせ",
+        "y": -119,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(40, 50, 60)",
+        "tag": "a",
+        "href": "https://help.notepm.jp/hc/ja/requests/new"
+      },
+      {
+        "text": "無料でお試し",
+        "y": -61,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://notepm.jp/register"
+      },
+      {
+        "text": "資料ダウンロード",
+        "y": -62,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(60, 140, 220)",
+        "tag": "a",
+        "href": "https://notepm.jp/pamphlet"
+      },
+      {
+        "text": "無料でお試し",
+        "y": 629,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://notepm.jp/register"
+      },
+      {
+        "text": "資料ダウンロード",
+        "y": 629,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(60, 140, 220)",
+        "tag": "a",
+        "href": "https://notepm.jp/pamphlet"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/point-1-C7qGck1z.png",
+        "w": 128,
+        "h": 110
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/point-2-CJmzqm54.png",
+        "w": 128,
+        "h": 110
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/point-3-JUhauWhT.png",
+        "w": 128,
+        "h": 110
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/device-Bc4vWsYi.png",
+        "w": 700,
+        "h": 454
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/woman-Blburosd.png",
+        "w": 650,
+        "h": 570
+      }
+    ],
+    "text": "無料オンライン相談会 お問い合わせ ヘルプセンター ログイン ホーム 料金 NotePM AI 機能 解決 する 課題 導入事例 お役立ち 資料 + 無料でお試し 資料ダウンロード AI・マニュアル作成・ナレッジ管理 社内の知りたい、 すぐ見つかる。 ※1 登録企業はNotePM上でチーム登録を完了している数(無料トライアル含む) ※2 登録企業、継続率は2025年7月時点 AI機能追加!! 要約・文章校正・翻訳 チャットボット機能を搭載!! 無料でお試し 資料ダウンロード こんな お 悩 み ありませんか？ NotePMは、これらの課題を解決するナレッジマネジメントツールです 経営者・役職者"
+  },
+  "nav": [
+    "無料オンライン相談会",
+    "お問い合わせ",
+    "ヘルプセンター",
+    "ログイン",
+    "ホーム",
+    "料金",
+    "NotePM AI",
+    "機能",
+    "解決 する 課題",
+    "導入事例",
+    "無料でお試し",
+    "資料ダウンロード"
+  ],
+  "forms": [],
+  "pageHeight": 13165,
+  "viewportHeight": 900,
+  "screens": 14.6
+}

@@ -1,0 +1,17 @@
+# Ring A — direct competitors (LLM×社内横断検索/エンタープライズサーチ)
+https://www.glean.com/ja
+https://onyx.app
+https://www.gosearch.ai
+https://www.coveo.com/en
+https://www.getguru.com
+https://aws.amazon.com/jp/q/business/
+https://www.qs.sei-info.co.jp/
+https://www.brains-tech.co.jp/neuron/
+https://www.helpfeel.com/
+# Ring B — adjacent (ナレッジ管理・社内wiki)
+https://qast.jp/
+https://www.narekan.info/
+https://notepm.jp/
+# Ring C — same audience buys (情シス向けSaaS)
+https://hennge.com/jp/service/one/
+https://www.lanscope.jp/

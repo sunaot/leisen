@@ -1,0 +1,40 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "意図予測検索 × AIエージェント 問い合わせを、AIが減らす。 コンバージョンを、AIが増やす。",
+        "y": 160
+      }
+    ],
+    "ctas": [
+      {
+        "text": "資料ダウンロード",
+        "y": 25,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/download_resource/helpfeel_service_guide?bannername=header-cta"
+      },
+      {
+        "text": "デモ依頼",
+        "y": 25,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(249, 115, 22)",
+        "tag": "a",
+        "href": "/cntct?bannername=header-cta"
+      },
+      {
+        "text": "3分でわかる資料を見る",
+        "y": 508,
+        "bg": "rgb(0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.helpfeel.com/download_resource/helpfeel_service_guide"
+      }
+    ],
+    "images": [],
+    "text": "資料ダウンロード デモ依頼 意図予測検索 × AIエージェント 問い合わせを、AIが減らす。 コンバージョンを、AIが増やす。 社内外の「わからない」を24/365で自己解決。社内ドキュメントをUPするだけでAIが回答を生成し、対応負荷を減らします。 3分でわかる資料を見る 特集：ナレッジ整備から応対業務の自動（オートパイロット）化まで！AIとプロが伴走する「オートパイロット運用」とは｜詳しく見る ＞ ※1 出典：富士キメラ総研「2025 生成AI／LLMで飛躍するAI市場総調査」FAQ市場において ※2 2026年1月現在 Helpfeelとは？ 対顧客・社内からも。 問い合わせの逼迫・人手"
+  },
+  "screens": 16
+}

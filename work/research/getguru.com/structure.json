@@ -1,0 +1,189 @@
+{
+  "title": "The Governed Knowledge Layer for Enterprise AI | Guru",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Stop running your business on confidently wr🚫ng AI.",
+      "y": 219
+    }
+  ],
+  "sections": [
+    {
+      "y": 66,
+      "height": 771,
+      "heading": "Stop running your business on confidently wr🚫ng AI.",
+      "textLength": 298,
+      "images": 27,
+      "ctas": 3
+    },
+    {
+      "y": 837,
+      "height": 235,
+      "heading": null,
+      "textLength": 1305,
+      "images": 14,
+      "ctas": 0
+    },
+    {
+      "y": 1072,
+      "height": 962,
+      "heading": null,
+      "textLength": 535,
+      "images": 29,
+      "ctas": 1
+    },
+    {
+      "y": 2034,
+      "height": 614,
+      "heading": null,
+      "textLength": 270,
+      "images": 4,
+      "ctas": 2
+    },
+    {
+      "y": 2648,
+      "height": 397,
+      "heading": null,
+      "textLength": 212,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 3046,
+      "height": 737,
+      "heading": null,
+      "textLength": 179,
+      "images": 2,
+      "ctas": 0
+    },
+    {
+      "y": 3152,
+      "height": 524,
+      "heading": null,
+      "textLength": 179,
+      "images": 2,
+      "ctas": 0
+    },
+    {
+      "y": 3229,
+      "height": 334,
+      "heading": null,
+      "textLength": 111,
+      "images": 0,
+      "ctas": 0
+    },
+    {
+      "y": 3782,
+      "height": 732,
+      "heading": null,
+      "textLength": 111,
+      "images": 3,
+      "ctas": 2
+    },
+    {
+      "y": 4514,
+      "height": 619,
+      "heading": null,
+      "textLength": 436,
+      "images": 13,
+      "ctas": 30
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Talk to sales",
+      "y": 10,
+      "bg": "rgb(86, 216, 134)",
+      "color": "rgb(9, 11, 14)",
+      "tag": "a",
+      "href": "/demo"
+    },
+    {
+      "text": "Talk to sales",
+      "y": 527,
+      "bg": "rgb(86, 216, 134)",
+      "color": "rgb(9, 11, 14)",
+      "tag": "a",
+      "href": "/demo"
+    },
+    {
+      "text": "Talk to sales to get Guru",
+      "y": 4297,
+      "bg": "rgb(86, 216, 134)",
+      "color": "rgb(9, 11, 14)",
+      "tag": "a",
+      "href": "/demo"
+    },
+    {
+      "text": "Free Templates",
+      "y": 4792,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/template/business"
+    },
+    {
+      "text": "Talk to sales",
+      "y": 4622,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/demo"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Stop running your business on confidently wr🚫ng AI.",
+        "y": 219
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Talk to sales",
+        "y": 10,
+        "bg": "rgb(86, 216, 134)",
+        "color": "rgb(9, 11, 14)",
+        "tag": "a",
+        "href": "/demo"
+      },
+      {
+        "text": "Talk to sales",
+        "y": 527,
+        "bg": "rgb(86, 216, 134)",
+        "color": "rgb(9, 11, 14)",
+        "tag": "a",
+        "href": "/demo"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Wistia video thumbnail",
+        "src": "https://embed-ssl.wistia.com/deliveries/3b562f5e345868271aaa52a177cd8a49.webp?image_crop_resized=960x540",
+        "w": 880,
+        "h": 495
+      },
+      {
+        "tag": "img",
+        "alt": "Wistia video thumbnail",
+        "src": "https://embed-ssl.wistia.com/deliveries/3b562f5e345868271aaa52a177cd8a49.webp?image_crop_resized=960x540",
+        "w": 880,
+        "h": 495
+      }
+    ],
+    "text": "Product Solutions Resources Pricing Log in Talk to sales We use cookies to give our users a better experience. By using this site, you agree to our Privacy Policy. Okay Now you can buy Guru on AWS Marketplace. Hear more about this partnership Stop running your business on confidently wr🚫ng AI. Guru"
+  },
+  "nav": [
+    "Pricing",
+    "Log in",
+    "Talk to sales",
+    "Privacy Policy",
+    "Okay"
+  ],
+  "forms": [],
+  "pageHeight": 5133,
+  "viewportHeight": 900,
+  "screens": 5.7
+}

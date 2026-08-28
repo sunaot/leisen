@@ -1,0 +1,147 @@
+{
+  "h1": {
+    "family": "Roboto, \"Noto Sans JP\", メイリオ, Meiryo, \"ヒラギノ角ゴ Pro W3\", \"Hiragino Kaku Gothic Pro\", Osaka, \"ＭＳ Ｐゴシック\", \"MS PGothic\", Helvetica, Arial, sans-serif",
+    "size": "14px",
+    "weight": "700",
+    "color": "rgb(1, 1, 1)"
+  },
+  "fonts": [
+    {
+      "value": "Roboto",
+      "weight": 4568
+    },
+    {
+      "value": "Inter",
+      "weight": 220
+    },
+    {
+      "value": "-apple-system",
+      "weight": 15
+    },
+    {
+      "value": "Oswald",
+      "weight": 12
+    },
+    {
+      "value": "Montserrat",
+      "weight": 6
+    }
+  ],
+  "sizes": [
+    {
+      "value": "14px",
+      "weight": 1178
+    },
+    {
+      "value": "16px",
+      "weight": 1042
+    },
+    {
+      "value": "18px",
+      "weight": 684
+    },
+    {
+      "value": "11.25px",
+      "weight": 611
+    },
+    {
+      "value": "10px",
+      "weight": 321
+    },
+    {
+      "value": "20px",
+      "weight": 179
+    },
+    {
+      "value": "22px",
+      "weight": 166
+    },
+    {
+      "value": "12px",
+      "weight": 149
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(34, 34, 34)",
+      "weight": 2872
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 1003
+    },
+    {
+      "value": "rgb(90, 90, 90)",
+      "weight": 380
+    },
+    {
+      "value": "rgb(170, 170, 170)",
+      "weight": 154
+    },
+    {
+      "value": "rgb(221, 221, 221)",
+      "weight": 100
+    },
+    {
+      "value": "rgb(106, 108, 108)",
+      "weight": 72
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 5368640
+    },
+    {
+      "value": "rgb(247, 248, 247)",
+      "weight": 4420035
+    },
+    {
+      "value": "rgb(56, 56, 56)",
+      "weight": 1882350
+    },
+    {
+      "value": "rgb(244, 244, 244)",
+      "weight": 1038465
+    },
+    {
+      "value": "rgb(43, 43, 43)",
+      "weight": 763470
+    },
+    {
+      "value": "rgba(34, 34, 34, 0.87)",
+      "weight": 286933
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.78)",
+      "weight": 134400
+    },
+    {
+      "value": "rgb(51, 51, 51)",
+      "weight": 64305
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "8px",
+      "weight": 18
+    },
+    {
+      "value": "4px",
+      "weight": 13
+    },
+    {
+      "value": "8px 8px 0px 0px",
+      "weight": 11
+    },
+    {
+      "value": "6px",
+      "weight": 7
+    },
+    {
+      "value": "10px",
+      "weight": 6
+    }
+  ],
+  "darkMode": false
+}

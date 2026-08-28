@@ -1,0 +1,37 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Amazon Q Business",
+        "y": 224
+      }
+    ],
+    "ctas": [],
+    "images": [
+      {
+        "tag": "svg",
+        "alt": "",
+        "src": "",
+        "w": 342,
+        "h": 192
+      },
+      {
+        "tag": "img",
+        "alt": "Missing alt text value",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/product-categories/ai-ml/artificial-intelligence/ap",
+        "w": 342,
+        "h": 256
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/product-categories/ai-ml/artificial-intelligence/ap",
+        "w": 342,
+        "h": 192
+      }
+    ],
+    "text": "メインコンテンツに移動 Amazon Q Business Amazon Q Q Business Amazon Q Business Amazon Q Business を利用して、職場で生成 AI の力を解き放ちましょう Amazon Q Business を今すぐ開始する スペシャリストとつながる Amazon Q Business の次の進化 職場の質問にすばやく答え、その回答を行動に変える新しいエージェントチームメイト、Amazon Quick をご紹介します。Quick は Amazon Q Business の次の進化形であり、ドキュメントやエンタープライズアプリケーションからデ"
+  },
+  "screens": 12.2
+}

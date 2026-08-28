@@ -1,0 +1,47 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Stop running your business on confidently wr🚫ng AI.",
+        "y": 194
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Talk to sales",
+        "y": 14,
+        "bg": "rgb(86, 216, 134)",
+        "color": "rgb(9, 11, 14)",
+        "tag": "a",
+        "href": "/demo"
+      },
+      {
+        "text": "Talk to sales",
+        "y": 631,
+        "bg": "rgb(86, 216, 134)",
+        "color": "rgb(9, 11, 14)",
+        "tag": "a",
+        "href": "/demo"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "Wistia video thumbnail",
+        "src": "https://embed-ssl.wistia.com/deliveries/3b562f5e345868271aaa52a177cd8a49.webp?image_crop_resized=640x360",
+        "w": 351,
+        "h": 197
+      },
+      {
+        "tag": "img",
+        "alt": "Wistia video thumbnail",
+        "src": "https://embed-ssl.wistia.com/deliveries/3b562f5e345868271aaa52a177cd8a49.webp?image_crop_resized=640x360",
+        "w": 351,
+        "h": 197
+      }
+    ],
+    "text": "Log in Talk to sales We use cookies to give our users a better experience. By using this site, you agree to our Privacy Policy. Okay Now you can buy Guru on AWS Marketplace. Hear more about this partnership Stop running your business on confidently wr🚫ng AI. Guru structures, governs, and continuous"
+  },
+  "screens": 7.2
+}

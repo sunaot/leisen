@@ -1,0 +1,422 @@
+{
+  "title": "Qast｜AIナレッジプラットフォーム｜AI × 社内のナレッジで、みんなの業務が動き出す。",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "ナレッジの資産化が、 企業の未来をつくり出す",
+      "y": 148
+    },
+    {
+      "tag": "h2",
+      "text": "利用ユーザー数98,000人超！ 幅広い業界の企業様にご活用いただいています。",
+      "y": 680
+    },
+    {
+      "tag": "h2",
+      "text": "新サービス先行登録開始(2026年秋リリース予定)",
+      "y": 1112
+    },
+    {
+      "tag": "h2",
+      "text": "AI × 人によるナレッジマネジメントの最適解",
+      "y": 1624
+    },
+    {
+      "tag": "h2",
+      "text": "Qastでできること",
+      "y": 2484
+    },
+    {
+      "tag": "h2",
+      "text": "導入事例",
+      "y": 3339
+    },
+    {
+      "tag": "h2",
+      "text": "導入効果",
+      "y": 4547
+    },
+    {
+      "tag": "h2",
+      "text": "サポート体制",
+      "y": 5581
+    },
+    {
+      "tag": "h2",
+      "text": "お客様の声",
+      "y": 6302
+    },
+    {
+      "tag": "h2",
+      "text": "ナレッジマネジメント浸透への取り組み",
+      "y": 7229
+    },
+    {
+      "tag": "h2",
+      "text": "お知らせ",
+      "y": 7760
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 638,
+      "heading": "ナレッジの資産化が、 企業の未来をつくり出す",
+      "textLength": 110,
+      "images": 1,
+      "ctas": 2
+    },
+    {
+      "y": 638,
+      "height": 475,
+      "heading": "利用ユーザー数98,000人超！ 幅広い業界の企業様にご活用いただいています。",
+      "textLength": 53,
+      "images": 2,
+      "ctas": 0
+    },
+    {
+      "y": 1112,
+      "height": 432,
+      "heading": "新サービス先行登録開始(2026年秋リリース予定)",
+      "textLength": 132,
+      "images": 1,
+      "ctas": 1
+    },
+    {
+      "y": 1544,
+      "height": 860,
+      "heading": "AI × 人によるナレッジマネジメントの最適解",
+      "textLength": 98,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 2404,
+      "height": 855,
+      "heading": "Qastでできること",
+      "textLength": 396,
+      "images": 0,
+      "ctas": 1
+    },
+    {
+      "y": 3259,
+      "height": 1199,
+      "heading": "導入事例",
+      "textLength": 230,
+      "images": 7,
+      "ctas": 4
+    },
+    {
+      "y": 3518,
+      "height": 319,
+      "heading": null,
+      "textLength": 0,
+      "images": 1,
+      "ctas": 0
+    },
+    {
+      "y": 4458,
+      "height": 722,
+      "heading": "導入効果",
+      "textLength": 147,
+      "images": 3,
+      "ctas": 0
+    },
+    {
+      "y": 5181,
+      "height": 300,
+      "heading": null,
+      "textLength": 105,
+      "images": 0,
+      "ctas": 2
+    },
+    {
+      "y": 5481,
+      "height": 741,
+      "heading": "サポート体制",
+      "textLength": 309,
+      "images": 3,
+      "ctas": 0
+    },
+    {
+      "y": 6222,
+      "height": 907,
+      "heading": "お客様の声",
+      "textLength": 528,
+      "images": 4,
+      "ctas": 0
+    },
+    {
+      "y": 7129,
+      "height": 631,
+      "heading": "ナレッジマネジメント浸透への取り組み",
+      "textLength": 89,
+      "images": 3,
+      "ctas": 3
+    },
+    {
+      "y": 7760,
+      "height": 728,
+      "heading": "お知らせ",
+      "textLength": 212,
+      "images": 3,
+      "ctas": 4
+    },
+    {
+      "y": 8488,
+      "height": 702,
+      "heading": null,
+      "textLength": 212,
+      "images": 1,
+      "ctas": 3
+    }
+  ],
+  "ctas": [
+    {
+      "text": "お役立ち資料",
+      "y": 53,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/resources/"
+    },
+    {
+      "text": "無料デモ",
+      "y": 53,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "https://register.qast.jp/"
+    },
+    {
+      "text": "資料請求",
+      "y": 53,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/document/"
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 53,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(75, 75, 210)",
+      "tag": "a",
+      "href": "/contact/"
+    },
+    {
+      "text": "資料をダウンロードする",
+      "y": 387,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://qast.jp/document/"
+    },
+    {
+      "text": "無料デモを申し込む",
+      "y": 465,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(75, 75, 210)",
+      "tag": "a",
+      "href": "https://register.qast.jp/"
+    },
+    {
+      "text": "株式会社バンダイ 過去15年分の設計ナレッジを即活用。資料探索時間を半減させたQast導入事例",
+      "y": 3909,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "https://qast.jp/case/bandai/"
+    },
+    {
+      "text": "資料をダウンロードする",
+      "y": 5255,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(75, 75, 210)",
+      "tag": "a",
+      "href": "https://qast.jp/document/"
+    },
+    {
+      "text": "無料デモを申し込む",
+      "y": 5345,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://register.qast.jp/"
+    },
+    {
+      "text": "資料をダウンロードする",
+      "y": 8562,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(75, 75, 210)",
+      "tag": "a",
+      "href": "https://qast.jp/document/"
+    },
+    {
+      "text": "無料デモを申し込む",
+      "y": 8652,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "https://register.qast.jp/"
+    },
+    {
+      "text": "お役立ち資料",
+      "y": 9509,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/resources/"
+    },
+    {
+      "text": "資料請求",
+      "y": 9429,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/document"
+    },
+    {
+      "text": "無料デモ",
+      "y": 9469,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "https://register.qast.jp/"
+    },
+    {
+      "text": "お問い合わせ",
+      "y": 9509,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "tag": "a",
+      "href": "/contact"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "ナレッジの資産化が、 企業の未来をつくり出す",
+        "y": 148
+      },
+      {
+        "tag": "h2",
+        "text": "利用ユーザー数98,000人超！ 幅広い業界の企業様にご活用いただいています。",
+        "y": 680
+      }
+    ],
+    "ctas": [
+      {
+        "text": "お役立ち資料",
+        "y": 53,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "/resources/"
+      },
+      {
+        "text": "無料デモ",
+        "y": 53,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 0, 0)",
+        "tag": "a",
+        "href": "https://register.qast.jp/"
+      },
+      {
+        "text": "資料請求",
+        "y": 53,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/document/"
+      },
+      {
+        "text": "お問い合わせ",
+        "y": 53,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(75, 75, 210)",
+        "tag": "a",
+        "href": "/contact/"
+      },
+      {
+        "text": "資料をダウンロードする",
+        "y": 387,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://qast.jp/document/"
+      },
+      {
+        "text": "無料デモを申し込む",
+        "y": 465,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(75, 75, 210)",
+        "tag": "a",
+        "href": "https://register.qast.jp/"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://qast.jp/wp-content/themes/any-qast/assets/img/megamenu/megamenu_img_feature.webp",
+        "w": 210,
+        "h": 118
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://qast.jp/wp-content/themes/any-qast/assets/img/megamenu/megamenu_img_function.webp",
+        "w": 210,
+        "h": 118
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://qast.jp/wp-content/themes/any-qast/assets/img/megamenu/megamenu_img_issue.webp",
+        "w": 210,
+        "h": 118
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://qast.jp/wp-content/themes/any-qast/assets/img/megamenu/megamenu_img_security.webp",
+        "w": 210,
+        "h": 118
+      },
+      {
+        "tag": "img",
+        "alt": "kv-img",
+        "src": "https://qast.jp/wp-content/themes/any-qast/assets/img/topKv.webp",
+        "w": 648,
+        "h": 406
+      },
+      {
+        "tag": "img",
+        "alt": "company-logos",
+        "src": "https://qast.jp/wp-content/uploads/2026/04/logos_pc_202604.webp",
+        "w": 1064,
+        "h": 225
+      }
+    ],
+    "text": "Qast Clone ナレッジマネジメント情報メディア ログイン Qastとは 導入事例 お役立ち資料 セミナー・イベント 料金 無料デモ 資料請求 お問い合わせ Qastとは Qastの特徴 機能 課題別活用例 セキュリティ ナレッジの資産化が、 企業の未来をつくり出す Qastは社内に埋もれる個人の知識や経験を引き出し、 業務の効率化と企業価値の向上を実現する AIナレッジプラットフォームです。 資料をダウンロードする 無料デモを申し込む 利用ユーザー数98,000人超！ 幅広い業界の企業様にご活用いただいています。 ※上記は導入企業の一例です 新サービス先行登録開始(2026年秋リリース"
+  },
+  "nav": [
+    "Qast Clone",
+    "ナレッジマネジメント情報メディア",
+    "ログイン",
+    "Qastとは",
+    "導入事例",
+    "お役立ち資料",
+    "セミナー・イベント",
+    "料金",
+    "無料デモ",
+    "資料請求",
+    "お問い合わせ"
+  ],
+  "forms": [],
+  "pageHeight": 9855,
+  "viewportHeight": 900,
+  "screens": 10.9
+}

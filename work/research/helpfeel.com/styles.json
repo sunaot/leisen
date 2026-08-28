@@ -1,0 +1,131 @@
+{
+  "h1": {
+    "family": "\"Noto Sans JP\", sans-serif",
+    "size": "56px",
+    "weight": "500",
+    "color": "rgb(0, 0, 0)"
+  },
+  "fonts": [
+    {
+      "value": "Noto Sans JP",
+      "weight": 1590
+    },
+    {
+      "value": "Poppins",
+      "weight": 10
+    }
+  ],
+  "sizes": [
+    {
+      "value": "16px",
+      "weight": 602
+    },
+    {
+      "value": "14px",
+      "weight": 425
+    },
+    {
+      "value": "13px",
+      "weight": 244
+    },
+    {
+      "value": "24px",
+      "weight": 142
+    },
+    {
+      "value": "12px",
+      "weight": 78
+    },
+    {
+      "value": "18px",
+      "weight": 44
+    },
+    {
+      "value": "20px",
+      "weight": 21
+    },
+    {
+      "value": "26px",
+      "weight": 17
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 750
+    },
+    {
+      "value": "rgb(0, 0, 0)",
+      "weight": 746
+    },
+    {
+      "value": "rgb(249, 115, 22)",
+      "weight": 49
+    },
+    {
+      "value": "rgb(77, 107, 213)",
+      "weight": 33
+    },
+    {
+      "value": "rgb(255, 136, 43)",
+      "weight": 22
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(36, 36, 36)",
+      "weight": 1576440
+    },
+    {
+      "value": "rgba(0, 0, 0, 0.7)",
+      "weight": 1322041
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(255, 255, 255), rgb(236, 240, 255))",
+      "weight": 1275740
+    },
+    {
+      "value": "GRADIENT:linear-gradient(rgb(255, 255, 255), rgba(77, 107, 213, 0.1))",
+      "weight": 921600
+    },
+    {
+      "value": "GRADIENT:linear-gradient(135deg, rgb(255, 136, 43) 1.44%, rgb(183, 166, 246) 50.73%, rgb(",
+      "weight": 455715
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 229487
+    },
+    {
+      "value": "rgba(255, 255, 255, 0.5)",
+      "weight": 189954
+    },
+    {
+      "value": "rgb(241, 240, 240)",
+      "weight": 99616
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "16px",
+      "weight": 15
+    },
+    {
+      "value": "4px",
+      "weight": 11
+    },
+    {
+      "value": "32px",
+      "weight": 5
+    },
+    {
+      "value": "8px",
+      "weight": 5
+    },
+    {
+      "value": "14px",
+      "weight": 4
+    }
+  ],
+  "darkMode": true
+}

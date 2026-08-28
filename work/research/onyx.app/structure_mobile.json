@@ -1,0 +1,48 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Give your team superpowers.",
+        "y": 114
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Book a Demo",
+        "y": 414,
+        "bg": "rgb(28, 28, 28)",
+        "color": "rgba(255, 255, 255, 0.95)",
+        "tag": "a",
+        "href": "/contact-sales"
+      },
+      {
+        "text": "Try for Free",
+        "y": 414,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgba(0, 0, 0, 0.898)",
+        "tag": "a",
+        "href": "https://cloud.onyx.app/auth/signup?utm_source=onyx.app&utm_medium=cta&utm_campaign=main-site&utm_content=signup-button"
+      },
+      {
+        "text": "$ curl -fsSL https://onyx.app/install_onyx.sh | bash",
+        "y": 494,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(25, 25, 30)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "svg",
+        "alt": "",
+        "src": "",
+        "w": 390,
+        "h": 626
+      }
+    ],
+    "text": "Give your team superpowers. Onyx is the open-source AI chat connected to your docs, apps, and people. Book a Demo Try for Free $ curl -fsSL https://onyx.app/install_onyx.sh | bash 1,000+ of the world's top teams trust Onyx to be their primary interface to AI. Case study Case study The Onyx Platform "
+  },
+  "screens": 11.4
+}

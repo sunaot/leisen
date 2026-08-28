@@ -1,0 +1,72 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Automate work with search, agents, and workflows, grounded in company context",
+        "y": 182
+      }
+    ],
+    "ctas": [
+      {
+        "text": "×",
+        "y": 754,
+        "bg": "rgb(230, 235, 239)",
+        "color": "rgb(63, 76, 96)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Accept Cookies",
+        "y": 800,
+        "bg": "rgb(120, 102, 207)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Book a demo",
+        "y": 53,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.gosearch.ai/sales"
+      },
+      {
+        "text": "Toggle navigation",
+        "y": 52,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(0, 190, 172)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Book a demo",
+        "y": 599,
+        "bg": "rgb(0, 190, 172)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.gosearch.ai/sales"
+      },
+      {
+        "text": "Start for free",
+        "y": 598,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(11, 33, 56)",
+        "tag": "a",
+        "href": "https://www.gosearch.ai/signup"
+      },
+      {
+        "text": "GPT-5.4",
+        "y": 809,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(63, 76, 96)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [],
+    "text": "×We use cookies to offer you a better experience. Click here to see our terms of service.Accept Cookies Book a demo Toggle navigation Automate work with search, agents, and workflows, grounded in company context GoSearch is an AI enterprise search knowledge layer powering custom agents and no-code w"
+  },
+  "screens": 20.9
+}

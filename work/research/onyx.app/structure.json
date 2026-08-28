@@ -1,0 +1,357 @@
+{
+  "title": "Onyx AI | Open Source Enterprise Search & AI Assistant",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "Give your team superpowers.",
+      "y": 178
+    }
+  ],
+  "sections": [
+    {
+      "y": 97,
+      "height": 6471,
+      "heading": "Give your team superpowers.",
+      "textLength": 3364,
+      "images": 117,
+      "ctas": 57
+    },
+    {
+      "y": 650,
+      "height": 226,
+      "heading": null,
+      "textLength": 192,
+      "images": 1,
+      "ctas": 2
+    },
+    {
+      "y": 1044,
+      "height": 677,
+      "heading": null,
+      "textLength": 519,
+      "images": 3,
+      "ctas": 0
+    },
+    {
+      "y": 1865,
+      "height": 479,
+      "heading": null,
+      "textLength": 268,
+      "images": 4,
+      "ctas": 1
+    },
+    {
+      "y": 2488,
+      "height": 288,
+      "heading": null,
+      "textLength": 138,
+      "images": 22,
+      "ctas": 1
+    },
+    {
+      "y": 2920,
+      "height": 744,
+      "heading": null,
+      "textLength": 543,
+      "images": 8,
+      "ctas": 4
+    },
+    {
+      "y": 3808,
+      "height": 400,
+      "heading": null,
+      "textLength": 345,
+      "images": 4,
+      "ctas": 0
+    },
+    {
+      "y": 4352,
+      "height": 544,
+      "heading": null,
+      "textLength": 326,
+      "images": 19,
+      "ctas": 1
+    },
+    {
+      "y": 5040,
+      "height": 400,
+      "heading": null,
+      "textLength": 249,
+      "images": 6,
+      "ctas": 4
+    },
+    {
+      "y": 5617,
+      "height": 333,
+      "heading": null,
+      "textLength": 86,
+      "images": 0,
+      "ctas": 2
+    },
+    {
+      "y": 5984,
+      "height": 584,
+      "heading": null,
+      "textLength": 553,
+      "images": 7,
+      "ctas": 34
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Product",
+      "y": 32,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Resources",
+      "y": 32,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Company",
+      "y": 32,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Try for Free",
+      "y": 24,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgba(0, 0, 0, 0.898)",
+      "tag": "a",
+      "href": "https://cloud.onyx.app/auth/signup?utm_source=onyx.app&utm_medium=cta&utm_campaign=main-site&utm_content=signup-button"
+    },
+    {
+      "text": "Book a Demo",
+      "y": 25,
+      "bg": "rgb(28, 28, 28)",
+      "color": "rgba(255, 255, 255, 0.95)",
+      "tag": "a",
+      "href": "/contact-sales"
+    },
+    {
+      "text": "Deep Research",
+      "y": 456,
+      "bg": "rgb(231, 239, 252)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "GPT-5",
+      "y": 456,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgba(0, 0, 0, 0.75)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Book a Demo",
+      "y": 536,
+      "bg": "rgb(28, 28, 28)",
+      "color": "rgba(255, 255, 255, 0.95)",
+      "tag": "a",
+      "href": "/contact-sales"
+    },
+    {
+      "text": "Try for Free",
+      "y": 536,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgba(0, 0, 0, 0.898)",
+      "tag": "a",
+      "href": "https://cloud.onyx.app/auth/signup?utm_source=onyx.app&utm_medium=cta&utm_campaign=main-site&utm_content=signup-button"
+    },
+    {
+      "text": "$ curl -fsSL https://onyx.app/install_onyx.sh | bash",
+      "y": 624,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Compliance",
+      "y": 5040,
+      "bg": "rgb(250, 250, 250)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Secure Deployment",
+      "y": 5140,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Generative AI Safety",
+      "y": 5240,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Granular Permissions",
+      "y": 5340,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Book a Demo",
+      "y": 5830,
+      "bg": "rgb(28, 28, 28)",
+      "color": "rgba(255, 255, 255, 0.95)",
+      "tag": "a",
+      "href": "/contact-sales"
+    },
+    {
+      "text": "Try for Free",
+      "y": 5830,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgba(0, 0, 0, 0.898)",
+      "tag": "a",
+      "href": "https://cloud.onyx.app/auth/signup?utm_source=onyx.app&utm_medium=cta&utm_campaign=main-site&utm_content=signup-button"
+    },
+    {
+      "text": "Craft Playbook",
+      "y": 6090,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "a",
+      "href": "/playbook"
+    },
+    {
+      "text": "Contact",
+      "y": 6158,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(25, 25, 30)",
+      "tag": "a",
+      "href": "/contact"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Give your team superpowers.",
+        "y": 178
+      }
+    ],
+    "ctas": [
+      {
+        "text": "Product",
+        "y": 32,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(25, 25, 30)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Resources",
+        "y": 32,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(25, 25, 30)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Company",
+        "y": 32,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(25, 25, 30)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Try for Free",
+        "y": 24,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgba(0, 0, 0, 0.898)",
+        "tag": "a",
+        "href": "https://cloud.onyx.app/auth/signup?utm_source=onyx.app&utm_medium=cta&utm_campaign=main-site&utm_content=signup-button"
+      },
+      {
+        "text": "Book a Demo",
+        "y": 25,
+        "bg": "rgb(28, 28, 28)",
+        "color": "rgba(255, 255, 255, 0.95)",
+        "tag": "a",
+        "href": "/contact-sales"
+      },
+      {
+        "text": "Deep Research",
+        "y": 456,
+        "bg": "rgb(231, 239, 252)",
+        "color": "rgb(25, 25, 30)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "GPT-5",
+        "y": 456,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgba(0, 0, 0, 0.75)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "Book a Demo",
+        "y": 536,
+        "bg": "rgb(28, 28, 28)",
+        "color": "rgba(255, 255, 255, 0.95)",
+        "tag": "a",
+        "href": "/contact-sales"
+      },
+      {
+        "text": "Try for Free",
+        "y": 536,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgba(0, 0, 0, 0.898)",
+        "tag": "a",
+        "href": "https://cloud.onyx.app/auth/signup?utm_source=onyx.app&utm_medium=cta&utm_campaign=main-site&utm_content=signup-button"
+      },
+      {
+        "text": "$ curl -fsSL https://onyx.app/install_onyx.sh | bash",
+        "y": 624,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(25, 25, 30)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "svg",
+        "alt": "",
+        "src": "",
+        "w": 1440,
+        "h": 803
+      }
+    ],
+    "text": "Product Resources Company Pricing 31k Try for Free Book a Demo Give your team superpowers. Onyx is the open-source AI chat connected to your docs, apps, and people. Deep Research Deep Research GPT-5 Book a Demo Try for Free $ curl -fsSL https://onyx.app/install_onyx.sh | bash 1,000+ of the world's t"
+  },
+  "nav": [
+    "Pricing",
+    "31k",
+    "Try for Free",
+    "Book a Demo"
+  ],
+  "forms": [],
+  "pageHeight": 6568,
+  "viewportHeight": 900,
+  "screens": 7.3
+}

@@ -1,0 +1,45 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "Gleanは企業の知識、システム、 コンテキストをつなぎ、AIをエンタープライズ規模で活用できます。",
+        "y": 250
+      },
+      {
+        "tag": "h2",
+        "text": "世界を代表する企業がGleanでAIを活用しています。",
+        "y": 747
+      }
+    ],
+    "ctas": [
+      {
+        "text": "デモを依頼",
+        "y": 117,
+        "bg": "rgb(52, 59, 237)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/jp/get-a-demo"
+      },
+      {
+        "text": "デモを依頼",
+        "y": 430,
+        "bg": "rgb(0, 0, 0)",
+        "color": "rgb(254, 254, 254)",
+        "tag": "a",
+        "href": "/jp/get-a-demo"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cdn.prod.website-files.com/6127a84dfe068e153ef20572/6a043d7504d9c6465590e3eb_Hero-Glean-Bg.webp",
+        "w": 358,
+        "h": 160
+      }
+    ],
+    "text": "インテリジェンスの時代が到来しました。重要な仕事にもっと時間を使えるようにしましょう。 Glean:GOを詳しく見る デモを依頼 あなたの会社を理解するWork AI Gleanは企業の知識、システム、 コンテキストをつなぎ、AIをエンタープライズ規模で活用できます。 デモを依頼 What change Slack Google Drive Jira Confluence SharePoint GitHub Salesforce 世界を代表する企業がGleanでAIを活用しています。 AIの専門知識を高める See how teams are deploying agents and buil"
+  },
+  "screens": 19.5
+}

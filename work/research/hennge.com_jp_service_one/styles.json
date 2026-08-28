@@ -1,0 +1,127 @@
+{
+  "h1": {
+    "family": "\"Hiragino Kaku Gothic ProN\", \"Hiragino Sans\", \"Noto Sans JP\", Meiryo, sans-serif",
+    "size": "32px",
+    "weight": "700",
+    "color": "rgb(13, 13, 13)"
+  },
+  "fonts": [
+    {
+      "value": "Hiragino Kaku Gothic ProN",
+      "weight": 1758
+    },
+    {
+      "value": "Helvetica Neue",
+      "weight": 114
+    },
+    {
+      "value": "Hiragino Mincho Pro",
+      "weight": 28
+    }
+  ],
+  "sizes": [
+    {
+      "value": "14px",
+      "weight": 691
+    },
+    {
+      "value": "16px",
+      "weight": 626
+    },
+    {
+      "value": "13px",
+      "weight": 338
+    },
+    {
+      "value": "30px",
+      "weight": 69
+    },
+    {
+      "value": "15.008px",
+      "weight": 41
+    },
+    {
+      "value": "15px",
+      "weight": 38
+    },
+    {
+      "value": "26px",
+      "weight": 28
+    },
+    {
+      "value": "32px",
+      "weight": 26
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(13, 13, 13)",
+      "weight": 936
+    },
+    {
+      "value": "rgba(0, 0, 0, 0)",
+      "weight": 724
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 240
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(0, 0, 0)",
+      "weight": 2236860
+    },
+    {
+      "value": "rgb(212, 218, 222)",
+      "weight": 1636425
+    },
+    {
+      "value": "rgb(246, 247, 249)",
+      "weight": 1419728
+    },
+    {
+      "value": "rgb(26, 26, 26)",
+      "weight": 1143405
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 721991
+    },
+    {
+      "value": "rgb(251, 252, 254)",
+      "weight": 179687
+    },
+    {
+      "value": "rgb(113, 53, 210)",
+      "weight": 145253
+    },
+    {
+      "value": "rgb(9, 105, 237)",
+      "weight": 145253
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "4px",
+      "weight": 12
+    },
+    {
+      "value": "1386px",
+      "weight": 6
+    },
+    {
+      "value": "1485px",
+      "weight": 3
+    },
+    {
+      "value": "6px",
+      "weight": 3
+    },
+    {
+      "value": "1287px",
+      "weight": 2
+    }
+  ],
+  "darkMode": false
+}

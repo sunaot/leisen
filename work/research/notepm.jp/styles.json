@@ -1,0 +1,135 @@
+{
+  "h1": {
+    "family": "Helvetica, Arial, \"Hiragino Kaku Gothic ProN\", \"ヒラギノ角ゴ ProN W3\", Meiryo, メイリオ, \"sans-serif\"",
+    "size": "60px",
+    "weight": "700",
+    "color": "rgb(40, 50, 60)"
+  },
+  "fonts": [
+    {
+      "value": "Helvetica",
+      "weight": 3119
+    },
+    {
+      "value": "ui-serif",
+      "weight": 11
+    }
+  ],
+  "sizes": [
+    {
+      "value": "18px",
+      "weight": 1012
+    },
+    {
+      "value": "14px",
+      "weight": 841
+    },
+    {
+      "value": "12px",
+      "weight": 561
+    },
+    {
+      "value": "16px",
+      "weight": 186
+    },
+    {
+      "value": "20px",
+      "weight": 127
+    },
+    {
+      "value": "24px",
+      "weight": 110
+    },
+    {
+      "value": "42px",
+      "weight": 89
+    },
+    {
+      "value": "36px",
+      "weight": 72
+    }
+  ],
+  "textColors": [
+    {
+      "value": "rgb(40, 50, 60)",
+      "weight": 2193
+    },
+    {
+      "value": "rgb(60, 140, 220)",
+      "weight": 508
+    },
+    {
+      "value": "rgb(120, 135, 150)",
+      "weight": 120
+    },
+    {
+      "value": "oklch(0.278 0.033 256.848)",
+      "weight": 102
+    },
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 78
+    },
+    {
+      "value": "rgb(250, 100, 0)",
+      "weight": 55
+    }
+  ],
+  "backgrounds": [
+    {
+      "value": "rgb(255, 255, 255)",
+      "weight": 14999428
+    },
+    {
+      "value": "rgb(234, 244, 255)",
+      "weight": 7200233
+    },
+    {
+      "value": "rgb(246, 248, 250)",
+      "weight": 5237138
+    },
+    {
+      "value": "GRADIENT:linear-gradient(to left in oklab, rgb(95, 165, 245) 0%, rgb(35, 115, 190) 100%)",
+      "weight": 1940220
+    },
+    {
+      "value": "GRADIENT:linear-gradient(in oklab, rgb(255, 255, 255) 50%, rgb(234, 244, 255) 50%)",
+      "weight": 901440
+    },
+    {
+      "value": "rgb(255, 246, 222)",
+      "weight": 486400
+    },
+    {
+      "value": "rgb(20, 100, 175)",
+      "weight": 264960
+    },
+    {
+      "value": "rgb(165, 215, 255)",
+      "weight": 250240
+    }
+  ],
+  "borderRadii": [
+    {
+      "value": "8px",
+      "weight": 99
+    },
+    {
+      "value": "3.35544e+07px",
+      "weight": 76
+    },
+    {
+      "value": "12px",
+      "weight": 27
+    },
+    {
+      "value": "16px",
+      "weight": 8
+    },
+    {
+      "value": "0px 0px 16px 16px",
+      "weight": 2
+    }
+  ],
+  "darkMode": false
+}

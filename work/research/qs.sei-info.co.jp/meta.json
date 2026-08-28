@@ -1,0 +1,8 @@
+{
+  "url": "https://www.qs.sei-info.co.jp/",
+  "captured_at": "2026-08-28T00:08:41.405047Z",
+  "errors": [
+    "desktop: Page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://www.qs.sei-info.co.jp/\nCall log:\n  - navigating to \"https://www.qs.sei-info.co.jp/\", waiting until \"networkidle\"\n",
+    "mobile: Page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://www.qs.sei-info.co.jp/\nCall log:\n  - navigating to \"https://www.qs.sei-info.co.jp/\", waiting until \"networkidle\"\n"
+  ]
+}

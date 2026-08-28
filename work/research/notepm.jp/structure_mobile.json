@@ -1,0 +1,68 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "社内の知りたい、 すぐ見つかる。",
+        "y": 157
+      }
+    ],
+    "ctas": [
+      {
+        "text": "無料でお試し",
+        "y": 688,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://notepm.jp/register"
+      },
+      {
+        "text": "資料ダウンロード",
+        "y": 764,
+        "bg": "rgb(255, 255, 255)",
+        "color": "rgb(60, 140, 220)",
+        "tag": "a",
+        "href": "https://notepm.jp/pamphlet"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/point-1-C7qGck1z.png",
+        "w": 96,
+        "h": 83
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/point-2-CJmzqm54.png",
+        "w": 96,
+        "h": 83
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/point-3-JUhauWhT.png",
+        "w": 96,
+        "h": 83
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/device-Bc4vWsYi.png",
+        "w": 290,
+        "h": 188
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://cf.notepm.jp/build/assets/woman-Blburosd.png",
+        "w": 280,
+        "h": 246
+      }
+    ],
+    "text": "料金 NotePM AI 機能 解決課題 導入事例 AI・マニュアル作成・ナレッジ管理 社内の知りたい、 すぐ見つかる。 ※1 登録企業はNotePM上でチーム登録を完了している数(無料トライアル含む) ※2 登録企業、継続率は2025年7月時点 AI機能追加!! 要約・文章校正・翻訳 チャットボット 無料でお試し 資料ダウンロード こんな お 悩 み ありませんか？ NotePMは、これらの課題を解決する ナレッジマネジメントツールです 経営者・役職者 のあなた マニュアルやノウハウが 社内で共有されず属人化 情報があちこちに散在し 管理が煩雑になる 社員がITに慣れておらず ツールが定着し"
+  },
+  "screens": 23.3
+}

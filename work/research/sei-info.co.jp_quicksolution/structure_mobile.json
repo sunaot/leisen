@@ -1,0 +1,47 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "QuickSolution エンタープライズサーチ",
+        "y": 159
+      }
+    ],
+    "ctas": [
+      {
+        "text": "お問い合わせ／資料請求",
+        "y": 635,
+        "bg": "rgb(255, 142, 49)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.sei-info.co.jp/RakHPcm/rkcmServlet/rkhp0020?no=9300"
+      },
+      {
+        "text": "お問い合わせ／資料請求",
+        "y": 814,
+        "bg": "rgb(255, 142, 49)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "https://www.sei-info.co.jp/RakHPcm/rkcmServlet/rkhp0020?no=9300"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "QS14.1_検索画面＆生成AI連携",
+        "src": "/quicksolution/images23/img-mv-main-202608.gif",
+        "w": 350,
+        "h": 209
+      },
+      {
+        "tag": "img",
+        "alt": "富士キメラ総研検索エンジン パッケージ市場（10年連続）",
+        "src": "/quicksolution/images23/img-mv-top-badge-202608_2.webp",
+        "w": 162,
+        "h": 139
+      }
+    ],
+    "text": "特長 エンタープライズサーチの選び方 機能 生成AI連携 事例 価格 サポート よくある質問 セミナー お問い合わせ／資料請求 ホーム 製品情報 会社情報 採用情報 ホーム > 製品情報 > エンタープライズサーチ QuickSolution QuickSolution エンタープライズサーチ 欲しい情報がすぐに見つかる 企業内検索システム 生成AI連携(RAG) \\ Copilotとも連携可能 / AIエージェント連携(MCP) お問い合わせ／資料請求 トライアル オンプレ/クラウドの 横断検索＋生成AI回答 発売から25周年 導入実績 5,700サーバ以上 QuickSolutionの特長"
+  },
+  "screens": 18.6
+}

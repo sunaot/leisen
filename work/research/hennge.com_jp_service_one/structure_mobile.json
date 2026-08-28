@@ -1,0 +1,47 @@
+{
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "",
+        "y": 114
+      }
+    ],
+    "ctas": [
+      {
+        "text": "menu open",
+        "y": 0,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(13, 13, 13)",
+        "tag": "button",
+        "href": null
+      },
+      {
+        "text": "HENNGE One menu",
+        "y": 74,
+        "bg": "rgba(0, 0, 0, 0)",
+        "color": "rgb(13, 13, 13)",
+        "tag": "button",
+        "href": null
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "国内シェアNo.1のクラウドセキュリティ HENNGE One",
+        "src": "/jp/wp-content/uploads/hennge_one/hennge_one2025_pc.png",
+        "w": 390,
+        "h": 646
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://pages.hennge.com/rs/584-TPM-572/images/wp_one_resource_bnr_old.png",
+        "w": 204,
+        "h": 180
+      }
+    ],
+    "text": "menu open HENNGE One menu *ITR市場調査: 5年連続1位獲得 特設ページへ Ultra Suite 3つの守りで、ビジネスをセキュリティリスクから解放せよ。 Identity Edition 従業員の安全な働き方を支えるアクセス管理を実現 詳細はこちら DLP Edition 企業内に散在するデータのミスによる情報漏えいを防止 詳細はこちら Cybersecurity Edition テクノロジー、人、プロセスの全方位で組織のセキュリティレベルを向上 詳細はこちら かんたんデモ体験 プラン・価格 3,800社以上の多様な業種・業態の導入実績 HENNGE One導入"
+  },
+  "screens": 12.1
+}

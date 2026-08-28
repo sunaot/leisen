@@ -1,0 +1,223 @@
+{
+  "title": "【国内シェアNo.1のクラウドセキュリティ】 HENNGE One | HENNGE株式会社（へんげ）　-テクノロジーの解放で世の中を変えていく",
+  "headings": [
+    {
+      "tag": "h1",
+      "text": "",
+      "y": 177
+    },
+    {
+      "tag": "h2",
+      "text": "Ultra Suite",
+      "y": 898
+    },
+    {
+      "tag": "h3",
+      "text": "Identity Edition",
+      "y": 1397
+    },
+    {
+      "tag": "h3",
+      "text": "DLP Edition",
+      "y": 1397
+    },
+    {
+      "tag": "h3",
+      "text": "Cybersecurity Edition",
+      "y": 1397
+    },
+    {
+      "tag": "h2",
+      "text": "3,800社以上の多様な業種・業態の導入実績",
+      "y": 1925
+    },
+    {
+      "tag": "h3",
+      "text": "HENNGE One導入事例",
+      "y": 2326
+    },
+    {
+      "tag": "h2",
+      "text": "HENNGE Oneとは",
+      "y": 2980
+    },
+    {
+      "tag": "h2",
+      "text": "SaaSプラットフォームとしての HENNGE One",
+      "y": 3995
+    },
+    {
+      "tag": "h3",
+      "text": "HENNGEの手厚いサポートを体験してください",
+      "y": 4757
+    },
+    {
+      "tag": "h3",
+      "text": "高可用性/止まらないサービスをお届けします",
+      "y": 5126
+    },
+    {
+      "tag": "h3",
+      "text": "利用者も管理者もストレスフリーなUXをお届けします",
+      "y": 5508
+    }
+  ],
+  "sections": [
+    {
+      "y": 0,
+      "height": 6610,
+      "heading": "",
+      "textLength": 2257,
+      "images": 82,
+      "ctas": 27
+    },
+    {
+      "y": 628,
+      "height": 215,
+      "heading": null,
+      "textLength": 27,
+      "images": 1,
+      "ctas": 2
+    },
+    {
+      "y": 843,
+      "height": 844,
+      "heading": "Ultra Suite",
+      "textLength": 207,
+      "images": 7,
+      "ctas": 3
+    }
+  ],
+  "ctas": [
+    {
+      "text": "資料請求",
+      "y": 100,
+      "bg": "rgb(69, 69, 69)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/service/one/form/resources/"
+    },
+    {
+      "text": "かんたんデモ体験",
+      "y": 1787,
+      "bg": "rgb(13, 13, 13)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/service/one/demo/"
+    },
+    {
+      "text": "100超のシステムをSSO化し、問い合わせは10分の1に削減",
+      "y": 2548,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(13, 13, 13)",
+      "tag": "a",
+      "href": "/jp/service/one/case/nipponham/"
+    },
+    {
+      "text": "100超のシステムをSSO化し、問い合わせは10分の1に削減",
+      "y": 2548,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(13, 13, 13)",
+      "tag": "a",
+      "href": "/jp/service/one/case/nipponham/"
+    },
+    {
+      "text": "Prev",
+      "y": 2739,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(13, 13, 13)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "Next",
+      "y": 2739,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(13, 13, 13)",
+      "tag": "button",
+      "href": null
+    },
+    {
+      "text": "かんたんデモ体験",
+      "y": 6093,
+      "bg": "rgb(13, 13, 13)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/service/one/demo/"
+    },
+    {
+      "text": "-お役立ち資料 -お役立ち資料 -お役立ち資料",
+      "y": 6851,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/service/one/white-paper/"
+    },
+    {
+      "text": "-デモ -デモ -デモ",
+      "y": 6929,
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(255, 255, 255)",
+      "tag": "a",
+      "href": "/jp/service/one/demo/"
+    }
+  ],
+  "aboveFold": {
+    "headings": [
+      {
+        "tag": "h1",
+        "text": "",
+        "y": 177
+      },
+      {
+        "tag": "h2",
+        "text": "Ultra Suite",
+        "y": 898
+      }
+    ],
+    "ctas": [
+      {
+        "text": "資料請求",
+        "y": 100,
+        "bg": "rgb(69, 69, 69)",
+        "color": "rgb(255, 255, 255)",
+        "tag": "a",
+        "href": "/jp/service/one/form/resources/"
+      }
+    ],
+    "images": [
+      {
+        "tag": "img",
+        "alt": "国内シェアNo.1のクラウドセキュリティ HENNGE One",
+        "src": "/jp/wp-content/uploads/hennge_one/hennge_one2025_pc.png",
+        "w": 1440,
+        "h": 451
+      },
+      {
+        "tag": "img",
+        "alt": "",
+        "src": "https://pages.hennge.com/rs/584-TPM-572/images/wp_one_resource_bnr_old.png",
+        "w": 204,
+        "h": 180
+      }
+    ],
+    "text": "サービス インフォメーション 会社情報 IR情報 採用情報 active language JA language menu Identity DLP Cybersecurity 価格 事例 お役立ちコンテンツ サポート 資料請求 お問合せ *ITR市場調査: 5年連続1位獲得 特設ページへ Ultra Suite 3つの守りで、ビジネスをセキュリティリスクから解放せよ。 Identity Edition 従業員の安全な働き方を支えるアクセス管理を実現 詳細はこちら DLP Edition 企業内に散在するデータのミスによる情報漏えいを防止 詳細はこちら Cybersecurity Editi"
+  },
+  "nav": [
+    "インフォメーション",
+    "IR情報",
+    "active language JA language menu",
+    "Identity",
+    "DLP",
+    "Cybersecurity",
+    "価格",
+    "事例",
+    "サポート",
+    "資料請求",
+    "お問合せ"
+  ],
+  "forms": [],
+  "pageHeight": 7404,
+  "viewportHeight": 900,
+  "screens": 8.2
+}
