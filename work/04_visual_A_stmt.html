@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>leisen(霊泉)| 社内ナレッジ検索基盤(OSS)— 案A・ステートメント型</title>
+<!-- design notes
+variant: A-stmt ステートメント型
+hypothesis: 「統制」というメッセージを一枚看板として大きく立てると、比較検討の記憶に最も強く残る。カテゴリ王者(glean)の落ち着いた地色と、mattermostの強い見出しの組合せが、セキュリティ責任者に「軽くない製品」と伝える。
+variable → choice → source:
+- 地色 → クリーム(#faf6f1)+黒 → R-glean-31(クリーム#FBF6F4+黒)
+- 見出し → 特大(64px)高コントラスト → R-glean-30(56px), R-mm-30(61px/800), R-coveo-30(100px)の範囲内
+- FV → 見出し主役+下に横長UIモック → R-glean-5(UI+コネクタチップ)。中央ヒーロー+ボタンのみは回避(anti-AI #3)
+- 密度 → balanced(1画面1主張) → 11/17多数派
+- 対比 → 黒地の宣言セクション → R-mm-31(ダークヒーロー), R-gl-31(ダークセクション混在)
+- CTA → 相談(黒)+GitHub(線) → R-glean-4(デモ依頼型)+7/17両建て
+- 証明 → OSS帯+プレースホルダ → 逸脱1,5
+anti-AI check: グラデなし/3等分カード回避(1-2列・帯)/中央ヒーローのみ回避/書体はNoto Sans JP+明示的ウェイト差・角丸0-6px混在/イラストなし/contentless verbなし — pass
+-->
+<style>
+  :root { --cream: #faf6f1; --ink: #16181d; --muted: #6b6f78; --line: #e2ddd4; --white: #fff; --mono: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; background: var(--cream); color: var(--ink); line-height: 1.8; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 18px 0; }
+  .head-in { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { font-size: 20px; font-weight: 900; letter-spacing: .04em; }
+  .brand small { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 10px; }
+  .btn { display: inline-block; text-decoration: none; font-weight: 700; font-size: 14px; padding: 13px 30px; border-radius: 999px; border: 1.5px solid var(--ink); }
+  .btn-solid { background: var(--ink); color: var(--cream); }
+  .btn-line { color: var(--ink); background: transparent; }
+  .btn-sm { padding: 9px 20px; font-size: 13px; }
+  /* hero */
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .cat { font-size: 13px; letter-spacing: .18em; color: var(--muted); font-weight: 700; }
+  h1 { font-size: 64px; line-height: 1.25; font-weight: 900; letter-spacing: .01em; margin: 18px auto 22px; max-width: 900px; }
+  .sub { font-size: 16px; max-width: 720px; margin: 0 auto 26px; }
+  .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 46px; }
+  /* ui mock horizontal */
+  .uimock { max-width: 880px; margin: 0 auto; background: var(--white); border: 1px solid var(--ink); border-radius: 10px; overflow: hidden; text-align: left; box-shadow: 0 16px 40px rgba(22,24,29,.12); }
+  .uimock-bar { display: flex; justify-content: space-between; padding: 10px 18px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .uimock-body { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); }
+  .uimock-left { padding: 18px 20px; border-right: 1px solid var(--line); }
+  .qbox { border: 1.5px solid var(--ink); border-radius: 6px; padding: 10px 14px; font-size: 14px; background: #fff; }
+  .chips { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; color: var(--muted); }
+  .chip.on { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+  .uimock-right { padding: 18px 20px; background: #fbfaf7; }
+  .uimock-right p { font-size: 13px; margin-bottom: 8px; }
+  .src { font-size: 12px; }
+  .src a { color: var(--ink); }
+  .audit-tag { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+  /* oss strip */
+  .oss { border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 22px 0; margin-top: 56px; }
+  .oss-in { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .oss-in h2 { font-size: 17px; font-weight: 700; }
+  .oss-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13.5px; align-items: center; }
+  .oss-links a { color: var(--ink); font-weight: 700; }
+  .ph { border: 1.5px dashed var(--muted); color: var(--muted); border-radius: 4px; padding: 8px 14px; font-size: 12px; text-align: center; background: rgba(255,255,255,.6); }
+  /* statement sections */
+  section { padding: 72px 0; }
+  .kicker { font-size: 13px; letter-spacing: .14em; font-weight: 700; color: var(--muted); margin-bottom: 12px; }
+  h2 { font-size: 40px; line-height: 1.4; font-weight: 900; max-width: 860px; margin-bottom: 18px; }
+  .lead { font-size: 16px; max-width: 720px; }
+  .dark { background: var(--ink); color: var(--cream); }
+  .dark h2 { color: var(--cream); }
+  .dark .kicker { color: #a8acb5; }
+  .dark .lead { color: #d8d5cf; }
+  /* contrast rows */
+  .vs { max-width: 860px; margin-top: 30px; border: 1px solid var(--cream); }
+  .vs-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); border-bottom: 1px solid rgba(250,246,241,.25); }
+  .vs-row:last-child { border-bottom: none; }
+  .vs-cell { padding: 16px 20px; font-size: 14px; }
+  .vs-cell.l { color: #9aa0ab; border-right: 1px solid rgba(250,246,241,.25); }
+  .vs-head { font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+  .vs-cell.r { color: var(--cream); }
+  /* audit strip */
+  .auditlog { font-family: var(--mono); font-size: 12px; background: var(--white); border: 1px solid var(--ink); border-radius: 8px; padding: 16px 18px; overflow-x: auto; line-height: 2; max-width: 760px; }
+  .auditlog .ok { color: #1a7f37; } .auditlog .canary { color: #b45309; font-weight: 700; }
+  /* sources row */
+  .srcrow { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+  .srcitem { border: 1px solid var(--ink); border-radius: 999px; padding: 8px 20px; font-size: 14px; font-weight: 700; background: var(--white); }
+  .note { font-size: 12.5px; color: var(--muted); margin-top: 12px; }
+  /* yaml */
+  pre.yaml { font-family: var(--mono); font-size: 12.5px; background: var(--white); border: 1px solid var(--ink); border-radius: 8px; padding: 16px 18px; overflow-x: auto; line-height: 1.75; max-width: 560px; }
+  pre.yaml .k { font-weight: 700; } pre.yaml .c { color: var(--muted); }
+  .split { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 40px; align-items: center; }
+  .split > *, .uimock-body > div, .price > div, .vs-row > div { min-width: 0; }
+  /* price */
+  .price { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; max-width: 860px; margin-top: 26px; }
+  .price-card { background: var(--white); border: 1px solid var(--ink); border-radius: 8px; padding: 26px; }
+  .price-card h3 { font-size: 16px; letter-spacing: .06em; }
+  .price-tag { font-size: 26px; font-weight: 900; margin: 8px 0 14px; }
+  .price-card ul { list-style: none; font-size: 13.5px; }
+  .price-card li { padding: 7px 0; border-bottom: 1px dotted var(--line); }
+  /* faq */
+  .faq { max-width: 860px; }
+  .faq dt { font-weight: 700; font-size: 16px; padding: 18px 0 6px; }
+  .faq dd { font-size: 14.5px; color: #3a3e46; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+  /* final */
+  .final { text-align: center; padding: 88px 0; }
+  .final h2 { margin: 0 auto 14px; }
+  footer { padding: 26px 0 44px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+  @media (max-width: 880px) {
+    h1 { font-size: 36px; } h2 { font-size: 26px; }
+    .uimock-body, .split, .price, .vs-row { grid-template-columns: 1fr; }
+    .uimock-left { border-right: none; border-bottom: 1px solid var(--line); }
+    .vs-cell.l { border-right: none; border-bottom: 1px dashed rgba(250,246,241,.25); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap head-in">
+    <div class="brand">leisen<small>霊泉 — 社内ナレッジ検索基盤(OSS)</small></div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <a class="btn btn-line btn-sm" href="#oss">GitHubで見る</a>
+      <a class="btn btn-solid btn-sm" href="#contact">導入の相談をする</a>
+    </div>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="cat">社内ナレッジ検索基盤(OSS)</div>
+    <h1>見えてはいけないものは、<br>AIにも見えない。</h1>
+    <p class="sub">leisen(霊泉)は、社内に散在するドキュメント・チャット・コードを、<strong>本人の権限のまま横断検索</strong>できるOSSの社内ナレッジ検索基盤。自社環境で動き、データも検索ログも外に出ません。</p>
+    <div class="hero-cta">
+      <a class="btn btn-solid" href="#contact">導入の相談をする</a>
+      <a class="btn btn-line" href="#oss">GitHubで見る</a>
+    </div>
+    <div class="uimock">
+      <div class="uimock-bar"><span>leisen — 社内検索</span><span>田中(本人権限)</span></div>
+      <div class="uimock-body">
+        <div class="uimock-left">
+          <div class="qbox">Q3のSSO移行、どういう経緯で決まった?</div>
+          <div class="chips">
+            <span class="chip on">Google Drive</span><span class="chip on">Slack</span><span class="chip on">GitHub</span><span class="chip on">wiki</span><span class="chip">社内DB(未接続)</span>
+          </div>
+        </div>
+        <div class="uimock-right">
+          <p>2月の情シス定例で SAML 統一を決定し、4月に段階移行が承認されています。背景は3点 — …</p>
+          <p class="src">出典: <a href="#">SSO移行検討メモ(Drive)</a> / <a href="#">#it-infra 2/14(Slack)</a> / <a href="#">認証設計(wiki)</a></p>
+          <div class="audit-tag">audit: user=tanaka sources=3 recorded ✓</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="oss" id="oss">
+  <div class="wrap oss-in">
+    <h2>ソースコードも設計文書も、すべて公開されています</h2>
+    <div class="oss-links">
+      <a href="#">GitHub リポジトリ →</a>
+      <a href="#">設計文書</a>
+      <a href="#">設計判断の記録(ADR)</a>
+      <span class="ph">[スター数]</span>
+      <span class="ph">[ライセンス(確定後)]</span>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <div class="kicker">なぜ、AI検索の稟議は止まるのか</div>
+    <h2>事故は、AIが権限を破るから<br>起きるのではない。</h2>
+    <p class="lead">広すぎる権限が、AIで一気に表面化するから起きる。過去の共有リンク、継承されたままのフォルダ権限 — 普段は誰も辿り着かなかった文書が、自然文の検索で一気に見つかるようになる。選択肢は2つ。全社の権限総点検が終わるまでAI導入を止めるか、<strong>見てよいかの判定を、毎回データソース自身に任せるか。</strong></p>
+  </div>
+</section>
+
+<section class="dark">
+  <div class="wrap">
+    <div class="kicker">仕組み</div>
+    <h2>権限のコピーは持たない。<br>見てよいかは、毎回ソースが本人に対して判定する。</h2>
+    <p class="lead">検索はすべて利用者本人の資格情報でソースAPIに対して行われます。ACLの複製・同期・独自権限モデルはありません。返ってくるのは、定義上その人が見てよいものだけ。</p>
+    <div class="vs">
+      <div class="vs-row"><div class="vs-cell l vs-head">権限を複製・同期する検索</div><div class="vs-cell r vs-head">認可を委譲する検索(leisen)</div></div>
+      <div class="vs-row"><div class="vs-cell l">ACLコピーの同期漏れが構造的に発生する</div><div class="vs-cell r">コピーが存在しないので、同期漏れも存在しない</div></div>
+      <div class="vs-row"><div class="vs-cell l">導入前に全社の権限棚卸しが前提になる</div><div class="vs-cell r">判定は毎回ソースが行う。棚卸しを待たずに始められる</div></div>
+      <div class="vs-row"><div class="vs-cell l">本文の中央コピー(インデックス)を保持し続ける</div><div class="vs-cell r">データもログも自社環境のみ。インデックスは既定で作らない</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="kicker">監査・検証</div>
+    <h2>「守れている」ことを、<br>監査ログとカナリア文書で検証し続ける。</h2>
+    <p class="lead" style="margin-bottom:22px">全ツール呼び出しを記録します — 誰の権限で・どのソースに・何を問い合わせ・何が返ったか。カナリア文書(特定のテストユーザーには絶対に見えてはいけない文書)を各ソースに常設し、ヒットしないことを監視し続けます。権限逸脱ゼロを、導入時の一度きりではなく常時の検証に。</p>
+    <div class="auditlog">
+<span class="ok">✓</span> 10:02:14 user=sato   source=gdrive tool=search hits=4<br>
+<span class="ok">✓</span> 10:02:40 user=sato   source=gdrive tool=fetch  doc=91c2…<br>
+<span class="canary">◆</span> canary-check user=test-limited hit=0 <span class="ok">OK(逸脱なし)</span><br>
+<span class="ok">✓</span> 10:03:05 user=mori   source=wiki   tool=search hits=6
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="kicker">できること</div>
+    <h2>散らばったままの社内情報に、<br>出典付きで答える。</h2>
+    <p class="lead">集約も移行も要りません。LLMが複数ソースを本人権限で反復検索し、出典リンク付きで回答。答えの根拠には、ワンクリックで原文に到達できます。</p>
+    <div class="srcrow">
+      <span class="srcitem">Google Drive</span><span class="srcitem">Slack</span><span class="srcitem">GitHub</span><span class="srcitem">wiki</span><span class="srcitem">+ コネクタSDK</span>
+    </div>
+    <p class="note">※ Slackは規約に従いオンデマンド検索のみ。本文もメタデータも保存しません。</p>
+  </div>
+</section>
+
+<section class="dark">
+  <div class="wrap split">
+    <div>
+      <div class="kicker">運用</div>
+      <h2>導入1件=<br>設定ファイル1枚。</h2>
+      <p class="lead">同期パイプラインもインデックスも、最初から抱えない。インデックスは監査ログが必要性の証拠を出したソースにだけ有効化。可動部品が少ないから、専任1〜2名で回ります。</p>
+    </div>
+    <pre class="yaml" style="background:#20232b; color:#e8e6e1; border-color:#3a3e48"><span class="c"># deployment.yaml — 導入1件はこの1枚</span>
+<span class="k">deployment:</span> { name: your-company }
+<span class="k">idp:</span>        { adapter: keycloak }
+<span class="k">connectors:</span>
+  - id: gdrive
+    privateScopes: excluded
+    searchLayer: { enabled: false } <span class="c"># 既定オフ</span>
+  - id: slack
+<span class="k">audit:</span> { failureMode: fail-closed }</pre>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="kicker">価格・導入支援</div>
+    <h2>ソフトウェアはOSS、<br>導入支援は必要な分だけ。</h2>
+    <div class="price">
+      <div class="price-card">
+        <h3>OSS</h3>
+        <div class="price-tag">ライセンス費 0円</div>
+        <ul>
+          <li>Gateway・コネクタ・検索層のコア一式</li>
+          <li>リファレンスデプロイ(Docker Compose / Helm)</li>
+          <li>設計文書・脅威モデル・セキュリティテストスイート</li>
+        </ul>
+      </div>
+      <div class="price-card">
+        <h3>導入支援</h3>
+        <div class="price-tag">[メニュー準備中]</div>
+        <ul>
+          <li>導入アセスメント / PoC伴走</li>
+          <li>運用サポート契約(アップグレード追随)</li>
+          <li>個社コネクタの受託開発</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ph" style="max-width:860px; margin-top:20px; padding:20px">[導入事例: デザインパートナー企業を募集中]</div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="kicker">よくある質問</div>
+    <dl class="faq">
+      <dt>Slackのメッセージは保存されますか?</dt>
+      <dd>されません。Slackは毎回オンデマンドで検索し、本文もパーマリンク等のメタデータも永続化しません(API利用規約に準拠)。</dd>
+      <dt>Glean などの SaaS 製品との違いは?</dt>
+      <dd>データ・インデックス・監査ログが自社環境から出ないこと。そして権限の扱いを、主張ではなくコードと設計文書で確認できることです。</dd>
+      <dt>セキュリティ審査に使える資料はありますか?</dt>
+      <dd>脅威モデル・監査ログ設計・認可方式の設計判断(ADR)を公開しています。審査の追加ヒアリングは導入支援でお受けします。</dd>
+    </dl>
+  </div>
+</section>
+
+<div class="final" id="contact">
+  <div class="wrap">
+    <div class="kicker">次の一歩</div>
+    <h2>営業資料の代わりに、<br>設計文書を公開しています。</h2>
+    <p class="lead" style="margin:0 auto 26px">まずは設計から確認してください。導入の相談は、環境と対象ソースが分かる方と。</p>
+    <div class="hero-cta">
+      <a class="btn btn-solid" href="#">導入の相談をする</a>
+      <a class="btn btn-line" href="#">GitHubで見る</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">leisen(霊泉)— 社内ナレッジをLLMが権限透過で検索できるようにするOSS基盤。名称・ライセンスは確定前の仮表記です。</div>
+</footer>
+
+</body>
+</html>
