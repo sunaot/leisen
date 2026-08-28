@@ -1,0 +1,65 @@
+# Observations — onyx
+Name: Onyx / URL: https://onyx.app / Ring: A, diversity pick / Evidence: YC W24; MIT-licensed OSS used in production by Netflix, Ramp, Thales; #1 in "open-source Glean alternatives" lists / Captured: not observable in capture (no timestamp field in structure.json/styles.json; observation session 2026-08-28)
+
+## First view (desktop)
+- R-onyx-1 Headline: "Give your team superpowers."
+- R-onyx-2 Sub-headline: "Onyx is the open-source AI chat connected to your docs, apps, and people."
+- R-onyx-3 Headline type: outcome (benefit/metaphor framing — "superpowers" — addressed to "your team"; not a literal capability statement, not audience-call, not question, not contrarian)
+- R-onyx-4 Primary CTA: "Try for Free" (white button, links to https://cloud.onyx.app/auth/signup?...) | Secondary: "Book a Demo" (dark button, links to /contact-sales). Note: order flips between placements — nav shows Try for Free then Book a Demo; the hero's second CTA row shows Book a Demo then Try for Free.
+- R-onyx-5 Visual: live-style product UI mockup directly under the sub-headline — a chat input box with placeholder text mid-animation ("Summ..."), a "Deep Research" mode pill, and a model-selector reading "GPT-5"; sits over a faint dot/grid-line gradient background.
+- R-onyx-6 Proof in first view: both logos and a number. Customer logo row (Roku, Brex, Nebius, ramp "Case study", UC Berkeley, NASA, Airwallex, + one more cut off) under the line "1,000+ of the world's top teams trust Onyx to be their primary interface to AI."; plus a GitHub star count "31k" badge in the nav.
+- R-onyx-7 Nav: 4 nav items (Product, Resources, Company — each with a dropdown caret — and Pricing as a plain link) + a search icon + "31k" GitHub star badge. CTA in nav: yes, two — "Try for Free" (primary/white) and "Book a Demo" (secondary/dark).
+
+## First view (mobile) — differences only
+- Nav collapses to logo + single hamburger icon only; Product/Resources/Company/Pricing/31k/CTAs are hidden behind the menu (not visible in first view).
+- Headline and sub-headline text identical, reflows to narrower column (headline wraps across two lines as on desktop).
+- Search-box placeholder captured mid-animation reads "Summarize our" (vs "Summ" on the desktop capture) — same animated/cycling placeholder feature, different frame.
+- The curl install line ("$ curl -fsSL https://onyx.app/i…") and the CTA pair (Book a Demo dark, Try for Free white) appear stacked below the search box, same order as desktop's secondary CTA row.
+- Proof line "1,000+ of the world's top teams trust Onyx to be their primary..." begins right at/just past the likely fold, overlapped by the Cookies Notice banner — logos not confirmed visible within the strict first view on mobile (not observable in capture whether logos row is above or below the fold boundary).
+
+## Structure
+- R-onyx-10 Sections (ordered):
+  1. Hero — headline, sub-headline, chat-input product mockup, CTA pair, curl self-host one-liner, customer logo strip
+  2. "The Onyx Platform" — 3 feature cards (Feature Rich / Reliable Responses / Customizable) each paired with a product-UI screenshot
+  3. "Benchmarks — Answers you can trust" — 3 donut-gauge stats (Onyx vs ChatGPT/Claude/Notion AI) + "See full results" CTA
+  4. "Onyx connects to all your apps" — grid of ~26 connector-app logos + "See All Connectors" CTA
+  5. "Open Source" (black section) — APIs / Transparent / Modular copy blocks, GitHub star count, "Self-Host Guide" CTA, isometric cube illustration
+  6. "Use Cases — Improve productivity for every department" — 4 cards (Company Wide, Engineering, Sales, Support)
+  7. "Join Industry Leaders — Stay ahead of competition / Enable your team with AI" — customer logo row + "30x ROI" stat block + customer testimonial quote
+  8. "Enterprise Ready — Security & Compliance" — 4 rows (Compliance, Secure Deployment, Generative AI Safety, Granular Permissions) + SOC 2 Type II / GDPR badges
+  9. "Start your AI journey — Empower your team with Generative AI" — final CTA band (Book a Demo, Try for Free)
+  10. Footer — 6 link columns (Product, Solutions, Resources, Comparisons, Company, Social) + logo/copyright
+- R-onyx-11 Section count / screens: 10 content sections; page height 6568px at 900px viewport = 7.3 screens (per structure.json "screens": 7.3)
+- R-onyx-12 CTA recurrence: the Try for Free / Book a Demo pair recurs 3 times — sticky nav (top), hero secondary row (~y536), and the final CTA band (~y5830). Single-CTA variants also recur mid-page: "See full results" (benchmarks), "See All Connectors" (connectors), "Self-Host Guide" (Open Source), "Docs" (APIs).
+- R-onyx-13 Conversion ask & friction: three parallel asks — (a) self-serve signup via "Try for Free" → cloud.onyx.app/auth/signup (hosted product), (b) sales "Book a Demo" → /contact-sales, (c) self-host/download via the literal curl install command in the hero and a separate "Self-Host Guide" CTA further down, reinforced by a "31k" GitHub star count. Friction notes: the two hero-adjacent CTAs (self-serve vs demo) ask the visitor to choose a funnel before any qualification; the self-host path is a secondary/tertiary CTA rather than the primary one despite "open-source" being central to the headline's sub-line and positioning evidence; a "Cookies Notice" panel overlays page content in the first view on both captures.
+
+## Message
+- R-onyx-20 Core promise (paraphrase): An open-source AI chat/assistant wired into a company's existing documents, apps, and people, giving benchmarked, more-accurate answers than mainstream assistants while respecting each connected app's existing access controls.
+- R-onyx-21 Who it speaks to: broad organizational audience — "every department" (Company Wide, Engineering, Sales, Support use-case cards) plus a distinct enterprise/security buyer (Security & Compliance section) and a developer audience (Open Source section: APIs, Docs, self-host, extensibility).
+- R-onyx-22 Objections answered: 
+  - Accuracy/trust — "Tested on 99 real workplace questions across 220K internal documents. Scored blind by two independent LLM judges," with named win-rate comparisons vs ChatGPT (64%), Claude (68.1%), Notion AI (76%).
+  - Security/compliance — "Enterprise Ready" section: Compliance, Secure Deployment, Generative AI Safety, Granular Permissions rows; SOC 2 Type II and GDPR badges; line "Onyx is built from the ground up with a core commitment to security." / "Never worry about the safety of your data."
+  - Self-host/deployment — "Deploy Onyx on any infrastructure and maintain transparency on usage and your company data," backed by a literal curl install command and a "Self-Host Guide" CTA.
+  - Open source/licensing — "Open Source" section: "Transparent — Onyx empowers your developers by offering full transparency into the code and infinite extensibility," "Modular — Fueled by an OSS community of thousands…"; specific license type (e.g. MIT) not observable in capture.
+  - Access-control/permissions on connected apps — "Plug-and-play, syncs updates in real time, and respects fine grained access controls" (connectors section); "Granular Permissions" row in Security & Compliance.
+  - Air-gap deployment: not observable in capture (no explicit air-gap term found in captured text).
+- R-onyx-23 Proof types & placement: customer logo strips appear twice (hero: Roku/Brex/Nebius/ramp/UC Berkeley/NASA/Airwallex/…; mid-lower page "Join Industry Leaders": Brex/Thales/Roku/sportradar/UC Berkeley) with a "30x ROI" stat block and a named customer testimonial (Ramp, Tony Rios, Director of Product Ops) beside the second logo row; a numeric trust line in the hero ("1,000+ of the world's top teams…"); a GitHub star count ("31k") in the nav and repeated in the Open Source section; a dedicated benchmark section with three numeric win-rate gauges vs named competitor products; compliance badges (SOC 2 Type II, GDPR) in the Security & Compliance section.
+
+## Copy structures that land (3–5 lines)
+- R-onyx-40 "Give your team superpowers." — structure: `abstract` (metaphor; no concrete task or outcome named) | concrete words: "team" (otherwise abstract)
+- R-onyx-41 "Onyx is the open-source AI chat connected to your docs, apps, and people." — structure: other (definitional/scope statement — what it is + what it touches) | concrete words: "open-source", "chat", "docs", "apps", "people"
+- R-onyx-42 "Tested on 99 real workplace questions across 220K internal documents. Scored blind by two independent LLM judges." — structure: operation→result (method stated, then the validating result) | concrete words: "99 real workplace questions", "220K internal documents", "blind", "two independent LLM judges"
+- R-onyx-43 "Onyx is answering thousands of questions a week at Ramp. We tried a variety of other AI tools but none had the same answer reliability as Onyx. It's been a huge productivity boost as we continue to scale." — structure: result→effect (customer testimonial: usage result, then compounding effect) | concrete words: "thousands of questions a week", "Ramp", "other AI tools"
+- R-onyx-44 "Never worry about the safety of your data." — structure: `abstract` (reassurance line answering a security objection, no concrete mechanism named here — mechanism is carried by the adjacent badges/row labels instead) | concrete words: "data" (otherwise abstract)
+
+## Visual
+- R-onyx-30 Type: H1 — "KH Teka", sans-serif, 72px, weight 500, color rgba(0,0,0,0.898). Body text — most frequent sampled size is 17.6px; font family samples show "KH Teka" as the most frequent overall family and "Hanken Grotesk" as a secondary family (which of the two carries body paragraphs vs. UI chrome is not disambiguated in styles.json). A monospace font ("ui-monospace") is used specifically for the curl install-command snippet. All sans-serif except that one monospace code element — no serif observed.
+- R-onyx-31 Colour: background base is white/off-white (rgb(255,255,255) and rgb(250,250,250)) for most sections, with full-black (rgb(0,0,0) / rgb(28,28,28)) used as a deliberate contrast block for the Open Source section, the final-CTA transition, and the footer. Accent: light blue rgb(231,239,252) used for highlighted chips/selected rows (e.g. the "Deep Research" pill, the selected "Slack" connector row). Small secondary accents appear per-element: green/red/purple partial arcs on the benchmark gauges, and green/purple/blue icons on the use-case cards. Gradients: yes — decorative dot/grid-line gradient patterns (e.g. "linear-gradient(to right, rgb(230,230,230) 1px, transparent 1px)…") used as background texture in the hero and around the Open Source illustration, plus a thin radiating diagonal-line pattern in the final-CTA section. Dark mode: styles.json records "darkMode": false — there is no user-toggleable dark theme; the black sections are a fixed design choice, not a dark-mode state.
+- R-onyx-32 Density: medium-high — 10 stacked content sections across 7.3 screens of scroll, modular card grids throughout, a dense connector-logo grid (~26 icons in section 4), and the same CTA pair repeated at 3 major points down the page.
+- R-onyx-33 Imagery: live-style product-UI mockups (chat window, "All Sources" panel, model/connector dropdown lists) rather than photography; an isometric wireframe cube illustration in the Open Source section; flat brand logos for both customers and connected apps; radial/donut percentage gauges for the benchmark stats; thin-line grid and diagonal-line graphics used as decorative texture. No photography of people observed.
+- R-onyx-34 Distinctive: a benchmark section quantifying head-to-head "win rate" against named competitor products (ChatGPT 64%, Claude 68.1%, Notion AI 76%) with donut gauges; a literal terminal command used as an on-page CTA ("$ curl -fsSL https://onyx.app/install_onyx.sh | bash") sitting beside the signup/demo buttons in the hero; a dedicated black "Open Source" section pairing a live GitHub star count ("31k") with developer-facing copy (APIs/Transparent/Modular); a footer with explicit head-to-head competitor comparison links (Onyx vs ChatGPT Enterprise, vs Microsoft Copilot, vs Glean, vs Dust, vs Open WebUI, vs LibreChat) plus a "Glean Cost Calculator" link.
+
+## Inference (kept separate from observation)
+- The page runs three conversion paths in parallel (hosted self-serve signup, sales demo, self-host/GitHub) rather than committing to one primary ask, which may reflect an audience split between a Cloud/PLG motion and an OSS/self-host motion.
+- The named-competitor benchmark gauges and the footer's explicit "Onyx vs X" comparison pages suggest a positioning strategy built around direct displacement of ChatGPT Enterprise/Copilot/Glean/Dust rather than category-creation messaging.
+- The black "Open Source" section is treated as a first-class marketing section (not just a footer badge), pairing star-count social proof with the same security/trust vocabulary ("transparency") used in the Security & Compliance section — suggesting "open source" is being positioned as a trust/security argument as much as a developer one.
