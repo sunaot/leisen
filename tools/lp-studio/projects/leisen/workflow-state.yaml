@@ -8,4 +8,4 @@ stages:
   message: {status: approved, version: 1, selected: ms-2/arch-1}
   design: {status: approved, version: 1}
   prototype: {status: approved, version: 1}
-  qa: {status: in_progress, version: 1}
+  qa: {status: approved, version: 1, selected: prototype-a}
