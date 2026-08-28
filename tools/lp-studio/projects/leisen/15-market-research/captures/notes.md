@@ -282,3 +282,26 @@ CTA: "Get Started" / "Download"
 セクション構成: 機能テーマ別の羅列(Single-Sign On / Identity Brokering and Social Login / User Federation / Admin Console / Account Management Console / Standard Protocols / Authorization Services) → 機能チェックリスト11項目
 
 証明: 顧客ロゴ・testimonial・事例・価格・デモ請求フォームが一切なし。CNCF incubationバッジ、GitHub stars、標準プロトコルロゴ(OpenID/SAML/OAuth 2.0)のみ。ビジュアルはプロダクトスクリーンショット+アーキテクチャ図。
+
+---
+
+## src-m18 Gemini Enterprise app — https://cloud.google.com/gemini-enterprise?hl=ja (ja-JP)【skeptic指摘3の追観察】
+
+取得: 2026-08-28、curl(2.2MB HTML)+テキスト抽出。JS依存要素は未観察の可能性。
+
+Hero:
+> 「Gemini Enterprise app で Google AI の最先端機能をすべての従業員が利用可能に」
+> 「Microsoft 365 や Google Workspace などに安全に接続」「複数ステップ、複数アプリにわたるワークフローを自動化するエージェント」「お客様のデータはお客様がコントロール」
+
+CTA: 「30 日間のトライアルを開始」「お問い合わせ」
+
+セキュリティ文言:
+> 「すべてのコネクタ、ユーザー権限、ポリシーを一元的に可視化して制御することで、AI 導入を組織全体に自信を持って拡大できます」
+> 「データを所有するのはお客様であり、Google ではありません」(学習不使用・第三者販売なし・広告利用なしの誓約)
+VPC Service Controls / CMEK / データ所在地 / HIPAA / FedRAMP High。
+
+備考: 権限は「管理者が一元的に可視化・制御する」ガバナンス文脈で登場。接続ソースの既存権限を検索結果がどう尊重するかの機構説明は抽出範囲に見当たらず(宣言型ですらなく管理機能型)。導入事例節・部門別ユースケース・価格($21/ライセンス/月〜)あり。
+
+## Glean 日本語ページ — 存在確認(2026-08-28)
+
+https://www.glean.com/ja および /ja-jp はともに HTTP 404。日本語LPは確認できず(存在しない可能性が高いが、別URLの存在は否定できない)。

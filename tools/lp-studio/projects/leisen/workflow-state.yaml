@@ -1,10 +1,10 @@
-current_stage: pain_research
+current_stage: positioning
 stages:
   brief: {status: approved, version: 2}
-  pain_research: {status: in_progress, version: 1}
-  market_research: {status: blocked, version: 0}
-  analysis: {status: blocked, version: 0}
-  positioning: {status: blocked, version: 0}
+  pain_research: {status: approved, version: 2}
+  market_research: {status: approved, version: 2}
+  analysis: {status: approved, version: 2}
+  positioning: {status: in_progress, version: 1}
   message: {status: blocked, version: 0}
   design: {status: blocked, version: 0}
   prototype: {status: blocked, version: 0}

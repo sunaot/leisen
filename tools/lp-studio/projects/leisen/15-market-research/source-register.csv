@@ -16,3 +16,4 @@ src-m14,analogous_oss,Elasticsearch (Elastic),https://www.elastic.co/enterprise-
 src-m15,analogous_oss,Supabase,https://supabase.com/,2026-08-28,en-US,"OSS+マネージドのdevツール。Fetched(一部コンテンツのみ取得)。"
 src-m16,analogous_oss,HashiCorp Vault,https://www.hashicorp.com/products/vault,2026-08-28,en-US,"セキュリティインフラ製品LP。Fetched full page。"
 src-m17,counterexample,Keycloak,https://www.keycloak.org/,2026-08-28,en-US,"反例: マーケLPの慣習(ロゴ・数値・デモCTA・価格)を一切持たないOSSプロジェクトサイト。Fetched full page。"
+src-m18,direct_competitor,Gemini Enterprise app (Google Cloud),https://cloud.google.com/gemini-enterprise?hl=ja,2026-08-28,ja-JP,"skeptic指摘3の追観察。curlでHTML取得(2.2MB)しテキスト抽出。JS依存部分は未観察の可能性あり"
