@@ -1,0 +1,56 @@
+# カテゴリ指紋 — 「企業向けAIナレッジ検索」LPの構造分析
+# 根拠: 15-market-research/observations.jsonl(58観察)+ captures/notes.md。
+# ここでの「慣習」は観察頻度であり、性能証拠(コンバージョン効果)は一切ない(performance_support: none)。
+
+category_conventions:  # 破る場合は意図的に破る、という基準線
+  - id: conv-01
+    convention: "ヒーローは抽象的な能力宣言(『企業を理解するAI』『ナレッジの資産化』)+製品UIまたは概念図"
+    prevalence: "直接競合・隣接の大半(src-m01,02,04,08,10,11)"
+  - id: conv-02
+    convention: "社会的証明の三点セット: 顧客ロゴ+削減数値+認証バッジ(ISO/SOC2)"
+    prevalence: "商用13/17。数値の単位はバラバラで検証可能性は一様に低い"
+  - id: conv-03
+    convention: "日本語LPは『資料ダウンロード』ファーストCTA(所要時間付き『3分でわかる資料』が2件)。英語圏は Get a demo か Try for free に二分"
+    prevalence: "ja-JP商用 5/7 が資料DL主導"
+  - id: conv-04
+    convention: "日本語LPの信頼構成は ISO認証+国内サーバー+『学習に使わない』宣言。権限モデルには触れない"
+    prevalence: "ja-JP 5/7 が学習不使用明示。権限モデル言及は日本の隣接5社で0件"
+  - id: conv-05
+    convention: "英語圏直接競合の権限訴求は一文宣言型(『Users only see what they're allowed to see』等)。どう実現するかの機構説明はどのLPにもない"
+    prevalence: "6/17が権限訴求。機構説明つきは0/17"
+  - id: conv-06
+    convention: "OSS製品は GitHub stars・self-host・ライセンス名・標準準拠を信頼要素として使う"
+    prevalence: "src-m02,14,15,17"
+  - id: conv-07
+    convention: "カテゴリ語彙が『検索』から『AI/エージェント/コンテキスト』へ移動中"
+    prevalence: "src-m01,05,10,14,16"
+
+meaningful_variation:  # 同カテゴリ内で説得構造が分かれている軸
+  - id: var-01
+    axis: "信頼の作り方: 実績型(ロゴ・数値)vs 構造型(標準準拠・アーキテクチャ・OSS透明性)"
+    examples: "実績型=Glean/Helpfeel/PKSHA、構造型=Keycloak/Supabase/Elastic(AGPL明示)/Onyx(self-host)"
+  - id: var-02
+    axis: "問題の枠組み: 生産性(探す時間)型 vs 統制(セキュリティ・定着・統治)型 vs AI疲れ逆張り型(Slack)"
+  - id: var-03
+    axis: "ターゲット絞り込みの明示度: 全方位型 vs 名指し型(ナレカン『非IT企業向け』)"
+  - id: var-04
+    axis: "CTAの重さ: sales-led(デモ)/ 資料DL / PLG(無料・Download)。OSSは Download が成立"
+
+white_space:  # 観察範囲で誰もやっていない・薄い位置
+  - id: ws-01
+    position: "権限・認可の『機構』を主役にしたLP。全社の権限訴求は宣言止まりで、『どうやって権限を守るのか』を図解・検証可能な形で見せるLPは0/17"
+    relevance: "leisenの中核差別化(認可のソース委譲・ACL複製ゼロ・単一経路監査)と直結。かつ買う人の一次ペイン(pc-04)に対応"
+  - id: ws-02
+    position: "日本語市場で権限透過・監査を正面から語るポジション。日本の隣接5社はISO/国内サーバー/学習不使用で信頼を代替しており、権限モデルの説明で差別化する製品が不在"
+  - id: ws-03
+    position: "『何をしないか』を約束の中心に置く構成(インデックスを持たない・ACLを複製しない・データを預からない)。全LPが機能の加算で説得しており、引き算型は0件"
+  - id: ws-04
+    position: "導入の段階性・証拠駆動ゲート(小さく入れて実測で広げる)を製品価値として見せるLP。PoC止まり(pc-03)への直接応答は観察範囲で不在"
+  - id: ws-05
+    position: "限界の開示(レイテンシ、初回同意の摩擦、精度の前提)。全LPが無欠点提示。実務検証者の『幻想』批判(ev-p14)を踏まえると、限界開示は技術者オーディエンスへの信頼形成余地"
+
+unsupported_performance_assumptions:  # 観察をコンバージョン効果と混同しないための明示
+  - "『資料DLファーストが日本B2Bで最も転換する』— 頻度観察のみ。性能証拠なし"
+  - "『ロゴ・削減数値が信頼を生む』— 慣習であり効果測定は一切ない。かつleisenは使用不能(claim-ledger)"
+  - "『権限機構の説明が転換を生む』— white spaceは機会仮説であり、未検証。ペイン証拠(pc-04)による裏付けはあるが、LP上の効果は launch後の計測対象"
+  - "『GitHub starsの掲載が技術者の信頼を得る』— OSS慣習の観察のみ。leisenは公開前でstars自体が存在しない(プレースホルダ不可、非表示が妥当)"
