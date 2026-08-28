@@ -1,0 +1,60 @@
+# Stage 5 — メッセージ戦略3案(説得の起点が異なる。トーン違いではない)
+# 対象ポジショニング: positioning-a(権限機構による差別化)
+# skeptic条件7に従い、流入シナリオを2つ仮置きし、各案の依存を明記する。
+
+traffic_scenarios:
+  - id: ts-1
+    name: "意思決定者の課題起点流入"
+    description: "情シス部門長/CTOが「社内 生成AI 権限」「社内AI検索 セキュリティ」等の課題検索、または紹介・記事経由で到達。比較検討モード。製品知識ゼロ、カテゴリ知識は中程度、問題意識は高い(自分の稟議・審査が止まっている)"
+  - id: ts-2
+    name: "技術者のOSS発見流入"
+    description: "エンジニアがGitHub/技術記事/HN・はてブ経由で到達。評価モード。RAG実装の困難(権限フィルタ・同期運用)を実体験または調査済み。専門語彙への耐性が高い"
+
+strategies:
+  - id: ms-1
+    strategy_type: "Pain-led(事故シナリオ起点)"
+    target_situation: "社内AI導入の審査・稟議が漏洩不安で止まっている意思決定者(ts-1寄り)"
+    starting_idea: "「AIが、見せてはいけないものまで答えてしまう」— DM・人事情報が回答に混ざる『見えすぎ』の具体シナリオから始める"
+    intended_reader_inference: "『まさにこれが怖くて止めている』→『この製品はその不安の正体を分かっている』→解決策として機構説明へ読み進む"
+    evidence_for_choice: "一次体験談(ev-p07: DMがサマリーに混入)、事故シナリオの語り(ev-p11: 未発表人事に答える)、導入阻害1位がデータプライバシー67%(ev-p17)"
+    product_truth_making_it_credible: "認可のソース委譲により権限外情報が構造的に回答に載らない設計(fact-002/007)"
+    likely_advantage: "問題意識の低い読者も引き込める。感情的共感が強い"
+    comprehension_risk: "恐怖訴求に読まれると、日本の隣接カテゴリの安心訴求(conv-04)への逆張りとして不快感を生む恐れ。事故の実在証拠はn=1でLPに載せられる規模数値がない"
+    competitive_overlap_risk: "低(誰も見えすぎを正面から扱っていない)。ただしセキュリティ不安の喚起自体はVault(恐怖訴求)と同型"
+    traffic_dependency: "ts-1に最適。ts-2には既知の話の再説明になり冗長"
+
+  - id: ms-2
+    strategy_type: "Mechanism-led(設計原則起点)"
+    target_situation: "問題認識は既にあり、『どう解くか』の答えを探している読者(ts-1の審査停滞層とts-2の両方)"
+    starting_idea: "「権限を複製しない。検索は、いつも本人の権限で」— 解決の設計原則そのものをヒーローに置く"
+    intended_reader_inference: "『権限リストの複製・同期が事故の原因だと知っている自分に、原因を断つ設計を提示している』→『宣言ではなく機構だ』→アーキ図・不変条件で検証へ"
+    evidence_for_choice: "実装者の規範(『検索する前に本人の権限で絞るのが正解』ev-p06、『ドメイン全体委任ではACLが機能しない』ev-p16)と製品設計が一致。カテゴリ観察で機構開示は0/18(conv-05)であり、宣言型ヒーローとの差が最大化する"
+    product_truth_making_it_credible: "不変条件1・2(認可委譲、単一経路監査)は実装前の今でも真であり、コード・設計文書で検証可能(clm-001/002/003)"
+    likely_advantage: "2つのCV(意思決定者の相談・技術者のGitHub)に同じストーリーで到達。模倣困難(競合は権限モデルを持つため同じ主張ができない)"
+    comprehension_risk: "製品知識ゼロの読者には『何の製品か』が先に伝わらないと機構の意味が取れない。Hero Message Unitでカテゴリアンカー(eyebrow)と対象(サブヘッド)の補完が必須"
+    competitive_overlap_risk: "宣言レベルでは Glean/Amazon Q と同じ土俵に見える恐れ(『Users only see...』)。機構の開示深度で差を見せる必要"
+    traffic_dependency: "ts-1/ts-2の両方に機能する唯一の案。ただしts-1では問題文脈の最低限の想起(eyebrow/サブヘッド)が前提"
+
+  - id: ms-3
+    strategy_type: "Alternative-led(内製RAG対比起点)"
+    target_situation: "RAG内製を経験・検討済みの技術組織(ts-2)"
+    starting_idea: "「そのRAG、権限フィルタは自前実装ですか?」— 現在の代替手段(内製)の最難所との対比から始める"
+    intended_reader_inference: "『権限とインデックス運用が一番つらいのは事実』→『そこだけ標準実装で引き受けるという分担は合理的』→build vs adopt比較へ"
+    evidence_for_choice: "内製の困難を語る一次記事が最も豊富な証拠クラスタ(ev-p06/p08/p09/p15/p16/p21)。読者の実体験と即共鳴"
+    product_truth_making_it_credible: "MCP統一IF+認可委譲+インデックスなし開始(fact-002/004/005)は内製の3大負担(権限・コネクタ・同期運用)への直接応答"
+    likely_advantage: "ts-2でのGitHub遷移・デザインパートナー候補の質が最も高い"
+    comprehension_risk: "内製経験のない読者(ts-1の多く)には前提が通じず、ヒーローとしては対象を狭めすぎる"
+    competitive_overlap_risk: "低。ただしOnyxのself-host訴求と部分的に重なる"
+    traffic_dependency: "ts-2専用。ts-1では機能しない"
+
+selection:
+  selected: ms-2
+  rationale: >
+    ms-2(Mechanism-led)を選定。理由: (1) 2つの流入シナリオの両方で機能する唯一の案(ms-1はts-1専用、ms-3はts-2専用)。
+    広告未運用でLP単体が全流入を受ける現状(brief: ad_promise unknown)では、流入横断で成立する起点が必要。
+    (2) ポジショニングaの核(機構開示)を最短で提示でき、競合が構造的に模倣できない(独自権限モデルを持つ製品は「複製しない」と言えない)。
+    (3) ms-1の事故シナリオは規模数値が使えず(skeptic条件1)、ヒーローで支えきれない。
+    ms-1の「見えすぎ」問題提起はヒーロー直後の問題セクションに、ms-3の内製対比は比較セクションに降格して吸収する(説得経路の部品として保持)。
+    理解リスク(製品知識ゼロ読者への機構先行)はStage 7でHero Message Unitの役割分担(eyebrowでカテゴリ、subheadで対象と機構の意味)により制御し、
+    ブラインド5秒監査で検証する。
+  decided_by: "claude(autonomous run)— revisit_stage.pyで差し戻し可能"

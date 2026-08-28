@@ -1,11 +1,11 @@
-current_stage: positioning
+current_stage: message
 stages:
   brief: {status: approved, version: 2}
   pain_research: {status: approved, version: 2}
   market_research: {status: approved, version: 2}
   analysis: {status: approved, version: 2}
-  positioning: {status: in_progress, version: 1}
-  message: {status: blocked, version: 0}
+  positioning: {status: approved, version: 2, selected: positioning-a}
+  message: {status: approved, version: 1, selected: ms-2/arch-1}
   design: {status: blocked, version: 0}
   prototype: {status: blocked, version: 0}
   qa: {status: blocked, version: 0}

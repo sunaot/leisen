@@ -1,0 +1,84 @@
+# Stage 6 — メッセージ/情報アーキテクチャ3案(説得の順序と力点が異なる。文言違いではない)
+# 前提: positioning-a × ms-2(Mechanism-led)。各セクションに説得上の仕事(persuasion job)を割り当てる。
+# CTA共通: 主=デザインパートナー/早期導入の相談、副=GitHub(公開前はプレースホルダ)。clm-014により募集枠数は書かない。
+
+architectures:
+  - id: arch-1
+    name: "原理直行型(Principle-first)"
+    intended_target_state: "『権限の複製をやめるという解き方があり、この製品はそれを不変条件として実装している。審査に持ち込める』と確信した状態"
+    hero_message: "権限を複製しない。検索は、いつも本人の権限で(機構宣言)"
+    sub_message: "散在する社内ナレッジをLLMが横断検索するOSS基盤。認可は常にデータソース本体が下す"
+    primary_cta: "導入相談(デザインパートナー)"
+    section_sequence:
+      - {section: "Hero(機構宣言+カテゴリアンカー)", job: "何の製品か+何が違うかを1画面で成立させる"}
+      - {section: "問題の構造(なぜ社内AIは『見えすぎ』るのか)", job: "ACL複製・同期という事故の構造を図解し、読者の経験・不安に名前を付ける(ms-1を吸収)"}
+      - {section: "3つの設計原則(複製しない/全件監査/預からない)", job: "promiseを検証可能な不変条件として提示。中核の証明"}
+      - {section: "動作の流れ(質問→本人トークンでソース検索→原典リンク付き回答)", job: "機構を利用者体験に翻訳。レイテンシの限界もここで開示"}
+      - {section: "対応ソースとMCP標準", job: "自社環境で成立するかの具体判断材料"}
+      - {section: "スイートAI・内製との比較", job: "『Copilotでよくない?』『自分で作れる』への反論処理(ms-3を吸収)"}
+      - {section: "導入の進め方(検索層OFFで開始→実測で拡張)", job: "PoC止まり不安への応答。導入プレイブックの提示(positioning-b要素を吸収)"}
+      - {section: "限界と現在地(実装前ゲート段階の正直な開示)", job: "信頼形成+期待値調整。デザインパートナー募集の文脈化"}
+      - {section: "FAQ", job: "稟議者の残存疑問(ライセンス、体制、プライバシー方針)の処理"}
+      - {section: "CTA(相談+GitHub)", job: "2種の読者を各CVへ"}
+    proof_placement: "証明は第3節(不変条件)と第4節(動作フロー図)に集中。ロゴ・数値は不使用。第8節の限界開示を逆説的証明として使う"
+    objection_handling: "第6節に集約(スイートAI/内製)。プライバシー(DM既定除外)はFAQ"
+    friction_strategy: "相談CTAはフォーム項目最小(社名・メール・関心)。GitHub CTAは摩擦ゼロ。資料DLは置かない(実績資料が存在しないため)"
+    why_it_works: "問題認識が既に高い読者(ts-1停滞層/ts-2実装者)に対し、最短で『解き方の違い』を提示する。認知負荷は高いが、読者の探索モード(審査を通せる根拠探し)と一致"
+    evidence_refs: [conv-05, ws-01, ws-03, ev-p06, ev-p16, fact-002, fact-003, fact-012]
+    assumptions: ["読者の問題意識が既に高い", "機構図解を読む意欲がある"]
+    metrics: ["相談CVR", "GitHub遷移率", "第2節(問題構造)までのスクロール到達率", "滞在時間"]
+
+  - id: arch-2
+    name: "共感先行型(Problem-empathy-first)"
+    intended_target_state: "『この製品は自分の板挟み(推進せよ+漏らすな)を理解している』という共感から入り、機構説明で確信に至る状態"
+    hero_message: "機構宣言は同じだが、ヒーロー直下に『推進も、統制も、あなたの仕事』という状況共感のリード文を置く"
+    sub_message: "AI活用の号令と、情報漏洩の責任。その板挟みを、権限透過という設計で解く"
+    primary_cta: "導入相談"
+    section_sequence:
+      - {section: "Hero(機構宣言+状況共感リード)", job: "同上+感情的接続"}
+      - {section: "あるある(3つの停滞シナリオ: 審査で止まる/ザルRAG/PoC止まり)", job: "読者の状況を言語化し自分事化(ナレカン型の悩み提起構成: obs観察の慣習)"}
+      - {section: "原因はひとつ(権限の複製)", job: "3シナリオを単一の構造原因に収束させる"}
+      - {section: "設計原則と動作フロー", job: "arch-1の第3・4節を統合圧縮"}
+      - {section: "導入の進め方", job: "同上"}
+      - {section: "比較(スイートAI/内製)", job: "反論処理"}
+      - {section: "限界と現在地+FAQ", job: "同上"}
+      - {section: "CTA", job: "同上"}
+    proof_placement: "第3節(原因収束)が実質の証明開始。機構詳細は第4節"
+    objection_handling: "第6節+FAQ"
+    friction_strategy: "arch-1と同じ"
+    why_it_works: "問題意識が中程度の読者(号令は受けたが構造理解は浅い層)を、共感→原因→機構の順で教育しながら運ぶ。日本B2B LPの悩み提起慣習(ナレカン等)に沿い読みやすい"
+    evidence_refs: [ev-p20, ev-p17, pc-03, conv-01, ws-01]
+    assumptions: ["共感パートを挟んでも技術読者(ts-2)が離脱しない", "悩み列挙が定型表現に見えて埋没しないだけの具体性を維持できる"]
+    metrics: ["相談CVR", "あるある節の離脱率", "技術読者のGitHub遷移率(ts-2劣化の検知)"]
+
+  - id: arch-3
+    name: "検証先行型(Verify-first / エンジニア駆動)"
+    intended_target_state: "『主張がすべて検証可能な形で書かれている。まずGitHubを見て、良ければ上申しよう』という技術者の納得状態"
+    hero_message: "機構宣言+『不変条件としてコードとADRで公開』という検証可能性の即時提示"
+    sub_message: "OSS・シングルテナント・MCP標準。アーキテクチャと設計判断(ADR)まで読める"
+    primary_cta: "GitHub / アーキテクチャを読む(技術導線が主)、相談は副"
+    section_sequence:
+      - {section: "Hero(機構宣言+検証導線)", job: "Keycloak型: 標準準拠と透明性を即提示"}
+      - {section: "アーキテクチャ図(Gateway単一経路)", job: "全体像を1枚で。監査・認可・コネクタの位置を明示"}
+      - {section: "不変条件(CLAUDE.mdの9箇条から抜粋)", job: "設計規律そのものを証明として展示"}
+      - {section: "ツールIF(search/fetch/list/describe)とdeployment.yaml例", job: "実物のコード/設定で具体性を担保"}
+      - {section: "内製との比較(build vs adopt)", job: "ms-3を主反論処理として前置"}
+      - {section: "限界・ロードマップ・現在地", job: "正直な開示"}
+      - {section: "導入相談(意思決定者向け要約付き)", job: "上申用の要約(1段落)を添えて相談CTAへ"}
+    proof_placement: "全編が構造型証明(図・不変条件・コード断片)。第2〜4節に集中"
+    objection_handling: "第5節(内製)。スイートAIはFAQ相当で軽く"
+    friction_strategy: "GitHub直行を最優先(摩擦ゼロ)。相談CTAは最後のみ"
+    why_it_works: "ts-2(技術者流入)に最適化。証明手段の制約(ロゴ・数値なし)が最も目立たない構成"
+    evidence_refs: [conv-06, obs-054, ws-03, ws-05, fact-004, fact-009]
+    assumptions: ["主流入が技術者である", "意思決定者(ts-1)は要約セクションだけで動ける(弱い仮定)", "公開前のGitHub導線をプレースホルダにしても信頼が毀損しない(危うい仮定)"]
+    metrics: ["GitHub遷移率", "ドキュメント滞在", "相談CVR(ts-1の取りこぼし検知)"]
+
+selection:
+  selected: arch-1
+  rationale: >
+    arch-1(原理直行型)を選定。理由: (1) ts-1/ts-2両流入で成立する(arch-2はts-2劣化リスク、arch-3はts-1切り捨てに近い)。
+    (2) ms-2選定理由と一貫: 読者の探索モードは「審査/評価に持ち込める根拠探し」であり、共感演出より構造説明が先に立つ方が
+    証拠(実装者の規範形成、停滞層の拒否権構造)と整合する。(3) GitHub公開前(プレースホルダ)の現状でarch-3のGitHub主導線は成立しない。
+    arch-2の状況共感はヒーロー直下の1行リードとして、arch-3の検証可能性(不変条件・アーキ図・上申用要約)は第3・4節と相談CTA付近に
+    部品として吸収する。
+  decided_by: "claude(autonomous run)"
