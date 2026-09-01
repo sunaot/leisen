@@ -30,6 +30,11 @@ anti-AI check (shared/anti-ai-design.md):
 5. ストック風抽象イラスト → なし。自社UIモックと構成図のみ(競合UIの流用なし)
 6. 無内容動詞 → コピーはPhase 3のリードバック通過行のみ。見出しに抽象動詞なし
 placeholders: GitHubスター数・フォームURLは [ ] 表記(実数・実URLが未確定のため)
+
+update(本番化): 最終CTAをMautic埋め込みフォームに変更。MAUTIC_BASE_URL / FORM_ID が
+確定するまでは同デザインの静的プレビューフォームを表示(有効化手順はセクション10のコメント参照)。
+ページ内フォームは研究セットでは0/14(全LPが別ページ遷移)だが、これはユーザー指定の
+本番要件(Mautic利用)による意図的な逸脱として記録する。
 ===================================================================== -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -152,6 +157,37 @@ placeholders: GitHubスター数・フォームURLは [ ] 表記(実数・実URL
   .closing h2 { font-size:26px; }
   .closing p { max-width:640px; margin:0 auto 26px; font-size:15px; color:#333; }
   .closing .btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+
+  /* Mautic form card */
+  .form-card { background:#fff; border:1px solid #c9d8e4; border-radius:8px; max-width:560px;
+               margin:0 auto 22px; padding:28px 30px; text-align:left;
+               box-shadow:0 6px 18px rgba(10,22,46,.08); }
+  .form-card .form-title { font-weight:700; color:#0b318f; font-size:16px; margin-bottom:14px; }
+  .form-field { margin-bottom:14px; }
+  .form-field label { display:block; font-size:13px; font-weight:700; color:#333; margin-bottom:5px; }
+  .form-field label .req { color:#d7263d; font-size:11px; margin-left:6px; }
+  .form-field input, .form-field select, .form-field textarea {
+    width:100%; border:1px solid #b9cbd9; border-radius:6px; padding:10px 12px; font-size:14px;
+    font-family:inherit; background:#fff; color:#222; }
+  .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+    outline:2px solid #0b318f; border-color:#0b318f; }
+  .form-submit { width:100%; background:#ff8e31; color:#fff; border:none; border-radius:6px;
+                 font-size:16px; font-weight:700; padding:14px; cursor:pointer; font-family:inherit; }
+  .form-submit:hover { background:#e97d24; }
+  .form-note { font-size:11.5px; color:#667; margin-top:10px; text-align:center; }
+  /* Mautic(generate.js)が生成するフォームにも同じ見た目を適用する */
+  .form-card .mauticform_wrapper { max-width:100%; }
+  .form-card .mauticform-innerform .mauticform-page-wrapper { display:block; }
+  .form-card .mauticform-row { margin-bottom:14px; }
+  .form-card .mauticform-label { display:block; font-size:13px; font-weight:700; color:#333; margin-bottom:5px; }
+  .form-card .mauticform-input, .form-card .mauticform-selectbox, .form-card .mauticform-textarea {
+    width:100%; border:1px solid #b9cbd9; border-radius:6px; padding:10px 12px; font-size:14px;
+    font-family:inherit; background:#fff; color:#222; box-sizing:border-box; }
+  .form-card .mauticform-button { width:100%; background:#ff8e31; color:#fff; border:none; border-radius:6px;
+    font-size:16px; font-weight:700; padding:14px; cursor:pointer; font-family:inherit; }
+  .form-card .mauticform-button:hover { background:#e97d24; }
+  .form-card .mauticform-errormsg, .form-card .mauticform-message { font-size:12.5px; color:#d7263d; }
+  .form-card .mauticform-message { color:#0b7a3d; }
 
   footer { background:#0a162e; color:#b9c6d8; font-size:13px; padding:40px 0 24px; }
   .foot-grid { display:flex; gap:48px; flex-wrap:wrap; margin-bottom:26px; }
@@ -395,13 +431,58 @@ placeholders: GitHubスター数・フォームURLは [ ] 表記(実数・実URL
   </div>
 </section>
 
-<!-- 10. 最終CTA -->
+<!-- 10. 最終CTA（Mautic埋め込みフォーム） -->
 <section class="closing" id="soudan">
   <div class="wrap">
     <h2>いまの環境のソースと権限構成から、一緒に確認します。</h2>
     <p>導入相談は、自社のデータソースと権限構成のアセスメントから始まります。設計ドキュメント（ADR）と導入プレイブックは、登録なしでそのまま読めます。</p>
+
+    <div class="form-card">
+      <p class="form-title">導入相談を申し込む</p>
+
+      <!-- ============================================================
+        Mautic 埋め込みフォーム
+        有効化手順:
+          1. Mautic側でフォームを作成（推奨フィールド: 氏名・会社名・メールアドレス・検討状況）
+          2. 下の2行のコメントを外し、MAUTIC_BASE_URL と FORM_ID を実値に置換
+          3. 直後の「静的プレビューフォーム」ブロック（form要素全体）を削除
+        generate.jsが生成するフォームには上のCSS（.mauticform-*）が当たり、
+        このカードの見た目のまま表示されます。
+      ============================================================ -->
+      <!--
+      <script type="text/javascript" src="https://MAUTIC_BASE_URL/form/generate.js?id=FORM_ID"></script>
+      <noscript><iframe src="https://MAUTIC_BASE_URL/form/FORM_ID" width="100%" height="480" frameborder="0" title="導入相談フォーム"></iframe></noscript>
+      -->
+
+      <!-- 静的プレビューフォーム（Mautic有効化時にこのform要素ごと削除） -->
+      <form action="#" onsubmit="return false;">
+        <div class="form-field">
+          <label>氏名<span class="req">必須</span></label>
+          <input type="text" name="name" autocomplete="name" placeholder="山田 太郎">
+        </div>
+        <div class="form-field">
+          <label>会社名<span class="req">必須</span></label>
+          <input type="text" name="company" autocomplete="organization" placeholder="株式会社◯◯">
+        </div>
+        <div class="form-field">
+          <label>メールアドレス<span class="req">必須</span></label>
+          <input type="email" name="email" autocomplete="email" placeholder="you@example.co.jp">
+        </div>
+        <div class="form-field">
+          <label>検討状況</label>
+          <select name="status">
+            <option>情報収集中</option>
+            <option>社内で検討・起案中</option>
+            <option>PoC先を選定中</option>
+            <option>まだ課題を整理している段階</option>
+          </select>
+        </div>
+        <button class="form-submit" type="submit">導入相談を申し込む</button>
+        <p class="form-note">［プレビュー表示です。送信はMauticフォーム設置後に有効になります］</p>
+      </form>
+    </div>
+
     <div class="btns">
-      <a class="btn btn-primary" href="#">導入相談を申し込む</a>
       <a class="btn btn-secondary" href="#">GitHubで見る</a>
     </div>
   </div>
