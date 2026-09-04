@@ -373,7 +373,7 @@ placeholders: GitHubスター数 [Star数]、URL類は [ ]
       <div class="faq-item"><p class="q">オンプレ／自社クラウドで動きますか？</p><p class="a">はい。OSSを自社環境（オンプレミスまたは自社契約のクラウド）にデプロイして使います。社内データが外部のSaaSに送られることはありません。</p></div>
       <div class="faq-item"><p class="q">Slackのデータは保存されますか？</p><p class="a">保存しない設計です。Slackは検索のたびにその場で参照し、本文もメタデータも基盤側に永続化しません（ADR-014）。</p></div>
       <div class="faq-item"><p class="q">既存のIdP（Okta / Entra ID）と繋がりますか？</p><p class="a">IdP Adapterというプラグインで接続します。Keycloak・Okta・Entra IDの参照実装を提供予定で、認証は既存のSSOに乗ります。</p></div>
-      <div class="faq-item"><p class="q">検索インデックス（検索層）を後から足せますか？</p><p class="a">はい。すべての導入は検索層OFFで始まり、利用レポートで必要性が確認できたソースにだけ、deployment.yamlのフラグで有効化します。</p></div>
+      <div class="faq-item"><p class="q">検索インデックス（検索層）を後から足せますか？</p><p class="a">はい。検索性能が十分に出ないソースや、検索のカスタマイズが必要な用途に向けて、後から検索インデックスを追加するオプションがあります。導入はインデックスなしで始まり、必要になったソースにだけdeployment.yamlのフラグで有効化します。</p></div>
     </div>
   </div>
 </section>
