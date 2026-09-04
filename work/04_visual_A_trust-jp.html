@@ -112,8 +112,11 @@ update(本番化): 最終CTAをMautic埋め込みフォームに変更。MAUTIC_
   .fbox-gw { background:#0b318f; }
   .fbox-gw .t { color:#fff; }
   .fbox-gw .d { color:#cfe0ee; }
-  .farrow { align-self:center; padding:0 10px; color:#0b318f; font-weight:700; font-size:13px; text-align:center; }
-  .farrow small { display:block; font-size:10.5px; color:#666; font-weight:400; max-width:120px; }
+  .farrow { align-self:center; display:flex; flex-direction:column; align-items:center; gap:5px; padding:0 8px; }
+  .farrow .arr { display:block; width:110px; height:2px; background:#0b318f; position:relative; }
+  .farrow .arr::after { content:""; position:absolute; right:-1px; top:50%; transform:translateY(-50%);
+      border-left:8px solid #0b318f; border-top:5px solid transparent; border-bottom:5px solid transparent; }
+  .farrow small { display:block; font-size:10.5px; color:#666; font-weight:400; max-width:160px; text-align:center; }
   .sources { display:flex; flex-direction:column; gap:6px; }
   .srcbox { background:#fff; border:1.5px solid #7fa6c2; border-radius:5px; padding:6px 12px; font-size:12.5px; text-align:center; }
   .srcbox b { color:#0b318f; }
@@ -205,8 +208,11 @@ update(本番化): 最終CTAをMautic埋め込みフォームに変更。MAUTIC_
     .cards3 { grid-template-columns:1fr; }
     .steps { grid-template-columns:1fr 1fr; }
     .flow { flex-direction:column; align-items:center; }
-    .farrow { padding:10px 0; }
-    .farrow .arr { display:inline-block; transform:rotate(90deg); }
+    .farrow { flex-direction:row; align-items:center; gap:8px; padding:10px 0; }
+    .farrow .arr { width:2px; height:46px; }
+    .farrow .arr::after { right:auto; top:auto; bottom:-1px; left:50%; transform:translateX(-50%);
+        border-top:8px solid #0b318f; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:none; }
+    .farrow small { text-align:left; }
     h2 { font-size:22px; }
   }
 </style>
@@ -302,9 +308,9 @@ update(本番化): 最終CTAをMautic埋め込みフォームに変更。MAUTIC_
     <div class="diagram">
       <div class="flow">
         <div class="fbox"><span class="t">利用者</span><span class="d">チャット／エージェント</span></div>
-        <div class="farrow"><span class="arr">→</span><small>本人としてログイン</small></div>
+        <div class="farrow"><span class="arr" aria-hidden="true"></span><small>本人としてログイン</small></div>
         <div class="fbox fbox-gw"><span class="t">leisen Gateway</span><span class="d">認証・監査ログ・レート制御<br>（すべての呼び出しの単一経路）</span></div>
-        <div class="farrow"><span class="arr">→</span><small>本人の資格情報でAPIを呼ぶ</small></div>
+        <div class="farrow"><span class="arr" aria-hidden="true"></span><small>本人の資格情報でAPIを呼ぶ</small></div>
         <div class="sources">
           <div class="srcbox"><b>Google Drive</b> が可否を判断</div>
           <div class="srcbox"><b>Slack</b> が可否を判断</div>

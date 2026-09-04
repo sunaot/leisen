@@ -76,8 +76,11 @@ placeholders: GitHubスター数・URL類は [ ]
   .fbox-gw { background:#0d0d0d; }
   .fbox-gw .t { color:#fff; }
   .fbox-gw .d { color:#b5b5b5; }
-  .farrow { align-self:center; padding:0 10px; font-weight:900; font-size:14px; text-align:center; }
-  .farrow small { display:block; font-size:10px; color:#555; font-weight:400; max-width:120px; }
+  .farrow { align-self:center; display:flex; flex-direction:column; align-items:center; gap:4px; padding:0 8px; }
+  .farrow .arr { display:block; width:56px; height:2px; background:#0d0d0d; position:relative; }
+  .farrow .arr::after { content:""; position:absolute; right:-1px; top:50%; transform:translateY(-50%);
+      border-left:7px solid #0d0d0d; border-top:4px solid transparent; border-bottom:4px solid transparent; }
+  .farrow small { display:block; font-size:10px; color:#555; font-weight:400; max-width:150px; text-align:center; }
   .sources { display:flex; flex-direction:column; gap:5px; }
   .srcbox { border:1px solid #8fa0ae; background:#f6f7f9; padding:5px 10px; font-size:12px; text-align:center; }
   .diagram-cap { font-size:12px; color:#444; margin-top:12px; text-align:center; }
@@ -152,8 +155,11 @@ placeholders: GitHubスター数・URL類は [ ]
     .pstrip-item { border-left:none; border-top:1px solid #2c2c2c; }
     .prob3 { grid-template-columns:1fr; }
     .flow { flex-direction:column; align-items:center; }
-    .farrow { padding:8px 0; }
-    .farrow .arr { display:inline-block; transform:rotate(90deg); }
+    .farrow { flex-direction:row; align-items:center; gap:8px; padding:8px 0; }
+    .farrow .arr { width:2px; height:40px; }
+    .farrow .arr::after { right:auto; top:auto; bottom:-1px; left:50%; transform:translateX(-50%);
+        border-top:7px solid #0d0d0d; border-left:4px solid transparent; border-right:4px solid transparent; border-bottom:none; }
+    .farrow small { text-align:left; }
   }
 </style>
 </head>
@@ -189,9 +195,9 @@ placeholders: GitHubスター数・URL類は [ ]
         <div class="diagram" id="zukai">
           <div class="flow">
             <div class="fbox"><span class="t">利用者</span><span class="d">本人としてログイン</span></div>
-            <div class="farrow"><span class="arr">→</span></div>
+            <div class="farrow"><span class="arr" aria-hidden="true"></span></div>
             <div class="fbox fbox-gw"><span class="t">leisen Gateway</span><span class="d">認証・監査ログ<br>単一経路</span></div>
-            <div class="farrow"><span class="arr">→</span><small>本人の資格情報で呼ぶ</small></div>
+            <div class="farrow"><span class="arr" aria-hidden="true"></span><small>本人の資格情報で呼ぶ</small></div>
             <div class="sources">
               <div class="srcbox"><b>Google Drive</b> が可否を判断</div>
               <div class="srcbox"><b>Slack</b> が可否を判断</div>
