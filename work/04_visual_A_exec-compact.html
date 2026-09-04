@@ -152,8 +152,8 @@ placeholders: GitHubスター数・URL類は [ ]
     .pstrip-item { border-left:none; border-top:1px solid #2c2c2c; }
     .prob3 { grid-template-columns:1fr; }
     .flow { flex-direction:column; align-items:center; }
-    .farrow { transform:rotate(90deg); padding:10px 0; }
-    .farrow small { transform:rotate(0); }
+    .farrow { padding:8px 0; }
+    .farrow .arr { display:inline-block; transform:rotate(90deg); }
   }
 </style>
 </head>
@@ -189,9 +189,9 @@ placeholders: GitHubスター数・URL類は [ ]
         <div class="diagram" id="zukai">
           <div class="flow">
             <div class="fbox"><span class="t">利用者</span><span class="d">本人としてログイン</span></div>
-            <div class="farrow">→</div>
+            <div class="farrow"><span class="arr">→</span></div>
             <div class="fbox fbox-gw"><span class="t">leisen Gateway</span><span class="d">認証・監査ログ<br>単一経路</span></div>
-            <div class="farrow">→<small>本人の資格情報で呼ぶ</small></div>
+            <div class="farrow"><span class="arr">→</span><small>本人の資格情報で呼ぶ</small></div>
             <div class="sources">
               <div class="srcbox"><b>Google Drive</b> が可否を判断</div>
               <div class="srcbox"><b>Slack</b> が可否を判断</div>

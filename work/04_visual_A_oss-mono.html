@@ -175,8 +175,8 @@ placeholders: GitHubスター数 [Star数]、URL類は [ ]
     .step3 { border-left:none; border-top:1px solid #e2e2e2; }
     .step3:first-child { border-top:none; }
     .flow { flex-direction:column; align-items:center; }
-    .farrow { transform:rotate(90deg); padding:12px 0; }
-    .farrow small { transform:rotate(0); }
+    .farrow { padding:10px 0; }
+    .farrow .arr { display:inline-block; transform:rotate(90deg); }
     h2 { font-size:22px; }
   }
 </style>
@@ -266,9 +266,9 @@ placeholders: GitHubスター数 [Star数]、URL類は [ ]
     <div class="diagram">
       <div class="flow">
         <div class="fbox"><span class="t">利用者</span><span class="d">チャット／エージェント</span></div>
-        <div class="farrow">→<small>本人としてログイン</small></div>
+        <div class="farrow"><span class="arr">→</span><small>本人としてログイン</small></div>
         <div class="fbox fbox-gw"><span class="t">leisen Gateway</span><span class="d">認証・監査ログ・レート制御<br>（すべての呼び出しの単一経路）</span></div>
-        <div class="farrow">→<small>本人の資格情報でAPIを呼ぶ</small></div>
+        <div class="farrow"><span class="arr">→</span><small>本人の資格情報でAPIを呼ぶ</small></div>
         <div class="sources">
           <div class="srcbox"><b>Google Drive</b> が可否を判断</div>
           <div class="srcbox"><b>Slack</b> が可否を判断</div>
