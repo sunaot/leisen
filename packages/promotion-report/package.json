@@ -1,0 +1,20 @@
+{
+  "name": "@kp/promotion-report",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "kp-promotion-report": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kp/connector-sdk": "0.3.0",
+    "@kp/gateway": "0.1.0",
+    "zod": "^4.4.3"
+  }
+}
