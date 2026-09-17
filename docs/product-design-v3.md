@@ -30,7 +30,7 @@ rawQueryはqueryDigestで結合できる短期保持の別テーブルに置き�
 
 post-filteringの「返却前」の境界を確定する。未認可候補は Search Backend Adapter の内部にのみ存在し、Connector / Gateway / Orchestrator / LLM / 監査ログ / デバッグログ / メトリクスのいずれにも出さない(件数を含む)。候補取得→認可照会→K拡張はアダプタ内で完結させる。CLAUDE.md の不変条件に昇格済み。
 
-## 4. プライバシー・保持・ログ閲覧方針(ADR-013、人間の決定待ち)
+## 4. プライバシー・保持・ログ閲覧方針(ADR-013、2026-07-12 Accepted)
 
 本人権限検索はDM・プライベートチャンネルを含み、認可上は正当だが、fetchedDocIds等のメタデータが中央監査ログに載る。就業規則・労使協議・個人情報保護の論点であり、次を**T-010(deployment.yaml)とT-001(監査スキーマ)より先に**決定する: (1) プライベートスコープの既定除外(deployment.yamlの `privateScopes: excluded | consent | included`、既定 excluded)、(2) プライベートスコープdocIdのログ上の扱い、(3) 監査ログの閲覧権限・目的・保持期間の規程化、(4) **チャット履歴の扱い**(回答への機密転写は権限剥奪に遡及しない。保持期間・エクスポート・共有禁止をT-009要件に追加)。
 

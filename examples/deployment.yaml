@@ -21,6 +21,11 @@ idp:
 connectors:
   - id: gdrive
     enabled: true
+    # ソース別のタイムアウト・レート制御(T-003)。Gatewayが適用する。
+    # maxRequestsPerMinute 省略時はレート制御なし
+    limits:
+      timeoutMs: 30000
+      maxRequestsPerMinute: 300
     # DM・プライベート領域は既定で検索対象外(ADR-013 §1)。
     # included へ変更する場合は confirmPrivateScopesIncluded: true と
     # 利用規程の整備(docs/usage-policy-template.md)が必須
