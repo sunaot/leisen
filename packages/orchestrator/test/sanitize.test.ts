@@ -170,7 +170,7 @@ describe("stripUnsafeCharacters(手順 1)", () => {
 
 describe("敵対的な長大入力でも線形時間(再レビュー 2026-09-27 must)", () => {
   // 連長が昇順に並ぶバッククォート連: 旧実装(候補ごとの前方走査)では
-  // 約 32 万文字で 1.7 秒、約 128 万文字で 10 秒超だった
+  // 約 32 万文字で 1.7 秒、約 128 万文字で 10 秒超だった(入力長の約 1.5 乗)
   function ascendingBacktickRuns(targetChars: number): string {
     const parts: string[] = [];
     let total = 0;
@@ -188,14 +188,27 @@ describe("敵対的な長大入力でも線形時間(再レビュー 2026-09-27 
     return `${half}${half}`;
   }
 
-  it.each([
-    ["昇順の連", ascendingBacktickRuns(1_200_000)],
-    ["遠い対と空行", farPairedRuns(1_200_000)],
-  ])("%s(約120万文字)を数秒以内に処理する", (_name, input) => {
+  function elapsedMs(input: string): number {
     const started = performance.now();
     const result = sanitizeAnswerText(input);
-    const elapsedMs = performance.now() - started;
     expect(typeof result.text).toBe("string");
-    expect(elapsedMs).toBeLessThan(3_000);
+    return performance.now() - started;
+  }
+
+  // 絶対時間ではなく入力長 4 倍に対する所要時間の比で判定する(並列実行の負荷で
+  // 絶対時間は数倍ぶれる)。線形なら約 4 倍、旧実装の約 1.5 乗なら約 8 倍、二乗なら 16 倍。
+  it.each([
+    ["昇順の連", ascendingBacktickRuns],
+    ["遠い対と空行", farPairedRuns],
+  ])("%s: 入力長 4 倍で所要時間が 6 倍を超えない(線形)", (_name, generate) => {
+    const small = generate(300_000);
+    const large = generate(1_200_000);
+    // ウォームアップ(JIT)後に計測する
+    elapsedMs(small);
+    const smallMs = Math.max(elapsedMs(small), 5);
+    const largeMs = elapsedMs(large);
+    expect(largeMs / smallMs).toBeLessThan(6);
+    // 約120万文字の絶対時間の上限(負荷下でも十分に余裕のある値)
+    expect(largeMs).toBeLessThan(20_000);
   });
 });
