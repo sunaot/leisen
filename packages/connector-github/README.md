@@ -4,7 +4,7 @@ connector-sdk v0.3(ADR-016)の `Connector`(`search` / `fetch` / `list` / `descri
 
 - `capabilities`: `{ nativeSearch: "degraded", ingest: false }`。コード専用索引(シンボル・AST)はコア外(ADR-008 §5)
 - 外部依存なし(`@kp/connector-sdk` のみ)。HTTP は注入可能な `fetch`(既定はグローバル `fetch`。注入する実装の前提は「リダイレクトの扱い」を参照)
-- 公開 API は `createGitHubConnector` と型(`GitHubConnector` / `GitHubConnectorOptions` / `FetchLike` / `RateLimitOptions`)のみ。API クライアント・残quota追跡・documentId の符号化は内部実装で公開しない(Gateway を経由せずに GitHub を呼ぶ部品を配らない、不変条件2)
+- 公開 API は factory(`createGitHubConnector`、Gateway のプラグイン契約の `createConnector`)と型(`GitHubConnector` / `GitHubConnectorOptions` / `GitHubConnectorFactoryInit` / `FetchLike` / `RateLimitOptions`)のみ。API クライアント・残quota追跡・documentId の符号化は内部実装で公開しない(Gateway を経由せずに GitHub を呼ぶ部品を配らない、不変条件2)
 - **実アカウントでの手動疎通は未実施**(GitHub App の組織承認待ち。T-019 の人手の前提)。現状の検証はフェイク GitHub API(注入 fetch)によるユニットテストのみ
 
 ## 前提(導入・認可)
@@ -29,7 +29,32 @@ auth-matrix §4 の結論に従う。
 
 **権限境界の検証ではユーザー別変数を必須とする。** `KP_MOCK_TOKEN_GITHUB` だけを設定すると、全モックユーザーが同じトークン(= 同じ GitHub アカウントの権限)を共有する。この状態では「他人の権限で見えてしまう」逸脱を検出できないため、カナリア検証(threat-model §5)や権限別アイデンティティでのテストでは、各ユーザーに別アカウントのトークンを `KP_MOCK_TOKEN_GITHUB__<USERID>` で設定すること。
 
-## 使い方
+## deployment.yaml での使い方(Gateway のプラグイン)
+
+Gateway の起動コードは `connectors[].kind: github` をプラグインモジュール `@kp/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
+
+```yaml
+connectors:
+  - id: github              # Connector.sourceId。mock_env の本人トークンは KP_MOCK_TOKEN_<SOURCEID>(= KP_MOCK_TOKEN_GITHUB)
+    kind: github            # プラグイン @kp/connector-github(createConnector)
+    auth:
+      provider: mock_env    # 開発時のみ(本人トークンを環境変数から注入。NODE_ENV=production では拒否)
+    limits:
+      timeoutMs: 30000      # Gateway が1ツール呼び出し全体に適用する(下の settings.timeoutMs より長く)
+    settings:               # 秘密でない設定だけ(トークンは書かない)
+      baseUrl: https://api.github.com   # GitHub Enterprise Server なら https://HOST/api/v3
+      timeoutMs: 10000
+      searchCode: true
+      maxComments: 30
+      # rateLimit:
+      #   maxEntries: 10000
+```
+
+- `settings` に書けるのは下の「オプション」の表のうち `sourceId`・`fetchImpl` を除くもの(`displayName` / `baseUrl` / `timeoutMs` / `userAgent` / `searchCode` / `defaultSearchLimit` / `snippetChars` / `pageChars` / `maxComments` / `listPageSize` / `maxTopContainers` / `rateLimit.maxEntries` / `rateLimit.secondaryBackoffBaseMs` / `rateLimit.secondaryBackoffMaxMs`)。**トークンは受け取らない**: 本人トークンは Gateway が呼び出しごとに `AuthContext` で渡す(不変条件1・6。Gateway の設定スキーマも秘密らしいキー名を拒否する)
+- 未知のキー(綴り違い・`token` 等)、型違い、範囲外、不正な `baseUrl` は `ConnectorError("invalid_request")`(受領値をエコーしない)で拒否し、Gateway は `connector_settings_invalid` で起動を止める。`createConnector` の中では GitHub API を呼ばない
+- 本番の資格情報は `auth.provider` の Token Vault 方式(T-004 で追加予定)の GitHub App user access token。`mock_env` は開発専用(上記「ローカル開発」)
+
+## 使い方(コードから組み立てる)
 
 ```ts
 import { createGitHubConnector } from "@kp/connector-github";
@@ -60,7 +85,7 @@ const github = createGitHubConnector({
 | `rateLimit.maxEntries` | 10000 | 残quota追跡のエントリ(ユーザー×リソース種別)上限 |
 | `rateLimit.secondaryBackoffBaseMs` / `secondaryBackoffMaxMs` | 60000 / 900000 | 待機指示のない二次制限の指数バックオフ(初回 / 上限) |
 
-不正な設定値は構築時に `RangeError` で拒否する(黙って既定値に倒さない)。deployment.yaml にはまだコネクタ固有設定の欄がないため、これらはデプロイ組み立て(T-012)でコードから注入する。タイムアウトは deployment.yaml の `connectors[].limits.timeoutMs`(Gateway が1ツール呼び出し全体に適用)より短くすること。fetch(issue)は本文とコメントの2リクエストを直列に行うため、`timeoutMs` の2倍程度が Gateway の値に収まるのが目安。
+不正な設定値は構築時に `RangeError` で拒否する(黙って既定値に倒さない。`createConnector` 経由では `ConnectorError("invalid_request")`)。deployment.yaml からは `connectors[].settings` で渡す(上記)。タイムアウトは deployment.yaml の `connectors[].limits.timeoutMs`(Gateway が1ツール呼び出し全体に適用)より短くすること。fetch(issue)は本文とコメントの2リクエストを直列に行うため、`timeoutMs` の2倍程度が Gateway の値に収まるのが目安。
 
 ## 挙動
 
@@ -162,4 +187,4 @@ Gateway は LLM・利用者向けの応答で `permission_denied` と `not_found
 npm test -w @kp/connector-github
 ```
 
-フェイク GitHub API(注入 fetch)で検証する。認可分岐(資格情報の前提違反・401/403/404/5xx・本人トークンの付与とユーザー間の非混線・リダイレクト)を `test/auth.test.ts`、残quotaの尊重を `test/ratelimit.test.ts` に置く。フィクスチャのトークンは `dev-only-token-<user>` 形式のダミーのみ(接頭辞による拒否のテストは `ghs_dev-only` / `ghr_dev-only` のような実トークン形式でない短い値を使う)。内部モジュールは相対 import で参照する(公開 API は factory と型のみ)。
+フェイク GitHub API(注入 fetch)で検証する。Gateway のプラグイン契約(`createConnector` と settings の検証)は `test/plugin.test.ts`。認可分岐(資格情報の前提違反・401/403/404/5xx・本人トークンの付与とユーザー間の非混線・リダイレクト)を `test/auth.test.ts`、残quotaの尊重を `test/ratelimit.test.ts` に置く。フィクスチャのトークンは `dev-only-token-<user>` 形式のダミーのみ(接頭辞による拒否のテストは `ghs_dev-only` / `ghr_dev-only` のような実トークン形式でない短い値を使う)。内部モジュールは相対 import で参照する(公開 API は factory と型のみ)。

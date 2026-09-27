@@ -166,9 +166,10 @@ describe("describe", () => {
 
 describe("構築と能力", () => {
   it("公開 API は factory のみ(API クライアント・QuotaTracker・documentId の符号化を公開しない)", () => {
-    // 型のみの export(GitHubConnector / GitHubConnectorOptions / FetchLike /
-    // RateLimitOptions)は実行時の値を持たない
-    expect(Object.keys(publicApi).sort()).toEqual(["createGitHubConnector"]);
+    // 型のみの export(GitHubConnector / GitHubConnectorOptions / GitHubConnectorFactoryInit /
+    // FetchLike / RateLimitOptions)は実行時の値を持たない。createConnector は Gateway の
+    // プラグイン契約の factory(test/plugin.test.ts)
+    expect(Object.keys(publicApi).sort()).toEqual(["createConnector", "createGitHubConnector"]);
   });
 
   it("Connector 契約を満たし、capabilities は degraded / ingest なし", () => {
