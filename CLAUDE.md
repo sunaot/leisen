@@ -45,7 +45,7 @@
 
 - 着手可能(人手の前提なし): T-012(リファレンスデプロイ)、T-007(Orchestrator。実走のみClaude APIキーが必要)
 - 着手可能(実疎通は人手の前提待ち): T-019(GitHub App承認)、T-005(GCP OAuthクライアント承認)、T-004(IdPサンドボックス+KMS)。API薄ラッパーをモックした実装とテストは先行してよい
-- **MCP実装は仕様2026-07-28版(ステートレス)を設計前提とする(ADR-001追補3、2026-09-27 Accepted)。** Gateway の HTTPトランスポート配線(T-003 残作業)は着手可能。順序は「`@modelcontextprotocol/sdk` 1.30.0 への更新PR(追補3「SDK更新の進め方」の検証項目を満たす)→ HTTP配線PR」。`_meta` の独自キーは暫定prefix `io.github.sunaot.leisen/` を使う(最終確定はT-013)
+- **MCP実装は仕様2026-07-28版(ステートレス)を設計前提とする(ADR-001追補3、2026-09-27 Accepted)。** Gateway の HTTPトランスポート配線(T-003 残作業)は着手可能。`@modelcontextprotocol/sdk` は 1.30.1 に更新済み(1.30.x は2026-07-28版に非対応のため、新仕様固有の必須項目は保留。ADR-001追補3「SDK更新の検証結果」)。HTTP配線PRへ進む。`_meta` の独自キーは暫定prefix `io.github.sunaot.leisen/` を使う(最終確定はT-013)
 - Slackコネクタ(T-006)は RTS/公式MCP を第一候補とし(ADR-014)、着手前に導入形態の法務確認(人間タスク)が必要。法務確認が終わるまで着手しない
 - delegated_identity 認可スパイク(T-017)は Q2 に前倒し。ただし文書検索モジュール本体の実装は Q3 着手(ADR-006/008)であり、まだ書かない
 - 構造化クエリモダリティ(text-to-query)は v1.0 スコープ外(ADR-008)。マップ生成(Phase 3)も同様。Source Catalog(T-018)は Phase 1.5 として例外的にスコープ内

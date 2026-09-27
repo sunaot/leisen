@@ -30,15 +30,16 @@ T-001, T-002, **T-010**(deployment.yamlの最小サブセットを最初から�
 
 ### 残作業(追補3の決定を前提とする)
 - Streamable HTTP配線: 毎リクエストの `Authorization` ヘッダでセッショントークンを検証し、`GatewaySession` を接続ではなくリクエストから解決する(追補3 決定1)。`server.onclose` によるセッション破棄前提を撤回する
-- MCPサーバーインスタンスからユーザー状態を排除し、共有可能なステートレス部品にする(決定2)
+- MCPサーバーインスタンスからユーザー状態を排除し、共有可能なステートレス部品にする(決定2)。SDK 1.30.1 ではステートレス transport を再利用できず、`Server` も1 transport にしか接続できないため、ユーザー状態を持たないサーバー生成処理を共有し、`Server` と transport はリクエストごとに組み立てる(ADR-001追補3「SDK更新の検証結果」)
 - `_meta` の `runId` / `iteration` を名前空間prefix付きキー(暫定 `io.github.sunaot.leisen/runId` 等)へ移行する(決定4。移行期間は裸キーも受ける。prefixの最終確定はT-013)
-- `tools/list` に `cacheScope: "private"` 固定と `ttlMs`(deployment.yaml注入、既定300000)を付与する(決定5)
-- 新仕様の必須要件: `Mcp-Method` / `Mcp-Name` ヘッダ検証、`server/discover` 応答、`resultType: "complete"` 付与(§B-3)
-- ネゴシエートされたプロトコルバージョンを固定値と突き合わせる回帰テスト(§C-2)
-- `@modelcontextprotocol/sdk` 1.30.0への更新は本作業の直前の別PRで行い、追補3「SDK更新の進め方」の検証項目を満たす
+- `tools/list` に `cacheScope: "private"` 固定と `ttlMs`(deployment.yaml注入、既定300000)を付与する(決定5)— **保留**(SDK未対応。下記)
+- 新仕様の必須要件: `Mcp-Method` / `Mcp-Name` ヘッダ検証、`server/discover` 応答、`resultType: "complete"` 付与(§B-3)— **保留**(SDK未対応。下記)
+- ネゴシエートされたプロトコルバージョンを固定値と突き合わせる回帰テスト(§C-2)— 完了(`test/sdk-protocol.test.ts`)
+- `@modelcontextprotocol/sdk` 1.30.0への更新は本作業の直前の別PRで行い、追補3「SDK更新の進め方」の検証項目を満たす — 1.30.1 で完了(下記)
+- SDK 1.30.1 更新済み(本PR)。新仕様の必須要件(Mcp-Method/Mcp-Name、server/discover、resultType、ttlMs/cacheScope)は SDK 未対応のため保留。回帰テスト `test/sdk-protocol.test.ts` が SDK のバージョン変化を検知する(v1 系が新仕様に対応した場合。対応版は v2 系の分割パッケージで提供されており、移行するかは ADR-001追補3「SDK更新の検証結果」の確認依頼で判断する)
 
 ### 受け入れ条件(残作業分)
 - [ ] Authorizationヘッダ欠落・不正なリクエストがコネクタ呼び出し・監査記録のいずれにも到達せず、正規化エラーのみ返る
 - [ ] 同一MCPサーバーインスタンスを複数ユーザーで共有してもユーザーコンテキストが混線しないことがテストされている(不変条件4)
 - [ ] `tools/list` の内容がユーザー・接続に依存しないことがテストされている(ADR-012)
-- [ ] プロトコルバージョン回帰テストが存在し、SDK更新時に失敗して更新レビューを強制する
+- [x] プロトコルバージョン回帰テストが存在し、SDK更新時に失敗して更新レビューを強制する
