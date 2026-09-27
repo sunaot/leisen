@@ -1,6 +1,6 @@
 # 監査ログ サンプルクエリ(T-001)
 
-2層監査モデル(ADR-011)のレコードを runId で束ねて集計するサンプル。
+2層監査モデル(ADR-011)のレコードを (runId, userId) で束ねて集計するサンプル。
 昇格判定レポート(T-014)の「ソース別未解決率」「再検索回数分布」と、
 rawQueryテーブルの digest 結合の例を示す。
 
@@ -23,9 +23,9 @@ ToolInvocation と userId が一致する。runId は呼び出し元が申告す
 -- runId は同じだが userId が食い違う ToolInvocation(警告)
 SELECT
   ar.runId,
-  ar.userId  AS answer_run_user,
-  ti.userId  AS tool_invocation_user,
-  COUNT(*)   AS invocations
+  ar.userId                      AS answer_run_user,
+  ti.userId                      AS tool_invocation_user,
+  COUNT(DISTINCT ti.requestId)   AS invocations   -- 重複行・AnswerRun の書き直しで二重に数えない
 FROM audit_records ar
 JOIN audit_records ti
   ON ti.recordType = 'tool_invocation' AND ti.runId = ar.runId
@@ -36,15 +36,19 @@ GROUP BY ar.runId, ar.userId, ti.userId;
 
 AnswerRun のない runId の ToolInvocation は、単発の呼び出し(runId 未申告)か、Orchestrator が
 利用者を確認できずに終えた run(describe フェーズで Gateway の認証に失敗した等。AnswerRun は
-書かない)である。
+書かない)である。不一致ではない。
 
-注: 昇格判定レポート(`packages/promotion-report`)の集計は現状 runId だけで結合している。
-(runId, userId) での結合と不一致の警告への追随は T-014 側の残作業。
+昇格判定レポート(`packages/promotion-report`)も (runId, userId) で結合する。不一致の
+ToolInvocation はソース別未解決率・再検索回数分布の集計から除外し、run ごとの件数を
+「警告」としてレポートの冒頭に出す(JSON では `userMismatchWarnings`)。レポートに出すのは
+runId と件数だけで、userId・文書ID・クエリは出さない。原因の調査は上のクエリで行う。
 
 ## 1. ソース別未解決率
 
 「どのソースを検索した会話が未解決に終わりやすいか」。AnswerRun の
 finalOutcome と ToolInvocation の sourceId を (runId, userId) で結合する(§0)。
+describe の呼び出しは数えない: Orchestrator(T-007)は run の冒頭で全ソースに describe を
+呼ぶため、数えると全ソースが全 run に現れる。
 
 ```sql
 SELECT
@@ -60,6 +64,7 @@ FROM audit_records ar
 JOIN audit_records ti
   ON ti.recordType = 'tool_invocation' AND ti.runId = ar.runId
  AND ti.userId = ar.userId
+ AND ti.tool <> 'describe'
 WHERE ar.recordType = 'answer_run'
   AND ar.finalOutcome IN ('resolved', 'unresolved')
 GROUP BY ti.sourceId
@@ -71,31 +76,44 @@ ORDER BY unresolved_rate DESC;
 
 ## 2. 再検索回数分布
 
-「何回再検索しても未解決」(product-design 4.4)の把握。run ごとの最大
-iteration(0始まり)から反復回数を出し、ヒストグラム化する。
+「何回再検索しても未解決」(product-design 4.4)の把握。結果確定済みの run ごとに、
+run 内の search の ToolInvocation の件数(再検索回数)を数え、ヒストグラム化する。
+**0回 = 検索なし、1回 = 1発、2回以上 = 再検索**。describe / fetch / list の呼び出しは
+数えない。ToolInvocation は (runId, userId) で結合する(§0)。
+
+iteration は run 内のツール呼び出しの通番(0始まり。describe / search / fetch / list を
+すべて含み、並列呼び出しも個別に採番。ADR-011 追記、ADR-017 決定2)であり、run 内の
+順序付けにだけ使う。`MAX(iteration) + 1` は describe や fetch の呼び出しまで数えるため、
+回数には使わない。監査ストアは at-least-once で同じレコードが複数行に現れうるため、
+冪等キー(tool_invocation は requestId)で重複を除いて数える。search のない run も 0回として
+数えるよう LEFT JOIN にする(ToolInvocation 側の条件は ON 句に置く)。
 
 ```sql
 WITH per_run AS (
   SELECT
-    ti.runId,
-    MAX(ti.iteration) + 1 AS search_iterations,
-    ar.finalOutcome
-  FROM audit_records ti
-  JOIN audit_records ar
-    ON ar.recordType = 'answer_run' AND ar.runId = ti.runId
-   AND ar.userId = ti.userId
-  WHERE ti.recordType = 'tool_invocation'
-    AND ti.tool = 'search'
-  GROUP BY ti.runId, ar.finalOutcome
+    ar.runId,
+    ar.finalOutcome,
+    COUNT(DISTINCT ti.requestId) AS search_count   -- 重複行を除いた search の件数
+  FROM audit_records ar
+  LEFT JOIN audit_records ti
+    ON ti.recordType = 'tool_invocation' AND ti.runId = ar.runId
+   AND ti.userId = ar.userId
+   AND ti.tool = 'search'
+  WHERE ar.recordType = 'answer_run'
+    AND ar.finalOutcome IN ('resolved', 'unresolved')
+  GROUP BY ar.runId, ar.finalOutcome
 )
 SELECT
-  search_iterations,
+  search_count,
   COUNT(*)                                                        AS runs,
   COUNT(CASE WHEN finalOutcome = 'unresolved' THEN 1 END)         AS unresolved
 FROM per_run
-GROUP BY search_iterations
-ORDER BY search_iterations;
+GROUP BY search_count
+ORDER BY search_count;
 ```
+
+昇格判定レポートでは JSON の `searchCountDistribution[].searchCount`(旧
+`iterationDistribution[].searchIterations` = search の max(iteration)+1 は 2026-09-27 に廃止)。
 
 ## 3. rawQuery の digest 結合(失敗クエリの原文参照)
 

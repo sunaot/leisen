@@ -100,8 +100,17 @@ describe("kp-promotion-report CLI", () => {
 
     expect(code).toBe(0);
     const body = JSON.parse(out.join("\n"));
-    expect(body.totalRuns).toBe(5);
+    expect(body.totalRuns).toBe(6);
     expect(body.metaAuditRecords).toBeUndefined();
+    // 再検索回数は run 内の search 件数(旧 iterationDistribution / searchIterations は廃止)
+    expect(body.searchCountDistribution).toEqual([
+      { searchCount: 0, runs: 1, unresolvedRuns: 0 },
+      { searchCount: 1, runs: 2, unresolvedRuns: 1 },
+      { searchCount: 2, runs: 1, unresolvedRuns: 1 },
+      { searchCount: 3, runs: 1, unresolvedRuns: 1 },
+    ]);
+    expect(body.iterationDistribution).toBeUndefined();
+    expect(body.userMismatchWarnings).toEqual([]);
   });
 
   it("--accessor / --meta-audit-out 欠落はusageエラー(メタ監査なしで実行させない)", async () => {
@@ -187,9 +196,15 @@ describe("kp-promotion-report CLI", () => {
     const body = JSON.parse(out.join("\n"));
     expect(body.inputRecordCount).toBe(lines.length * 2);
     expect(body.duplicateRecordCount).toBe(lines.length);
-    expect(body.totalRuns).toBe(5);
+    expect(body.totalRuns).toBe(6);
     const gdrive = body.sourceStats.find((s: { sourceId: string }) => s.sourceId === "gdrive");
-    expect(gdrive.invocations).toBe(6);
+    // describe 6件(各 run の冒頭)+ search / fetch 6件
+    expect(gdrive.invocations).toBe(12);
+    const searchRuns = body.searchCountDistribution.reduce(
+      (sum: number, b: { runs: number }) => sum + b.runs,
+      0,
+    );
+    expect(searchRuns).toBe(5);
   });
 });
 

@@ -9,6 +9,8 @@ import {
   fixtureRawQueries,
   fixtureRecords,
   fixtureSources,
+  invocation,
+  runInvocations,
 } from "./fixture.js";
 
 function renderedFixture(): string {
@@ -45,9 +47,12 @@ describe("renderPromotionReportText", () => {
         "",
         "  (ツール呼び出しの記録がありません)",
         "",
-        "## 再検索回数分布(runIdで束ねたsearch呼び出し)",
+        "## 再検索回数分布(run内のsearch呼び出し件数: 0回=検索なし、1回=1発、2回以上=再検索)",
         "",
-        "  (search呼び出しの記録がありません)",
+        "  結果確定済み(resolved/unresolved)のrunごとに search の呼び出しを数える(重複行を除き、",
+        "  (runId, userId) で束ねたもの)。describe / fetch / list の呼び出しは数えない",
+        "",
+        "  (結果確定済みのrunがありません)",
         "",
         "## 失敗クエリ(未解決run、新しい順)",
         "",
@@ -57,6 +62,47 @@ describe("renderPromotionReportText", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("再検索回数分布: search の件数を 0回=検索なし / 1回=1発 / 2回以上=再検索 の区分名つきで表示する", () => {
+    const text = renderedFixture();
+    expect(text).toContain(
+      [
+        "  0回(検索なし): runs=1 unresolved=0",
+        "  1回(1発): runs=2 unresolved=1",
+        "  2回(再検索): runs=1 unresolved=1",
+        "  3回(再検索): runs=1 unresolved=1",
+      ].join("\n"),
+    );
+    expect(text).toContain("再検索(search 2回以上)の run でも unresolved が減らない");
+  });
+
+  it("userId 不一致の警告: 件数と runId だけをレポートの冒頭に表示し、不一致がなければ警告節を出さない", () => {
+    expect(renderedFixture()).not.toContain("## 警告");
+
+    // 別の利用者(u-other)が run-3 と run-4 の runId を申告した呼び出し
+    const records = [
+      ...fixtureRecords(),
+      ...runInvocations("run-3", "u-other", "2026-07-11T09:40:00Z", [["search", "wiki"]]),
+      invocation("run-4", "u-other", "gdrive", "search", 0, "2026-07-11T12:10:00Z"),
+    ];
+    const text = renderPromotionReportText(
+      aggregatePromotionReport({
+        records,
+        sources: fixtureSources(),
+        accessorUserId: "auditor-1",
+        now: FIXED_NOW,
+      }),
+    );
+
+    expect(text).toContain(
+      "## 警告: userId が AnswerRun と一致しない ToolInvocation(集計から除外)",
+    );
+    expect(text).toContain("ToolInvocation を 7 件(2 run)");
+    expect(text).toContain("docs/audit-queries.md §0");
+    expect(text).toContain("  run=run-3  除外=6件\n  run=run-4  除外=1件\n");
+    expect(text).not.toContain("u-other");
+    expect(text.indexOf("## 警告")).toBeLessThan(text.indexOf("## ソース別未解決率"));
   });
 
   it("失敗クエリ: 保持期間内は原文、期限切れはdigestのみ+期限切れ表示", () => {

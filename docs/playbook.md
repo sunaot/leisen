@@ -52,6 +52,11 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
    判定ガイド(product-design.md 5.1 の昇格基準)に照らして評価する。
    失敗原因のサンプリング調査(「文書は存在するのにネイティブ検索で到達できない」の
    確認)は人手で行う
+   - 再検索回数は run 内の search 呼び出しの件数(0回=検索なし、1回=1発、2回以上=再検索)。
+     describe / fetch / list は数えない(docs/audit-queries.md §2)
+   - レポート冒頭に「警告」(userId が AnswerRun と一致しない ToolInvocation)が出た場合、
+     その呼び出しは集計から除外されている。判定の前に docs/audit-queries.md §0 のクエリで
+     原因(実装の不具合・runId の申告の偽装)を調べる
 3. 昇格を決めたソースについて deployment.yaml の `connectors[].searchLayer.enabled` を
    true にし、Ingest開始・初期インデックス構築・post-filtering稼働の標準手順
    (T-012/T-016以降で確定)を実施する
