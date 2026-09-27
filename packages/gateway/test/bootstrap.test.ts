@@ -366,7 +366,8 @@ audit:
       ["alice", "dev-docs", "search", null],
       ["alice", "dev-docs", "search", null],
       ["alice", "dev-docs", "fetch", null],
-      ["alice", "no-such-source", "describe", "unknown_source"],
+      // 設定にないソースIDは監査に残さず固定値 "unknown" で記録する(TM 反映 minor-10)
+      ["alice", "unknown", "describe", "unknown_source"],
     ]);
     // 監査ログ本体に生クエリ・本文を含めない。原文は rawQuery テーブルのみ(ADR-011 §3)
     const auditText = lines.join("\n");
