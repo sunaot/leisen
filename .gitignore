@@ -4,3 +4,6 @@ dist/
 .env
 .env.*
 coverage/
+
+# Claude Code subagent worktrees (harness-managed, never commit)
+.claude/worktrees/
