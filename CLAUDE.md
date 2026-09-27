@@ -43,10 +43,12 @@
 
 **実装前ゲート(T-000a/b/c)は完了(2026-07-12、ADR-010/013 Accepted)。Gateway土台(T-001 / T-002 / T-010 / T-003)と昇格判定レポート(T-014)はmainにマージ済み。** 現在はコネクタ・Orchestrator・リファレンスデプロイに進む段階。順序と制約:
 
+**2026-09-27 更新(ブランチ `claude/loving-edison-3yad2v`、mainへは未マージ):** T-003 の HTTP 配線、起動コード(`kp-gateway serve/validate`、README「手元で動かす(5分)」)、T-019 GitHub コネクタ(モックテスト済み・実疎通は GitHub App 承認待ち)、T-007 Orchestrator(`packages/orchestrator`、`kp-ask` CLI。脚本化 LLM でのシナリオテスト済み・**実走は Claude API 資格情報待ち**)が入り、モック IdP + 開発用コネクタで Gateway が手元で起動する。T-012(リファレンスデプロイ)は作業中。ADR-017(Orchestrator の LLM クライアント)は Proposed で人間レビュー待ち。
+
 - 着手可能(人手の前提なし): T-012(リファレンスデプロイ)、T-007(Orchestrator。実走のみClaude APIキーが必要)
 - 着手可能(実疎通は人手の前提待ち): T-019(GitHub App承認)、T-005(GCP OAuthクライアント承認)、T-004(IdPサンドボックス+KMS)。API薄ラッパーをモックした実装とテストは先行してよい
 - **MCP実装は仕様2026-07-28版(ステートレス)を設計前提とする(ADR-001追補3、2026-09-27 Accepted)。** Gateway の HTTPトランスポート配線(T-003 残作業)は着手可能。`@modelcontextprotocol/sdk` は 1.30.1 に更新済み(1.30.x は2026-07-28版に非対応のため、新仕様固有の必須項目は保留。ADR-001追補3「SDK更新の検証結果」)。HTTP配線PRへ進む。`_meta` の独自キーは暫定prefix `io.github.sunaot.leisen/` を使う(最終確定はT-013)
 - Slackコネクタ(T-006)は RTS/公式MCP を第一候補とし(ADR-014)、着手前に導入形態の法務確認(人間タスク)が必要。法務確認が終わるまで着手しない
 - delegated_identity 認可スパイク(T-017)は Q2 に前倒し。ただし文書検索モジュール本体の実装は Q3 着手(ADR-006/008)であり、まだ書かない
 - 構造化クエリモダリティ(text-to-query)は v1.0 スコープ外(ADR-008)。マップ生成(Phase 3)も同様。Source Catalog(T-018)は Phase 1.5 として例外的にスコープ内
-- 人間の未決事項: ADR-004(ライセンス)、OSS公開時期(T-013の前提)、Slack導入形態の法務確認(ADR-014)、MCP SDK v2系(`@modelcontextprotocol/server` 等、仕様2026-07-28版対応)への移行時期(ADR-001追補3「SDK更新の検証結果」追記とスパイク `docs/spikes/mcp-sdk-v2-migration-spike.md`。HTTP配線はv1で完了済み、SDK依存部は隔離済み)
+- 人間の未決事項: ADR-004(ライセンス)、OSS公開時期(T-013の前提)、Slack導入形態の法務確認(ADR-014)、ADR-017(Orchestrator の LLM クライアント・既定モデル・AnswerRun の書き手。Proposed)、T-003 レビューの H1(未申告呼び出しを human_in_the_loop とする既定の受容再確認)、MCP SDK v2系(`@modelcontextprotocol/server` 等、仕様2026-07-28版対応)への移行時期(ADR-001追補3「SDK更新の検証結果」追記とスパイク `docs/spikes/mcp-sdk-v2-migration-spike.md`。HTTP配線はv1で完了済み、SDK依存部は隔離済み)
