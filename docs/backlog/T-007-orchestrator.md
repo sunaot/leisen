@@ -20,4 +20,4 @@ product-design.md 4.3の探索ループを実装する。品質は単発検索�
 - [ ] 1回の探索ループ内の全ツール呼び出しが同一runIdと単調増加するiterationで `_meta` に申告され、監査ログのToolInvocationがrunIdで束ねられることがテストされている
 
 ## 更新(2026-09-17)
-ADR-001追補3(ドラフト、人間レビュー待ち)により、runId / iteration の `_meta` 申告が本タスクの必須要件になった。`_meta` のキー名(prefix)は追補3の承認時に確定する。承認前に着手する場合はGatewayの現行キー(`runId` / `iteration`)で実装し、prefix確定後に追随する。
+ADR-001追補3(ドラフト、人間レビュー待ち)により、runId / iteration の `_meta` 申告が本タスクの必須要件になった。`_meta` のprefixは暫定 `io.github.sunaot.leisen/`(2026-09-27確認、最終確定はT-013)。Gateway側がprefix付きキーを受けるまでは現行キー(`runId` / `iteration`)で実装し、Gateway移行後に追随する。

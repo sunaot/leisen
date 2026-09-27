@@ -31,7 +31,7 @@ T-001, T-002, **T-010**(deployment.yamlの最小サブセットを最初から�
 ### 残作業(追補3の決定を前提とする)
 - Streamable HTTP配線: 毎リクエストの `Authorization` ヘッダでセッショントークンを検証し、`GatewaySession` を接続ではなくリクエストから解決する(追補3 決定1)。`server.onclose` によるセッション破棄前提を撤回する
 - MCPサーバーインスタンスからユーザー状態を排除し、共有可能なステートレス部品にする(決定2)
-- `_meta` の `runId` / `iteration` を名前空間prefix付きキーへ移行する(決定4。移行期間は裸キーも受ける)
+- `_meta` の `runId` / `iteration` を名前空間prefix付きキー(暫定 `io.github.sunaot.leisen/runId` 等)へ移行する(決定4。移行期間は裸キーも受ける。prefixの最終確定はT-013)
 - `tools/list` に `cacheScope: "private"` 固定と `ttlMs`(deployment.yaml注入、既定300000)を付与する(決定5)
 - 新仕様の必須要件: `Mcp-Method` / `Mcp-Name` ヘッダ検証、`server/discover` 応答、`resultType: "complete"` 付与(§B-3)
 - ネゴシエートされたプロトコルバージョンを固定値と突き合わせる回帰テスト(§C-2)

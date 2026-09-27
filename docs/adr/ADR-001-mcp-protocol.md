@@ -39,7 +39,7 @@ GatewayのMCPサーバー/クライアント面の実装に `@modelcontextprotoc
 1. **リクエスト単位認証。** 追補2の「1接続=1セッション」を置き換える。Streamable HTTP配線(T-003)では毎リクエストの `Authorization` ヘッダでセッショントークンを検証し、`GatewaySession` を接続ではなくリクエストから解決する。トークン検証コストはIdP検証キャッシュ(userId込みキー、`idp/cache.ts`)で吸収する。`server.onclose` によるセッション破棄前提は撤回する。
 2. **MCPサーバーインスタンスにユーザー状態を持たせない。** インスタンスは共有可能なステートレス部品とし、ユーザーコンテキストはリクエストごとに引き渡す。
 3. **runId / iteration は Orchestrator の申告を基本とする(ADR-011整合)。** 追補2の「未申告時はセッション単位で自動採番」はクロスコール状態となるため廃止し、T-007の受け入れ条件として `_meta` での申告を必須化する。未申告の呼び出しは単発run(呼び出し単位の新規runId、iteration=0)として記録し、run内の継続性は保証しない。
-4. **`_meta` 独自キーに名前空間prefixを付ける。** プロトコル自身が `io.modelcontextprotocol/*` を使うため、`runId` / `iteration` は prefix付きキーへ移行する(prefix名はOSS配布名の確定と併せてレビューで決定。候補: `io.github.sunaot.leisen/`)。
+4. **`_meta` 独自キーに名前空間prefixを付ける。** プロトコル自身が `io.modelcontextprotocol/*` を使うため、`runId` / `iteration` は prefix付きキーへ移行する。**prefixは暫定で `io.github.sunaot.leisen/` とする**(2026-09-27、リポジトリオーナー確認。配布サイト未定のため暫定)。OSS公開前に配布名と併せて最終確定し、変更する場合は移行期間中に旧prefixも受ける。最終確定はT-013(OSS公開準備)の公開チェックリスト項目として管理する。
 5. **`tools/list` はユーザー非依存を不変条件として明文化する。** 有効ソースはdeployment.yaml由来であり、ユーザーごとに内容を変えない(ソース可視性で認可状態を漏らさない。ADR-012と同方向。仕様上もlist系の接続非依存が必須)。新仕様で必須の `cacheScope` は `"private"` 固定、`ttlMs` はdeployment.yamlから注入する(既定値 300000)。
 6. **後方互換はSDKのバージョンネゴシエーションに委ね、Gateway独自の互換レイヤは作らない。** 旧版クライアント(社外エージェント製品を含む)との会話は非推奨窓の間SDKが成立させる。非推奨窓終了後の旧版サポート打ち切りはSDK更新に追随する。
 7. **非推奨機能(Roots / Sampling / Logging、HTTP+SSE)は採用しない。** 現状も未使用であり、新規実装に持ち込まない。
