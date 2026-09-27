@@ -7,6 +7,7 @@ import {
 } from "@kp/gateway";
 import {
   aggregatePromotionReport,
+  dedupeAuditRecords,
   generatePromotionReport,
   type PromotionReportInput,
 } from "../src/aggregate.js";
@@ -189,6 +190,53 @@ describe("aggregatePromotionReport(合成2層ログのゴールデンテスト)"
     expect(() =>
       aggregatePromotionReport({ ...baseInput(), accessorUserId: "" }),
     ).toThrow(/accessorUserId/);
+  });
+
+  it("JSONL の重複行(at-least-once の再送)を冪等キーで除いて集計する(二重計上しない)", () => {
+    const baseline = aggregatePromotionReport(baseInput());
+    const records = fixtureRecords();
+    // 全レコードの再送に加え、途中のバッチ(先頭5件)がもう一度書かれた状況
+    const duplicated = [...records, ...records.slice(0, 5), ...records];
+    const report = aggregatePromotionReport({ ...baseInput(), records: duplicated });
+
+    expect(report.inputRecordCount).toBe(duplicated.length);
+    expect(report.duplicateRecordCount).toBe(duplicated.length - records.length);
+    expect(report.totalRuns).toBe(baseline.totalRuns);
+    expect(report.resolvedRuns).toBe(baseline.resolvedRuns);
+    expect(report.unresolvedRuns).toBe(baseline.unresolvedRuns);
+    expect(report.undecidedRuns).toBe(baseline.undecidedRuns);
+    // invocations(ツール呼び出し数)を含めて重複のない場合と一致する
+    expect(report.sourceStats).toEqual(baseline.sourceStats);
+    expect(report.iterationDistribution).toEqual(baseline.iterationDistribution);
+    expect(report.failedQueries).toEqual(baseline.failedQueries);
+    expect(baseline.duplicateRecordCount).toBe(0);
+  });
+
+  it("同じ冪等キーのレコードは後のものを採る(answer_run の runId、audit_access の accessId)", () => {
+    const records = fixtureRecords();
+    const pendingRun4 = records.find(
+      (r) => r.recordType === "answer_run" && r.runId === "run-4",
+    );
+    expect(pendingRun4?.recordType).toBe("answer_run");
+    // run-4 は pending の後に resolved として書き直された
+    const resolvedRun4 = {
+      ...(pendingRun4 as AuditRecord & { recordType: "answer_run" }),
+      finalOutcome: "resolved" as const,
+      endedAt: "2026-07-11T12:00:30Z",
+    };
+    const access = records.find((r) => r.recordType === "audit_access");
+    const deduped = dedupeAuditRecords([...records, resolvedRun4, access as AuditRecord]);
+    expect(deduped).toHaveLength(records.length);
+    expect(deduped).toContainEqual(resolvedRun4);
+
+    const report = aggregatePromotionReport({
+      ...baseInput(),
+      records: [...records, resolvedRun4],
+    });
+    expect(report.totalRuns).toBe(5);
+    expect(report.resolvedRuns).toBe(2);
+    expect(report.undecidedRuns).toBe(0);
+    expect(report.duplicateRecordCount).toBe(1);
   });
 
   it("post-filtering前候補件数に相当するフィールドを出力に含めない(ADR-011/012)", () => {

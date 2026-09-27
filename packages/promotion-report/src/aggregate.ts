@@ -6,6 +6,10 @@
  * SQL版のサンプルは docs/audit-queries.md。将来の管理画面化を見据え、
  * この集計は表示(render.ts / cli.ts)から分離した純粋関数にする。
  *
+ * 入力の重複: 監査 JSONL は at-least-once で同じレコードが複数行に現れうるため、
+ * 冪等キー(requestId / runId / accessId / purgeId)で重複を除いてから集計する
+ * (dedupeAuditRecords)。
+ *
  * 扱わないもの:
  * - **post-filtering前の候補件数**: フィールド自体が監査スキーマに存在しない
  *   (ADR-011/012、existence leak対策)。本モジュールでも導入しない
@@ -18,12 +22,13 @@
  * 呼び出し側は必ずそれを監査ストアに書き込むこと。
  */
 import { randomUUID } from "node:crypto";
-import type {
-  AnswerRunRecord,
-  AuditAccessRecord,
-  AuditRecord,
-  RawQueryRecord,
-  ToolInvocationRecord,
+import {
+  auditRecordIdempotencyKey,
+  type AnswerRunRecord,
+  type AuditAccessRecord,
+  type AuditRecord,
+  type RawQueryRecord,
+  type ToolInvocationRecord,
 } from "@kp/gateway";
 import {
   classifySource,
@@ -69,7 +74,13 @@ export interface FailedQuery {
 export interface PromotionReport {
   /** ISO 8601(レポート生成時刻) */
   generatedAt: string;
+  /** 入力レコード数(重複行を含む、読んだまま) */
   inputRecordCount: number;
+  /**
+   * 冪等キーの重複として集計から除いたレコード数(at-least-once の再送による
+   * JSONL の重複行。同じキーは後のレコードを採る)
+   */
+  duplicateRecordCount: number;
   totalRuns: number;
   resolvedRuns: number;
   unresolvedRuns: number;
@@ -111,6 +122,20 @@ function isDecided(run: AnswerRun): boolean {
 }
 
 /**
+ * 冪等キー(gateway の auditRecordIdempotencyKey: requestId / runId / accessId /
+ * purgeId)で重複を除く。監査 JSONL は at-least-once で、書き込みの成否が確定しない
+ * 失敗の再送により同じレコードが複数行に現れうる(gateway の audit/jsonl.ts)。
+ * 同じキーは後のレコードを採る(InMemoryAuditStore と同じ)。順序は最初の出現順。
+ */
+export function dedupeAuditRecords(records: readonly AuditRecord[]): AuditRecord[] {
+  const byKey = new Map<string, AuditRecord>();
+  for (const record of records) {
+    byKey.set(auditRecordIdempotencyKey(record), record);
+  }
+  return [...byKey.values()];
+}
+
+/**
  * パッケージ外向けの入口。メタ監査の書き込み(ADR-013 §3)を型で強制する:
  * writeMetaAudit が成功するまでレポートを返さない(fail-closed、不変条件2)。
  * 集計だけの aggregatePromotionReport は誤用(集計結果の利用+メタ監査未記録)
@@ -133,11 +158,14 @@ export function aggregatePromotionReport(
     throw new Error("accessorUserId is required (meta audit, ADR-013 §3)");
   }
 
+  // at-least-once の重複行を除いてから数える(二重計上しない)
+  const records = dedupeAuditRecords(input.records);
+
   // メタ監査(audit_access / retention_purge)レコードは集計対象のrunデータではない
-  const answerRuns = input.records.filter(
+  const answerRuns = records.filter(
     (r): r is AnswerRun => r.recordType === "answer_run",
   );
-  const invocations = input.records.filter(
+  const invocations = records.filter(
     (r): r is ToolInvocation => r.recordType === "tool_invocation",
   );
 
@@ -226,7 +254,7 @@ export function aggregatePromotionReport(
   const rawByKey = new Map<string, string>();
   for (const rq of input.rawQueries ?? []) {
     // 同一digestが複数ユーザーに存在しうるため userId も結合キーに含める
-    rawByKey.set(`${rq.queryDigest} ${rq.userId}`, rq.rawQuery);
+    rawByKey.set(`${rq.queryDigest}\u0000${rq.userId}`, rq.rawQuery);
   }
   const failedQueries: FailedQuery[] = answerRuns
     .filter((r) => r.finalOutcome === "unresolved")
@@ -236,7 +264,7 @@ export function aggregatePromotionReport(
       let status: FailedQuery["status"] = "no_digest";
       if (run.finalQueryDigest) {
         rawQuery =
-          rawByKey.get(`${run.finalQueryDigest} ${run.userId}`) ?? null;
+          rawByKey.get(`${run.finalQueryDigest}\u0000${run.userId}`) ?? null;
         status = rawQuery !== null ? "available" : "expired_or_missing";
       }
       return {
@@ -264,6 +292,7 @@ export function aggregatePromotionReport(
   return {
     generatedAt: timestamp,
     inputRecordCount: input.records.length,
+    duplicateRecordCount: input.records.length - records.length,
     totalRuns: answerRuns.length,
     resolvedRuns: decidedRuns.length - unresolvedTotal,
     unresolvedRuns: unresolvedTotal,

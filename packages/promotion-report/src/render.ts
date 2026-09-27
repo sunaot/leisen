@@ -82,7 +82,10 @@ export function renderPromotionReportText(report: PromotionReport): string {
     "# 昇格判定レポート(T-014)",
     "",
     `生成時刻: ${report.generatedAt}`,
-    `入力レコード数: ${report.inputRecordCount}`,
+    `入力レコード数: ${report.inputRecordCount}` +
+      (report.duplicateRecordCount > 0
+        ? `(重複 ${report.duplicateRecordCount} 件を除いて集計)`
+        : ""),
     `run数: ${report.totalRuns}(resolved=${report.resolvedRuns} unresolved=${report.unresolvedRuns} 未確定=${report.undecidedRuns})`,
     "",
     "## ソース別未解決率(AnswerRun単位)",

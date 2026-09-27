@@ -19,8 +19,9 @@
  *   取り込むこと。--accessor と --meta-audit-out は必須
  * - 入力レコードは全件zod検証する(不正レコードは即エラー、fail-closed)
  */
+import { realpathSync } from "node:fs";
 import { appendFile, readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   parseAuditRecord,
   rawQueryRecordSchema,
@@ -187,13 +188,38 @@ export async function runCli(
   }
 }
 
-const isMain =
-  typeof process.argv[1] === "string" &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) {
-  const code = await runCli(process.argv.slice(2), {
+/**
+ * プロセスのエントリ。標準入出力につなぎ、終了コードを process.exitCode に設定する。
+ * `node dist/cli.js`(下の isMainModule)と npm の bin(起動シム
+ * bin/kp-promotion-report.js)の両方から呼ばれる。
+ */
+export async function main(
+  argv: readonly string[] = process.argv.slice(2),
+): Promise<void> {
+  process.exitCode = await runCli(argv, {
     stdout: (line) => process.stdout.write(line + "\n"),
     stderr: (line) => process.stderr.write(line + "\n"),
   });
-  process.exitCode = code;
+}
+
+/**
+ * moduleUrl のモジュールがプロセスのエントリ(process.argv[1])として実行されたか。
+ * 両側を realpath で正規化して比べる: シンボリックリンク経由の起動(npm の bin リンク、
+ * workspace のリンク node_modules/@kp/promotion-report 等)では argv[1] がリンクのパス、
+ * import.meta.url が実体のパスになり、そのまま比べると一致しない(何もせず exit 0 で
+ * 終わってしまう)。解決できないパスはエントリではないとみなす。
+ */
+export function isMainModule(moduleUrl: string, argv1: string | undefined): boolean {
+  if (typeof argv1 !== "string" || argv1 === "") {
+    return false;
+  }
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(argv1);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
+  await main();
 }

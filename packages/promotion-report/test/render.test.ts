@@ -76,6 +76,22 @@ describe("renderPromotionReportText", () => {
     expect(text).toContain("searchLayer.enabled");
   });
 
+  it("重複行を除いた場合は入力レコード数に除外件数を添える(なければ添えない)", () => {
+    expect(renderedFixture()).toContain(`入力レコード数: ${fixtureRecords().length}\n`);
+    const records = fixtureRecords();
+    const text = renderPromotionReportText(
+      aggregatePromotionReport({
+        records: [...records, ...records.slice(0, 3)],
+        sources: fixtureSources(),
+        accessorUserId: "auditor-1",
+        now: FIXED_NOW,
+      }),
+    );
+    expect(text).toContain(
+      `入力レコード数: ${records.length + 3}(重複 3 件を除いて集計)`,
+    );
+  });
+
   it("ソース行に判定対象/対象外/適用外/未分類のラベルが付く", () => {
     const text = renderedFixture();
     expect(text).toContain("  slack  ");
