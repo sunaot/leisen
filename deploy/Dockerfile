@@ -23,8 +23,15 @@
 #     がイメージに残らない(workspaces での npm prune は取りこぼしが起きやすい)
 #   - 依存のダウンロードは BuildKit のキャッシュマウント(/root/.npm)で build と共有する
 #
-# workspace を追加したら、両ステージの package.json の COPY に1行ずつ足すこと
-# (足し忘れると lockfile と workspaces が一致せず npm ci が失敗する)。
+# workspace を追加したら、build ステージの package.json の COPY に1行足すこと。build は
+# `npm run build`(全 workspace)を実行するため、manifest のない workspace があると
+# その依存が入らずビルドが失敗する(orchestrator の追加時に CI の reference-deploy で
+# 実際に起きた: `Cannot find module '@anthropic-ai/sdk'`)。
+# runtime ステージにはイメージに含める workspace(gateway と、それが読み込む
+# connector-sdk / connector-github、運用 CLI の promotion-report)だけを置く。
+# orchestrator(kp-ask)はイメージに含めない(Orchestrator のサービス化と監査ストアの
+# 共有は ADR-017 / T-007 の残作業)。npm ci は manifest のない workspace を無視するので、
+# runtime の manifest を減らしても lockfile との整合検査は通る(CI で確認済み)。
 #
 # 実行時:
 #   - 非 root(uid/gid 1000 = node イメージの node ユーザー)。Kubernetes の runAsNonRoot が
@@ -53,6 +60,7 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/connector-sdk/package.json packages/connector-sdk/
 COPY packages/connector-github/package.json packages/connector-github/
 COPY packages/gateway/package.json packages/gateway/
+COPY packages/orchestrator/package.json packages/orchestrator/
 COPY packages/promotion-report/package.json packages/promotion-report/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --no-audit --no-fund
