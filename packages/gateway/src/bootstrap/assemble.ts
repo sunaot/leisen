@@ -16,6 +16,9 @@
  * - 開発専用の部品(mock IdP / mock_env / dev-fixture)は NODE_ENV=production で
  *   拒否する(dev_only_in_production)。判定は既存の assertNotProduction を経由し、
  *   各部品のコンストラクタの検査は二重の防御として残る
+ * - gateway.http.host がループバック以外なら gateway.http.confirmExposedHost: true を
+ *   要求する(http_host_exposed_requires_confirmation。TLS 終端・Origin 検証を
+ *   前段に委ねる前提の明示、T-012)
  * - 環境変数は options.env から読む(秘密情報・開発用モックの注入元)。本番判定の
  *   NODE_ENV だけは安全側に倒すためプロセスの環境(process.env)を見る
  * - 秘密情報(トークン・clientSecret・環境変数の値)と設定オブジェクト全体を
@@ -33,6 +36,7 @@ import type {
 } from "../config/schema.js";
 import {
   DeploymentConfigError,
+  validateGatewayHttpExposure,
   type ConfigIssue,
 } from "../config/validate.js";
 import { createIdpAdapter } from "../idp/factory.js";
@@ -170,7 +174,8 @@ export async function assembleGateway(
   const configDir = resolve(options.configDir ?? process.cwd());
   const registered = options.connectorFactories ?? {};
   const loadModule = options.loadModule ?? defaultModuleLoader;
-  const issues: ConfigIssue[] = [];
+  // ループバック以外で待ち受ける構成は明示確認が必要(T-012、T-003 レビュー minor-11)
+  const issues: ConfigIssue[] = [...validateGatewayHttpExposure(config)];
 
   const idpRejected =
     config.idp.adapter.kind === "mock" &&

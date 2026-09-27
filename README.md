@@ -78,14 +78,28 @@ NODE_ENV=production npx kp-gateway validate --config examples/deployment.dev.yam
 
 `kp-gateway validate` は設定の読込からコネクタ・Gateway の組み立てまでを行い(listen しない)、見つかった不備を全件列挙して exit 1、問題がなければ要約を出して exit 0 で終わる。本番構成のサンプル `examples/deployment.yaml` はコネクタのプラグイン(`@kp/connector-<kind>`)と本人資格情報の取得方式(T-004)がまだないため、現時点では validate で不備が列挙される。
 
+## Docker Compose で動かす(リファレンスデプロイ)
+
+Gateway と Keycloak をコンテナで起動する評価用構成(T-012)。手順・前提・未実装事項・ループバック以外へ公開する前の必須条件(TLS 終端のリバースプロキシ)は [docs/install.md](docs/install.md) を参照。
+
+```bash
+cd deploy/compose && cp .env.example .env
+docker compose up -d --build --wait
+KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/gateway-smoke.sh
+```
+
+起動確認は CI の `reference-deploy` ジョブが担う(**CI での実行結果は未確認**)。
+
 ## 構成
 
 - `packages/connector-sdk` — コネクタ共通IF
-- `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP)と起動コード(`kp-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
+- `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP。HTTPトランスポートは配線済みで `kp-gateway serve` で起動する)と起動コード(`kp-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
 - `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち
 - `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `examples/deployment.dev.yaml` — 手元で動かすための開発用設定(上記「手元で動かす」)
+- `deploy/` — リファレンスデプロイ(T-012): `Dockerfile` と `compose/`(gateway + keycloak の評価用構成)。導入手順は `docs/install.md`
+- `scripts/smoke/` — スモークテスト(`gateway-smoke.sh`)と開発・CI 専用のトークン取得(`keycloak-token.sh`)
 - `docs/adr` — 設計判断の記録
 - `docs/backlog` — Phase 1タスク(受け入れ条件付き)
 

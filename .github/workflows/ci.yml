@@ -29,3 +29,45 @@ jobs:
       - run: KEYCLOAK_E2E=1 npm test -w @kp/gateway
       - if: always()
         run: docker compose -f e2e/keycloak/docker-compose.yml down
+  # T-012: リファレンスデプロイ(deploy/compose)の起動確認(受け入れ条件1)。
+  # クリーンなランナー上で deploy/Dockerfile のイメージをビルドし、gateway + keycloak を
+  # docker compose で起動して、Keycloak 発行のトークンでスモーク(scripts/smoke/)を通す。
+  # 注意: 開発用の部品(dev-fixture / mock_env)を使う評価用構成であり、実SaaSの認可経路は
+  # 検証しない(ADR-010。keycloak-e2e と同じ限界)。compose の変数展開に必要な値は
+  # .env.example(ローカル専用のダミー)から渡すため、compose の各コマンドに --env-file を付ける。
+  reference-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # スモーク用スクリプト(curl + node)を動かすため。npm の依存は入れない(ビルドはイメージ内)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # --wait: keycloak(realm の import 完了)と gateway(イメージの HEALTHCHECK = /healthz)が
+      # healthy になるまで待つ
+      - name: Build the image and start gateway + keycloak
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example up -d --build --wait --wait-timeout 300
+      # ホストへ公開したポート経由で realm に届くことを確かめる(トークン取得の前提)。
+      # e2e/keycloak/wait-ready.sh を再利用する(タイムアウト時に同スクリプトが出すログは
+      # e2e 側の compose のものなので、この構成のログは下の always() ステップで出す)
+      - name: Wait for the Keycloak realm on the host port
+        run: e2e/keycloak/wait-ready.sh
+        env:
+          KEYCLOAK_BASE_URL: http://localhost:8080
+      - name: Smoke test (token from Keycloak)
+        run: |
+          KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"
+          echo "::add-mask::$KP_SESSION_TOKEN"
+          export KP_SESSION_TOKEN
+          scripts/smoke/gateway-smoke.sh http://127.0.0.1:8787
+      - name: Show container status and gateway logs
+        if: always()
+        run: |
+          docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example ps -a
+          docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example logs --no-color gateway | tail -n 100
+      - name: Show keycloak logs
+        if: failure()
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example logs --no-color keycloak | tail -n 100
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example down -v

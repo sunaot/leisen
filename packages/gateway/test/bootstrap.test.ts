@@ -10,6 +10,7 @@
  * (g) loadModule 注入で動的 import 経路(createConnector / default / なし・失敗)
  * (h) NODE_ENV=production で開発用構成を拒否(assertNotProduction 経由)
  * (i) audit.sink の未知の値を拒否
+ * (j) gateway.http.host が非ループバックなら confirmExposedHost: true を要求(T-012)
  * 秘密情報の実値は使わない(不変条件6)。
  */
 import { once } from "node:events";
@@ -948,6 +949,69 @@ audit:
       },
     });
     expect(codes(error)).toEqual(["index_required_source_needs_search_layer"]);
+  });
+});
+
+describe("(j) gateway.http.host の非ループバック待ち受け(T-012)", () => {
+  const exposed = (extra = "") =>
+    config(`gateway:
+  http:
+    host: 0.0.0.0
+${extra}connectors:
+  - id: dev-docs
+    kind: dev-fixture
+    auth:
+      provider: mock_env
+`);
+
+  it("confirmExposedHost なしの 0.0.0.0 は起動を拒否し、他の不備とまとめて返す", async () => {
+    const error = await rejection({
+      config: parseDeploymentConfig(`schemaVersion: 1
+deployment:
+  name: exposed
+idp:
+  adapter:
+    kind: mock
+gateway:
+  http:
+    host: 0.0.0.0
+audit:
+  sink: syslog
+`),
+      env: DEV_ENV,
+    });
+    expect(codes(error).sort()).toEqual(
+      ["http_host_exposed_requires_confirmation", "unknown_audit_sink"].sort(),
+    );
+    expect(error.issues).toContainEqual(
+      expect.objectContaining({
+        code: "http_host_exposed_requires_confirmation",
+        path: "gateway.http.host",
+      }),
+    );
+  });
+
+  it("confirmExposedHost: true なら組み立てられる(TLS 終端・Origin 検証を前段に委ねる前提の明示)", async () => {
+    const assembled = await assemble({
+      config: exposed("    confirmExposedHost: true\n"),
+      env: DEV_ENV,
+      configDir: EXAMPLES_DIR,
+    });
+    expect(assembled.gateway.enabledSourceIds()).toEqual(["dev-docs"]);
+  });
+
+  it("ループバック(既定 127.0.0.1)は確認フラグ不要", async () => {
+    const assembled = await assemble({
+      config: config(`connectors:
+  - id: dev-docs
+    kind: dev-fixture
+    auth:
+      provider: mock_env
+`),
+      env: DEV_ENV,
+      configDir: EXAMPLES_DIR,
+    });
+    expect(assembled.gateway.enabledSourceIds()).toEqual(["dev-docs"]);
   });
 });
 

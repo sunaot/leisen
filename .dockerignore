@@ -1,0 +1,27 @@
+# deploy/Dockerfile のビルドコンテキスト(リポジトリルート)から除外するもの(T-012)。
+# イメージのビルドに使うのは、ルートの package.json / package-lock.json /
+# tsconfig.base.json と packages/*(package.json と src)だけ。
+# 秘密情報・ローカルの依存とビルド成果物・ビルドに不要なディレクトリを送らない。
+
+# 秘密情報(deploy/compose/.env 等。雛形の .env.example もイメージには不要)
+**/.env
+**/.env.*
+
+# ローカルの依存・ビルド成果物(イメージ内で作り直す)
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+
+# ビルドに不要なもの(.claude はサブエージェントの worktree を含みうる)
+.git
+.github
+.claude
+deploy
+docs
+e2e
+examples
+scripts
+spikes
+packages/*/test
+**/*.md

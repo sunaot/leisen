@@ -22,6 +22,8 @@ export {
 } from "./schema.js";
 export {
   validateDeploymentConfig,
+  validateGatewayHttpExposure,
+  isLoopbackHost,
   assertValidDeploymentConfig,
   DeploymentConfigError,
   type ConfigIssue,

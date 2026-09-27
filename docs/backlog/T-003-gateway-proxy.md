@@ -58,7 +58,7 @@ T-001, T-002, **T-010**(deployment.yamlの最小サブセットを最初から�
 - [x] minor-10: runId を `[A-Za-z0-9._:-]` の1〜128文字に制限(不適合は未申告扱い。in-process の呼び出しにも同じ規則)。設定に存在しないソース(unknown_source)の監査レコードの sourceId は固定値 `unknown`(source_disabled は設定由来の値なのでそのまま)
 - [ ] minor-6: `transport.handleRequest` の期限(`GatewayHttpServerOptions.requestTimeoutMs`、既定 60000。超過時は 500 固定文言・headersSent なら destroy・server.close)— **未反映**(同一 POST の `[tools/call id=7, notifications/cancelled requestId=7]` バッチで応答が返らず、接続とリクエスト単位の部品が保持される問題は残っている。公開前の必須条件として T-012 に記載)。`http.ts` 冒頭の「確実に閉じられる」の記述は再レビュー反映で実態に修正済み(コメントのみ)
 - [ ] minor-7: 拒否応答(401 / 404 / 405 / 5xx)への `connection: close` 付与 — **未反映**(`http.ts` の挙動変更を伴う。再レビュー反映で変えたのはコメントのみ)
-- 見送り: minor-3(IdP/コネクタ由来 message の固定文言化は T-004 で規約テストと共に行う)、minor-9(拒否の監査は ADR-011 の改訂が前提)、minor-11(`gateway.http.host` の非ループバック確認と Origin 検証は T-012 で扱う)
+- 見送り: minor-3(IdP/コネクタ由来 message の固定文言化は T-004 で規約テストと共に行う)、minor-9(拒否の監査は ADR-011 の改訂が前提)、minor-11(`gateway.http.host` の非ループバック確認と Origin 検証は T-012 で扱う — 2026-09-27: 確認フラグ `gateway.http.confirmExposedHost` を T-012 で実装。Host / Origin 検証は未実装で、minor-6 / minor-7 とともにループバック以外へ公開する前の必須条件として当面リバースプロキシで緩和する。docs/install.md §6、T-012 受け入れ条件)
 
 #### 人間への確認事項
 - **H1**: 未申告の呼び出しを human_in_the_loop とする既定(ADR-015、`session.ts`)が、HTTP 化により Bearer セッショントークンを持つ任意の MCP クライアント(社外のエージェント製品を含む)に適用される。TM-C7 の受容範囲として再確認を求める。判断材料(申告キーの誤記の扱い):

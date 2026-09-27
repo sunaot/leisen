@@ -251,9 +251,11 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * GatewayのHTTP待ち受け(T-003、MCP Streamable HTTP)。既定はループバックのみで、
- * 外部へ公開する構成はリファレンスデプロイ(T-012)で定める。listen は起動コードが
- * host / port で行い、path は createGatewayHttpServer(proxy/http.ts)に渡す。
+ * GatewayのHTTP待ち受け(T-003、MCP Streamable HTTP)。既定はループバックのみ。
+ * ループバック以外で待ち受けるには confirmExposedHost: true が必要(リファレンス
+ * デプロイ T-012。コンテナでは 0.0.0.0 にし、TLS 終端は前段のリバースプロキシで行う)。
+ * listen は起動コードが host / port で行い、path は createGatewayHttpServer
+ * (proxy/http.ts)に渡す。
  */
 export const DEFAULT_GATEWAY_HTTP_HOST = "127.0.0.1";
 export const DEFAULT_GATEWAY_HTTP_PORT = 8787;
@@ -263,6 +265,15 @@ export const GATEWAY_HEALTH_PATH = "/healthz";
 
 const gatewayHttpSchema = z.strictObject({
   host: z.string().min(1).default(DEFAULT_GATEWAY_HTTP_HOST),
+  /**
+   * host がループバック以外(0.0.0.0 等)のときの明示確認フラグ。省略時は false と
+   * 同じ扱い(解析結果にはキーを補わない)。Gateway は TLS を終端せず、Origin / Host
+   * ヘッダの検証(DNS rebinding 対策)もしない(T-003 レビュー minor-11)。ループバック
+   * 以外で待ち受ける構成は、TLS 終端のリバースプロキシを前段に置く前提を確認したうえで
+   * true にする。なければ起動コードが拒否する(http_host_exposed_requires_confirmation。
+   * 検査は validate.ts の validateGatewayHttpExposure、手順は docs/install.md)
+   */
+  confirmExposedHost: z.boolean().optional(),
   port: z.number().int().min(1).max(65535).default(DEFAULT_GATEWAY_HTTP_PORT),
   path: z
     .string()

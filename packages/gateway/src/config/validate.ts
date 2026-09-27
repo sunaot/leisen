@@ -6,6 +6,7 @@
  * 検証は設定値と ConnectorCapabilities(コード側の静的宣言)のみを見る。
  * ソースAPIへの照会は行わない。
  */
+import { BlockList, isIP } from "node:net";
 import type { ConnectorCapabilities } from "@kp/connector-sdk";
 import { AUDIT_SINK_JSONL, type DeploymentConfig } from "./schema.js";
 
@@ -45,7 +46,12 @@ export type ConfigIssueCode =
   /** IdP Adapter を構築できない(開発用モックのセッション定義の不備等) */
   | "idp_adapter_misconfigured"
   /** 開発専用の部品(mock IdP / mock_env / dev-fixture)を NODE_ENV=production で使おうとした */
-  | "dev_only_in_production";
+  | "dev_only_in_production"
+  /**
+   * gateway.http.host がループバック以外なのに gateway.http.confirmExposedHost: true が
+   * ない(validateGatewayHttpExposure。起動コードが待ち受けの前に検査する。T-012)
+   */
+  | "http_host_exposed_requires_confirmation";
 
 export interface ConfigIssue {
   code: ConfigIssueCode;
@@ -213,6 +219,59 @@ export function validateDeploymentConfig(
   }
 
   return issues;
+}
+
+/** IPv6 のループバック(::1)と IPv4 射影アドレスの 127.0.0.0/8。 */
+const IPV6_LOOPBACK = new BlockList();
+IPV6_LOOPBACK.addAddress("::1", "ipv6");
+IPV6_LOOPBACK.addSubnet("::ffff:127.0.0.0", 104, "ipv6");
+
+/**
+ * 待ち受けアドレスがループバックか(127.0.0.0/8、::1、IPv4 射影の 127.0.0.0/8、
+ * localhost)。名前解決はしない: localhost 以外のホスト名・省略形の IPv4(127.1 等)は
+ * 非ループバックとして扱う(確認を要求する安全側に倒す)。
+ */
+export function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  if (normalized === "localhost") {
+    return true;
+  }
+  switch (isIP(normalized)) {
+    case 4:
+      return normalized.split(".")[0] === "127";
+    case 6:
+      return IPV6_LOOPBACK.check(normalized, "ipv6");
+    default:
+      return false;
+  }
+}
+
+/**
+ * ループバック以外で待ち受ける構成の確認(T-003 レビュー minor-11、T-012)。
+ * Gateway は TLS を終端せず、Origin / Host ヘッダの検証(DNS rebinding 対策)も
+ * しない。0.0.0.0 等で待ち受けると、Bearer セッショントークンと検索結果が平文で
+ * ネットワークに出うるため、TLS 終端のリバースプロキシを前段に置く前提を
+ * gateway.http.confirmExposedHost: true で明示させる。
+ *
+ * 待ち受けの有無に関わる検査のため、静的検証(validateDeploymentConfig)ではなく
+ * 起動コード(bootstrap/assemble.ts の assembleGateway。kp-gateway serve / validate)が
+ * 適用する(待ち受けないツール用途の設定解析は妨げない)。
+ */
+export function validateGatewayHttpExposure(config: DeploymentConfig): ConfigIssue[] {
+  const { host, confirmExposedHost } = config.gateway.http;
+  if (isLoopbackHost(host) || confirmExposedHost === true) {
+    return [];
+  }
+  return [
+    {
+      code: "http_host_exposed_requires_confirmation",
+      path: "gateway.http.host",
+      message:
+        `"${host}" listens beyond loopback, but the gateway neither terminates TLS nor ` +
+        `validates Origin/Host headers. Put a TLS-terminating reverse proxy in front and set ` +
+        `gateway.http.confirmExposedHost: true (docs/install.md)`,
+    },
+  ];
 }
 
 /** 起動パス用: 不備が1件でもあれば DeploymentConfigError を投げる。 */

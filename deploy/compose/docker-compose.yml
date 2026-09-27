@@ -1,0 +1,103 @@
+# リファレンスデプロイ(T-012): Gateway + Keycloak を Docker Compose で起動する評価用構成。
+#
+#   cd deploy/compose
+#   cp .env.example .env
+#   docker compose up -d --build --wait
+#
+# 手順・前提・未実装事項は docs/install.md。
+#
+# - 評価用構成: 開発用の部品(dev-fixture コネクタ、auth.provider: mock_env)を使うため
+#   NODE_ENV=development で起動する。本番の本人資格情報の取得方式は T-004
+# - Keycloak は e2e/keycloak の realm(ローカル専用のダミー秘密)を流用する開発モード
+#   (start-dev、データは永続化しない)。本番の IdP ではない
+# - 秘密情報は .env(git 管理外。compose が自動で読む)から変数展開で渡し、各コンテナには
+#   必要な変数だけを渡す。このファイルと deployment.yaml に値を書かない(不変条件6)
+# - ホストへの公開はループバック(127.0.0.1)に限る。外部への公開は TLS を終端する
+#   リバースプロキシ経由にする(リクエスト期限・接続数上限・Host / Origin の許可リストを
+#   そこで担う。docs/install.md)
+# - 検索バックエンドは profile search-backend の枠だけ(エンジンは T-016 の PoC で選定)
+name: kp-reference
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    image: kp-gateway:local
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      # dev-fixture / mock_env は NODE_ENV=production で起動を拒否されるため(評価用構成)
+      NODE_ENV: development
+      # deployment.yaml の idp.adapter.clientSecretEnv が参照する
+      KP_KEYCLOAK_CLIENT_SECRET: ${KP_KEYCLOAK_CLIENT_SECRET:?set it in deploy/compose/.env (cp .env.example .env)}
+      # dev-docs の auth.provider: mock_env が参照する(開発専用のモック)
+      KP_MOCK_TOKEN_DEV_DOCS: ${KP_MOCK_TOKEN_DEV_DOCS:?set it in deploy/compose/.env (cp .env.example .env)}
+    ports:
+      # ホストのループバックだけに公開する(コンテナ内の待ち受けは 0.0.0.0)
+      - "127.0.0.1:8787:8787"
+    volumes:
+      # 設定(イメージの KP_DEPLOYMENT_CONFIG=/etc/kp/deployment.yaml)。読み取り専用
+      - ./deployment.yaml:/etc/kp/deployment.yaml:ro
+      # dev-fixture の合成コーパス(settings.corpusFile)
+      - ../../examples/fixtures:/etc/kp/fixtures:ro
+      # 監査ログ本体と生クエリ原文(保持期間・閲覧経路が異なるため別ボリューム。ADR-011 §3)
+      - kp-audit:/var/lib/kp/audit
+      - kp-rawquery:/var/lib/kp/rawquery
+    # 停止時は処理中のリクエストを待ち(最大 10 秒)、監査バッファを flush してから終了する
+    stop_grace_period: 30s
+    # コアダンプにメモリ上のトークンを残さない(threat-model TM-C3)
+    ulimits:
+      core: 0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?set it in deploy/compose/.env (cp .env.example .env)}
+      KC_HEALTH_ENABLED: "true"
+      # トークンの発行者(iss)をホストから見た URL に固定する。ホストで取得したトークン
+      # (http://localhost:8080 経由)を、Gateway がネットワーク内の http://keycloak:8080 で
+      # イントロスペクションしても iss が一致するようにする(バックチャネルの URL は
+      # リクエストから動的に決める)
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports:
+      # トークン取得(scripts/smoke/keycloak-token.sh)と管理コンソール用。ループバックのみ
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../../e2e/keycloak/realm:/opt/keycloak/data/import:ro
+    healthcheck:
+      # realm kp の import 完了まで待つ。イメージに curl がないため bash の /dev/tcp で
+      # HTTP を話し、ステータス行だけを見る
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /realms/kp/.well-known/openid-configuration HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          read -r _ status _ <&3 &&
+          [ "$$status" = 200 ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # 検索バックエンド(ADR-006)の枠。エンジンは T-016 の PoC で選定後に確定する。
+  # 確定したら次の形で定義し、`docker compose --profile search-backend up` で起動する
+  # (全導入は検索層OFFで開始する。有効化は昇格判定レポートの証拠による — docs/playbook.md):
+  #
+  # search-backend:
+  #   profiles: ["search-backend"]
+  #   image: <T-016 で選定後に確定>
+
+volumes:
+  kp-audit:
+  kp-rawquery:

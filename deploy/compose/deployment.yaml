@@ -1,0 +1,75 @@
+# deployment.yaml — リファレンスデプロイ(deploy/compose)の設定(T-012、ADR-005)
+#
+# docker-compose.yml がコンテナの /etc/kp/deployment.yaml に読み取り専用でマウントする
+# (イメージの KP_DEPLOYMENT_CONFIG の既定値)。ファイル内のパスはすべてコンテナ内のもの。
+# 手順は docs/install.md。スキーマの正は packages/gateway/src/config/schema.ts。
+#
+# **評価用構成**: 開発用の部品(auth.provider: mock_env、kind: dev-fixture)を使うため、
+# compose は NODE_ENV=development で起動する(NODE_ENV=production では起動時に
+# dev_only_in_production で拒否される)。本番で使える本人資格情報の取得方式
+# (connectors[].auth.provider)は T-004 で追加する。
+#
+# 秘密情報はこのファイルに書かない(不変条件6)。環境変数名だけを書き、値は
+# deploy/compose/.env から compose の environment 経由で渡す。
+#
+# 変更したら反映前に検証する:
+#   docker compose run --rm --no-deps gateway validate
+schemaVersion: 1
+
+deployment:
+  name: reference-compose
+
+idp:
+  adapter:
+    kind: keycloak
+    # compose ネットワーク内のサービス名で呼ぶ(イントロスペクション、RFC 7662)。
+    # ホストで取得したトークンの発行者(iss)との整合は docker-compose.yml の
+    # KC_HOSTNAME / KC_HOSTNAME_BACKCHANNEL_DYNAMIC で取っている
+    baseUrl: http://keycloak:8080
+    realm: kp
+    clientId: gateway
+    clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+
+gateway:
+  http:
+    # コンテナ内では全インターフェースで待ち受ける(ポート公開はコンテナ外からの到達に
+    # これが必要)。ホストへの公開は docker-compose.yml で 127.0.0.1 に限定し、
+    # 外部への公開は TLS を終端するリバースプロキシ経由にする(docs/install.md)
+    host: 0.0.0.0
+    # ループバック以外で待ち受けるための明示確認。Gateway は TLS を終端せず、
+    # Host / Origin ヘッダも検証しない(T-003 レビュー minor-11)。前段のリバース
+    # プロキシでそれらを担う前提を受け入れたうえで true にしている
+    confirmExposedHost: true
+    port: 8787
+    path: /mcp
+
+connectors:
+  - id: dev-docs
+    # 組み込みの開発用コネクタ(合成の社内文書。実SaaSには接続しない)
+    kind: dev-fixture
+    auth:
+      # 本人資格情報のモック(環境変数 KP_MOCK_TOKEN_DEV_DOCS。開発専用)
+      provider: mock_env
+    settings:
+      # docker-compose.yml が examples/fixtures を /etc/kp/fixtures にマウントする
+      corpusFile: /etc/kp/fixtures/dev-corpus.yaml
+    privateScopes: excluded # ADR-013 §1(既定)
+    searchLayer:
+      enabled: false # 全導入は検索層OFFで開始する(ADR-006、playbook)
+
+audit:
+  # 監査レコードを JSONL で追記する(promotion-report の入力)。
+  # 監査ログ本体と生クエリ原文は保持期間・閲覧経路が異なるため別ボリューム(ADR-011 §3)
+  sink: jsonl
+  jsonl:
+    path: /var/lib/kp/audit/audit.jsonl
+    rawQueryPath: /var/lib/kp/rawquery/raw-queries.jsonl
+  failureMode: fail-closed # 監査を書けないツール呼び出しは失敗させる(ADR-011)
+  privateScopeDocIds: hashed # ADR-013 §2
+  # 保持期間(ADR-013 §3)。期限超過分の定期削除ジョブは未実装(docs/install.md)
+  retentionDays: 365
+  rawQueryRetentionDays: 30
+  telemetryRetentionDays: 14
+
+chatHistory:
+  retentionDays: 90 # ADR-013 §4

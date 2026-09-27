@@ -36,4 +36,6 @@ ADR-005の設定駆動アーキテクチャの中核。導入1件=deployment.yam
 
 あわせて、無効化したコネクタ(`enabled: false`)は実体を構築しないため、capability 連動の検証で実体の登録(`unknown_connector_id`)を要求しないようにした(有効なコネクタは従来どおり要求する)。
 
+追加(2026-09-27、T-012): `gateway.http.confirmExposedHost`(boolean、省略時 false 扱い・解析結果には補わない)。`gateway.http.host` がループバック以外のとき true を要求し、なければ起動コードが `http_host_exposed_requires_confirmation` で拒否する(`validate.ts` の `validateGatewayHttpExposure`。Gateway は TLS を終端せず Host / Origin も検証しないため、前段のリバースプロキシに委ねる前提の明示。T-003 レビュー minor-11、docs/install.md §6)。schemaVersion は 1 のまま。
+
 コネクタ実装の解決順(`bootstrap/plugins.ts`): `assembleGateway` の `connectorFactories[kind]`(プログラム登録)→ 組み込み(`dev-fixture`)→ 動的 import(`module ?? "@kp/connector-<kind>"`)の `createConnector` 名前付き export(なければ関数の default export)。契約 `ConnectorFactory = (init: { sourceId, settings, configDir }) => Connector | Promise<Connector>` は起動コード側のもので、connector-sdk の IF は変更していない。
