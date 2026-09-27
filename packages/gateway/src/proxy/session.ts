@@ -33,6 +33,23 @@ const DEFAULT_EXECUTION_CLASS: ExecutionClass = "human_in_the_loop";
 const HUMAN_ACTOR: Actor = { kind: "human" };
 
 /**
+ * 申告された runId として受け付ける形(文字種と長さの上限)。runId はクライアント
+ * (Orchestrator)が申告してそのまま監査レコードに残るため、任意文字列・長大な値を
+ * 受け付けない。UUID や "run-42" 形式は通る。不適合は未申告として扱う(単発run)。
+ */
+const RUN_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+/** 申告 runId の検証(文字種 [A-Za-z0-9._:-]、1〜128文字)。 */
+export function isValidRunId(value: unknown): value is string {
+  return typeof value === "string" && RUN_ID_PATTERN.test(value);
+}
+
+/** 申告 iteration の検証(0以上の安全な整数)。 */
+export function isValidIteration(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
  * 実行区分の申告を検証する(ADR-015)。未知の値は既定値に丸めず拒否する:
  * 丸めると「scheduled のつもりの誤記」が human_in_the_loop として通り、
  * 区分による拒否を迂回できてしまう。申告値はメッセージにエコーしない。
@@ -90,13 +107,18 @@ export function bindSession(
  * Orchestrator(T-007)の申告を記録する。runId 未申告の呼び出しは呼び出し
  * 単位の新規runId・iteration=0 の単発runとして記録し、run内の継続性は
  * 保証しない(Gatewayは呼び出しをまたぐ採番状態を持たない)。
+ * 申告値は `_meta` 経由(meta.ts)と同じ規則で検証し、不適合は未申告として扱う
+ * (in-process の呼び出し元にも同じ規則を適用する)。
  */
 export function resolveCallContext(
   context: CallContext,
   newRunId: () => string,
 ): { runId: string; iteration: number } {
-  if (context.runId === undefined) {
+  if (!isValidRunId(context.runId)) {
     return { runId: newRunId(), iteration: 0 };
   }
-  return { runId: context.runId, iteration: context.iteration ?? 0 };
+  return {
+    runId: context.runId,
+    iteration: isValidIteration(context.iteration) ? context.iteration : 0,
+  };
 }

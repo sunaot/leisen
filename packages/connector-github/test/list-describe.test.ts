@@ -6,11 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { ConnectorError, type Connector } from "@kp/connector-sdk";
-import {
-  DEFAULT_GITHUB_SOURCE_ID,
-  GitHubConnector,
-  createGitHubConnector,
-} from "../src/index.js";
+import { DEFAULT_GITHUB_SOURCE_ID, GitHubConnector } from "../src/connector.js";
+import * as publicApi from "../src/index.js";
+import { createGitHubConnector } from "../src/index.js";
 import {
   ALICE,
   jsonResponse,
@@ -151,6 +149,8 @@ describe("describe", () => {
     expect(description.summary).toContain("degraded");
     expect(description.summary).toContain("本人");
     expect(description.summary).toContain("毎分約10回");
+    // filters.container は範囲のヒントであり安全境界ではないことを開示する(m9)
+    expect(description.summary).toContain("安全境界ではない");
   });
 
   it("searchCode: false の導入ではコード検索が無効であることを要約で開示する", async () => {
@@ -165,6 +165,12 @@ describe("describe", () => {
 });
 
 describe("構築と能力", () => {
+  it("公開 API は factory のみ(API クライアント・QuotaTracker・documentId の符号化を公開しない)", () => {
+    // 型のみの export(GitHubConnector / GitHubConnectorOptions / FetchLike /
+    // RateLimitOptions)は実行時の値を持たない
+    expect(Object.keys(publicApi).sort()).toEqual(["createGitHubConnector"]);
+  });
+
   it("Connector 契約を満たし、capabilities は degraded / ingest なし", () => {
     const connector: Connector = createGitHubConnector();
     expect(connector).toBeInstanceOf(GitHubConnector);

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { ConnectorError } from "@kp/connector-sdk";
-import { QuotaTracker } from "../src/index.js";
+import { QuotaTracker } from "../src/quota.js";
 import { decodeSearchCursor } from "../src/cursor.js";
 import {
   ALICE,

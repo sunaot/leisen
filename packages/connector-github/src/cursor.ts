@@ -5,6 +5,8 @@
  * カーソルは LLM から改変されて戻りうるため、復号時に構造と値域を厳格に
  * 検証し、不正なら invalid_request とする(受領値はエコーしない)。
  * カーソルには件数(total_count 等)を入れない(ADR-012)。
+ * 検証はカーソルを「偽造されうる入力」として扱う: 個々の値域に加え、正規の
+ * エンコード経路では生じない組合せ(search の per_page 合計の上限超過)も拒否する。
  */
 import { ConnectorError } from "@kp/connector-sdk";
 
@@ -13,6 +15,12 @@ const CURSOR_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /** GitHub の per_page 上限。 */
 export const MAX_PER_PAGE = 100;
+/**
+ * search の limit(1回の返却件数)の上限。limit は各ストリームの per_page に
+ * 配分する(合計 = limit)ため、search カーソルの per_page 合計の上限にも使う。
+ * connector.ts はこの値を再公開する。
+ */
+export const MAX_SEARCH_LIMIT = MAX_PER_PAGE;
 /** GitHub 検索が1クエリで返す結果の上限(これより先のページは取得できない)。 */
 export const SEARCH_RESULT_WINDOW = 1000;
 /** 一覧系の走査ページ上限(暴走防止。100件×1000ページ) */
@@ -77,6 +85,11 @@ export function encodeSearchCursor(streams: readonly SearchStreamState[]): strin
   });
 }
 
+/**
+ * search カーソルを復号する。各ストリームの per_page 合計が MAX_SEARCH_LIMIT を
+ * 超えるものは偽造とみなして拒否する(正規のカーソルは limit を配分したもので
+ * 合計は limit 以下。改変で1回の search の返却件数が上限を超えないようにする)。
+ */
 export function decodeSearchCursor(cursor: string): SearchStreamState[] {
   const what = "search cursor";
   const invalid = new ConnectorError("invalid_request", `invalid ${what}`);
@@ -107,6 +120,10 @@ export function decodeSearchCursor(cursor: string): SearchStreamState[] {
     }
     seen.add(kind);
     streams.push({ kind, page, perPage });
+  }
+  const totalPerPage = streams.reduce((sum, stream) => sum + stream.perPage, 0);
+  if (totalPerPage > MAX_SEARCH_LIMIT) {
+    throw invalid;
   }
   return streams;
 }

@@ -14,7 +14,9 @@
  * 不変条件:
  * - 全リクエストを AuthContext の本人トークンで送る。サービスアカウント・
  *   GitHub App の installation token へのフォールバックは持たない
- *   (不変条件1。auth-matrix §4: installation token は本人性を満たさず採用不可)
+ *   (不変条件1。auth-matrix §4: installation token は本人性を満たさず採用不可)。
+ *   資格情報プロバイダの取り違えに備え、installation token / refresh token の
+ *   接頭辞を持つトークンは API を呼ぶ前に拒否する(多層防御)
  * - エラーメッセージにトークン・レスポンス本文・URL(クエリ)を含めない
  *   (不変条件6、TM-A2)。識別には固定のエンドポイントラベルだけを使う
  * - レート制限状態は userId ごとに分離する(不変条件4、quota.ts)
@@ -28,7 +30,16 @@ import {
   type RateLimitSnapshot,
 } from "./quota.js";
 
-/** 注入可能な fetch。既定はグローバル fetch。 */
+/**
+ * 注入可能な fetch。既定はグローバル fetch。
+ *
+ * 前提(注入する実装が満たすこと): `init.redirect === "manual"` を尊重し、3xx を
+ * 追従せずにそのまま返すこと。本クライアントはリダイレクトを自前で追い、baseUrl と
+ * 同じオリジン・ベースパス内に限って本人トークンを再送する(GitHubApiClient.send)。
+ * 前提に反して自動追従する実装では、転送先へトークンが送られうる(送出後は取り消せ
+ * ない)。違反の検知として `response.redirected === true` の応答は使わずに
+ * source_unavailable で失敗させる(fail-closed)が、これは送出の防止ではない。
+ */
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 export const DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com";
@@ -50,6 +61,20 @@ const MAX_ERROR_BODY_CHARS = 16_384;
 /** 自前で追うリダイレクト(同一オリジン・ベースパス内のみ)の最大回数 */
 const MAX_REDIRECTS = 3;
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
+/**
+ * エンコードされた区切り文字(%2F = "/"、%5C = "\")。リダイレクト先のパスに
+ * 含まれる場合は追わない: URL としてはベースパス内に見えても、サーバー側の復号で
+ * 区切り文字になりベースパスの外(例: /api/v3/x/..%2F..%2Fadmin)へ抜けうる。
+ */
+const ENCODED_SEPARATOR_PATTERN = /%(?:2f|5c)/i;
+/**
+ * 本人の user token として受け付けないトークン種別の接頭辞(多層防御)。
+ * - ghs_: GitHub App の installation access token(app 自身として動作し、本人の
+ *   権限判定にならない。auth-matrix §4 で採用不可)
+ * - ghr_: refresh token(API 認証に使うものではなく、Token Vault の外に出ない)
+ * 資格情報プロバイダ(IdP Adapter / Token Vault)の取り違えを API 呼び出し前に止める。
+ */
+const NON_USER_TOKEN_PREFIXES: readonly string[] = ["ghs_", "ghr_"];
 
 export type RateLimitOptions = Omit<QuotaTrackerOptions, "now">;
 
@@ -125,7 +150,11 @@ export class GitHubApiClient {
    * - userId 空 → invalid_request(ユーザー単位の状態キーが縮退するため)
    * - oauth_bearer 以外(delegated_identity)→ invalid_request
    * - トークン空・不正文字 → auth_expired(再接続が必要)
-   * - expiresAt 経過 → auth_expired(0 以下は「失効時刻不明」とみなして判定せず、GitHub の 401 に委ねる)
+   * - installation token(ghs_)/ refresh token(ghr_)の接頭辞 → invalid_request
+   *   (本人の user token ではない。プロバイダの取り違え。メッセージにトークンを含めない)
+   * - expiresAt が有限数でない(NaN / ±Infinity)→ auth_expired
+   * - expiresAt 経過 → auth_expired(0 以下は「失効時刻不明」とみなして判定せず、
+   *   GitHub の 401 に委ねる。SDK 未定義の暫定扱い。bearerTokenOf の TODO 参照)
    */
   assertUsableCredential(auth: AuthContext): void {
     this.bearerTokenOf(auth);
@@ -173,8 +202,9 @@ export class GitHubApiClient {
    * リクエストを送る。リダイレクトは自前で追い(redirect: "manual")、
    * 設定した baseUrl と同じオリジン・ベースパス内の場合に限って本人トークン付きで
    * 再送する(リネームされた repo・移管された issue の 301 等)。それ以外への
-   * リダイレクトは追わない。注入された fetch 実装のリダイレクト処理に依存せず、
-   * トークンを baseUrl 以外へ送らないことをここで保証する(不変条件6)。
+   * リダイレクトは追わない。fetch 実装が redirect: "manual" を尊重する(FetchLike の
+   * 前提)限り、トークンを baseUrl 以外へ送らない(不変条件6)。前提違反
+   * (response.redirected)は検知して応答を使わない。
    */
   private async send(
     request: GitHubRequest,
@@ -201,6 +231,16 @@ export class GitHubApiClient {
         // 原因(cause)にURL・クエリ・接続先詳細が含まれうるため付け直さない
         throw this.transportError(request, signal);
       }
+      if (response.redirected === true) {
+        // 注入 fetch が redirect: "manual" を尊重せず追従した(FetchLike の前提違反)。
+        // 転送先の応答を GitHub の応答として扱わない(fail-closed)
+        await discardBody(response);
+        throw new ConnectorError(
+          "source_unavailable",
+          `GitHub API ${request.endpoint} response came from a redirect followed by the fetch ` +
+            'implementation (redirect: "manual" was not honoured); the response was discarded',
+        );
+      }
       if (!REDIRECT_STATUSES.has(response.status)) {
         return response;
       }
@@ -212,14 +252,18 @@ export class GitHubApiClient {
         throw new ConnectorError(
           "source_unavailable",
           `GitHub API ${request.endpoint} redirected outside the configured API base URL ` +
-            "(or too many times); the redirect was not followed with the user's token",
+            "(or to an encoded path separator, or too many times); " +
+            "the redirect was not followed with the user's token",
         );
       }
       url = next;
     }
   }
 
-  /** リダイレクト先が baseUrl と同じオリジン・ベースパス内なら絶対URL、そうでなければ undefined。 */
+  /**
+   * リダイレクト先が baseUrl と同じオリジン・ベースパス内なら絶対URL、そうでなければ
+   * undefined。パスにエンコードされた区切り文字(%2F / %5C)を含むものも追わない。
+   */
   private resolveRedirect(location: string, current: string): string | undefined {
     let next: URL;
     try {
@@ -233,6 +277,7 @@ export class GitHubApiClient {
       next.origin !== base.origin ||
       next.username !== "" ||
       next.password !== "" ||
+      ENCODED_SEPARATOR_PATTERN.test(next.pathname) ||
       (basePath !== "" && !next.pathname.startsWith(`${basePath}/`))
     ) {
       return undefined;
@@ -266,13 +311,33 @@ export class GitHubApiClient {
         "GitHub access token is malformed; the user must reconnect GitHub",
       );
     }
+    const token = credential.accessToken;
+    if (NON_USER_TOKEN_PREFIXES.some((prefix) => token.startsWith(prefix))) {
+      throw new ConnectorError(
+        "invalid_request",
+        "GitHub connector requires the user's own access token; " +
+          "a GitHub App installation token or refresh token was supplied",
+      );
+    }
+    // 失効時刻は有限の epoch ms であること。NaN / ±Infinity は解釈できないため
+    // 失効扱いにする(Infinity を「無期限」として通さない)
+    if (!Number.isFinite(credential.expiresAt)) {
+      throw new ConnectorError(
+        "auth_expired",
+        "GitHub access token has no valid expiry time; the user must reconnect GitHub",
+      );
+    }
+    // TODO(T-004 / ADR-016 追補): expiresAt <= 0 の意味は connector-sdk で未定義
+    // (型コメントは「トークン失効時刻(epoch ms)」のみ)。現状は「失効時刻不明」
+    // (失効しないトークン等)とみなして判定せず、GitHub の 401 に委ねる暫定扱い。
+    // Token Vault(T-004)で失効時刻不明の表現を確定し、SDK の型コメントに追補する
     if (credential.expiresAt > 0 && credential.expiresAt <= this.now()) {
       throw new ConnectorError(
         "auth_expired",
         "GitHub access token has expired; the user must reconnect GitHub",
       );
     }
-    return credential.accessToken;
+    return token;
   }
 
   private buildUrl(request: GitHubRequest): string {

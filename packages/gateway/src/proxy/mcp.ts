@@ -8,7 +8,7 @@
  *
  * SDK依存の閉じ込め: このモジュールはSDKの Server 生成・ハンドラ登録・AuthInfo・
  * 結果の形への写像だけを持つ。ツール定義・引数検証・`_meta` の解決・エラーの
- * 正規化・fail-closed の判断は SDK 非依存の tools.ts / meta.ts / session.ts、
+ * 正規化・結果の直列化・fail-closed の判断は SDK 非依存の tools.ts / meta.ts / session.ts、
  * 監査はGatewayコア(gateway.ts)にある。SDKを差し替える(v1系 → 仕様
  * 2026-07-28版対応のv2系)ときの手戻りは本モジュールと http.ts のトランスポート
  * 部分に限られる。
@@ -60,25 +60,48 @@ export const GATEWAY_SERVER_INFO = {
 const IDENTITY_AUTH_EXTRA_KEY = "kp.gateway/identity";
 
 /**
+ * AuthInfo.token に入れる固定値(秘密情報ではない)。SDK の AuthInfo は token を
+ * 必須とするが、Gateway 内で token を読む箇所はない(本人は extra の Identity で
+ * 渡す)。セッショントークンを載せると、SDK 内部やハンドラの extra 経由で秘密情報の
+ * 複製が増えるだけなので載せない(不変条件6)。
+ */
+export const GATEWAY_AUTH_INFO_TOKEN = "kp-gateway-authenticated";
+
+/**
+ * gatewayAuthInfo() が発行した extra オブジェクト。identityFromAuthInfo はこれに
+ * 含まれる(= このモジュールが認証成功後に作った)extra だけを信用し、他の経路で
+ * 組み立てられた AuthInfo(形が同じでも)を本人の根拠にしない。WeakSet のため
+ * リクエスト処理が終われば GC で消える(ユーザー状態を保持しない)。
+ */
+const ISSUED_AUTH_EXTRAS = new WeakSet<object>();
+
+/**
  * 検証済み Identity をリクエストハンドラへ渡す SDK の AuthInfo を作る。
  * トランスポート層が IdpAdapter.authenticate に成功した後にのみ呼ぶこと。
- * token は IdP が検証したセッショントークン(identity内の値と同一。秘密情報、
- * 不変条件6: このオブジェクトをログ・エラーへ出さない)。clientId / scopes は
- * Gatewayの認証(IdpAdapter)に対応する概念がないため空にする。
+ * token は固定の非秘密値(GATEWAY_AUTH_INFO_TOKEN)。Identity(セッション
+ * トークンを含む。不変条件6: このオブジェクトをログ・エラーへ出さない)は extra で
+ * 渡す。clientId / scopes は Gatewayの認証(IdpAdapter)に対応する概念がないため空にする。
  */
 export function gatewayAuthInfo(identity: Identity): AuthInfo {
+  const extra = { [IDENTITY_AUTH_EXTRA_KEY]: identity };
+  ISSUED_AUTH_EXTRAS.add(extra);
   return {
-    token: identity.session.subjectToken,
+    token: GATEWAY_AUTH_INFO_TOKEN,
     clientId: "",
     scopes: [],
-    extra: { [IDENTITY_AUTH_EXTRA_KEY]: identity },
+    extra,
   };
 }
 
 function identityFromAuthInfo(
   authInfo: AuthInfo | undefined,
 ): Identity | undefined {
-  const candidate = authInfo?.extra?.[IDENTITY_AUTH_EXTRA_KEY];
+  const extra = authInfo?.extra;
+  if (extra === undefined || !ISSUED_AUTH_EXTRAS.has(extra)) {
+    // gatewayAuthInfo() が発行していない AuthInfo は信用しない
+    return undefined;
+  }
+  const candidate = extra[IDENTITY_AUTH_EXTRA_KEY];
   if (typeof candidate !== "object" || candidate === null) {
     return undefined;
   }
@@ -93,16 +116,20 @@ function identityFromAuthInfo(
     : undefined;
 }
 
-/** SDK非依存の結果を MCP の CallToolResult に写す(エラーはツール結果内で返す)。 */
+/**
+ * SDK非依存の結果を MCP の CallToolResult に写す(エラーはツール結果内で返す)。
+ * 直列化は tools.ts(runToolCall)で済んでおり、ここでは直列化済みの text を載せる
+ * だけにする(直列化の失敗を SDK の生の例外メッセージとして返さない)。
+ */
 function toCallToolResult(outcome: ToolCallOutcome): CallToolResult {
   if (!outcome.ok) {
     return {
       isError: true,
-      content: [{ type: "text", text: JSON.stringify(outcome.error) }],
+      content: [{ type: "text", text: outcome.text }],
     };
   }
   return {
-    content: [{ type: "text", text: JSON.stringify(outcome.result) }],
+    content: [{ type: "text", text: outcome.text }],
     structuredContent: outcome.result as unknown as Record<string, unknown>,
   };
 }

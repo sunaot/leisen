@@ -7,6 +7,8 @@
  * エラーの正規化。SDKとの接合(Server生成・ハンドラ登録・AuthInfo・結果の形)は
  * mcp.ts、トランスポートは http.ts に閉じ込め、SDKの差し替え(v1系 → 仕様
  * 2026-07-28版対応のv2系)の手戻りをそこだけに限定する。
+ * ツール結果・エラーのJSON直列化もここで行い(SDKには直列化済み文字列を渡す)、
+ * 直列化の失敗も正規化エラーにする。
  */
 import type { SearchFilters, SearchOptions } from "@kp/connector-sdk";
 import { z } from "zod";
@@ -41,9 +43,22 @@ export interface NormalizedToolError {
   readonly retryAfterMs?: number;
 }
 
+/**
+ * 1回の tools/call の結果。text は MCP の text content にそのまま載せる直列化済み
+ * JSON(直列化は runToolCall 内で行い、失敗は正規化エラーになる)。
+ */
 export type ToolCallOutcome =
-  | { readonly ok: true; readonly result: GatewayToolResult["result"] }
-  | { readonly ok: false; readonly error: NormalizedToolError };
+  | {
+      readonly ok: true;
+      /** text を JSON として読み戻した値(structuredContent 用。text と同一内容) */
+      readonly result: GatewayToolResult["result"];
+      readonly text: string;
+    }
+  | {
+      readonly ok: false;
+      readonly error: NormalizedToolError;
+      readonly text: string;
+    };
 
 export type ToolListOutcome =
   | { readonly ok: true; readonly tools: GatewayToolDefinition[] }
@@ -228,14 +243,39 @@ export function toolDefinitions(
 }
 
 /**
- * 例外を正規化エラーへ写す。GatewayError(IdP・コネクタ由来を含め各層の規約で
- * 秘密情報を含まない)以外はメッセージを流さない(TM-A2)。
+ * 存在の推定を許さないためにまとめる分類(TM-B2)。権限外(permission_denied)と
+ * 不在(not_found)をLLM/利用者に区別して返すと、推測した documentId が「存在するが
+ * 見られない」ことが確定する(ソースが区別を返す場合でも本基盤は増幅しない)。
+ */
+const EXISTENCE_REVEALING_CLASSES: ReadonlySet<GatewayErrorClass> =
+  new Set<GatewayErrorClass>(["permission_denied", "not_found"]);
+
+/**
+ * permission_denied / not_found の正規化結果(分類・文言とも固定)。コネクタ由来の
+ * メッセージ(HTTPステータスや SSO の案内を含みうる)も retryAfterMs も付けない。
+ */
+const NOT_AVAILABLE_ERROR_CLASS = "not_available" satisfies GatewayErrorClass;
+const NOT_AVAILABLE_MESSAGE =
+  "the requested document or source is not available to this user";
+
+/**
+ * 例外をLLM/利用者向けの正規化エラーへ写す。GatewayError(IdP・コネクタ由来を
+ * 含め各層の規約で秘密情報を含まない)以外はメッセージを流さない(TM-A2)。
+ * permission_denied と not_found は同一の分類 not_available・固定文言にまとめる
+ * (TM-B2)。監査レコードの errorClass は Gatewayコア(handleToolCall)がこの正規化の
+ * 前に記録するため、元の分類(permission_denied / not_found)が残る。
  */
 export function normalizeToolError(error: unknown): NormalizedToolError {
   const gatewayError =
     error instanceof GatewayError
       ? error
       : new GatewayError("internal_error", "unexpected error");
+  if (EXISTENCE_REVEALING_CLASSES.has(gatewayError.errorClass)) {
+    return {
+      errorClass: NOT_AVAILABLE_ERROR_CLASS,
+      message: NOT_AVAILABLE_MESSAGE,
+    };
+  }
   return {
     errorClass: gatewayError.errorClass,
     message: gatewayError.message,
@@ -249,6 +289,38 @@ const UNAUTHENTICATED: NormalizedToolError = {
   errorClass: "unauthenticated",
   message: "request carries no verified identity",
 };
+
+const UNSERIALIZABLE_RESULT = "tool result could not be serialized";
+
+/**
+ * 成功結果を直列化する。直列化できない値(BigInt・循環参照・toJSON の例外等)は
+ * 固定文言の internal_error にする(生の例外メッセージを SDK 経由で返さない)。
+ * structuredContent 用の result は直列化した文字列から読み戻し、text と内容を
+ * 一致させる(getter・toJSON 等による差異を出さない)。
+ * 注: この時点で監査レコードは成功として記録済み。Gatewayコアが結果を既知の
+ * プリミティブ型のフィールドだけに射影する(gateway.ts)ため通常は到達しない防御。
+ */
+function succeeded(result: GatewayToolResult["result"]): ToolCallOutcome {
+  let text: string | undefined;
+  try {
+    text = JSON.stringify(result);
+  } catch {
+    text = undefined;
+  }
+  if (typeof text !== "string") {
+    throw new GatewayError("internal_error", UNSERIALIZABLE_RESULT);
+  }
+  return {
+    ok: true,
+    result: JSON.parse(text) as GatewayToolResult["result"],
+    text,
+  };
+}
+
+/** 正規化エラーの結果(文字列・数値のみで構成されるため直列化は失敗しない)。 */
+function failed(error: NormalizedToolError): ToolCallOutcome {
+  return { ok: false, error, text: JSON.stringify(error) };
+}
 
 /**
  * tools/list(ADR-001 追補3 決定5、ADR-012): 内容はユーザー・接続に依存しない。
@@ -272,7 +344,7 @@ export function listTools(
 /**
  * 1回の tools/call を処理する: 検証済みIdentity(なければ fail-closed)と
  * `_meta` の申告からリクエスト単位の GatewaySession を作り、ツール引数を検証して
- * Gatewayコアへ委譲する。失敗はすべて正規化エラーとして返す。
+ * Gatewayコアへ委譲する。結果の直列化も含め、失敗はすべて正規化エラーとして返す。
  *
  * 既知の限界(T-003セキュリティレビュー minor-1): 監査レコードを残すのは
  * Gatewayコア(handleToolCall)に入った呼び出しのみ(実行区分照合以降。区分・
@@ -289,7 +361,7 @@ export async function runToolCall(
   request: ToolCallRequest,
 ): Promise<ToolCallOutcome> {
   if (request.identity === undefined) {
-    return { ok: false, error: UNAUTHENTICATED };
+    return failed(UNAUTHENTICATED);
   }
   try {
     const session = bindSession(
@@ -302,8 +374,8 @@ export async function runToolCall(
       call,
       callContextFromMeta(request.meta),
     );
-    return { ok: true, result: outcome.result };
+    return succeeded(outcome.result);
   } catch (error) {
-    return { ok: false, error: normalizeToolError(error) };
+    return failed(normalizeToolError(error));
   }
 }

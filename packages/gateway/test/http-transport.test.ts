@@ -8,7 +8,8 @@
  * - 同一Gatewayを複数ユーザーで交互・並行に使ってもユーザーコンテキストが
  *   混線しない(不変条件4)
  * - tools/list がユーザー・接続に依存しない(ADR-012)
- * - `_meta` の runId / iteration・実行区分がリクエストごとに扱われる
+ * - `_meta` の runId / iteration・実行区分がリクエストごとに扱われる。申告キーの
+ *   誤記(裸キー・prefix内の大文字小文字違い)は既定値で通さず invalid_request(M2)
  * - GET / DELETE は 405、GET /healthz は認証不要で状態のみを返す
  */
 import { once } from "node:events";
@@ -28,6 +29,7 @@ import {
   GATEWAY_REJECTION_ERROR_CODE,
   Gateway,
   IdpError,
+  META_KEY_PREFIX,
   createGatewayHttpServer,
   digestQuery,
   type AuditRecord,
@@ -515,6 +517,32 @@ describe("_meta declarations over HTTP (ADR-011 追記、ADR-015)", () => {
       expect(sink.records[0]).toMatchObject({
         errorClass: "execution_class_rejected",
       });
+    },
+  );
+
+  // セキュリティレビュー 2026-09-27 M2: 以前は申告が黙って無視され、
+  // human_in_the_loop としてコネクタまで到達していた(ADR-015 の既定拒否の迂回)
+  it.each([
+    ["a bare executionClass key", { executionClass: "scheduled" }],
+    [
+      "a lower-cased key inside the gateway prefix",
+      { [`${META_KEY_PREFIX}executionclass`]: "autonomous" },
+    ],
+  ])(
+    "rejects a misspelled execution class declaration (%s) as invalid_request: connector not called, not audited",
+    async (_label, meta) => {
+      const { alpha, beta, sink, connect } = await startHarness();
+      const alice = await connect("session-alice");
+      const result = (await alice.callTool({
+        name: "search",
+        arguments: { source: "alpha", query: "q" },
+        _meta: meta,
+      })) as CallToolResult;
+      expect(result.isError).toBe(true);
+      expect(firstText(result)).toMatchObject({ errorClass: "invalid_request" });
+      expect(alpha.calls).toHaveLength(0);
+      expect(beta.calls).toHaveLength(0);
+      expect(sink.records).toHaveLength(0);
     },
   );
 });

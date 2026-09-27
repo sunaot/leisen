@@ -1,6 +1,6 @@
 # 脅威モデル(T-000c)
 
-Status: Accepted(セキュリティレビュー完了: 2026-07-09、T-000cゲート解除) / Date: 2026-07-07
+Status: Accepted(セキュリティレビュー完了: 2026-07-09、T-000cゲート解除) / Date: 2026-07-07 / 最終改訂: 2026-09-27(§8 改訂履歴)
 
 本書は実装前ゲート T-000c の成果物である。STRIDE を分類枠組みとして、本基盤の攻撃面を列挙し、
 各脅威に対策・検出手段・対応タスクIDを紐づける。T-008(評価ハーネス)のレッドチームシードと
@@ -58,8 +58,8 @@ Orchestrator/LLM 自体も「侵害されうるコンポーネント」として
 | Spoofing | MCPセッションと利用者アイデンティティの束縛不備、on-behalf-ofチェーンの偽装 | §4-C, §4-G |
 | Tampering | 監査ログの改竄、カタログ/描画コンテンツの汚染 | §4-F, §4-D |
 | Repudiation | 監査レコードの欠落(fail-open時)、actor記録の不備 | §4-F |
-| Information Disclosure | 未認可候補の流出、existence leak、トークン漏洩、キャッシュ共有 | §4-A/B/C/G |
-| Denial of Service | レート制限枯渇、監査fail-closedの可用性影響 | §4-F(スコープ外項目は§6) |
+| Information Disclosure | 未認可候補の流出、existence leak、トークン漏洩、キャッシュ共有 | §4-A/B/C/G/H |
+| Denial of Service | レート制限枯渇、監査fail-closedの可用性影響 | §4-F, §4-H(スコープ外項目は§6) |
 | Elevation of Privilege | インジェクションによる権限外ツール呼び出し、誤設定による認可バイパス | §4-D/E |
 
 ## 4. 脅威カタログ
@@ -74,7 +74,7 @@ Phase 2 の post-filtering では「権限を無視して候補を取得 → 本
 
 | ID | 経路 | STRIDE | 対策 | 検出手段 | 対応タスク |
 |---|---|---|---|---|---|
-| TM-A1 | 戻り値: 候補件数・pre-filter統計が SearchResult やメトリクスに乗る | I | `SearchResult.totalCount` は型から削除済み(ADR-016)。件数系フィールドの追加はADR必須 | SDK型の後退テスト(if-fitness)、PRレビュー(security-reviewer) | T-016, T-015 |
+| TM-A1 | 戻り値: 候補件数・pre-filter統計が SearchResult やメトリクスに乗る | I | `SearchResult.totalCount` は型から削除済み(ADR-016)。件数系フィールドの追加はADR必須。実行時の混入に備え、Gateway はコネクタの返答を IF の既知フィールドだけに射影して返す(型にないフィールドは出さない、meta は string→string のみ。2026-09-27 実装) | SDK型の後退テスト(if-fitness)、PRレビュー(security-reviewer)、射影テスト(`packages/gateway/test/proxy-tools.test.ts`「result projection to connector-sdk fields」) | T-016, T-015, T-003 |
 | TM-A2 | ログ: アダプタ内のデバッグログ・例外メッセージに候補のタイトル/IDが混入 | I | アダプタ内ログは候補情報を含まない規約。例外は候補情報を含まない定義済みエラー型に変換してから外へ | ログ出力の契約テスト(候補固有文字列の非出現)、カナリア文書(§5) | T-016, T-013 |
 | TM-A3 | メトリクス: 空振り率・K拡張回数等の運用メトリクスから件数が復元できる | I | ADR-011の分離テレメトリのみ許可(バケット化、query/userId/docIdと結合不可、短期保持、高権限限定)。昇格レポート(T-014)には含めない | テレメトリのスキーマレビュー、結合可能性の机上検査 | T-001, T-014, T-016 |
 | TM-A4 | タイミング: 適応的K拡張の再照会回数が応答時間に現れ、「未認可候補が多い」ことが推定できる | I | K拡張の上限固定。完全な排除は困難なため**残余リスクとして受容**し、単発では低情報量(件数の粗い有無のみ)であることを根拠に文書化 | レッドチーム項目(反復計測による推定試行)で情報量を定期評価 | T-013 |
@@ -88,7 +88,7 @@ Phase 2 の post-filtering では「権限を無視して候補を取得 → 本
 | ID | 経路 | STRIDE | 対策 | 検出手段 | 対応タスク |
 |---|---|---|---|---|---|
 | TM-B1 | 監査ログに pre-filter 候補件数が残り、返却0件との差分で存在が漏れる | I | 候補件数フィールドを型・zodスキーマに存在させない(ADR-011)。`FORBIDDEN_KEYS` による実行時拒否も併用 | T-001の禁止フィールドテスト、guard hook(補助) | T-001 |
-| TM-B2 | fetch のエラー区別: 権限外の documentId を推測して fetch した際、`permission_denied` と `not_found` の区別が LLM/利用者に返ると存在が確定する | I | ソース自体が区別を返す場合は委譲原則上仕方がないが、**本基盤が区別を増幅しない**: Orchestrator/利用者向け応答では両者を「利用できない文書」に正規化する(監査ログの errorClass は区別を保持してよい — 閲覧が高権限限定のため)。正規化の実装位置はGateway(T-003)とし、設計に明記 | 権限外docIdのfetch試行テスト(応答文言の同一性)、レッドチーム | T-003, T-007 |
+| TM-B2 | fetch のエラー区別: 権限外の documentId を推測して fetch した際、`permission_denied` と `not_found` の区別が LLM/利用者に返ると存在が確定する | I | ソース自体が区別を返す場合は委譲原則上仕方がないが、**本基盤が区別を増幅しない**: Orchestrator/利用者向け応答では両者を「利用できない文書」に正規化する(監査ログの errorClass は区別を保持してよい — 閲覧が高権限限定のため)。正規化の実装位置はGateway(T-003)。**実装済み(2026-09-27)**: `normalizeToolError`(`packages/gateway/src/proxy/tools.ts`)が両者を単一の分類 `not_available`・固定文言にまとめる(retryAfterMs も付けない)。監査レコードは正規化前に書くため元の分類が残る。GitHub 固有の形は TM-H1 | 権限外docIdのfetch試行テスト(応答文言の同一性)— 実装済み: `packages/gateway/test/proxy-tools.test.ts`「existence-hiding normalization (TM-B2)」(fetch / search で permission_denied と not_found の返却が完全一致し、監査は元の分類を保持)、`packages/gateway/test/mcp-proxy.test.ts`「returns identical tool results for permission_denied and not_found, while the audit keeps the original class (TM-B2)」。レッドチーム | T-003, T-007 |
 | TM-B3 | describe/list の区画メタデータ(プライベートチャンネル名、限定共有ドライブ名)が本人権限外まで見える | I | describe/list も本人資格情報で呼ぶ(IF上強制: 全操作が AuthContext 必須)。ソース側APIが権限外メタデータを返さないことを T-000a マトリクスで確認 | ソース別の権限境界テスト(T-008シード) | T-000a, T-005, T-006, T-008 |
 | TM-B4 | Phase 2 の粗い事前フィルタ(区画メタデータ)の設計誤りで、除外/包含の挙動差から区画所属が推定できる | I | 事前フィルタは「明らかに到達不能な区画の除外」のみ(ADR-003)。フィルタ結果もTB5内に留める | 検索層実装時のfitting検証・レッドチーム | T-016 |
 | TM-B5 | 検索の応答挙動差(0件時の応答時間・リトライ回数)からの存在推定 | I | TM-A4と同じく完全排除は困難。返却0件時の応答を成功パスと同一形状にする(特別扱いのコードパスを作らない) | レッドチーム項目 | T-013 |
@@ -106,7 +106,7 @@ ADR-010 により個別 OAuth が主経路となり、Token Vault(リフレッ�
 | TM-C4 | 退職・権限剥奪後もリフレッシュトークンが生きている(AT-3) | E | IdP の deprovisioning イベント(SCIM等)受信で各SaaSトークンを revoke(ADR-010)。イベント欠落に備えた定期照合(IdPユーザー一覧とVault保有者の突合)を運用手順化 | 失効遅延の計測(deprovision→revoke完了のSLO)、定期突合レポート | T-004, T-012 |
 | TM-C5 | 認可照会キャッシュのTTL内は権限剥奪が反映されない(Phase 2) | E | TTLは短期(5〜15分目安)とし、deployment.yaml の `authzCacheTtlSec` に上限を設けて起動時検証。TTL=「剥奪から反映までの許容遅延」としてセキュリティポリシーに明文化(ADR-003) | T-010 の上限超過拒否テスト | T-010, T-016 |
 | TM-C6 | MCPセッションと利用者アイデンティティの束縛不備: セッション乗っ取り・取り違えで他人のトークンが使われる | S/E | Gateway でセッション⇔userId の束縛を確立(ADR-001追補、T-003の設計項目)。ツール呼び出しごとに AuthContext の userId とセッション主体の一致を検証 | 束縛検証のユニットテスト(取り違え注入)、監査ログの userId 突合 | T-003 |
-| TM-C7 | on-behalf-of チェーンの偽装: エージェントが虚偽の実行区分・委譲チェーンを申告 | S/E | Phase 1 は human-in-the-loop のみ許可、scheduled/autonomous は Gateway が既定拒否(ADR-015)。チェーンは Orchestrator の自己申告を信用せず Gateway が発行・検証する設計とする | 区分申告の拒否テスト(T-007)、監査ログの actor 検証(空チェーン拒否は実装済) | T-003, T-007 |
+| TM-C7 | on-behalf-of チェーンの偽装: エージェントが虚偽の実行区分・委譲チェーンを申告 | S/E | Phase 1 は human-in-the-loop のみ許可、scheduled/autonomous は Gateway が既定拒否(ADR-015)。チェーンは Orchestrator の自己申告を信用せず Gateway が発行・検証する設計とする。申告キーの誤記(裸の executionClass / actor、名前空間 prefix 内の未知キー・大文字小文字違い)は黙って無視せず invalid_request にする(無視すると human_in_the_loop として通る。2026-09-27 実装)。未申告を human_in_the_loop とする既定が HTTP 化で Bearer を持つ任意の MCP クライアントに及ぶ点は、受容範囲の再確認を人間に依頼中(T-003 H1) | 区分申告の拒否テスト(T-007)、監査ログの actor 検証(空チェーン拒否は実装済)、誤記申告の拒否テスト(`packages/gateway/test/proxy-tools.test.ts` / `mcp-proxy.test.ts` / `http-transport.test.ts`) | T-003, T-007 |
 
 ### 4-D. プロンプトインジェクション経由の情報引き出し
 
@@ -159,6 +159,20 @@ v2 リスク表で影響「高」。**危険設定は起動時に拒否する**(
 | TM-G3 | (Phase 3)マップの権限区画設計の誤りで、区画の一部しか見られない文書が要約に混入 | I | 入力を「区画のIdPグループに明示的に共有されたコンテナ」に限定+オーナー承認制 Curated Map(v3 §8)。着手時にADR化 | マップ生成時の入力検証、人間レビュー | (Phase 3 ADR) |
 | TM-G4 | チャット履歴への機密転写: 回答に含まれた機密が履歴に残り、その後の権限剥奪・共有機能で他者に露出 | I | 履歴の保持期間・エクスポート可否・共有禁止を T-009 要件化(ADR-013)。Slack由来コンテンツは非永続化または redaction(ADR-014) | T-009 の要件テスト | T-000b, T-009 |
 
+### 4-H. GitHub コネクタ(T-019)固有
+
+GitHub コネクタは全呼び出しを本人の GitHub App user access token で行い、認可を GitHub に委譲する
+(auth-matrix §4、ADR-010 方式A)。ソース固有の挙動が既存の脅威の前提をずらす箇所を列挙する。
+対策の実装とテストは `packages/connector-github`(README の「前提」「エラー分類」「既知の限界」)。
+
+| ID | 経路 | STRIDE | 対策 | 検出手段 | 対応タスク |
+|---|---|---|---|---|---|
+| TM-H1 | (TM-B2 関連)GitHub は本人が権限を持たない private repo を 404、SAML SSO を本人が未認可の org のリソースを 403(`X-GitHub-SSO`)で返す。コネクタはそれぞれ `not_found` / `permission_denied` に分類するため、区別がそのまま LLM に届くと「SSO 保護された org に当該リソースが存在する」ことが推定できる | I | Gateway の LLM/利用者向け正規化で両者を同一の `not_available`(固定文言)にまとめ、区別は監査レコードの errorClass にのみ残す(TM-B2、実装済み)。SSO 認可の案内は LLM 経由でなく接続・同意の導線で行う(T-009)。SSO 強制 org で「存在しない repo」と「存在するが権限外の repo」の応答差(403-SSO か 404 か)は未実測 | TM-B2 のテスト、実疎通での応答差の記録(T-019 残作業)、カナリア(§5.2 GitHub) | T-003, T-019 |
+| TM-H2 | (TM-C2 関連)リダイレクト追従や baseUrl の誤設定で、本人トークンが GitHub 以外へ送られる | I | トークンは `Authorization` ヘッダ限定(URL・クエリ・エラーメッセージに載せない)。`baseUrl` は https 必須(http は loopback のみ)、資格情報・クエリ付きは構築時に拒否。リダイレクトは `redirect: "manual"` で自前追従し、baseUrl と同一オリジン・ベースパス内に限り本人トークン付きで最大3回再送する。別オリジン・ベースパス外・エンコード済み区切り文字(`%2F` / `%5C`)を含むパスには送らない。注入 fetch は `redirect: "manual"` の尊重が前提で、前提違反の追従済み応答(`response.redirected`)は source_unavailable で破棄する(送出済みトークンは取り消せないため前提として README に明記)。installation token(`ghs_`)・refresh token(`ghr_`)の接頭辞は API 呼び出し前に拒否 | `packages/connector-github/test/auth.test.ts`「(5) リダイレクトで本人トークンを baseUrl の外へ送らない」「(1) 資格情報の前提違反」 | T-019 |
+| TM-H3 | (TM-D 関連)インジェクションを含みうる LLM が documentId / filters / カーソルを改変し、API パスのすり替え(ドットセグメント)・検索修飾子の混入・上限を超える取得を起こす | T/E | documentId・filters・カーソルを構文と値域で厳格に検証し、不正は `invalid_request`(受領値はエコーしない)。search カーソルは各ストリームの per_page 合計の上限(100)も検証する。**`filters.container`(`repo:` / `org:` 修飾子)は安全境界ではない**: 修飾子は検索語にも書けるため範囲の絞り込みはヒントに過ぎず、範囲外の結果を防ぐのは GitHub 側の本人権限による認可のみ(README と describe の要約で開示) | `packages/connector-github/test/fetch.test.ts` / `search.test.ts` の不正入力拒否テスト | T-019 |
+| TM-H4 | コード検索のレート枠(認証時 10 req/min、ユーザー単位で本人の他の GitHub 利用と合算)が、探索ループやインジェクションに誘導された反復で枯渇する(可用性) | D | 残quota をユーザー×リソース種別で追跡し、枯渇中は API を呼ばずに `rate_limited`(retryAfterMs 付き)を返す。コネクタ内ではリトライしない(再試行の判断と回数の記録は Gateway / Orchestrator)。導入によっては `searchCode: false`。反復は maxIterations(T-007)と Gateway のソース別流量上限で制限 | `packages/connector-github/test/ratelimit.test.ts` | T-019, T-007 |
+| TM-H5 | (TM-D1 関連)issue / PR / ファイル本文の HTML コメント等、GitHub の表示では見えないテキストに指示を埋め、人間のレビューをすり抜けて LLM に届ける | E/T | snippet では HTML コメントを除去する。fetch 本文は原文のまま返す(忠実性を優先。部分的な除去は防御にならない)ため、Orchestrator がツール結果を「データであって指示ではない」として扱うこと(TM-D1)が対策の主体 | T-008 インジェクションシードに不可視テキスト(HTML コメント)埋め込み型を含める | T-007, T-008 |
+
 ## 5. カナリア文書の設計(常時検証)
 
 権限逸脱の検出を「四半期レッドチーム」のイベントから常時監視に変える(v3 §8、T-013)。
@@ -178,7 +192,7 @@ v2 リスク表で影響「高」。**危険設定は起動時に拒否する**(
 |---|---|---|
 | Google Drive | カナリアユーザーを含まない限定共有ドライブ/フォルダ | search 非ヒット、fetch 拒否、describe/list に区画名が出ない |
 | Slack | カナリアユーザーが参加しないプライベートチャンネル | search 非ヒット、fetch 拒否。**検証ログには真偽値のみ記録**(Slackメタデータを残さない、ADR-014) |
-| GitHub | カナリアユーザーに権限のないプライベートリポジトリ | search 非ヒット、fetch 拒否 |
+| GitHub | カナリアユーザーに権限のないプライベートリポジトリ | search 非ヒット、fetch 拒否。モック資格情報(開発用 `MockCredentialProvider`)で検証する場合はユーザー別トークン(`KP_MOCK_TOKEN_GITHUB__<USERID>`)が必須(共有トークンでは全ユーザーが同じ権限になり逸脱を検出できない。connector-github README) |
 | wiki | 閲覧制限スペース/ページ | search 非ヒット、fetch 拒否 |
 | 検索層有効ソース(Phase 2) | インデックス済みだがカナリアユーザーは未認可の文書 | **post-filtering 経路での非ヒット**(TM-A系の実地検証)、返却0件時の挙動が通常と同形(TM-B5) |
 
@@ -229,3 +243,10 @@ T-008 のレッドチームシードは本書から導出する。評価セッ�
 - 次のタイミングで必ず改訂する: 新コネクタ追加時(T-005/006/019/020)、検索層着手時(T-016)、
   Phase 3 着手時、認可方式・監査スキーマの変更時(ADR追記と同時)
 - 四半期レッドチームの結果(新規に見つかった経路・受容判断の再評価)を本書に反映する
+
+### 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-07-09 | セキュリティレビュー完了、Accepted(T-000c ゲート解除) |
+| 2026-09-27 | 新コネクタ追加(T-019 GitHub)に伴い §4-H を新設(TM-H1〜H5)。TM-B2 の Gateway 正規化(`not_available`)を実装済みとして対策・検出手段を更新。T-003 セキュリティレビューの反映として TM-A1(結果の射影)・TM-C7(申告キー誤記の拒否、H1 の確認依頼)を追記 |

@@ -367,12 +367,26 @@ describe("limit・カーソル・searchCode 設定", () => {
     github.on(/^\/search\/issues$/, (req) =>
       searchResponse([issueItem({ number: 1, pullRequest: isPrQuery(req) })], { next: true }),
     );
+    // limit 100 を issue 50 / PR 50 に配分した場合の最終ページ(50 × 20 = 1000)
     const cursor = encodeSearchCursor([
-      { kind: "issue", page: 10, perPage: 100 },
-      { kind: "pr", page: 10, perPage: 100 },
+      { kind: "issue", page: 20, perPage: 50 },
+      { kind: "pr", page: 20, perPage: 50 },
     ]);
     const result = await connector.search(ALICE, "x", {}, { cursor });
+    expect(github.requests.map(pageOf)).toEqual([20, 20]);
     expect(result.nextCursor).toBeUndefined();
+  });
+
+  it("per_page 合計が上限(100)ちょうどのカーソルは受け付ける", async () => {
+    const { github, connector } = setup();
+    routeSearch(github);
+    const cursor = encodeSearchCursor([
+      { kind: "issue", page: 2, perPage: 34 },
+      { kind: "pr", page: 2, perPage: 33 },
+      { kind: "code", page: 2, perPage: 33 },
+    ]);
+    await connector.search(ALICE, "login", {}, { cursor });
+    expect(github.requests.map(perPageOf).sort()).toEqual([33, 33, 34]);
   });
 
   it.each([
@@ -382,6 +396,15 @@ describe("limit・カーソル・searchCode 設定", () => {
     ["page が範囲外", Buffer.from(JSON.stringify({ k: "search", v: 1, s: [["issue", 11, 100]] })).toString("base64url")],
     ["per_page が範囲外", Buffer.from(JSON.stringify({ k: "search", v: 1, s: [["issue", 1, 1000]] })).toString("base64url")],
     ["ストリームの重複", Buffer.from(JSON.stringify({ k: "search", v: 1, s: [["issue", 1, 5], ["issue", 2, 5]] })).toString("base64url")],
+    // 各ストリームは値域内でも、合計が search の limit 上限(100)を超える偽造(m1)
+    [
+      "per_page 合計 300(各 100)",
+      Buffer.from(JSON.stringify({ k: "search", v: 1, s: [["issue", 1, 100], ["pr", 1, 100], ["code", 1, 100]] })).toString("base64url"),
+    ],
+    [
+      "per_page 合計 101",
+      Buffer.from(JSON.stringify({ k: "search", v: 1, s: [["issue", 1, 51], ["pr", 1, 50]] })).toString("base64url"),
+    ],
   ])("不正なカーソル(%s)→ invalid_request、API は呼ばない", async (_label, cursor) => {
     const { github, connector } = setup();
     routeSearch(github);

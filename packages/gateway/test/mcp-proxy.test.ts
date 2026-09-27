@@ -8,7 +8,11 @@
  *   しないこと、Identity のないリクエストは fail-closed で拒否されること
  *   (ADR-001 追補3 決定1・2)
  * - `_meta` の名前空間prefix付き申告(runId / iteration の4ケース、実行区分・
- *   actor)(決定3・4、ADR-011 追記、ADR-015)
+ *   actor)(決定3・4、ADR-011 追記、ADR-015)。申告キーの誤記は invalid_request(M2)
+ * - LLM へ返るエラーで permission_denied / not_found を区別しない(TM-B2)、
+ *   結果は既知フィールドだけに射影される(TM-A1)、AuthInfo は gatewayAuthInfo が
+ *   発行したものだけを信用しセッショントークンを token に載せない
+ *   (セキュリティレビュー 2026-09-27)
  * HTTP層(Authorizationヘッダ・HTTPステータス)は http-transport.test.ts で検証する。
  */
 import { describe, expect, it } from "vitest";
@@ -20,9 +24,14 @@ import {
   type CallToolResult,
   type JSONRPCMessage,
 } from "@modelcontextprotocol/sdk/types.js";
-import { MAX_SNIPPET_CHARS } from "@kp/connector-sdk";
+import {
+  ConnectorError,
+  MAX_SNIPPET_CHARS,
+  type SearchResult,
+} from "@kp/connector-sdk";
 import {
   AuditLogger,
+  GATEWAY_AUTH_INFO_TOKEN,
   GATEWAY_META_KEYS,
   GATEWAY_REJECTION_ERROR_CODE,
   Gateway,
@@ -303,6 +312,29 @@ describe("stateless server component (ADR-001 追補3 決定1・2)", () => {
     expect(sink.records).toHaveLength(0);
   });
 
+  it("does not carry the session token in AuthInfo.token", async () => {
+    const { gateway } = buildGateway();
+    const authInfo = gatewayAuthInfo(await gateway.authenticate("session-alice"));
+    expect(authInfo.token).toBe(GATEWAY_AUTH_INFO_TOKEN);
+    expect(authInfo.token).not.toContain("session-alice");
+  });
+
+  it("trusts only AuthInfo issued by gatewayAuthInfo, not a look-alike with a valid identity", async () => {
+    const { gateway, alpha, sink } = buildGateway();
+    const issued = gatewayAuthInfo(await gateway.authenticate("session-alice"));
+    // 形は同じだが gatewayAuthInfo が発行していない(複製・他経路での組み立て)
+    const lookAlike = { ...issued, extra: { ...issued.extra } };
+    const client = await connectClient(gateway, () => lookAlike);
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatchObject({ errorClass: "unauthenticated" });
+    expect(alpha.calls).toHaveLength(0);
+    expect(sink.records).toHaveLength(0);
+  });
+
   it("does not trust an incomplete identity attached to the request", async () => {
     const { gateway, alpha, sink } = buildGateway();
     const forged = gatewayAuthInfo({
@@ -451,6 +483,12 @@ describe("_meta execution class / actor, declared per request (ADR-015)", () => 
       { [K.actor]: { kind: "agent", agentId: "a1", onBehalfOfChain: [] } },
     ],
     ["malformed actor", { [K.actor]: "alice" }],
+    // M2: レビューで実証された誤記(黙って無視されると human_in_the_loop で通っていた)
+    ["bare executionClass key", { executionClass: "scheduled" }],
+    [
+      "lower-cased key inside the gateway prefix",
+      { [`${META_KEY_PREFIX}executionclass`]: "autonomous" },
+    ],
   ] as const)(
     "rejects an invalid declaration (%s) before dispatch instead of defaulting it",
     async (_label, meta) => {
@@ -467,4 +505,102 @@ describe("_meta execution class / actor, declared per request (ADR-015)", () => 
       expect(sink.records).toHaveLength(0);
     },
   );
+});
+
+describe("what reaches the LLM over MCP (security review 2026-09-27)", () => {
+  async function connectWithAlpha(alpha: MockConnector) {
+    const sink = new CollectingAuditSink();
+    const gateway = new Gateway({
+      config: testConfig(),
+      idpAdapter: testIdpAdapter(),
+      connectors: [alpha, new MockConnector("beta")],
+      auditLogger: new AuditLogger(sink),
+    });
+    const authInfo = gatewayAuthInfo(await gateway.authenticate("session-alice"));
+    const client = await connectClient(gateway, () => authInfo);
+    return { client, sink };
+  }
+
+  it("returns identical tool results for permission_denied and not_found, while the audit keeps the original class (TM-B2)", async () => {
+    const denied = await connectWithAlpha(
+      new MockConnector("alpha", {
+        failWith: new ConnectorError(
+          "permission_denied",
+          "GitHub API issues.get responded HTTP 403 (SAML SSO authorization required)",
+        ),
+      }),
+    );
+    const missing = await connectWithAlpha(
+      new MockConnector("alpha", {
+        failWith: new ConnectorError(
+          "not_found",
+          "GitHub API issues.get responded HTTP 404 (not found)",
+        ),
+      }),
+    );
+    const call = { name: "fetch", arguments: { source: "alpha", documentId: "issue:acme/secret#1" } };
+    const fromDenied = (await denied.client.callTool(call)) as CallToolResult;
+    const fromMissing = (await missing.client.callTool(call)) as CallToolResult;
+
+    expect(fromDenied).toEqual(fromMissing);
+    expect(fromDenied.isError).toBe(true);
+    expect(firstText(fromDenied)).toEqual({
+      errorClass: "not_available",
+      message: "the requested document or source is not available to this user",
+    });
+    expect(JSON.stringify(fromDenied)).not.toMatch(/403|404|SAML|permission_denied|not_found/);
+    expect(denied.sink.records[0]).toMatchObject({ errorClass: "permission_denied" });
+    expect(missing.sink.records[0]).toMatchObject({ errorClass: "not_found" });
+  });
+
+  it("projects connector results to IF fields at the MCP boundary (TM-A1) and normalizes malformed ones", async () => {
+    class LeakyConnector extends MockConnector {
+      constructor(private readonly title: unknown) {
+        super("alpha");
+      }
+
+      override async search(
+        ...args: Parameters<MockConnector["search"]>
+      ): Promise<SearchResult> {
+        await super.search(...args);
+        return {
+          hits: [
+            {
+              documentId: "d1",
+              title: this.title,
+              snippet: "s",
+              url: "https://example.test/d1",
+              rawCandidates: ["unauthorized-candidate-title"],
+            },
+          ],
+          totalCount: 987654,
+          debug: { preFilter: { candidates: 17 } },
+        } as unknown as SearchResult;
+      }
+    }
+
+    const leaky = await connectWithAlpha(new LeakyConnector("t1"));
+    const projected = (await leaky.client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    expect(projected.isError).toBeFalsy();
+    expect(projected.structuredContent).toEqual({
+      hits: [{ documentId: "d1", title: "t1", snippet: "s", url: "https://example.test/d1" }],
+    });
+    expect(JSON.stringify(projected)).not.toMatch(/totalCount|preFilter|candidate|987654/);
+
+    // 必須フィールドの型不正(BigInt)は SDK の生の例外文言ではなく正規化エラーで返る
+    const broken = await connectWithAlpha(new LeakyConnector(10n));
+    const failed = (await broken.client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    expect(failed.isError).toBe(true);
+    expect(firstText(failed)).toEqual({
+      errorClass: "internal_error",
+      message: "connector returned a malformed result",
+    });
+    expect(JSON.stringify(failed)).not.toMatch(/BigInt|serialize/);
+  });
 });

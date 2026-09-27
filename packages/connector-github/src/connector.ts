@@ -2,10 +2,13 @@
  * GitHub コネクタ(T-019)。connector-sdk v0.3 の Connector を GitHub REST API
  * (Search / Issues / Contents / Orgs / Repos)で実装する。
  *
- * - 認可は GitHub に委譲する。全呼び出しを利用者本人の user access token
- *   (GitHub App の user-to-server token、または本人の fine-grained PAT)で行い、
+ * - 認可は GitHub に委譲する。全呼び出しを利用者本人の user access token で行い、
  *   権限外のリポジトリは GitHub 側で結果から除外される(auth-matrix §4)。
- *   独自の権限判定・ACL複製はしない(不変条件1)
+ *   独自の権限判定・ACL複製はしない(不変条件1)。本番の資格情報は GitHub App の
+ *   user access token に限る(ADR-010 方式A。Token Vault の失効管理 TM-C4 の対象に
+ *   するため)。PAT は開発時の MockCredentialProvider 経由に限る
+ * - filters.container(repo: / org: 修飾子)は検索範囲のヒントであって安全境界では
+ *   ない(修飾子は検索語にも書ける)。範囲外の結果を防ぐのは GitHub 側の認可である
  * - nativeSearch は "degraded": issue/PR は語彙検索、コード検索はデフォルト
  *   ブランチのみ・語彙一致のみ・厳しいレート制限(ADR-008 §5: コード専用索引は
  *   コア外)
@@ -34,6 +37,7 @@ import {
 } from "./api.js";
 import {
   MAX_PER_PAGE,
+  MAX_SEARCH_LIMIT,
   SEARCH_RESULT_WINDOW,
   decodeListCursor,
   decodePageCursor,
@@ -66,8 +70,11 @@ import {
 
 export const DEFAULT_GITHUB_SOURCE_ID = "github";
 export const DEFAULT_SEARCH_LIMIT = 20;
-/** search の limit 上限(GitHub の per_page 上限 100 以内) */
-export const MAX_SEARCH_LIMIT = MAX_PER_PAGE;
+/**
+ * search の limit 上限(GitHub の per_page 上限 100 以内)。カーソル検証
+ * (per_page 合計の上限)と共有するため cursor.ts で定義し、ここで再公開する。
+ */
+export { MAX_SEARCH_LIMIT };
 export const DEFAULT_PAGE_CHARS = 20_000;
 export const DEFAULT_MAX_COMMENTS = 30;
 export const DEFAULT_LIST_PAGE_SIZE = 100;
@@ -728,7 +735,8 @@ export class GitHubConnector implements Connector {
         "レート制限が厳しい(認証時 毎分約10回)。author / updatedAfter / updatedBefore を指定するとコード検索は行わない。"
       : "コード検索はこの導入では無効(issue・PR のみを検索する)。";
     const usage =
-      'filters.container は "owner/repo" または組織名、filters.author は GitHub のログイン名。' +
+      'filters.container は "owner/repo" または組織名で、検索範囲を絞るヒントであり安全境界ではない' +
+      "(範囲外の結果を防ぐのは GitHub 側の本人権限による認可)。filters.author は GitHub のログイン名。" +
       "fetch は issue / PR の本文と先頭のコメント、または 1MB 以下のテキストファイルを返す。";
     return `${scope}${code}${usage}`;
   }

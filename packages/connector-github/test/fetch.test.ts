@@ -11,7 +11,7 @@ import {
   decodeDocumentId,
   encodeDocumentId,
   type GitHubDocumentRef,
-} from "../src/index.js";
+} from "../src/document-id.js";
 import {
   ALICE,
   COMMIT_SHA,

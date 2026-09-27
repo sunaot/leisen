@@ -144,6 +144,43 @@ describe("(1) 資格情報の前提違反は API を呼ぶ前に拒否する", (
     await connector.describe(bearerAuth("alice", { expiresAt: 0 }));
     expect(github.requests).toHaveLength(1);
   });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["-Infinity", Number.NEGATIVE_INFINITY],
+  ])(
+    "expiresAt が有限数でない(%s)→ auth_expired、fetch は呼ばれない(無期限扱いにしない)",
+    async (_label, expiresAt) => {
+      const { github, connector } = setup();
+      routeHappyPath(github);
+      for (const op of OPERATIONS) {
+        const error = await captureError(op.run(connector, bearerAuth("alice", { expiresAt })));
+        expect(error.errorClass).toBe("auth_expired");
+      }
+      expect(github.requests).toHaveLength(0);
+    },
+  );
+
+  // 多層防御: 本人の user token でないトークン種別(接頭辞で判別できるもの)を拒否する。
+  // ダミー値は実トークン形式にしない(不変条件6)
+  it.each([
+    ["installation access token", "ghs_dev-only"],
+    ["refresh token", "ghr_dev-only"],
+  ])(
+    "%s の接頭辞を持つトークン → invalid_request、fetch は呼ばれず、メッセージにトークンを含めない",
+    async (_label, accessToken) => {
+      const { github, connector } = setup();
+      routeHappyPath(github);
+      for (const op of OPERATIONS) {
+        const error = await captureError(op.run(connector, bearerAuth("alice", { accessToken })));
+        expect(error.errorClass).toBe("invalid_request");
+        expect(error.message).not.toContain(accessToken);
+        expect(error.message).not.toContain("dev-only");
+      }
+      expect(github.requests).toHaveLength(0);
+    },
+  );
 });
 
 describe("(2) ソースの認可応答を ConnectorErrorClass に写像する", () => {
@@ -364,6 +401,42 @@ describe("(5) リダイレクトで本人トークンを baseUrl の外へ送ら
     const error = await captureError(connector.fetch(ALICE, "issue:acme/app#12"));
     expect(error.errorClass).toBe("source_unavailable");
     expect(github.requests).toHaveLength(1);
+  });
+
+  it.each(["%2F", "%2f", "%5C", "%5c"])(
+    "Location のパスにエンコードされた区切り文字(%s)を含むリダイレクトは同一オリジンでも追わない",
+    async (separator) => {
+      const { github, connector } = setup({ baseUrl: "https://ghe.corp.example/api/v3" });
+      // 追従してしまった場合に応答するルート(後から登録したルートが優先)
+      github
+        .onJson(/.*/, issueItem({ number: 12 }))
+        .on(/^\/api\/v3\/repos\/acme\/app\/issues\/12$/, () =>
+          new Response(null, {
+            status: 301,
+            headers: {
+              // URL としてはベースパス(/api/v3/)内だが、サーバー側の復号で外へ抜けうる
+              location: `/api/v3/repos/acme/app/..${separator}..${separator}..${separator}..${separator}admin`,
+            },
+          }),
+        );
+      const error = await captureError(connector.fetch(ALICE, "issue:acme/app#12"));
+      expect(error.errorClass).toBe("source_unavailable");
+      expect(github.requests).toHaveLength(1);
+    },
+  );
+
+  it("注入 fetch が redirect: \"manual\" を尊重せず追従した応答(response.redirected)は使わない → source_unavailable", async () => {
+    const followed: FetchLike = async () => {
+      const response = jsonResponse(issueItem({ number: 12, title: "served by the redirect target" }));
+      // 追従後の応答を模す(Response.redirected は読み取り専用のため上書きする)
+      Object.defineProperty(response, "redirected", { value: true });
+      return response;
+    };
+    const { connector } = setup({ fetchImpl: followed });
+    const error = await captureError(connector.fetch(ALICE, "issue:acme/app#12"));
+    expect(error.errorClass).toBe("source_unavailable");
+    expect(error.message).toMatch(/redirect/);
+    expect(error.message).not.toContain("served by the redirect target");
   });
 
   it("リダイレクトの連鎖は上限回数で打ち切る", async () => {

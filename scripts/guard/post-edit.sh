@@ -9,8 +9,11 @@ VIOLATIONS=""
 HITS=$(grep -rn --include='*.ts' -E 'JSON\.stringify\((auth|authContext|credential)\b' packages/ 2>/dev/null | grep -v redact || true)
 [ -n "$HITS" ] && VIOLATIONS="$VIOLATIONS\n[不変条件6] AuthContext/Credentialの直接シリアライズ:\n$HITS"
 
-# 不変条件6: 実トークンらしき文字列のハードコード
-HITS=$(grep -rn --include='*.ts' -E '(xoxp-[0-9]|xoxb-[0-9]|ghp_[A-Za-z0-9]{20,})' packages/ 2>/dev/null || true)
+# 不変条件6: 実トークンらしき文字列のハードコード。GitHub は classic PAT(ghp_)に加え、
+# OAuth App(gho_)・GitHub App の user-to-server(ghu_)/ installation(ghs_)/
+# refresh(ghr_)・fine-grained PAT(github_pat_)の各接頭辞を対象にする
+# (検出条件はいずれも「接頭辞+英数字20文字以上」)
+HITS=$(grep -rn --include='*.ts' -E '(xoxp-[0-9]|xoxb-[0-9]|(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9]{20,})' packages/ 2>/dev/null || true)
 [ -n "$HITS" ] && VIOLATIONS="$VIOLATIONS\n[不変条件6] トークンらしき文字列のハードコード:\n$HITS"
 
 # 不変条件3: 監査系コードにpre-filter件数らしきフィールドを入れない(粗い検知)。

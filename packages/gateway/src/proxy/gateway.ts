@@ -4,7 +4,8 @@
  * パイプライン(1呼び出しごと):
  *   実行区分照合(ADR-015) → コネクタ解決(enabled) → レート制御 →
  *   資格情報取得(IdpAdapter、失敗時はコネクタを呼ばない) →
- *   コネクタ呼び出し(タイムアウト付き) → snippet強制truncate(ADR-016) →
+ *   コネクタ呼び出し(タイムアウト付き) → 結果の射影(既知フィールドのみ、
+ *   snippet強制truncate。ADR-016、TM-A1) →
  *   監査記録(正確に1レコード、失敗時は既定fail-closed、ADR-011 §4)
  *
  * ステートレス(ADR-001 追補3 決定1〜3): Gatewayは利用者ごとの状態を持たない。
@@ -24,10 +25,17 @@ import { randomUUID } from "node:crypto";
 import {
   ConnectorError,
   MAX_SNIPPET_CHARS,
+  type AuthContext,
   type Connector,
   type ConnectorCapabilities,
-  type AuthContext,
+  type ContainerEntry,
+  type FetchResult,
+  type HitAnchor,
+  type ListResult,
+  type SearchFilters,
+  type SearchHit,
   type SearchResult,
+  type SourceDescription,
 } from "@kp/connector-sdk";
 import { digestQuery, type ToolInvocationRecord } from "../audit/schema.js";
 import type { AuditLogger } from "../audit/sink.js";
@@ -67,6 +75,15 @@ interface RegistryEntry {
   connector: Connector;
   config: ConnectorConfig;
 }
+
+/**
+ * 設定に存在しないソースへの呼び出し(unknown_source)を監査に記録するときの
+ * sourceId。クライアント(LLM)が指定した任意長・任意文字の値をそのまま監査に
+ * 残さない。設定に同名のソースがあっても errorClass(unknown_source)で区別できる。
+ * 設定に存在するソース(無効化されたもの=source_disabled を含む)は設定由来の
+ * 値なのでそのまま記録する。
+ */
+const UNKNOWN_SOURCE_AUDIT_ID = "unknown";
 
 const EXECUTION_CLASS_CONFIG_KEY = {
   human_in_the_loop: "humanInTheLoop",
@@ -198,7 +215,9 @@ export class Gateway {
       iteration,
       userId: session.identity.userId,
       timestamp: new Date(startedMs).toISOString(),
-      sourceId: call.sourceId,
+      sourceId: this.registry.has(call.sourceId)
+        ? call.sourceId
+        : UNKNOWN_SOURCE_AUDIT_ID,
       tool: call.tool,
       queryDigest: call.tool === "search" ? digestQuery(call.query) : null,
       filtersDigest:
@@ -297,8 +316,13 @@ export class Gateway {
       session.identity,
       call.sourceId,
     );
-    // 束縛検証(TM-C6): 資格情報の主体がリクエストの本人と一致しなければ
-    // コネクタを呼ばない(IdP Adapter実装の取り違えによる他人の資格情報の使用を防ぐ)
+    // 束縛検証(TM-C6): AuthContext.userId(資格情報に付くラベル)がリクエストの
+    // 本人と一致しなければコネクタを呼ばない。限界: 組み込みアダプタ
+    // (CredentialResolvingIdpAdapter 系: Mock / Keycloak)は identity.userId を
+    // そのままラベルに写すため、ここで検出できるのは「ラベルの不一致」(独自
+    // アダプタ実装がラベルを取り違えた場合)のみ。ラベルは本人のまま中身の
+    // 資格情報(トークン)が他人のものになる取り違え(プロバイダ・キャッシュの誤り)は
+    // 検出できない。後者はアダプタ実装側の契約テスト(キャッシュキー規約等、T-004)で担保する
     if (auth.userId !== session.identity.userId) {
       throw new GatewayError(
         "internal_error",
@@ -311,7 +335,7 @@ export class Gateway {
       entry.config.limits.timeoutMs,
       call.sourceId,
     );
-    return postProcess(raw);
+    return projectResult(raw);
   }
 
   private async invokeConnector(
@@ -346,23 +370,213 @@ export class Gateway {
   }
 }
 
-/**
- * snippetの強制truncate(ADR-016)。型コメントだけでは本文流入を防げない
- * ため、コネクタの返答を信用せずGatewayで切り詰める。
- */
-function postProcess(result: GatewayToolResult): GatewayToolResult {
-  if (result.tool !== "search") {
-    return result;
+// ---- 結果の射影(TM-A1、ADR-016) ----
+//
+// コネクタの返答を信用せず、IF(connector-sdk v0.3)の既知フィールドだけから
+// 組み立て直す。型に存在しないフィールド(totalCount・debug・候補統計等)は実行時にも
+// 外へ出さない(不変条件3。型定義だけでは実行時の混入を防げない)。
+// - 必須フィールドの型不正はコネクタの契約違反として internal_error(固定文言。
+//   値はエコーしない)
+// - 任意フィールドは型が合う場合だけ残す。meta は string → string の組だけ残す
+// - snippet は MAX_SNIPPET_CHARS で強制 truncate(ADR-016)
+// 射影後の値は文字列・数値・配列・プレーンオブジェクトだけで構成される。
+
+const ANCHOR_KINDS: Readonly<Record<HitAnchor["kind"], true>> = {
+  page: true,
+  section: true,
+  message: true,
+  row: true,
+};
+
+const CONTAINER_KINDS: Readonly<Record<ContainerEntry["kind"], true>> = {
+  folder: true,
+  channel: true,
+  repository: true,
+  space: true,
+  other: true,
+};
+
+const SEARCH_FILTER_KEYS: Readonly<Record<keyof SearchFilters, true>> = {
+  updatedAfter: true,
+  updatedBefore: true,
+  container: true,
+  author: true,
+};
+
+function malformedResult(): GatewayError {
+  return new GatewayError(
+    "internal_error",
+    "connector returned a malformed result",
+  );
+}
+
+type PlainRecord = Readonly<Record<string, unknown>>;
+
+function asPlainRecord(value: unknown): PlainRecord | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as PlainRecord)
+    : undefined;
+}
+
+function requireRecord(value: unknown): PlainRecord {
+  const record = asPlainRecord(value);
+  if (record === undefined) {
+    throw malformedResult();
   }
-  const truncated: SearchResult = {
-    ...result.result,
-    hits: result.result.hits.map((hit) =>
-      hit.snippet.length > MAX_SNIPPET_CHARS
-        ? { ...hit, snippet: hit.snippet.slice(0, MAX_SNIPPET_CHARS) }
-        : hit,
+  return record;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== "string") {
+    throw malformedResult();
+  }
+  return value;
+}
+
+function requireArray(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw malformedResult();
+  }
+  return value;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function isKnownKey<K extends string>(
+  table: Readonly<Record<K, true>>,
+  value: unknown,
+): value is K {
+  return typeof value === "string" && Object.hasOwn(table, value);
+}
+
+function projectAnchor(value: unknown): HitAnchor | undefined {
+  const anchor = asPlainRecord(value);
+  if (
+    anchor === undefined ||
+    !isKnownKey(ANCHOR_KINDS, anchor["kind"]) ||
+    typeof anchor["value"] !== "string"
+  ) {
+    return undefined;
+  }
+  const label = optionalString(anchor["label"]);
+  return {
+    kind: anchor["kind"],
+    value: anchor["value"],
+    ...(label !== undefined ? { label } : {}),
+  };
+}
+
+function projectMeta(value: unknown): Record<string, string> | undefined {
+  const meta = asPlainRecord(value);
+  if (meta === undefined) {
+    return undefined;
+  }
+  // fromEntries は __proto__ 等のキーも自身のデータプロパティとして作る
+  return Object.fromEntries(
+    Object.entries(meta).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
+function projectHit(value: unknown): SearchHit {
+  const hit = requireRecord(value);
+  const snippet = requireString(hit["snippet"]);
+  const anchor = projectAnchor(hit["anchor"]);
+  const updatedAt = optionalString(hit["updatedAt"]);
+  const meta = projectMeta(hit["meta"]);
+  return {
+    documentId: requireString(hit["documentId"]),
+    title: requireString(hit["title"]),
+    // snippetの強制truncate(ADR-016)。型コメントだけでは本文流入を防げない
+    snippet:
+      snippet.length > MAX_SNIPPET_CHARS
+        ? snippet.slice(0, MAX_SNIPPET_CHARS)
+        : snippet,
+    url: requireString(hit["url"]),
+    ...(anchor !== undefined ? { anchor } : {}),
+    ...(updatedAt !== undefined ? { updatedAt } : {}),
+    ...(meta !== undefined ? { meta } : {}),
+  };
+}
+
+function projectSearchResult(value: unknown): SearchResult {
+  const result = requireRecord(value);
+  const nextCursor = optionalString(result["nextCursor"]);
+  return {
+    hits: requireArray(result["hits"]).map(projectHit),
+    ...(nextCursor !== undefined ? { nextCursor } : {}),
+  };
+}
+
+function projectFetchResult(value: unknown): FetchResult {
+  const result = requireRecord(value);
+  const nextPageCursor = optionalString(result["nextPageCursor"]);
+  return {
+    documentId: requireString(result["documentId"]),
+    title: requireString(result["title"]),
+    content: requireString(result["content"]),
+    url: requireString(result["url"]),
+    ...(nextPageCursor !== undefined ? { nextPageCursor } : {}),
+  };
+}
+
+function projectEntry(value: unknown): ContainerEntry {
+  const entry = requireRecord(value);
+  const kind = entry["kind"];
+  if (!isKnownKey(CONTAINER_KINDS, kind)) {
+    throw malformedResult();
+  }
+  const childCount = entry["childCount"];
+  return {
+    id: requireString(entry["id"]),
+    name: requireString(entry["name"]),
+    kind,
+    ...(typeof childCount === "number" &&
+    Number.isSafeInteger(childCount) &&
+    childCount >= 0
+      ? { childCount }
+      : {}),
+  };
+}
+
+function projectListResult(value: unknown): ListResult {
+  const result = requireRecord(value);
+  const nextCursor = optionalString(result["nextCursor"]);
+  return {
+    entries: requireArray(result["entries"]).map(projectEntry),
+    ...(nextCursor !== undefined ? { nextCursor } : {}),
+  };
+}
+
+function projectDescription(value: unknown): SourceDescription {
+  const description = requireRecord(value);
+  return {
+    sourceId: requireString(description["sourceId"]),
+    displayName: requireString(description["displayName"]),
+    summary: requireString(description["summary"]),
+    topContainers: requireArray(description["topContainers"]).map(projectEntry),
+    supportedFilters: requireArray(description["supportedFilters"]).filter(
+      (filter): filter is keyof SearchFilters =>
+        isKnownKey(SEARCH_FILTER_KEYS, filter),
     ),
   };
-  return { tool: "search", result: truncated };
+}
+
+/** コネクタの返答を既知フィールドだけに射影する(上記の規則)。 */
+function projectResult(result: GatewayToolResult): GatewayToolResult {
+  switch (result.tool) {
+    case "search":
+      return { tool: "search", result: projectSearchResult(result.result) };
+    case "fetch":
+      return { tool: "fetch", result: projectFetchResult(result.result) };
+    case "list":
+      return { tool: "list", result: projectListResult(result.result) };
+    case "describe":
+      return { tool: "describe", result: projectDescription(result.result) };
+  }
 }
 
 /** キー順序に依存しないJSON(filtersDigestの正規化用)。 */

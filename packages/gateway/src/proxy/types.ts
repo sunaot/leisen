@@ -94,6 +94,9 @@ export type GatewayToolResult =
  *   IdP層(IdpErrorClass)から透過
  * - auth_expired / permission_denied / rate_limited / not_found /
  *   source_unavailable / invalid_request: コネクタ(ConnectorErrorClass)から透過
+ * - not_available: LLM/利用者向け正規化(TM-B2、tools.ts normalizeToolError)のみで
+ *   生成される。permission_denied と not_found を区別せずに返すための分類で、
+ *   監査レコードの errorClass には元の分類(permission_denied / not_found)が残る
  */
 export type GatewayErrorClass =
   // Gateway自身が生成する分類
@@ -114,7 +117,10 @@ export type GatewayErrorClass =
   | "rate_limited"
   | "not_found"
   | "source_unavailable"
-  | "invalid_request";
+  | "invalid_request"
+  // LLM/利用者向け正規化(TM-B2)のみで生成される。監査レコードの errorClass には
+  // 元の分類(permission_denied / not_found)が残る(gateway.ts は正規化前に記録する)
+  | "not_available";
 
 /**
  * GatewayがJSON-RPCエラーとして拒否を返すときのコード(HTTP層の拒否、
