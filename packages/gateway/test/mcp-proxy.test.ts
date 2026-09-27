@@ -8,7 +8,8 @@
  *   しないこと、Identity のないリクエストは fail-closed で拒否されること
  *   (ADR-001 追補3 決定1・2)
  * - `_meta` の名前空間prefix付き申告(runId / iteration の4ケース、実行区分・
- *   actor)(決定3・4、ADR-011 追記、ADR-015)。申告キーの誤記は invalid_request(M2)
+ *   actor)(決定3・4、ADR-011 追記、ADR-015)。申告キーの誤記は invalid_request(M2。
+ *   再レビュー S1 で骨格 — NFKC・小文字化・英数字以外の除去 — による照合に拡張)
  * - LLM へ返るエラーで permission_denied / not_found を区別しない(TM-B2)、
  *   結果は既知フィールドだけに射影される(TM-A1)、AuthInfo は gatewayAuthInfo が
  *   発行したものだけを信用しセッショントークンを token に載せない
@@ -489,6 +490,10 @@ describe("_meta execution class / actor, declared per request (ADR-015)", () => 
       "lower-cased key inside the gateway prefix",
       { [`${META_KEY_PREFIX}executionclass`]: "autonomous" },
     ],
+    // 再レビュー S1: 前後の空白・区切りの違い・prefix の綴り違い(骨格で照合する)
+    ["prefixed key with a leading space", { [` ${K.executionClass}`]: "scheduled" }],
+    ["':' instead of '/' after the prefix", { "io.github.sunaot.leisen:executionClass": "scheduled" }],
+    ["misspelled prefix", { "io.github.sunaot.leisn/executionClass": "autonomous" }],
   ] as const)(
     "rejects an invalid declaration (%s) before dispatch instead of defaulting it",
     async (_label, meta) => {

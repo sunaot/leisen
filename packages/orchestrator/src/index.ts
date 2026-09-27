@@ -11,7 +11,8 @@
  * - audit.ts          AnswerRun レコードの組み立て、stderr デバッグシンク
  * - config.ts         設定スキーマ(探索の上限・価格表、Claude API クライアント)
  * - llm/              LlmClient IF、AnthropicLlmClient、ScriptedLlmClient(テスト用)
- * - gateway/          GatewayClient IF、McpGatewayClient(Streamable HTTP)
+ * - gateway/          GatewayClient IF、McpGatewayClient(Streamable HTTP)、
+ *                     Gateway へ送る `_meta` の組み立て(buildGatewayMeta)
  * - bin/kp-ask.ts     CLI
  */
 export * from "./answer.js";
@@ -27,4 +28,5 @@ export * from "./llm/types.js";
 export * from "./llm/anthropic.js";
 export * from "./llm/scripted.js";
 export * from "./gateway/types.js";
+export * from "./gateway/meta.js";
 export * from "./gateway/mcp-client.js";

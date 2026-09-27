@@ -9,10 +9,11 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { inspect } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { GATEWAY_META_KEYS, IdpError } from "@kp/gateway";
+import { IdpError } from "@kp/gateway";
 import {
   GatewayClientError,
   McpGatewayClient,
+  buildGatewayMeta,
   normalizeCallResult,
 } from "../src/index.js";
 import {
@@ -46,10 +47,7 @@ async function setup(notConnected: string[] = []): Promise<GatewayHarness> {
   return harness;
 }
 
-const META = {
-  [GATEWAY_META_KEYS.runId]: "run-mcp-client",
-  [GATEWAY_META_KEYS.iteration]: 0,
-};
+const META = buildGatewayMeta({ runId: "run-mcp-client", iteration: 0 });
 
 async function rejectionOf(promise: Promise<unknown>): Promise<GatewayClientError> {
   const error = await promise.then(

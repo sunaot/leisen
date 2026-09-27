@@ -9,7 +9,8 @@
  *   混線しない(不変条件4)
  * - tools/list がユーザー・接続に依存しない(ADR-012)
  * - `_meta` の runId / iteration・実行区分がリクエストごとに扱われる。申告キーの
- *   誤記(裸キー・prefix内の大文字小文字違い)は既定値で通さず invalid_request(M2)
+ *   誤記(裸キー・prefix内の大文字小文字違い。再レビュー S1 で前後の空白・区切りの
+ *   違い・prefix の綴り違い・全角/ゼロ幅文字も)は既定値で通さず invalid_request(M2)
  * - GET / DELETE は 405、GET /healthz は認証不要で状態のみを返す
  */
 import { once } from "node:events";
@@ -528,8 +529,23 @@ describe("_meta declarations over HTTP (ADR-011 追記、ADR-015)", () => {
       "a lower-cased key inside the gateway prefix",
       { [`${META_KEY_PREFIX}executionclass`]: "autonomous" },
     ],
+    // 再レビュー S1: 旧実装ではHTTP経由でもコネクタまで届いていた変種(骨格で照合する)
+    [
+      "a leading space before the prefixed key",
+      { [` ${GATEWAY_META_KEYS.executionClass}`]: "scheduled" },
+    ],
+    [
+      "'.' instead of '/' after the prefix",
+      { "io.github.sunaot.leisen.executionClass": "scheduled" },
+    ],
+    ["a package-like prefix", { "kp.gateway/executionClass": "autonomous" }],
+    ["a zero-width space inside a bare key", { "execution​Class": "scheduled" }],
+    [
+      "a trailing space after a bare actor",
+      { "actor ": { kind: "agent", agentId: "a1", onBehalfOfChain: ["alice"] } },
+    ],
   ])(
-    "rejects a misspelled execution class declaration (%s) as invalid_request: connector not called, not audited",
+    "rejects a misspelled declaration key (%s) as invalid_request: connector not called, not audited",
     async (_label, meta) => {
       const { alpha, beta, sink, connect } = await startHarness();
       const alice = await connect("session-alice");

@@ -42,7 +42,8 @@ export interface GatewayClient {
   /**
    * ツールを1回呼ぶ。ツール結果のエラー(isError)は { ok: false } で返し、
    * トランスポート層の失敗(認証拒否・接続不能・タイムアウト)は GatewayClientError を投げる。
-   * meta はリクエストの `_meta`(prefix 付きキーの runId / iteration / 実行区分 / actor)。
+   * meta はリクエストの `_meta`(prefix 付きキーの runId / iteration / 実行区分 / actor。
+   * buildGatewayMeta で組み立てる)。
    */
   callTool(
     name: string,

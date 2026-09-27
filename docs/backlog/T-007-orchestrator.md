@@ -18,8 +18,10 @@ product-design.md 4.3の探索ループを実装する。品質は単発検索�
 - [x] 出典のない断定文を返さないことがテストで担保される(`test/citations.test.ts`)
 - [x] 監査ログのAnswerRun(finalOutcome, userFeedback)が利用者フィードバックで更新できる(`test/answer-run.test.ts`)
 - [x] 1回の探索ループ内の全ツール呼び出しが同一runIdと単調増加するiterationで `_meta` に申告され、監査ログのToolInvocationがrunIdで束ねられることがテストされている(`test/run-id.test.ts`)
+- [x] Gateway へ送る `_meta` は `buildGatewayMeta`(`src/gateway/meta.ts`)の1箇所で `GATEWAY_META_KEYS` からのみ組み立て、キー集合が `GATEWAY_META_KEYS` の4キーと完全一致することがユニットテストで固定されている(`test/gateway-meta.test.ts`。Gateway 自身の `_meta` 解釈で読み戻せること、src の他の箇所がキーを書かないことも検査。セキュリティ再レビュー S3)
+- [x] Orchestrator の MCP クライアント(`McpGatewayClient`)経由で `executionClass: "scheduled"` を申告して実 Gateway(port 0 の HTTP)を呼ぶと `execution_class_rejected` が返り、監査(ToolInvocation)に1件残ることが E2E テストされている(`test/gateway-meta.test.ts`。autonomous も同様でコネクタは呼ばれない。既定の申告が同じ経路で通る対照つき。セキュリティ再レビュー S3)
 
-いずれも脚本(ScriptedLlmClient)と実Gateway(port 0)で検証したもので、実 Claude API での実走は未検証(下記「実装状況」)。
+いずれも脚本(ScriptedLlmClient)または MCP クライアントの直接呼び出しと、実Gateway(port 0)で検証したもので、実 Claude API での実走は未検証(下記「実装状況」)。
 
 ## 更新(2026-09-17)
 ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申告が本タスクの必須要件になった。`_meta` のprefixは暫定 `io.github.sunaot.leisen/`(2026-09-27確認、最終確定はT-013)。Gateway側がprefix付きキーを受けるまでは現行キー(`runId` / `iteration`)で実装し、Gateway移行後に追随する。
@@ -33,11 +35,11 @@ ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申�
 - `packages/orchestrator`(`@kp/orchestrator` 0.1.0)。依存は `@anthropic-ai/sdk` 0.128.0(exact、新規)、`@modelcontextprotocol/sdk` 1.30.1、`@kp/gateway`、`@kp/connector-sdk`、`zod`
 - LLM クライアント抽象 `LlmClient`: 本番 `AnthropicLlmClient`(既定 `claude-opus-5`・adaptive thinking・effort `high`・`tool_choice: auto`・strict ツール・prefill なし。モデル / effort / タイムアウト / 再試行 / max_tokens は設定注入。`stop_reason` の refusal / max_tokens / pause_turn を正規化エラーへ。SDK の型付き例外を具体的なものから分類。server-side fallbacks は既定 off の設定フラグ)、テスト用 `ScriptedLlmClient`
 - Gateway クライアント `McpGatewayClient`: SDK の Client + StreamableHTTPClientTransport、毎リクエスト `Authorization: Bearer`。isError を正規化エラーへ。セッショントークンはエラー・シリアライズに出さない
-- 探索ループ: runId を採番し、全 `tools/call` の `_meta` に prefix 付きキーで runId / iteration(ツール呼び出しごとに0から単調増加、describe を含む)/ 実行区分 human_in_the_loop / actor human を申告。describe の `source_not_connected` は skippedSources へ入れて検索対象から外し、回答に未接続の旨と接続導線(プレースホルダ)を付ける。回答は `submit_answer`(strict)で提出させ、出典を run 内で受け取った文書に限って検証、回答中の原典以外の URL を除去。上限(maxIterations / runTimeoutMs / costLimitPerQuery)到達時は最終ターンを1回だけ行う
+- 探索ループ: runId を採番し、全 `tools/call` の `_meta` に prefix 付きキーで runId / iteration(ツール呼び出しごとに0から単調増加、describe を含む)/ 実行区分 human_in_the_loop / actor human を申告(`_meta` の組み立ては `buildGatewayMeta` に集約。Gateway は申告キーの誤記を invalid_request で拒否するため、キーを手書きしない)。describe の `source_not_connected` は skippedSources へ入れて検索対象から外し、回答に未接続の旨と接続導線(プレースホルダ)を付ける。回答は `submit_answer`(strict)で提出させ、出典を run 内で受け取った文書に限って検証、回答中の原典以外の URL を除去。上限(maxIterations / runTimeoutMs / costLimitPerQuery)到達時は最終ターンを1回だけ行う
 - AnswerRun: 開始時 pending → 終了時に同じ runId で最終状態 → `recordFeedback` で userFeedback を更新して再書き込み。書き込み失敗は fail-closed
 - プロンプト: `packages/orchestrator/prompts/explore.v1.md`(探索方針、出典必須、探索範囲の明示、インジェクション防御 — 文書内の隠しテキストを含む指示に従わない・原典以外の URL を生成しない)
 - CLI: `kp-ask`(`packages/orchestrator/src/bin/kp-ask.ts`)。資格情報が無い・無効なら「Claude API の資格情報が必要」を表示して終了コード 2
-- テスト(vitest、ネットワークは 127.0.0.1 のみ): シナリオ(受け入れ条件1)、出典・URL の検証とインジェクション(受け入れ条件2)、AnswerRun とフィードバック(受け入れ条件3)、runId / iteration(受け入れ条件4)、上限・催促・失敗、AnthropicLlmClient(フェイクの messages.create、偽 fetch の実 SDK)、McpGatewayClient、kp-ask CLI
+- テスト(vitest、ネットワークは 127.0.0.1 のみ): シナリオ(受け入れ条件1)、出典・URL の検証とインジェクション(受け入れ条件2)、AnswerRun とフィードバック(受け入れ条件3)、runId / iteration(受け入れ条件4)、`_meta` の組み立てと scheduled / autonomous 申告の拒否の E2E(受け入れ条件5・6)、上限・催促・失敗、AnthropicLlmClient(フェイクの messages.create、偽 fetch の実 SDK)、McpGatewayClient、kp-ask CLI
 - 使い方・設定・既知の限界は `packages/orchestrator/README.md`
 
 ### 残作業(人手の前提待ち・人間の判断待ち)

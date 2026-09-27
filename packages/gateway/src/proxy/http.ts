@@ -20,8 +20,12 @@
  *   Server+Transport を組み立て、応答後に閉じる。検証済み Identity は SDK の
  *   AuthInfo(req.auth → ハンドラの extra.authInfo)で渡す
  * - 応答はSSEでなく単発JSON(enableJsonResponse)。ツールのみを公開し、
- *   サーバー発の通知・リクエストを使わない(追補3 決定7)ためストリームは不要で、
- *   handleRequest の完了=応答の送出完了となりリクエスト単位の部品を確実に閉じられる
+ *   サーバー発の通知・リクエストを使わない(追補3 決定7)ためストリームは不要。
+ *   通常は handleRequest の完了=応答の送出完了で、その後にリクエスト単位の部品を
+ *   閉じる。ただし同一 POST に取り消し通知を含むバッチ(例: `[tools/call id=7,
+ *   notifications/cancelled requestId=7]`)では handleRequest が完了せず、接続と
+ *   リクエスト単位の部品が保持される(minor-6、未対応。公開前の必須条件として
+ *   T-012 に記載)
  * - GET / DELETE(およびPOST以外の全メソッド)は 405(Allow: POST)。GETの
  *   スタンドアロンSSEストリームはサーバー発メッセージの受け口だが本Gatewayは
  *   送るものがなく、開いたままの接続とリクエスト単位の部品を無駄に抱えるだけに
@@ -205,7 +209,8 @@ async function serveMcpRequest(
     authenticated.auth = gatewayAuthInfo(identity);
     await transport.handleRequest(authenticated, res);
   } finally {
-    // JSON応答モードでは handleRequest の完了=応答の送出完了
+    // JSON応答モードでは通常 handleRequest の完了=応答の送出完了。取り消し通知を
+    // 含むバッチでは handleRequest が完了せずここに到達しない(minor-6、冒頭の注記)
     await server.close().catch(() => undefined);
   }
 }

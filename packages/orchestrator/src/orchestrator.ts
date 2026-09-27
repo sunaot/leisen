@@ -9,7 +9,8 @@
  *
  * 監査の束ね(ADR-011 追記、ADR-001 追補3): runId はここで採番し、Gateway への
  * 全 tools/call の `_meta` に prefix 付きキーで runId / iteration / 実行区分
- * (human_in_the_loop)/ actor(human)を申告する。iteration はツール呼び出しごとに
+ * (human_in_the_loop)/ actor(human)を申告する(`_meta` の組み立ては
+ * gateway/meta.ts の buildGatewayMeta に集約)。iteration はツール呼び出しごとに
  * 0 から単調増加(describe を含む。同一ターン内の並列呼び出しは応答内の順に採番)。
  * Gateway に送らなかった呼び出し(未接続ソース宛て等)は番号を消費しない。
  *
@@ -27,11 +28,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type Anthropic from "@anthropic-ai/sdk";
-import {
-  GATEWAY_META_KEYS,
-  type AuditLogger,
-  type ExecutionClass,
-} from "@kp/gateway";
+import type { AuditLogger } from "@kp/gateway";
 import {
   answerSchema,
   SUBMIT_ANSWER_TOOL_NAME,
@@ -44,7 +41,6 @@ import {
 } from "./answer.js";
 import {
   finishedAnswerRun,
-  HUMAN_ACTOR,
   pendingAnswerRun,
   type AnswerRunAuditRecord,
 } from "./audit.js";
@@ -62,6 +58,7 @@ import {
   OrchestratorError,
   type GatewayClientErrorClass,
 } from "./errors.js";
+import { buildGatewayMeta } from "./gateway/meta.js";
 import type {
   GatewayClient,
   GatewayToolError,
@@ -85,9 +82,6 @@ import {
   sourcesFromTools,
   type GatewayToolName,
 } from "./tools.js";
-
-/** Phase 1 は human-in-the-loop 固定(ADR-015。scheduled / autonomous は実装しない)。 */
-const EXECUTION_CLASS: ExecutionClass = "human_in_the_loop";
 
 /** 検証済みの出典がない回答の先頭に付ける注意。 */
 export const NO_CITATION_NOTICE =
@@ -683,7 +677,8 @@ export class Orchestrator {
   }
 
   /**
-   * Gateway へ tools/call を1回送る。iteration の採番と `_meta` の組み立ては
+   * Gateway へ tools/call を1回送る。iteration の採番と `_meta` の組み立て
+   * (buildGatewayMeta。実行区分は Phase 1 の human_in_the_loop 固定、ADR-015)は
    * 呼び出し時に同期的に行う(Promise を返す前に番号が確定する)。
    */
   #dispatch(
@@ -695,12 +690,7 @@ export class Orchestrator {
   ): Promise<Dispatched> {
     const iteration = state.nextIteration();
     state.toolCalls += 1;
-    const meta = {
-      [GATEWAY_META_KEYS.runId]: state.runId,
-      [GATEWAY_META_KEYS.iteration]: iteration,
-      [GATEWAY_META_KEYS.executionClass]: EXECUTION_CLASS,
-      [GATEWAY_META_KEYS.actor]: HUMAN_ACTOR,
-    };
+    const meta = buildGatewayMeta({ runId: state.runId, iteration });
     return gateway.callTool(tool, args, meta, { signal }).then(
       (outcome): Dispatched =>
         outcome.ok

@@ -9,7 +9,10 @@
  * - TM-B2: permission_denied / not_found を同一の not_available に正規化する
  *   (監査レコードは元の分類を保持)
  * - M2: `_meta` の申告キーの誤記(裸キー・名前空間内の未知キー)を invalid_request で
- *   拒否する(ADR-015 の既定拒否を迂回させない)
+ *   拒否する(ADR-015 の既定拒否を迂回させない)。再レビュー S1 で照合を骨格
+ *   (NFKC 正規化・小文字化・ASCII 英数字以外の除去)に広げ、前後の空白、区切りの
+ *   違い、prefix の綴り違い、全角・ゼロ幅文字の変種も拒否する。正当なキー
+ *   (MCP 定義・他社名前空間の actor・裸の runId / iteration)は拒否しない
  * - minor-1: コネクタの結果を既知フィールドだけに射影する(不変条件3、TM-A1)
  * - minor-2: 結果の直列化失敗も正規化エラーにする
  * - minor-8 / minor-10: 裸キーとprefix付きキーを混在させない、runId・sourceId の
@@ -65,6 +68,77 @@ function build(
 }
 
 const K = GATEWAY_META_KEYS;
+
+/** ASCII の印字可能文字を全角形(U+FF01〜U+FF5E)にする(NFKC で ASCII に戻る)。 */
+function fullwidth(text: string): string {
+  return text.replace(/[!-~]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+}
+
+const AGENT_ACTOR = { kind: "agent", agentId: "a1", onBehalfOfChain: ["alice"] };
+
+/**
+ * 再レビュー(2026-09-27、S1)で、旧実装の照合(prefix の大文字小文字違いと、裸キーの
+ * `_` / `-` 除去のみ)をすり抜けてコネクタまで届き、human_in_the_loop として実行される
+ * ことが実証された申告キーの変種(代表)。骨格の照合でいずれも invalid_request になる。
+ */
+const RESIDUAL_MISSPELLINGS: ReadonlyArray<
+  readonly [label: string, key: string, value: unknown]
+> = [
+  ["a leading space before the prefixed key", ` ${K.executionClass}`, "scheduled"],
+  ["a trailing space after the prefixed key", `${K.executionClass} `, "scheduled"],
+  ["a leading space before a bare key", " executionClass", "scheduled"],
+  ["a trailing tab after a bare key", "executionClass\t", "autonomous"],
+  ["a trailing space after a bare actor", "actor ", AGENT_ACTOR],
+  ["a leading tab before a bare actor", "\tactor", AGENT_ACTOR],
+  ["'.' instead of '/' after the prefix", "io.github.sunaot.leisen.executionClass", "scheduled"],
+  ["':' instead of '/' after the prefix", "io.github.sunaot.leisen:executionClass", "scheduled"],
+  ["no '/' after the prefix", "io.github.sunaot.leisenexecutionClass", "scheduled"],
+  ["no '/' after the prefix (actor)", "io.github.sunaot.leisenactor", AGENT_ACTOR],
+  ["a misspelled prefix", "io.github.sunaot.leisn/executionClass", "scheduled"],
+  ["a truncated prefix", "leisen/executionClass", "scheduled"],
+  ["a package-like prefix", "kp.gateway/executionClass", "autonomous"],
+  ["a space inside the name", "execution class", "scheduled"],
+  ["a dot inside the name", "execution.class", "scheduled"],
+  ["fullwidth letters in a bare key", fullwidth("executionClass"), "scheduled"],
+  ["a fully fullwidth prefixed key", fullwidth(K.executionClass), "scheduled"],
+  ["a fullwidth bare actor", fullwidth("actor"), AGENT_ACTOR],
+  ["a zero-width space inside a bare key", "execution​Class", "scheduled"],
+  [
+    "a zero-width space inside the prefixed key",
+    `${META_KEY_PREFIX}​executionClass`,
+    "scheduled",
+  ],
+  ["a zero-width joiner before a bare actor", "‍actor", AGENT_ACTOR],
+];
+
+/**
+ * 誤記として拒否してはならない正当なキー(S1 の照合が広がりすぎていないことの固定)。
+ * 他社名前空間の actor は骨格が "comexampleactor" で "actor" に一致しないため受ける
+ * (値は解釈しない。不正な actor の形でも拒否されない)。
+ */
+const LEGITIMATE_KEYS: ReadonlyArray<readonly [key: string, value: unknown]> = [
+  ["progressToken", 1],
+  ["io.modelcontextprotocol/related-task", { taskId: "t" }],
+  ["io.modelcontextprotocol/protocolVersion", "2025-11-25"],
+  ["runId", "run-bare"],
+  ["iteration", 1],
+  [K.runId, "run-1"],
+  [K.iteration, 2],
+  [K.executionClass, "human_in_the_loop"],
+  [K.actor, { kind: "human" }],
+  ["com.example/actor", { kind: "robot" }],
+];
+
+/** declarationFromMeta が投げた GatewayError(投げなければ undefined)。 */
+function declarationError(meta: unknown): GatewayError | undefined {
+  try {
+    declarationFromMeta(meta);
+  } catch (error) {
+    expect(error).toBeInstanceOf(GatewayError);
+    return error as GatewayError;
+  }
+  return undefined;
+}
 
 type ScriptedResults = Partial<
   Record<"search" | "fetch" | "list" | "describe", unknown>
@@ -152,6 +226,11 @@ describe("callContextFromMeta (runId / iteration)", () => {
         runId: "b",
         iteration: 2,
       }),
+    ).toEqual({});
+    // 名前空間の判定は誤記の照合と同じ骨格で行う(見た目違いの prefix キーがあっても
+    // 裸キーへ戻らない。runToolCall では declarationFromMeta が先に拒否する)
+    expect(
+      callContextFromMeta({ [` ${K.runId}`]: "p", runId: "b", iteration: 2 }),
     ).toEqual({});
   });
 
@@ -267,18 +346,62 @@ describe("declarationFromMeta (execution class / actor)", () => {
     },
   );
 
-  it("still accepts unrelated keys (MCP-defined, other namespaces, legacy runId) next to the documented ones", () => {
+  it("still accepts unrelated keys (MCP-defined, other namespaces' actor, legacy runId) next to the documented ones", () => {
     expect(
       declarationFromMeta({
         progressToken: 1,
         "io.modelcontextprotocol/related-task": { taskId: "t" },
-        "com.example/executionClass": "scheduled",
+        "io.modelcontextprotocol/protocolVersion": "2025-11-25",
+        "com.example/actor": { kind: "robot" },
         runId: "run-bare",
         iteration: 1,
         [K.executionClass]: "human_in_the_loop",
         [K.actor]: { kind: "human" },
       }),
     ).toEqual({ executionClass: "human_in_the_loop", actor: { kind: "human" } });
+  });
+
+  it.each(LEGITIMATE_KEYS)(
+    "does not reject the legitimate key %j (S1)",
+    (key, value) => {
+      expect(declarationError({ [key]: value })).toBeUndefined();
+    },
+  );
+
+  // S1: 他社名前空間の executionClass も拒否する(fail-closed 側に倒す)。骨格
+  // "comexampleexecutionclass" は "executionclass" で終わり、自社の申告のつもりで
+  // prefix を誤ったキー(実証済みの `kp.gateway/executionClass` / `leisen/executionClass`
+  // 等)と区別できないため。以前は他社のキーとして無視していた(=申告なしとして
+  // human_in_the_loop で通っていた)。同名キーを付けるクライアントは、Gateway への
+  // tools/call ではそのキーを送らないこと(拒否は固定文言の invalid_request で分かる)
+  it("rejects an executionClass key in another namespace too (fail-closed, S1)", () => {
+    const error = declarationError({ "com.example/executionClass": "scheduled" });
+    expect(error?.errorClass).toBe("invalid_request");
+  });
+
+  it.each(RESIDUAL_MISSPELLINGS)(
+    "rejects %s as invalid_request without echoing the key or the value (S1)",
+    (_label, key, value) => {
+      const error = declarationError({ [key]: value });
+      expect(error?.errorClass).toBe("invalid_request");
+      expect(error?.message).not.toContain(key);
+      expect(error?.message).not.toContain("scheduled");
+      expect(error?.message).not.toContain("autonomous");
+    },
+  );
+
+  it("matches keys with zero-width or fullwidth characters by their NFKC skeleton, not by their raw spelling", () => {
+    // NFKC は U+200B を残すが、骨格は ASCII 英数字以外を落とすため同じ申告名になる
+    expect("execution​Class".normalize("NFKC")).not.toBe("executionClass");
+    // 全角の prefix 付きキーは NFKC で既知キーと一致するが、生の綴りは一致しない:
+    // 既知キーとしては解釈せず、誤記として拒否する(既定値でも区分でも通さない)
+    expect(fullwidth(K.executionClass).normalize("NFKC")).toBe(K.executionClass);
+    expect(
+      declarationError({ [fullwidth(K.executionClass)]: "human_in_the_loop" })?.errorClass,
+    ).toBe("invalid_request");
+    expect(
+      declarationError({ [`${K.actor}​`]: { kind: "human" } })?.errorClass,
+    ).toBe("invalid_request");
   });
 });
 
@@ -410,6 +533,42 @@ describe("listTools / runToolCall (SDK-independent tool surface)", () => {
       expect(sink.records).toHaveLength(0);
     },
   );
+
+  it.each(RESIDUAL_MISSPELLINGS)(
+    "rejects a residual misspelling (%s) before dispatch: no connector call, no audit record (S1)",
+    async (_label, key, value) => {
+      const { gateway, alpha, beta, sink } = build();
+      const identity = await gateway.authenticate("session-alice");
+      const outcome = await runToolCall(gateway, {
+        identity,
+        name: "search",
+        arguments: { source: "alpha", query: "q" },
+        meta: { [key]: value },
+      });
+      expect(outcome).toMatchObject({
+        ok: false,
+        error: { errorClass: "invalid_request" },
+      });
+      expect(alpha.calls).toHaveLength(0);
+      expect(beta.calls).toHaveLength(0);
+      expect(sink.records).toHaveLength(0);
+    },
+  );
+
+  it("dispatches a call whose _meta carries only legitimate keys (S1: no false rejection)", async () => {
+    const { gateway, alpha, sink } = build();
+    const identity = await gateway.authenticate("session-alice");
+    const outcome = await runToolCall(gateway, {
+      identity,
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      meta: Object.fromEntries(LEGITIMATE_KEYS),
+    });
+    expect(outcome.ok).toBe(true);
+    expect(alpha.calls).toHaveLength(1);
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]).toMatchObject({ runId: "run-1", iteration: 2 });
+  });
 
   it("keeps rejecting a correctly prefixed scheduled declaration by execution class (audited once)", async () => {
     const { gateway, alpha, sink } = build();

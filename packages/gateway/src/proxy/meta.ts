@@ -5,23 +5,36 @@
  * 独自キーには名前空間prefixを付ける。prefixは暫定値であり、最終確定は
  * T-013(OSS公開準備)。**T-013 で prefix を変更する際は、移行期間中は4キー
  * (runId / iteration / executionClass / actor)すべてについて旧prefixも受ける**
- * (未知キーの拒否も新旧両方のprefixに適用する)。旧prefixのキーを「名前空間外」
- * として黙って無視すると、旧prefixで申告した executionClass が落ちて
- * human_in_the_loop として通る fail-open になるため。
+ * (誤記の照合のうち名前空間の判定=骨格の前方一致も新旧両方のprefixに適用する)。
+ * 旧prefixのキーを「名前空間外」として黙って無視すると、旧prefixで申告した
+ * executionClass が落ちて human_in_the_loop として通る fail-open になるため。
  *
  * - 申告キーの誤記は拒否する(declarationFromMeta。ADR-015 の既定拒否を誤記で
- *   迂回させない。セキュリティレビュー 2026-09-27 M2): Gatewayの名前空間
- *   (prefix。大文字小文字を区別せずに判定)で始まるが既知の4キーのいずれとも
- *   完全一致しないキー、および裸の executionClass / actor(大文字小文字・`_` / `-`
- *   の違いを含む)があれば invalid_request。メッセージは固定文言で、キー名も値も
- *   エコーしない
+ *   迂回させない。セキュリティレビュー 2026-09-27 M2、再レビュー S1): 既知の4キーと
+ *   完全一致しないキーのうち、骨格(skeleton: NFKC 正規化 → 小文字化 → ASCII 英数字
+ *   以外を除去)が次のいずれかに当たるものがあれば invalid_request。
+ *   (a) Gatewayの名前空間 prefix の骨格("iogithubsunaotleisen")で始まる
+ *   (b) "executionclass" で終わる(名前空間を問わない)
+ *   (c) "actor" に等しい(裸の actor)
+ *   これにより大文字小文字、前後の空白・タブ、区切り(`/` `.` `:` `_` `-`・空白)の
+ *   違い、prefix 直後の `/` の欠落、prefix の綴り違い(executionClass の場合)、
+ *   全角文字・ゼロ幅文字による見た目違いを同じ申告名として照合する。メッセージは
+ *   固定文言で、キー名も値もエコーしない
+ *   - 他社名前空間の `com.example/executionClass` も (b) で拒否する(自社の申告の
+ *     つもりで prefix を誤ったキー — `kp.gateway/` 等 — と区別できないため
+ *     fail-closed に倒す)。`com.example/actor` は骨格が "actor" と一致しないため受ける
+ *   - Gatewayでは検知できない残余: `_meta` 以外の場所での申告(`params.meta` 等の
+ *     スキーマ外のキーは SDK が取り除く)、申告そのものの省略、名前空間外のキー名
+ *     自体の綴り違い(`execClass` 等)、prefix を誤った actor(`kp.gateway/actor`
+ *     等。他社名前空間の actor と区別できない)。いずれも既定の human_in_the_loop /
+ *     human として扱われる(T-003 H1)
  * - runId / iteration(ADR-011 追記): Orchestrator(T-007)が申告する監査の束ね。
  *   移行期間として裸キー(`runId` / `iteration`)も受けるが、Gatewayの名前空間の
- *   キーが1つでもあれば裸キーはすべて無視する(キー単位のフォールバックで新旧の
- *   申告を混在させない)。不正値(runId は [A-Za-z0-9._:-] の1〜128文字、
- *   iteration は0以上の安全な整数。session.ts)は未申告として扱う: 監査の相関
- *   メタデータであり、呼び出し自体は単発run(session.ts resolveCallContext)として
- *   必ず記録されるため
+ *   キー(骨格で判定)が1つでもあれば裸キーはすべて無視する(キー単位の
+ *   フォールバックで新旧の申告を混在させない)。不正値(runId は [A-Za-z0-9._:-] の
+ *   1〜128文字、iteration は0以上の安全な整数。session.ts)は未申告として扱う:
+ *   監査の相関メタデータであり、呼び出し自体は単発run(session.ts
+ *   resolveCallContext)として必ず記録されるため
  * - executionClass / actor(ADR-015): リクエストごとの実行区分・呼び出し主体。
  *   prefix付きキーのみを受ける(裸キーは前例がないため移行期間を設けず拒否する)。
  *   不正値は既定値に丸めず invalid_request で拒否する(区分による拒否を
@@ -55,23 +68,32 @@ const KNOWN_GATEWAY_KEYS: ReadonlySet<string> = new Set(
   Object.values(GATEWAY_META_KEYS),
 );
 
-/** 大文字小文字を区別しない名前空間判定用の prefix。 */
-const NAMESPACE_PREFIX_LOWER = META_KEY_PREFIX.toLowerCase();
+/**
+ * 誤記の照合に使うキーの骨格: NFKC 正規化(全角英数字・記号などの互換文字を
+ * ASCII 側へ寄せる)→ 小文字化 → ASCII 英数字以外(空白・タブ・区切り記号・
+ * ゼロ幅文字等)の除去。見た目や区切りだけが違うキーを同じ申告名として扱う。
+ */
+function skeleton(key: string): string {
+  return key.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Gatewayの名前空間 prefix の骨格("iogithubsunaotleisen")。 */
+const NAMESPACE_SKELETON = skeleton(META_KEY_PREFIX);
+
+/** 骨格がこれで終わる未知キーは、名前空間を問わず実行区分の誤記として拒否する。 */
+const EXECUTION_CLASS_SKELETON = skeleton("executionClass");
+
+/**
+ * 骨格がこれに等しい未知キー(裸の actor)を拒否する。他社名前空間の actor
+ * (`com.example/actor`)を拒否しないよう、完全一致に限る。
+ */
+const BARE_ACTOR_SKELETON = skeleton("actor");
 
 /** 移行期間中に受ける裸キー(ADR-001 追補3 決定4)。移行期間の終了時期は未定。 */
 const LEGACY_BARE_KEYS = {
   runId: "runId",
   iteration: "iteration",
 } as const;
-
-/**
- * 裸キーとしては受け付けない申告名(小文字化し `_` / `-` を除いた形で照合する)。
- * 実行区分・actor の申告は prefix付きキーのみ(前例がないため互換を考慮しない)。
- */
-const BARE_DECLARATION_NAMES: ReadonlySet<string> = new Set([
-  "executionclass",
-  "actor",
-]);
 
 const MISSPELLED_DECLARATION =
   "unrecognized or unprefixed gateway declaration key in _meta " +
@@ -95,28 +117,37 @@ function presentKeys(record: MetaRecord): string[] {
   return Object.keys(record).filter((key) => has(record, key));
 }
 
-/** Gatewayの名前空間のキーか(大文字小文字を区別しない。誤記を名前空間外として見逃さない)。 */
+/**
+ * Gatewayの名前空間のキーか(骨格の前方一致で判定する。大文字小文字・区切り・
+ * 全角/ゼロ幅の違いを名前空間外として見逃さない)。
+ */
 function inGatewayNamespace(key: string): boolean {
-  return key.toLowerCase().startsWith(NAMESPACE_PREFIX_LOWER);
-}
-
-function isBareDeclarationKey(key: string): boolean {
-  return BARE_DECLARATION_NAMES.has(key.toLowerCase().replace(/[-_]/g, ""));
+  return skeleton(key).startsWith(NAMESPACE_SKELETON);
 }
 
 /**
- * 申告キーの誤記を拒否する(M2)。名前空間内の未知キー(prefix・キー名の大文字
- * 小文字違いを含む)と裸の executionClass / actor は、黙って無視すると申告が
- * 落ちて既定の human_in_the_loop として通ってしまう。
+ * 申告キーの誤記か(M2、再レビュー S1)。既知の4キーと完全一致しないキーのうち、
+ * 骨格が名前空間 prefix で始まる・"executionclass" で終わる・"actor" に等しいもの。
+ */
+function isMisspelledDeclarationKey(key: string): boolean {
+  if (KNOWN_GATEWAY_KEYS.has(key)) {
+    return false;
+  }
+  const keySkeleton = skeleton(key);
+  return (
+    keySkeleton.startsWith(NAMESPACE_SKELETON) ||
+    keySkeleton.endsWith(EXECUTION_CLASS_SKELETON) ||
+    keySkeleton === BARE_ACTOR_SKELETON
+  );
+}
+
+/**
+ * 申告キーの誤記を拒否する(M2、再レビュー S1)。誤記のキーを黙って無視すると
+ * 申告が落ちて既定の human_in_the_loop として通ってしまう。
  */
 function assertNoMisspelledDeclaration(record: MetaRecord): void {
-  for (const key of presentKeys(record)) {
-    const misspelled = inGatewayNamespace(key)
-      ? !KNOWN_GATEWAY_KEYS.has(key)
-      : isBareDeclarationKey(key);
-    if (misspelled) {
-      throw new GatewayError("invalid_request", MISSPELLED_DECLARATION);
-    }
+  if (presentKeys(record).some(isMisspelledDeclarationKey)) {
+    throw new GatewayError("invalid_request", MISSPELLED_DECLARATION);
   }
 }
 
@@ -136,7 +167,7 @@ function readCallContextValue(
 /** `_meta` から runId / iteration の申告を読む(不正値は未申告扱い)。 */
 export function callContextFromMeta(meta: unknown): CallContext {
   const record = asRecord(meta);
-  // prefix付き(名前空間内)のキーが1つでもあれば裸キーはすべて無視する(minor-8)
+  // 名前空間内のキーが1つでもあれば裸キーはすべて無視する(minor-8)
   const legacyAllowed = !presentKeys(record).some(inGatewayNamespace);
   const runId = readCallContextValue(record, "runId", legacyAllowed);
   const iteration = readCallContextValue(record, "iteration", legacyAllowed);
