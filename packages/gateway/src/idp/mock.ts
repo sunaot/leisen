@@ -39,8 +39,14 @@ export interface MockIdpAdapterOptions {
   cache?: CredentialCacheOptions;
 }
 
-function sessionsFromEnv(): Record<string, MockUser> {
-  const raw = process.env.KP_MOCK_SESSIONS;
+/**
+ * KP_MOCK_SESSIONS 形式("token=userId[,token2=userId2...]")を解析する。
+ * 起動コード(bootstrap/)が注入された環境変数から読むために公開する。
+ * 不正な形式のエラーには値(トークン)を含めない(不変条件6)。
+ */
+export function parseMockSessions(
+  raw: string | undefined,
+): Record<string, MockUser> {
   if (!raw) {
     return {};
   }
@@ -56,6 +62,10 @@ function sessionsFromEnv(): Record<string, MockUser> {
     sessions[token] = { userId };
   }
   return sessions;
+}
+
+function sessionsFromEnv(): Record<string, MockUser> {
+  return parseMockSessions(process.env.KP_MOCK_SESSIONS);
 }
 
 export class MockIdpAdapter extends CredentialResolvingIdpAdapter {
@@ -95,6 +105,11 @@ export interface MockCredentialProviderOptions {
   /** 発行するトークンの有効期間(ms)。既定1時間。 */
   tokenLifetimeMs?: number;
   now?: () => number;
+  /**
+   * トークンを読む環境変数(呼び出しのたびに参照する)。既定 process.env。
+   * 起動コードが注入された環境(assembleGateway の env)を渡す。
+   */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 /**
@@ -113,6 +128,7 @@ export class MockCredentialProvider implements CredentialProvider {
   readonly method = "oauth_individual" as const;
   private readonly tokenLifetimeMs: number;
   private readonly now: () => number;
+  private readonly env: Readonly<Record<string, string | undefined>>;
 
   constructor(
     public readonly sourceId: string,
@@ -121,15 +137,16 @@ export class MockCredentialProvider implements CredentialProvider {
     assertNotProduction("MockCredentialProvider");
     this.tokenLifetimeMs = options.tokenLifetimeMs ?? 60 * 60 * 1000;
     this.now = options.now ?? Date.now;
+    this.env = options.env ?? process.env;
   }
 
   async getCredential(identity: Identity): Promise<Credential> {
     const base = mockTokenEnvVar(this.sourceId);
     const perUser =
-      process.env[
+      this.env[
         `${base}__${identity.userId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
       ];
-    const token = perUser ?? process.env[base];
+    const token = perUser ?? this.env[base];
     if (!token) {
       throw new IdpError(
         "source_not_connected",

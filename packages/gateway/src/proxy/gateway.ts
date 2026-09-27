@@ -72,7 +72,11 @@ export interface GatewayOptions {
 }
 
 interface RegistryEntry {
-  connector: Connector;
+  /**
+   * コネクタ実体。無効化されたソースは実体の登録を要求しない(起動コードは
+   * 無効なコネクタを構築しない)。有効なソースは構築時に登録を検証済み
+   */
+  connector: Connector | undefined;
   config: ConnectorConfig;
 }
 
@@ -125,13 +129,13 @@ export class Gateway {
     }
     assertValidDeploymentConfig(this.config, { capabilities });
 
-    // 呼び出し可能なのは「設定に宣言され、かつ実体が登録されたソース」のみ。
+    // 呼び出し可能なのは「設定で有効化され、かつ実体が登録されたソース」のみ。
     // 設定にないコネクタ実体は経路として存在させない(不変条件2)
     const byId = new Map(options.connectors.map((c) => [c.sourceId, c]));
     const rateLimits = new Map<string, number>();
     for (const connectorConfig of this.config.connectors) {
       const connector = byId.get(connectorConfig.id);
-      if (!connector) {
+      if (!connector && connectorConfig.enabled) {
         // assertValidDeploymentConfig(unknown_connector_id)で先に落ちるが、
         // capabilitiesを渡さない経路で構築された場合の防波堤
         throw new GatewayError(
@@ -295,7 +299,10 @@ export class Gateway {
         `source "${call.sourceId}" is not available in this deployment`,
       );
     }
-    if (!entry.config.enabled) {
+    // 無効化されたソース(実体の有無によらない)。有効なソースに実体がない
+    // 状態は構築時に拒否済みのため、connector の欠落はここでは無効化と同義
+    const { connector } = entry;
+    if (!entry.config.enabled || connector === undefined) {
       throw new GatewayError(
         "source_disabled",
         `source "${call.sourceId}" is disabled in this deployment`,
@@ -331,7 +338,7 @@ export class Gateway {
     }
 
     const raw = await withTimeout(
-      this.invokeConnector(entry.connector, auth, call),
+      this.invokeConnector(connector, auth, call),
       entry.config.limits.timeoutMs,
       call.sourceId,
     );

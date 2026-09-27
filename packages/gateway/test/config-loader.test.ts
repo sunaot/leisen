@@ -17,6 +17,29 @@ import {
 const EXAMPLE_PATH = fileURLToPath(
   new URL("../../../examples/deployment.yaml", import.meta.url),
 );
+const DEV_EXAMPLE_PATH = fileURLToPath(
+  new URL("../../../examples/deployment.dev.yaml", import.meta.url),
+);
+
+describe("examples/deployment.dev.yaml(手元で動かす開発用設定)", () => {
+  it("スキーマ・静的検証を通り、開発用の部品だけで構成されている", () => {
+    const config = loadDeploymentConfig(DEV_EXAMPLE_PATH, {
+      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false } },
+    });
+    expect(config.deployment.name).toBe("dev-local");
+    expect(config.idp.adapter).toEqual({ kind: "mock" });
+    expect(config.gateway.http).toEqual({ host: "127.0.0.1", port: 8787, path: "/mcp" });
+    expect(config.connectors).toEqual([
+      expect.objectContaining({
+        id: "dev-docs",
+        kind: "dev-fixture",
+        auth: { provider: "mock_env" },
+        settings: { corpusFile: "fixtures/dev-corpus.yaml" },
+      }),
+    ]);
+    expect(config.audit.sink).toBe("stdout");
+  });
+});
 
 describe("examples/deployment.yaml", () => {
   it("同梱サンプルがスキーマ・静的検証を通る", () => {

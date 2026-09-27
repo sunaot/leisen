@@ -4,6 +4,7 @@ import {
   MockCredentialProvider,
   MockIdpAdapter,
   mockTokenEnvVar,
+  parseMockSessions,
   redactIdentity,
   type CredentialProvider,
   type Identity,
@@ -153,6 +154,44 @@ describe("MockCredentialProvider", () => {
     const error = await provider.getCredential(identity).catch((e) => e);
     expect(error).toBeInstanceOf(IdpError);
     expect((error as IdpError).errorClass).toBe("source_not_connected");
+  });
+
+  it("env を渡すとプロセスの環境変数ではなくそれを読む(起動コードの env 注入)", async () => {
+    vi.stubEnv(mockTokenEnvVar("gdrive"), "process-token");
+    const provider = new MockCredentialProvider("gdrive", {
+      env: { [mockTokenEnvVar("gdrive")]: "injected-token" },
+    });
+    await expect(provider.getCredential(identity)).resolves.toEqual(
+      expect.objectContaining({ accessToken: "injected-token" }),
+    );
+    const empty = new MockCredentialProvider("gdrive", { env: {} });
+    const error = await empty.getCredential(identity).catch((e) => e);
+    expect((error as IdpError).errorClass).toBe("source_not_connected");
+  });
+});
+
+describe("parseMockSessions", () => {
+  it("token=userId の並びを解析する(未設定・空は空の対応表)", () => {
+    expect(parseMockSessions("t1=carol, t2=dave")).toEqual({
+      t1: { userId: "carol" },
+      t2: { userId: "dave" },
+    });
+    expect(parseMockSessions(undefined)).toEqual({});
+    expect(parseMockSessions("")).toEqual({});
+  });
+
+  it("形式不正は misconfigured で、値(トークン)をエコーしない", () => {
+    const error = (() => {
+      try {
+        parseMockSessions("dev-only-token-without-user");
+        return undefined;
+      } catch (e) {
+        return e as IdpError;
+      }
+    })();
+    expect(error).toBeInstanceOf(IdpError);
+    expect(error?.errorClass).toBe("misconfigured");
+    expect(error?.message).not.toContain("dev-only-token-without-user");
   });
 });
 

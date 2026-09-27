@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { ConnectorError, MAX_SNIPPET_CHARS } from "@kp/connector-sdk";
 import {
   AuditLogger,
+  DeploymentConfigError,
   Gateway,
   GatewayError,
   IdpError,
@@ -189,6 +190,28 @@ describe("tool call pipeline", () => {
       "source_disabled",
     );
     expect(beta.calls).toHaveLength(0);
+  });
+
+  it("accepts a disabled source without a registered connector (the bootstrap does not build it)", async () => {
+    const config = testConfig({
+      connectors: [{ id: "alpha" }, { id: "beta", enabled: false }],
+    });
+    const alpha = new MockConnector("alpha");
+    const { gateway, sink } = build({ config, connectors: [alpha] });
+    expect(gateway.enabledSourceIds()).toEqual(["alpha"]);
+    const session = await gateway.resolveSession("session-alice");
+    await expectGatewayError(
+      search(gateway, session, "beta"),
+      "source_disabled",
+    );
+    // 拒否も監査対象(1レコード)
+    expect((sink as CollectingAuditSink).records).toHaveLength(1);
+  });
+
+  it("still requires a registered connector for every enabled source", () => {
+    expect(() =>
+      build({ connectors: [new MockConnector("alpha")] }),
+    ).toThrow(DeploymentConfigError);
   });
 });
 

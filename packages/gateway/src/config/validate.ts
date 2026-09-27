@@ -7,9 +7,13 @@
  * ソースAPIへの照会は行わない。
  */
 import type { ConnectorCapabilities } from "@kp/connector-sdk";
-import type { DeploymentConfig } from "./schema.js";
+import { AUDIT_SINK_JSONL, type DeploymentConfig } from "./schema.js";
 
-/** 検証エラーの機械可読コード。テストと運用ドキュメントが参照する。 */
+/**
+ * 検証エラーの機械可読コード。テストと運用ドキュメントが参照する。
+ * 静的検証(本モジュール)・ローダー(loader.ts)に加え、起動コード
+ * (bootstrap/)がコネクタ実体・資格情報・監査シンクの解決時に出すコードを含む。
+ */
 export type ConfigIssueCode =
   | "schema_violation"
   | "duplicate_connector_id"
@@ -20,7 +24,28 @@ export type ConfigIssueCode =
   | "fail_open_requires_confirmation"
   | "private_scopes_included_requires_confirmation"
   | "agent_execution_not_allowed_in_phase1"
-  | "secret_env_missing";
+  | "secret_env_missing"
+  /** audit.sink: jsonl に audit.jsonl.path がない(静的検証) */
+  | "audit_sink_options_missing"
+  // --- 以下は起動コード(bootstrap/)が出す ---
+  /** audit.sink が起動コードの解決できない値(stdout / jsonl 以外) */
+  | "unknown_audit_sink"
+  /** 監査シンクの出力先が使えない(書き込めない、rawQueryPath が監査ログと同じ等) */
+  | "audit_sink_options_invalid"
+  /** コネクタ kind の実装が見つからない(プログラム登録・組み込み・プラグインのいずれにもない) */
+  | "unknown_connector_kind"
+  /** プラグインは読み込めたが factory を公開していない、または不正なコネクタを返した */
+  | "connector_plugin_invalid"
+  /** コネクタ固有設定(settings)を factory が拒否した */
+  | "connector_settings_invalid"
+  /** コネクタの factory がそれ以外の理由で失敗した */
+  | "connector_factory_failed"
+  /** 有効なコネクタに auth.provider がない(本人資格情報の取得方式が未指定) */
+  | "connector_auth_provider_missing"
+  /** IdP Adapter を構築できない(開発用モックのセッション定義の不備等) */
+  | "idp_adapter_misconfigured"
+  /** 開発専用の部品(mock IdP / mock_env / dev-fixture)を NODE_ENV=production で使おうとした */
+  | "dev_only_in_production";
 
 export interface ConfigIssue {
   code: ConfigIssueCode;
@@ -108,6 +133,13 @@ export function validateDeploymentConfig(
       return;
     }
 
+    // 実体の登録とcapability連動の検証は有効なコネクタにのみ要求する(無効化
+    // されたコネクタは経路が存在しないため危険設定になりえず、起動コードは
+    // 実体を構築しない)
+    if (!connector.enabled) {
+      return;
+    }
+
     const capabilities = options.capabilities[connector.id];
     if (capabilities === undefined) {
       issues.push({
@@ -115,12 +147,6 @@ export function validateDeploymentConfig(
         path: `${base}.id`,
         message: `connector "${connector.id}" is not registered in this deployment`,
       });
-      return;
-    }
-
-    // capability連動の検証は有効なコネクタにのみ適用する(無効化された
-    // コネクタは経路が存在しないため危険設定になりえない)
-    if (!connector.enabled) {
       return;
     }
 
@@ -162,6 +188,15 @@ export function validateDeploymentConfig(
       message:
         `"fail-open" allows tool calls to proceed without an audit record. ` +
         `Set confirmFailOpen: true only after documenting this in the security policy (ADR-011)`,
+    });
+  }
+
+  // audit.sink: jsonl は出力先の指定が必須(起動コードが JsonlAuditStore に解決する)
+  if (config.audit.sink === AUDIT_SINK_JSONL && config.audit.jsonl === undefined) {
+    issues.push({
+      code: "audit_sink_options_missing",
+      path: "audit.jsonl.path",
+      message: `audit.sink "${AUDIT_SINK_JSONL}" requires audit.jsonl.path (the JSONL file to append audit records to)`,
     });
   }
 

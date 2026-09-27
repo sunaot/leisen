@@ -110,6 +110,55 @@ describe("危険設定: 検索層とConnectorCapabilitiesの連動(ADR-007)", ()
 `);
     expect(() => parseDeploymentConfig(yaml)).not.toThrow();
   });
+
+  it("無効化済みコネクタは実体の登録を要求しない(起動コードは構築しない)", () => {
+    const yaml = baseYaml(`
+  - id: gdrive
+  - id: notion
+    enabled: false
+`);
+    expect(issueCodes(yaml)).toEqual([]);
+  });
+});
+
+describe("audit.sink: jsonl の出力先(起動コードの監査シンク)", () => {
+  it("audit.jsonl.path がなければ拒否する", () => {
+    const yaml = baseYaml(
+      `
+  - id: gdrive
+`,
+      `audit:
+  sink: jsonl
+`,
+    );
+    expect(issueCodes(yaml)).toEqual(["audit_sink_options_missing"]);
+  });
+
+  it("audit.jsonl.path があれば通る", () => {
+    const yaml = baseYaml(
+      `
+  - id: gdrive
+`,
+      `audit:
+  sink: jsonl
+  jsonl:
+    path: var/audit.jsonl
+`,
+    );
+    expect(issueCodes(yaml)).toEqual([]);
+  });
+
+  it("stdout 以外の未知の sink は静的検証では拒否しない(起動コードが unknown_audit_sink で拒否する)", () => {
+    const yaml = baseYaml(
+      `
+  - id: gdrive
+`,
+      `audit:
+  sink: syslog
+`,
+    );
+    expect(issueCodes(yaml)).toEqual([]);
+  });
 });
 
 describe("危険設定: authzCacheTtlSec上限(TM-C5/E3)", () => {
