@@ -32,6 +32,7 @@ import {
 import {
   AuditLogger,
   GATEWAY_META_KEYS,
+  GATEWAY_RESULT_META_KEYS,
   Gateway,
   GatewayError,
   META_KEY_PREFIX,
@@ -389,6 +390,16 @@ describe("declarationFromMeta (execution class / actor)", () => {
       expect(error?.message).not.toContain("autonomous");
     },
   );
+
+  // T-007 セキュリティレビュー H1: 結果側のキー(Gatewayが認証した userId)は要求側では
+  // 申告として解釈しない。名前空間内の未知キーとして拒否され、利用者を申告する口にならない
+  it("keeps the result-side userId key out of request declarations (rejected as invalid_request, H1)", () => {
+    expect(GATEWAY_RESULT_META_KEYS).toEqual({ userId: `${META_KEY_PREFIX}userId` });
+    expect(Object.values(GATEWAY_META_KEYS)).not.toContain(GATEWAY_RESULT_META_KEYS.userId);
+    const error = declarationError({ [GATEWAY_RESULT_META_KEYS.userId]: "bob" });
+    expect(error?.errorClass).toBe("invalid_request");
+    expect(error?.message).not.toContain("bob");
+  });
 
   it("matches keys with zero-width or fullwidth characters by their NFKC skeleton, not by their raw spelling", () => {
     // NFKC は U+200B を残すが、骨格は ASCII 英数字以外を落とすため同じ申告名になる

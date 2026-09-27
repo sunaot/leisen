@@ -41,10 +41,20 @@ import {
   type Identity,
   type IdpAdapter,
 } from "@kp/gateway";
-import { McpGatewayClient } from "../../src/index.js";
+import { McpGatewayClient, type CitedDocIdAudit } from "../../src/index.js";
 
 export const ALICE_TOKEN = "dev-only-session-alice";
 export const BOB_TOKEN = "dev-only-session-bob";
+
+/**
+ * テスト用の citedDocIds の記録方針: すべてのソースを「非プライベート・非 Slack」に
+ * 分類する(citedDocIds が `<sourceId>:<documentId>` のまま記録される)。分類ごとの
+ * 挙動は test/cited-docids.test.ts で検証する。
+ */
+export const TEST_DOC_ID_AUDIT: CitedDocIdAudit = {
+  classify: () => ({ privateScope: false, slack: false }),
+  privateScopeDocIds: "omitted",
+};
 
 export interface CorpusDocument {
   readonly id: string;

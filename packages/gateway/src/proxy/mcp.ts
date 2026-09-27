@@ -23,6 +23,10 @@
  * リクエストで共有しても混線しない。旧設計(追補2)の「確立済みセッションごとに
  * サーバーを作り、server.onclose でセッションを破棄する」前提は撤回した。
  *
+ * 結果の `_meta`(T-007 セキュリティレビュー H1): tools/call の結果には、そのリクエストで
+ * 認証した利用者の userId を GATEWAY_RESULT_META_KEYS.userId で載せる(成功・失敗を
+ * 問わない。tools/list には載せない)。呼び出し元は自己申告の userId をこれで検証する。
+ *
  * 保留(SDK対応待ち): MCP仕様2026-07-28版固有の server/discover 応答、全結果への
  * resultType 付与、tools/list の ttlMs / cacheScope、Mcp-Method / Mcp-Name
  * ヘッダ検証は、現行SDK(v1系、LATEST_PROTOCOL_VERSION=2025-11-25)が未実装の
@@ -44,6 +48,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Identity } from "../idp/types.js";
 import type { Gateway } from "./gateway.js";
+import { GATEWAY_RESULT_META_KEYS } from "./meta.js";
 import { listTools, runToolCall, type ToolCallOutcome } from "./tools.js";
 import { GATEWAY_REJECTION_ERROR_CODE } from "./types.js";
 
@@ -117,20 +122,40 @@ function identityFromAuthInfo(
 }
 
 /**
+ * 結果の `_meta`(T-007 セキュリティレビュー H1): Gatewayが認証した利用者の userId を
+ * GATEWAY_RESULT_META_KEYS.userId に載せる。検証済みの Identity があるリクエストにだけ
+ * 付ける(unauthenticated の結果には付けない)。userId は IdP 上の識別子で、セッション
+ * トークン等の秘密情報は載せない(不変条件6)。
+ */
+function resultMeta(
+  identity: Identity | undefined,
+): Pick<CallToolResult, "_meta"> {
+  return identity === undefined
+    ? {}
+    : { _meta: { [GATEWAY_RESULT_META_KEYS.userId]: identity.userId } };
+}
+
+/**
  * SDK非依存の結果を MCP の CallToolResult に写す(エラーはツール結果内で返す)。
  * 直列化は tools.ts(runToolCall)で済んでおり、ここでは直列化済みの text を載せる
  * だけにする(直列化の失敗を SDK の生の例外メッセージとして返さない)。
+ * 成功・失敗(isError)を問わず、認証済みの userId を `_meta` に付ける(resultMeta)。
  */
-function toCallToolResult(outcome: ToolCallOutcome): CallToolResult {
+function toCallToolResult(
+  outcome: ToolCallOutcome,
+  identity: Identity | undefined,
+): CallToolResult {
   if (!outcome.ok) {
     return {
       isError: true,
       content: [{ type: "text", text: outcome.text }],
+      ...resultMeta(identity),
     };
   }
   return {
     content: [{ type: "text", text: outcome.text }],
     structuredContent: outcome.result as unknown as Record<string, unknown>,
+    ...resultMeta(identity),
   };
 }
 
@@ -155,15 +180,17 @@ export function createGatewayMcpServer(gateway: Gateway): Server {
 
   server.setRequestHandler(
     CallToolRequestSchema,
-    async (request, extra): Promise<CallToolResult> =>
-      toCallToolResult(
-        await runToolCall(gateway, {
-          identity: identityFromAuthInfo(extra.authInfo),
-          name: request.params.name,
-          arguments: request.params.arguments,
-          meta: request.params._meta,
-        }),
-      ),
+    async (request, extra): Promise<CallToolResult> => {
+      // 同じ Identity で呼び出しを処理し、結果の `_meta` にもその userId を載せる
+      const identity = identityFromAuthInfo(extra.authInfo);
+      const outcome = await runToolCall(gateway, {
+        identity,
+        name: request.params.name,
+        arguments: request.params.arguments,
+        meta: request.params._meta,
+      });
+      return toCallToolResult(outcome, identity);
+    },
   );
 
   return server;

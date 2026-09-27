@@ -2,7 +2,8 @@
  * kp-ask CLI。Gateway は実物(port 0)、LLM は依存注入(脚本 / 偽 fetch の実 SDK)で動かす。
  * Claude API には出ない。
  */
-import { mkdtemp } from "node:fs/promises";
+import { createHmac } from "node:crypto";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -26,6 +27,7 @@ import {
 } from "../src/bin/kp-ask.js";
 import {
   ALICE_TOKEN,
+  BOB_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
   startGateway,
@@ -275,5 +277,139 @@ describe("kp-ask: 実行", () => {
     expect(code).toBe(1);
     expect(out.join("\n")).toContain("gateway_unauthenticated");
     expect([...out, ...err].join("\n")).not.toContain("dev-only-revoked-token");
+  });
+});
+
+/** stderr に出た AnswerRun の監査レコード(最後のもの)。 */
+function lastAnswerRun(err: readonly string[]): Record<string, unknown> | undefined {
+  return err
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((record) => record["recordType"] === "answer_run")
+    .at(-1);
+}
+
+async function writeDeployment(yaml: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "kp-ask-config-"));
+  const path = join(dir, "deployment.yaml");
+  await writeFile(path, yaml, "utf8");
+  return path;
+}
+
+const DEPLOYMENT_YAML = [
+  "schemaVersion: 1",
+  "deployment:",
+  "  name: kp-ask-test",
+  "idp:",
+  "  adapter:",
+  "    kind: mock",
+  "connectors:",
+  "  - id: alpha",
+  "    privateScopes: consent",
+  "audit:",
+  "  privateScopeDocIds: hashed",
+  "",
+].join("\n");
+
+describe("kp-ask: 利用者の束縛(H1)と citedDocIds の記録方針(H2)", () => {
+  it("--user-id を省略すると Gateway が認証した userId を記録する(既定値 cli-user は使わない)", async () => {
+    const harness = await setup();
+    const { err, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", BOB_TOKEN, "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    expect(lastAnswerRun(err)).toMatchObject({ userId: "bob", finalOutcome: "resolved" });
+    expect(err.join("\n")).not.toContain("cli-user");
+  });
+
+  it("--user-id が Gateway の認証と食い違えば user_mismatch で終了コード 1", async () => {
+    const harness = await setup();
+    const { out, err, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", BOB_TOKEN, "--user-id", "alice", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(1);
+    expect(out.join("\n")).toContain("user_mismatch");
+    expect(lastAnswerRun(err)).toMatchObject({
+      userId: "bob",
+      finalOutcome: "error",
+      failureReason: "user_mismatch",
+    });
+  });
+
+  it("--config がなければ citedDocIds を記録しない", async () => {
+    const harness = await setup();
+    const { err, io } = capture();
+
+    await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(lastAnswerRun(err)).toMatchObject({ finalOutcome: "resolved", citedDocIds: [] });
+  });
+
+  it("--config の connectors[].privateScopes と audit.privateScopeDocIds: hashed に従い、KP_AUDIT_HMAC_KEY の HMAC で記録する", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(DEPLOYMENT_YAML);
+    const { err, io } = capture();
+    const key = "dev-only-hmac-key";
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "締め日は?"],
+      io,
+      deps(() => resolvingScript(), { KP_AUDIT_HMAC_KEY: key }),
+    );
+
+    expect(code).toBe(0);
+    const expected = `hmac:${createHmac("sha256", key)
+      .update("alpha:doc-expense-policy", "utf8")
+      .digest("hex")}`;
+    expect(lastAnswerRun(err)).toMatchObject({ citedDocIds: [expected] });
+    expect(err.join("\n")).not.toContain(key);
+  });
+
+  it("hashed なのに KP_AUDIT_HMAC_KEY がなければ終了コード 2(Gateway にも LLM にもアクセスしない)", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(DEPLOYMENT_YAML);
+    const { err, io } = capture();
+    const llm = resolvingScript();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "締め日は?"],
+      io,
+      deps(() => llm),
+    );
+
+    expect(code).toBe(2);
+    expect(err.join("\n")).toContain("KP_AUDIT_HMAC_KEY");
+    expect(llm.requests).toHaveLength(0);
+    expect(harness.toolInvocations()).toEqual([]);
+  });
+
+  it("--config の deployment.yaml が不正なら終了コード 2", async () => {
+    const harness = await setup();
+    const config = await writeDeployment("schemaVersion: 1\nconnectors: 3\n");
+    const { err, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(2);
+    expect(err.join("\n")).toContain("deployment config rejected");
+    expect(harness.toolInvocations()).toEqual([]);
   });
 });

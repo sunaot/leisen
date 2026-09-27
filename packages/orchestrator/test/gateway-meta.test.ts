@@ -3,7 +3,8 @@
  * - キー集合が @kp/gateway の GATEWAY_META_KEYS の4キーと完全一致する(裸キー・余分な
  *   キーを送らない)。Gateway 自身の `_meta` 解釈(declarationFromMeta /
  *   callContextFromMeta)で誤記として拒否されずに同じ値へ読み戻せる
- * - src のうち gateway/meta.ts 以外は `_meta` のキーを書かない(組み立ての集約を固定)
+ * - src のうち gateway/meta.ts 以外は `_meta` のキーを書かない(組み立て・結果側の読み取り
+ *   = GATEWAY_RESULT_META_KEYS の集約を固定。H1)
  * - E2E: Orchestrator の MCP クライアント(McpGatewayClient)経由で scheduled /
  *   autonomous を申告すると、実 Gateway(port 0 の HTTP)が execution_class_rejected を
  *   返し、監査(ToolInvocation)に1件残る。コネクタは呼ばれない(ADR-015、TM-C7 / TM-E5)
@@ -14,12 +15,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   GATEWAY_META_KEYS,
+  GATEWAY_RESULT_META_KEYS,
   META_KEY_PREFIX,
   callContextFromMeta,
   declarationFromMeta,
   type Actor,
 } from "@kp/gateway";
-import { buildGatewayMeta } from "../src/index.js";
+import { buildGatewayMeta, gatewayUserIdFromResultMeta } from "../src/index.js";
 import {
   CorpusConnector,
   EXPENSE_POLICY,
@@ -71,7 +73,18 @@ describe("buildGatewayMeta", () => {
     expect(callContextFromMeta(meta)).toEqual({ runId: "run-1", iteration: 3 });
   });
 
-  it("src のうち gateway/meta.ts 以外は `_meta` のキー(GATEWAY_META_KEYS / prefix)を書かない", () => {
+  it("結果側の `_meta` から Gateway が認証した userId を読む(名前空間のキーだけ。H1)", () => {
+    expect(gatewayUserIdFromResultMeta({ [GATEWAY_RESULT_META_KEYS.userId]: "alice" })).toBe(
+      "alice",
+    );
+    expect(gatewayUserIdFromResultMeta({ userId: "alice" })).toBeUndefined();
+    expect(gatewayUserIdFromResultMeta(undefined)).toBeUndefined();
+    expect(gatewayUserIdFromResultMeta([GATEWAY_RESULT_META_KEYS.userId])).toBeUndefined();
+    // 要求側に書くと誤記として拒否されるキー(利用者を申告させる口にならない)
+    expect(Object.values(GATEWAY_META_KEYS)).not.toContain(GATEWAY_RESULT_META_KEYS.userId);
+  });
+
+  it("src のうち gateway/meta.ts 以外は `_meta` のキー(GATEWAY_META_KEYS / GATEWAY_RESULT_META_KEYS / prefix)を書かない", () => {
     const srcDir = fileURLToPath(new URL("../src/", import.meta.url));
     const files = (readdirSync(srcDir, { recursive: true }) as string[])
       .filter((file) => file.endsWith(".ts"))
@@ -86,6 +99,7 @@ describe("buildGatewayMeta", () => {
         const source = readFileSync(join(srcDir, file), "utf8");
         return (
           source.includes("GATEWAY_META_KEYS") ||
+          source.includes("GATEWAY_RESULT_META_KEYS") ||
           source.includes("META_KEY_PREFIX") ||
           source.includes(namespace)
         );

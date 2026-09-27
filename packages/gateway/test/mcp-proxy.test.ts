@@ -10,6 +10,8 @@
  * - `_meta` の名前空間prefix付き申告(runId / iteration の4ケース、実行区分・
  *   actor)(決定3・4、ADR-011 追記、ADR-015)。申告キーの誤記は invalid_request(M2。
  *   再レビュー S1 で骨格 — NFKC・小文字化・英数字以外の除去 — による照合に拡張)
+ * - tools/call の結果の `_meta` に Gateway が認証した userId が載る(成功・失敗を問わず。
+ *   tools/list と未認証の結果には載らない。T-007 セキュリティレビュー H1)
  * - LLM へ返るエラーで permission_denied / not_found を区別しない(TM-B2)、
  *   結果は既知フィールドだけに射影される(TM-A1)、AuthInfo は gatewayAuthInfo が
  *   発行したものだけを信用しセッショントークンを token に載せない
@@ -35,6 +37,7 @@ import {
   GATEWAY_AUTH_INFO_TOKEN,
   GATEWAY_META_KEYS,
   GATEWAY_REJECTION_ERROR_CODE,
+  GATEWAY_RESULT_META_KEYS,
   Gateway,
   META_KEY_PREFIX,
   createGatewayMcpServer,
@@ -348,6 +351,102 @@ describe("stateless server component (ADR-001 追補3 決定1・2)", () => {
       arguments: { source: "alpha", query: "q" },
     })) as CallToolResult;
     expect(firstText(result)).toMatchObject({ errorClass: "unauthenticated" });
+    expect(alpha.calls).toHaveLength(0);
+    expect(sink.records).toHaveLength(0);
+  });
+});
+
+describe("result _meta carries the authenticated userId (T-007 security review H1)", () => {
+  const USER_ID = GATEWAY_RESULT_META_KEYS.userId;
+
+  it("attaches the caller's userId to successful and failed tools/call results, but not to tools/list", async () => {
+    const { client } = await connectAs("session-alice");
+    const succeeded = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    const unknownSource = (await client.callTool({
+      name: "search",
+      arguments: { source: "gamma", query: "q" },
+    })) as CallToolResult;
+    const rejectedClass = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: {
+        [GATEWAY_META_KEYS.executionClass]: "scheduled",
+        [GATEWAY_META_KEYS.actor]: {
+          kind: "agent",
+          agentId: "batch-1",
+          onBehalfOfChain: ["alice"],
+        },
+      },
+    })) as CallToolResult;
+
+    expect(succeeded.isError).toBeFalsy();
+    expect(succeeded._meta?.[USER_ID]).toBe("alice");
+    expect(unknownSource.isError).toBe(true);
+    expect(unknownSource._meta?.[USER_ID]).toBe("alice");
+    expect(rejectedClass.isError).toBe(true);
+    expect(rejectedClass._meta?.[USER_ID]).toBe("alice");
+    // 結果の本文(structuredContent / text)には混ぜない
+    expect(succeeded.structuredContent).not.toHaveProperty(USER_ID);
+
+    // tools/list はユーザー非依存(ADR-001 追補3 決定5)
+    const list = await client.listTools();
+    expect(list._meta?.[USER_ID]).toBeUndefined();
+    expect(JSON.stringify(list)).not.toContain("alice");
+  });
+
+  it("reports each caller's own userId when alice and bob share one server instance", async () => {
+    const { gateway } = buildGateway();
+    const auth = {
+      alice: gatewayAuthInfo(await gateway.authenticate("session-alice")),
+      bob: gatewayAuthInfo(await gateway.authenticate("session-bob")),
+    };
+    const client = await connectClient(gateway, (message) => {
+      const query =
+        "method" in message && message.method === "tools/call"
+          ? (message.params?.["arguments"] as { query?: string } | undefined)?.query
+          : undefined;
+      return query?.startsWith("bob-") ? auth.bob : auth.alice;
+    });
+
+    const queries = ["alice-1", "bob-1", "alice-2", "bob-2"];
+    const results = (await Promise.all(
+      queries.map((query) =>
+        client.callTool({ name: "search", arguments: { source: "alpha", query } }),
+      ),
+    )) as CallToolResult[];
+
+    expect(results.map((result) => result._meta?.[USER_ID])).toEqual([
+      "alice",
+      "bob",
+      "alice",
+      "bob",
+    ]);
+  });
+
+  it("does not attach a userId to results of requests without a verified identity", async () => {
+    const { gateway } = buildGateway();
+    const client = await connectClient(gateway, () => undefined);
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    expect(firstText(result)).toMatchObject({ errorClass: "unauthenticated" });
+    expect(result._meta?.[USER_ID]).toBeUndefined();
+  });
+
+  it("does not let a client declare the userId in the request (invalid_request, the result keeps the authenticated user)", async () => {
+    const { client, alpha, sink } = await connectAs("session-alice");
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: { [USER_ID]: "bob" },
+    })) as CallToolResult;
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatchObject({ errorClass: "invalid_request" });
+    expect(result._meta?.[USER_ID]).toBe("alice");
     expect(alpha.calls).toHaveLength(0);
     expect(sink.records).toHaveLength(0);
   });

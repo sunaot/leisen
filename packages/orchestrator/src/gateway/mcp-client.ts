@@ -8,7 +8,12 @@
  *   トークンと SDK クライアントは ES の private フィールドに持ち、JSON 化・inspect の
  *   対象にしない。例外は固定文言の GatewayClientError に写し、SDK の例外メッセージ
  *   (応答本文を含みうる)を流さない
- * - ツール結果の isError は正規化エラー(本文の JSON の errorClass / message)に写す
+ * - 接続先 URL は、ループバック(localhost / 127.0.0.1 / [::1])以外では https 必須。
+ *   資格情報・クエリ・フラグメント付きの URL は構築時に拒否する(セッショントークンを
+ *   平文で送らない。セキュリティレビュー 2026-09-27 m3)
+ * - ツール結果の isError は正規化エラー(本文の JSON の errorClass / message)に写す。
+ *   成功・失敗を問わず、結果の `_meta` から Gateway が認証した userId を読む
+ *   (gatewayUserIdFromResultMeta。AnswerRun の主体の束縛に使う、H1)
  * - 接続(initialize)は最初の呼び出しで1回だけ行い、以降の要求で使い回す。
  *   Gateway はステートレスなので、接続の使い回しにユーザー状態の意味はない
  */
@@ -20,6 +25,7 @@ import {
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { GatewayClientError } from "../errors.js";
+import { gatewayUserIdFromResultMeta } from "./meta.js";
 import type {
   GatewayCallOptions,
   GatewayCallOutcome,
@@ -37,7 +43,10 @@ export const ORCHESTRATOR_CLIENT_INFO = {
 } as const;
 
 export interface McpGatewayClientOptions {
-  /** Gateway の MCP エンドポイント(例: http://127.0.0.1:8787/mcp) */
+  /**
+   * Gateway の MCP エンドポイント(例: http://127.0.0.1:8787/mcp)。ループバック以外は
+   * https 必須。資格情報・クエリ・フラグメントを含めない
+   */
   readonly url: string | URL;
   /** 利用者本人のセッショントークン(秘密情報。ログ・エラーに出さない) */
   readonly sessionToken: string;
@@ -48,6 +57,55 @@ export interface McpGatewayClientOptions {
 /** 正規化済みの分類コード(Gateway の GatewayErrorClass と同じ規約)。 */
 const ERROR_CLASS_PATTERN = /^[a-z][a-z0-9_.]{0,63}$/;
 
+/** http を許すループバックのホスト(URL.hostname の表記。IPv6 は角括弧付き)。 */
+const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set([
+  "localhost",
+  "127.0.0.1",
+  "[::1]",
+]);
+
+/**
+ * 接続先 URL を検証する(m3)。メッセージは固定文言で、URL の中身をエコーしない
+ * (資格情報やトークンを誤って URL に書いた場合にログへ残さない)。
+ */
+function parseGatewayUrl(raw: string | URL): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new GatewayClientError("gateway_protocol_error", "the gateway URL is invalid");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new GatewayClientError(
+      "gateway_protocol_error",
+      "the gateway URL must use http or https",
+    );
+  }
+  if (url.protocol === "http:" && !LOOPBACK_HOSTNAMES.has(url.hostname)) {
+    // セッショントークンを平文で送らない(http はループバックのみ)
+    throw new GatewayClientError(
+      "gateway_protocol_error",
+      "the gateway URL must use https (http is allowed only for loopback hosts)",
+    );
+  }
+  if (url.username !== "" || url.password !== "") {
+    // 資格情報を URL に載せない(ログに残りやすい)。認証は Authorization ヘッダのみ
+    throw new GatewayClientError(
+      "gateway_protocol_error",
+      "the gateway URL must not contain credentials",
+    );
+  }
+  const href = url.href;
+  if (url.search !== "" || url.hash !== "" || href.includes("?") || href.includes("#")) {
+    // 空のクエリ・フラグメント("?" / "#" だけ)も拒否する
+    throw new GatewayClientError(
+      "gateway_protocol_error",
+      "the gateway URL must not contain a query string or a fragment",
+    );
+  }
+  return url;
+}
+
 export class McpGatewayClient implements GatewayClient {
   readonly #url: URL;
   readonly #sessionToken: string;
@@ -56,25 +114,7 @@ export class McpGatewayClient implements GatewayClient {
   #closed = false;
 
   constructor(options: McpGatewayClientOptions) {
-    let url: URL;
-    try {
-      url = new URL(options.url);
-    } catch {
-      throw new GatewayClientError("gateway_protocol_error", "the gateway URL is invalid");
-    }
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new GatewayClientError(
-        "gateway_protocol_error",
-        "the gateway URL must use http or https",
-      );
-    }
-    if (url.username !== "" || url.password !== "") {
-      // 資格情報を URL に載せない(ログに残りやすい)。認証は Authorization ヘッダのみ
-      throw new GatewayClientError(
-        "gateway_protocol_error",
-        "the gateway URL must not contain credentials",
-      );
-    }
+    const url = parseGatewayUrl(options.url);
     if (!/^\S+$/.test(options.sessionToken)) {
       throw new GatewayClientError("unauthenticated", "a session token is required");
     }
@@ -277,11 +317,16 @@ const UNREADABLE_ERROR: GatewayToolError = {
   message: "the gateway returned an unreadable tool error",
 };
 
-/** CallToolResult を正規化する(isError は本文の JSON から errorClass を読む)。 */
+/**
+ * CallToolResult を正規化する(isError は本文の JSON から errorClass を読む)。
+ * 成功・失敗を問わず、結果の `_meta` の認証済み userId を userId に写す(H1)。
+ */
 export function normalizeCallResult(result: unknown): GatewayCallOutcome {
   if (!isRecord(result)) {
     return { ok: false, error: UNREADABLE_ERROR };
   }
+  const userId = gatewayUserIdFromResultMeta(result["_meta"]);
+  const reported = userId !== undefined ? { userId } : {};
   if (result["isError"] === true) {
     const body = parseJson(firstText(result));
     if (
@@ -290,7 +335,7 @@ export function normalizeCallResult(result: unknown): GatewayCallOutcome {
       !ERROR_CLASS_PATTERN.test(body["errorClass"]) ||
       typeof body["message"] !== "string"
     ) {
-      return { ok: false, error: UNREADABLE_ERROR };
+      return { ok: false, error: UNREADABLE_ERROR, ...reported };
     }
     const retryAfterMs = body["retryAfterMs"];
     return {
@@ -302,11 +347,12 @@ export function normalizeCallResult(result: unknown): GatewayCallOutcome {
           ? { retryAfterMs }
           : {}),
       },
+      ...reported,
     };
   }
   const structured = result["structuredContent"];
   if (isRecord(structured)) {
-    return { ok: true, result: structured };
+    return { ok: true, result: structured, ...reported };
   }
   const json = parseJson(firstText(result));
   if (json === undefined) {
@@ -316,7 +362,8 @@ export function normalizeCallResult(result: unknown): GatewayCallOutcome {
         errorClass: "gateway_protocol_error",
         message: "the gateway returned an unreadable tool result",
       },
+      ...reported,
     };
   }
-  return { ok: true, result: json };
+  return { ok: true, result: json, ...reported };
 }

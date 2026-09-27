@@ -63,6 +63,22 @@ export const GATEWAY_META_KEYS = {
   actor: `${META_KEY_PREFIX}actor`,
 } as const;
 
+/**
+ * Gatewayが tools/call の結果の `_meta` に載せるキー(結果側。要求側の
+ * GATEWAY_META_KEYS とは別で、Gatewayは要求側としては解釈しない。T-007
+ * セキュリティレビュー H1)。
+ * - userId: そのリクエストで Gatewayが認証した利用者(トランスポート層が検証した
+ *   Identity の userId)。呼び出し元(Orchestrator)は AnswerRun の主体をこの値に
+ *   束縛し、自己申告の userId と食い違えば fail-closed にする。成功・失敗(isError)を
+ *   問わず付け、検証済みの Identity がない結果(unauthenticated)と tools/list の結果
+ *   (内容はユーザー非依存、ADR-001 追補3 決定5)には付けない(mcp.ts)
+ * 名前空間 prefix 内のキーのため、要求の `_meta` にこのキーを書くと申告キーの誤記として
+ * invalid_request で拒否される(利用者を要求側から申告させる口を作らない)。
+ */
+export const GATEWAY_RESULT_META_KEYS = {
+  userId: `${META_KEY_PREFIX}userId`,
+} as const;
+
 /** 名前空間内で受け付けるキー(完全一致のみ)。 */
 const KNOWN_GATEWAY_KEYS: ReadonlySet<string> = new Set(
   Object.values(GATEWAY_META_KEYS),

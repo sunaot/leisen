@@ -63,11 +63,7 @@ function throwingClient(error: unknown, credentials: { apiKey?: string | null } 
 async function request(): Promise<LlmRequest> {
   const fixed = await loadExplorePrompt();
   return {
-    system: buildSystemPrompt(fixed, {
-      sources: [{ sourceId: "alpha", summary: "社内 wiki" }],
-      skippedSources: [],
-      maxIterations: 6,
-    }),
+    system: buildSystemPrompt(fixed),
     messages: [{ role: "user", content: [{ type: "text", text: "質問:\n締め日は?" }] }],
     tools: [submitAnswerTool(["alpha"])],
     maxTokens: 16_000,
@@ -105,12 +101,11 @@ describe("リクエストの形", () => {
     expect(body.tools?.every((tool) => "strict" in tool && tool.strict === true)).toBe(true);
     // prefill なし(末尾は user)
     expect(body.messages.at(-1)?.role).toBe("user");
-    // system: 固定部(キャッシュのブレークポイント付き)が先頭、可変部が末尾
+    // system: 固定部だけ(キャッシュのブレークポイント付き。ソース一覧は user ターン、H3)
     const system = body.system as Anthropic.TextBlockParam[];
+    expect(system).toHaveLength(1);
     expect(system[0]?.text).toBe(await loadExplorePrompt());
     expect(system[0]?.cache_control).toEqual({ type: "ephemeral" });
-    expect(system[1]?.text).toContain("# ソース一覧");
-    expect(system[1]?.cache_control).toBeUndefined();
     // 非推奨・禁止パラメータを送らない
     expect(body).not.toHaveProperty("temperature");
     expect(body).not.toHaveProperty("top_p");

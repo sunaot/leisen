@@ -2,11 +2,14 @@
  * 受け入れ条件4: 1回の探索ループ内の全ツール呼び出しが同一 runId と単調増加する
  * iteration で `_meta` に申告され、監査ログの ToolInvocation(Gateway が書く)が
  * runId で束ねられる。describe の呼び出しも含む(ADR-001 追補3、ADR-011 追記)。
+ * 採番した runId が Gateway の形式に合わなければ Gateway にアクセスせずに失敗する
+ * (ids の注入のずれ。セキュリティレビュー m5)。
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { GATEWAY_META_KEYS } from "@kp/gateway";
 import {
   Orchestrator,
+  OrchestratorError,
   ScriptedLlmClient,
   scriptedSubmit,
   scriptedToolUse,
@@ -21,6 +24,7 @@ import {
   TRAVEL_GUIDE,
   startGateway,
   type GatewayHarness,
+  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { firstHit, searchHits } from "./helpers/script.js";
 
@@ -98,6 +102,7 @@ describe("受け入れ条件4: runId / iteration の申告と ToolInvocation の
     const harness = await setup();
     const gateway = new RecordingGatewayClient(harness.client());
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm: parallelScript(),
       auditLogger: harness.auditLogger,
     });
@@ -134,6 +139,7 @@ describe("受け入れ条件4: runId / iteration の申告と ToolInvocation の
     const harness = await setup();
     const gateway = new RecordingGatewayClient(harness.client());
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm: parallelScript(),
       auditLogger: harness.auditLogger,
     });
@@ -185,10 +191,12 @@ describe("受け入れ条件4: runId / iteration の申告と ToolInvocation の
         },
       ]);
     const first = await new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm: script(),
       auditLogger: harness.auditLogger,
     }).run({ question: "締め日は?", userId: "alice", gateway: harness.client() });
     const second = await new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm: script(),
       auditLogger: harness.auditLogger,
     }).run({ question: "締め日は?", userId: "alice", gateway: harness.client() });
@@ -201,5 +209,49 @@ describe("受け入れ条件4: runId / iteration の申告と ToolInvocation の
         .sort((a, b) => a - b);
       expect(iterations).toEqual([0, 1, 2]);
     }
+  });
+});
+
+describe("runId の形式の検証(m5)", () => {
+  it.each(["", "run id with spaces", "run/1", "x".repeat(129), "ラン-1"])(
+    "採番した runId %j が Gateway の形式に合わなければ、Gateway にアクセスせずに invalid_configuration",
+    async (badRunId) => {
+      const harness = await setup();
+      const gateway = new RecordingGatewayClient(harness.client());
+      const llm = parallelScript();
+      const orchestrator = new Orchestrator({
+        docIdAudit: TEST_DOC_ID_AUDIT,
+        llm,
+        auditLogger: harness.auditLogger,
+        ids: () => badRunId,
+      });
+
+      const error = await orchestrator
+        .run({ question: "経費精算の締め日は?", gateway })
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+
+      expect(error).toBeInstanceOf(OrchestratorError);
+      expect(error).toMatchObject({ errorClass: "invalid_configuration" });
+      expect(gateway.calls).toEqual([]);
+      expect(llm.requests).toHaveLength(0);
+      expect(harness.toolInvocations()).toEqual([]);
+      expect(harness.answerRuns()).toEqual([]);
+    },
+  );
+
+  it("形式に合う runId(Gateway と同じ [A-Za-z0-9._:-]{1,128})はそのまま申告する", async () => {
+    const harness = await setup();
+    const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
+      llm: parallelScript(),
+      auditLogger: harness.auditLogger,
+      ids: () => "run.2026-09-27:ok_1",
+    });
+    const answer = await orchestrator.run({ question: "締め日は?", gateway: harness.client() });
+    expect(answer.runId).toBe("run.2026-09-27:ok_1");
+    expect(harness.toolInvocations("run.2026-09-27:ok_1").length).toBeGreaterThan(0);
   });
 });

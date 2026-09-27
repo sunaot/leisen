@@ -84,6 +84,11 @@ export class GatewayClientError extends Error {
 export type OrchestratorErrorClass =
   /** 質問・userId の欠落や過大 */
   | "invalid_input"
+  /**
+   * 構築時のオプション・注入物の不備(citedDocIds の記録方針、hashed の鍵の欠落、
+   * 採番した runId の形式違反など。fail-closed で Gateway にアクセスしない)
+   */
+  | "invalid_configuration"
   /** AnswerRun を監査ストアへ書けない(fail-closed、ADR-011 §4) */
   | "audit_write_failed"
   /** recordFeedback の対象 run が見つからない(未完了・保持上限超過を含む) */

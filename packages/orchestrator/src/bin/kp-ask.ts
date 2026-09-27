@@ -4,7 +4,7 @@
  *
  *   kp-ask --gateway http://127.0.0.1:8787/mcp [--token <セッショントークン>]
  *          [--model <モデルID>] [--max-iterations N] [--effort low|medium|high|xhigh|max]
- *          [--user-id <userId>] [--json] "質問文"
+ *          [--user-id <userId>] [--config <deployment.yaml>] [--json] "質問文"
  *
  * - セッショントークンは --token か環境変数 KP_SESSION_TOKEN で渡す(--token は
  *   プロセス一覧に残るため環境変数を推奨)。トークンは表示・ログに出さない
@@ -13,16 +13,29 @@
  *   その旨を表示して終了コード 2
  * - AnswerRun の監査レコードは stderr に JSON 1行で出す(開発用。ToolInvocation は
  *   Gateway 側の監査に記録される)
- * - --user-id は AnswerRun に記録する質問者(既定: 環境変数 KP_USER_ID、なければ "cli-user")
+ * - AnswerRun の質問者は Gateway が認証した userId。--user-id(または環境変数 KP_USER_ID)は
+ *   照合用の申告で、一致しなければ run は error(user_mismatch)。省略時は照合しない
+ * - --config は deployment.yaml(citedDocIds の記録方針: connectors[] の kind / privateScopes
+ *   と audit.privateScopeDocIds)。hashed なら環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵が
+ *   要る。--config を省略すると citedDocIds を記録しない
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  */
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { AuditLogger } from "@kp/gateway";
+import {
+  AuditLogger,
+  DeploymentConfigError,
+  loadDeploymentConfig,
+} from "@kp/gateway";
 import type { Answer } from "../answer.js";
-import { StderrDebugAuditSink } from "../audit.js";
+import {
+  docIdAuditFromDeployment,
+  OMIT_ALL_DOC_IDS,
+  StderrDebugAuditSink,
+  type CitedDocIdAudit,
+} from "../audit.js";
 import {
   anthropicLlmSettingsSchema,
   effortSchema,
@@ -45,9 +58,11 @@ import { Orchestrator } from "../orchestrator.js";
 export const USAGE = [
   "usage: kp-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
   "              [--model <モデルID>] [--max-iterations <N>] [--effort low|medium|high|xhigh|max]",
-  "              [--user-id <userId>] [--json] <質問文>",
+  "              [--user-id <userId>] [--config <deployment.yaml>] [--json] <質問文>",
   "  セッショントークンは環境変数 KP_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
+  "  --user-id は照合用(省略時は Gateway が認証した利用者を記録します)。",
+  "  --config の audit.privateScopeDocIds が hashed なら KP_AUDIT_HMAC_KEY が必要です。",
 ].join("\n");
 
 export const CREDENTIALS_REQUIRED_MESSAGE =
@@ -78,7 +93,9 @@ interface CliArgs {
   readonly gateway: string;
   readonly token: string;
   readonly question: string;
-  readonly userId: string;
+  /** 照合用の申告(省略時は Gateway が認証した userId をそのまま使う) */
+  readonly userId: string | undefined;
+  readonly config: string | undefined;
   readonly json: boolean;
   readonly settings: OrchestratorSettings;
   readonly llm: AnthropicLlmSettingsInput;
@@ -144,7 +161,8 @@ function parseCliArgs(
     gateway,
     token,
     question,
-    userId: values["user-id"] ?? env["KP_USER_ID"] ?? "cli-user",
+    userId: values["user-id"] ?? env["KP_USER_ID"],
+    config: values.config,
     json: values.json === true,
     settings: settings.data,
     llm,
@@ -161,6 +179,7 @@ function parseArgsStrict(argv: readonly string[]) {
       "max-iterations": { type: "string" },
       effort: { type: "string" },
       "user-id": { type: "string" },
+      config: { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -172,12 +191,15 @@ function parseArgsStrict(argv: readonly string[]) {
 /** 最後に失敗した LLM 呼び出しの分類を覚える(資格情報の不備を判別するため)。 */
 class ObservingLlmClient implements LlmClient {
   lastErrorClass: LlmErrorClass | undefined;
+  readonly #inner: LlmClient;
 
-  constructor(private readonly inner: LlmClient) {}
+  constructor(inner: LlmClient) {
+    this.#inner = inner;
+  }
 
   async complete(request: LlmRequest, options?: LlmCallOptions): Promise<LlmTurn> {
     try {
-      return await this.inner.complete(request, options);
+      return await this.#inner.complete(request, options);
     } catch (error) {
       if (error instanceof LlmError) {
         this.lastErrorClass = error.errorClass;
@@ -261,16 +283,46 @@ export async function runCli(
     return 2;
   }
 
-  const orchestrator = new Orchestrator({
-    llm,
-    auditLogger: new AuditLogger(new StderrDebugAuditSink((line) => io.stderr(line))),
-    settings: args.settings,
-  });
+  let docIdAudit: CitedDocIdAudit = OMIT_ALL_DOC_IDS;
+  if (args.config !== undefined) {
+    try {
+      docIdAudit = docIdAuditFromDeployment(
+        loadDeploymentConfig(args.config),
+        deps.env["KP_AUDIT_HMAC_KEY"],
+      );
+    } catch (error) {
+      // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)
+      io.stderr(
+        error instanceof DeploymentConfigError
+          ? error.message
+          : "--config の deployment.yaml を読めませんでした。",
+      );
+      await gateway.close();
+      return 2;
+    }
+  }
+  let orchestrator: Orchestrator;
+  try {
+    orchestrator = new Orchestrator({
+      llm,
+      auditLogger: new AuditLogger(new StderrDebugAuditSink((line) => io.stderr(line))),
+      docIdAudit,
+      settings: args.settings,
+    });
+  } catch (error) {
+    io.stderr(
+      error instanceof OrchestratorError && error.errorClass === "invalid_configuration"
+        ? "audit.privateScopeDocIds が hashed のため、環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵を設定してください。"
+        : "Orchestrator を初期化できませんでした。",
+    );
+    await gateway.close();
+    return 2;
+  }
   try {
     const answer = await orchestrator.run({
       question: args.question,
-      userId: args.userId,
       gateway,
+      ...(args.userId !== undefined ? { userId: args.userId } : {}),
     });
     if (answer.outcome === "error" && llm.lastErrorClass === "llm_credentials_missing") {
       io.stderr(CREDENTIALS_REQUIRED_MESSAGE);

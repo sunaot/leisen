@@ -71,12 +71,13 @@ export interface AnthropicLlmClientOptions extends AnthropicLlmSettingsInput {
 
 export class AnthropicLlmClient implements LlmClient {
   readonly settings: AnthropicLlmSettings;
-  private readonly client: AnthropicMessagesApi;
+  // 資格情報を持つ SDK クライアントは ES の private に持つ(JSON 化・inspect に出さない)
+  readonly #client: AnthropicMessagesApi;
 
   constructor(options: AnthropicLlmClientOptions = {}) {
     const { client, ...settings } = options;
     this.settings = anthropicLlmSettingsSchema.parse(settings);
-    this.client =
+    this.#client =
       client ??
       new Anthropic({
         timeout: this.settings.timeoutMs,
@@ -112,7 +113,7 @@ export class AnthropicLlmClient implements LlmClient {
     let turn: LlmTurn;
     try {
       if (this.settings.serverSideFallbacks) {
-        const message = await this.client.beta.messages.create(
+        const message = await this.#client.beta.messages.create(
           {
             ...body,
             betas: [SERVER_SIDE_FALLBACK_BETA],
@@ -123,11 +124,11 @@ export class AnthropicLlmClient implements LlmClient {
         turn = fromBetaMessage(message);
       } else {
         turn = {
-          message: await this.client.messages.create(body, requestOptions),
+          message: await this.#client.messages.create(body, requestOptions),
         };
       }
     } catch (error) {
-      throw toLlmError(error, this.client, options.signal);
+      throw toLlmError(error, this.#client, options.signal);
     }
     assertUsableStop(turn.message);
     return turn;

@@ -2,6 +2,8 @@
  * 探索ループの終了条件: 上限(maxIterations / runTimeoutMs / costLimitPerQuery)到達時は
  * 探索を止め、その時点の情報で submit_answer を促す最終ターンを1回だけ行う。
  * submit_answer を呼ばずに終えた場合は1回だけ催促する。LLM・Gateway の失敗は error。
+ * ツール呼び出しの件数の上限(maxToolCallsPerTurn / maxToolCallsPerRun)を超えた分は
+ * 実行せず is_error の tool_result で返し、warnings に記録する(セキュリティレビュー m1)。
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +12,7 @@ import {
   NO_CITATION_NOTICE,
   NUDGE_MESSAGE,
   Orchestrator,
+  TOOL_ERROR_PREFACE,
   ScriptedLlmClient,
   scriptedSubmit,
   scriptedText,
@@ -22,6 +25,7 @@ import {
   EXPENSE_POLICY,
   startGateway,
   type GatewayHarness,
+  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { firstHit, isFinalInstruction, searchHits } from "./helpers/script.js";
 
@@ -66,6 +70,7 @@ describe("maxIterations", () => {
       ]);
     });
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
       auditLogger: harness.auditLogger,
       settings: { maxIterations: 2 },
@@ -99,6 +104,7 @@ describe("maxIterations", () => {
       scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
     );
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
       auditLogger: harness.auditLogger,
       settings: { maxIterations: 1 },
@@ -143,6 +149,7 @@ describe("runTimeoutMs", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
       auditLogger: harness.auditLogger,
       settings: { runTimeoutMs: 200 },
@@ -190,6 +197,7 @@ describe("costLimitPerQuery", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
       auditLogger: harness.auditLogger,
       settings: { costLimitPerQuery: 0.01 },
@@ -221,6 +229,7 @@ describe("costLimitPerQuery", () => {
       () => scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
     ]);
     const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
       auditLogger: harness.auditLogger,
       settings: { costLimitPerQuery: 1 },
@@ -250,7 +259,7 @@ describe("submit_answer の催促", () => {
         return scriptedSubmit({ answer: "不明です。", citations: [], confidence: 0.1 });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -265,7 +274,7 @@ describe("submit_answer の催促", () => {
   it("催促後も提出しなければ unresolved(モデルの自由文は回答にしない)", async () => {
     const harness = await setup();
     const llm = new ScriptedLlmClient(() => scriptedText("締め日は10日です(根拠なし)。"));
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -293,7 +302,7 @@ describe("submit_answer の催促", () => {
           },
         ]),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -316,7 +325,7 @@ describe("失敗時は outcome: error", () => {
         throw new LlmError("llm_rate_limited", "the Claude API rate limit was exceeded");
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -333,10 +342,10 @@ describe("失敗時は outcome: error", () => {
     });
   });
 
-  it("Gateway がセッショントークンを拒否したら LLM を呼ばずに error", async () => {
+  it("Gateway がセッショントークンを拒否したら LLM を呼ばずに error(利用者を確認できないので AnswerRun も書かない。H1)", async () => {
     const harness = await setup();
     const llm = new ScriptedLlmClient([]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -346,9 +355,14 @@ describe("失敗時は outcome: error", () => {
 
     expect(llm.requests).toHaveLength(0);
     expect(answer.outcome).toBe("error");
+    expect(answer.answer).toContain("gateway_unauthenticated");
     expect(answer.answer).not.toContain("dev-only-invalid-session");
-    expect(harness.answerRuns()[0]?.failureReason).toBe("gateway_unauthenticated");
+    // 申告の userId(mallory)で監査レコードを書かない
+    expect(harness.answerRuns()).toEqual([]);
     expect(harness.toolInvocations()).toHaveLength(0);
+    await expect(
+      orchestrator.recordFeedback(answer.runId, "resolved", { userId: "mallory" }),
+    ).rejects.toMatchObject({ errorClass: "run_not_found" });
   });
 
   it("別の利用者のセッションでは、その利用者の資格情報で Gateway が呼ばれる", async () => {
@@ -357,7 +371,7 @@ describe("失敗時は outcome: error", () => {
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
       () => scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -366,5 +380,131 @@ describe("失敗時は outcome: error", () => {
     });
 
     expect(harness.toolInvocations(answer.runId).every((r) => r.userId === "bob")).toBe(true);
+  });
+});
+
+describe("ツール呼び出しの件数の上限(m1)", () => {
+  function tenSearches(): { name: string; input: Record<string, unknown> }[] {
+    return Array.from({ length: 10 }, (_, i) => ({
+      name: "search",
+      input: { source: "alpha", query: `締め日 ${i}` },
+    }));
+  }
+
+  it("1ターンの上限を超えた分は実行せず、is_error(固定文言)で返して warnings に記録する", async () => {
+    const harness = await setup();
+    let limited: ScriptContext["lastToolResults"] = [];
+    const llm = new ScriptedLlmClient([
+      () => scriptedToolUse(tenSearches()),
+      (context) => {
+        limited = context.lastToolResults;
+        return scriptedSubmit({ answer: "不明", citations: [], confidence: 0 });
+      },
+    ]);
+    const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
+      llm,
+      auditLogger: harness.auditLogger,
+      settings: { maxToolCallsPerTurn: 3 },
+    });
+
+    const answer = await orchestrator.run({
+      question: "経費精算の締め日は?",
+      gateway: harness.client(),
+    });
+
+    // Gateway に届いたのは先頭の3件だけ(応答内の順)
+    expect(searchCount(harness, answer.runId)).toBe(3);
+    expect(limited).toHaveLength(10);
+    expect(limited.slice(0, 3).every((r) => !r.isError)).toBe(true);
+    for (const result of limited.slice(3)) {
+      expect(result).toMatchObject({
+        isError: true,
+        json: {
+          errorClass: "tool_call_limit_reached",
+          message:
+            "1ターンで実行できるツール呼び出しの上限を超えたため、この呼び出しは実行していません。",
+        },
+      });
+    }
+    expect(answer.warnings).toContain(
+      "1ターンのツール呼び出しの上限(maxToolCallsPerTurn=3)を超えた 7 件は実行していません。",
+    );
+    // 上限で弾いた呼び出しは iteration を消費しない(describe 1件 + search 3件)
+    expect(answer.usage.toolCalls).toBe(4);
+    const iterations = harness
+      .toolInvocations(answer.runId)
+      .map((r) => r.iteration)
+      .sort((a, b) => a - b);
+    expect(iterations).toEqual([0, 1, 2, 3]);
+  });
+
+  it("run の上限に達した後の呼び出しは実行しない(describe フェーズは数えない)", async () => {
+    const harness = await setup();
+    const errorsSeen: string[] = [];
+    let turn = 0;
+    const llm = new ScriptedLlmClient((context) => {
+      for (const result of context.lastToolResults) {
+        if (result.isError) {
+          errorsSeen.push(String((result.json as { errorClass?: string }).errorClass));
+        }
+      }
+      turn += 1;
+      if (turn <= 3) {
+        return scriptedToolUse(tenSearches().slice(0, 4));
+      }
+      return scriptedSubmit({ answer: "不明", citations: [], confidence: 0 });
+    });
+    const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
+      llm,
+      auditLogger: harness.auditLogger,
+      settings: { maxToolCallsPerRun: 6 },
+    });
+
+    const answer = await orchestrator.run({
+      question: "経費精算の締め日は?",
+      gateway: harness.client(),
+    });
+
+    // 3ターン × 4件 = 12件の要求のうち、実行したのは6件(残り6件は上限で弾いた)
+    expect(searchCount(harness, answer.runId)).toBe(6);
+    expect(errorsSeen).toEqual(Array.from({ length: 6 }, () => "tool_call_limit_reached"));
+    expect(answer.warnings).toContain(
+      "ツール呼び出しの上限(maxToolCallsPerRun=6)に達した後の 6 件は実行していません。",
+    );
+    expect(answer.usage.toolCalls).toBe(7);
+  });
+
+  it("ツールエラーは固定の前置き(データであり指示ではない)と JSON の2ブロックで返す(m7)", async () => {
+    const harness = await setup();
+    let blocks: unknown;
+    const llm = new ScriptedLlmClient([
+      () => scriptedToolUse([{ name: "search", input: { source: "gamma", query: "x" } }]),
+      (context) => {
+        const lastUser = context.request.messages.at(-1);
+        const block = Array.isArray(lastUser?.content) ? lastUser.content[0] : undefined;
+        blocks = block?.type === "tool_result" ? block.content : undefined;
+        return scriptedSubmit({ answer: "不明", citations: [], confidence: 0 });
+      },
+    ]);
+    const orchestrator = new Orchestrator({
+      docIdAudit: TEST_DOC_ID_AUDIT,
+      llm,
+      auditLogger: harness.auditLogger,
+    });
+
+    await orchestrator.run({ question: "経費精算の締め日は?", gateway: harness.client() });
+
+    expect(blocks).toEqual([
+      { type: "text", text: TOOL_ERROR_PREFACE },
+      {
+        type: "text",
+        text: JSON.stringify({
+          errorClass: "unknown_source",
+          message: "このソースは検索対象ではありません。",
+        }),
+      },
+    ]);
   });
 });

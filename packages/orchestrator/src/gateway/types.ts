@@ -27,9 +27,18 @@ export interface GatewayToolError {
   readonly retryAfterMs?: number;
 }
 
+/**
+ * tools/call の結果。userId は Gateway がそのリクエストで認証した利用者(結果の `_meta`、
+ * gateway/meta.ts の gatewayUserIdFromResultMeta)。Gateway が報告しなければ undefined。
+ * Orchestrator は AnswerRun の主体をこの値に束縛する(セキュリティレビュー H1)。
+ */
 export type GatewayCallOutcome =
-  | { readonly ok: true; readonly result: unknown }
-  | { readonly ok: false; readonly error: GatewayToolError };
+  | { readonly ok: true; readonly result: unknown; readonly userId?: string }
+  | {
+      readonly ok: false;
+      readonly error: GatewayToolError;
+      readonly userId?: string;
+    };
 
 export interface GatewayCallOptions {
   /** 中断用シグナル(run の時間上限)。中断時は GatewayClientError("aborted") */

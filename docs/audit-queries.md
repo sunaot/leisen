@@ -9,10 +9,42 @@ rawQueryテーブルの digest 結合の例を示す。
 永続ストアの選定はT-003/T-012)。列名は `packages/gateway/src/audit/schema.ts`
 のフィールド名と一致する。
 
+## 0. AnswerRun と ToolInvocation の結合は (runId, userId)
+
+AnswerRun(Orchestrator が書く)と ToolInvocation(Gateway が書く)は **(runId, userId) の組で
+結合する**。AnswerRun.userId は Gateway が認証した userId(tools/call の結果の `_meta`)に
+束縛されている(T-007 セキュリティレビュー 2026-09-27 H1)ため、正常な run では同じ runId の
+ToolInvocation と userId が一致する。runId は呼び出し元が申告する値で Gateway は認証しない
+ため、runId だけで結合すると、別の利用者が同じ runId を申告した ToolInvocation を他人の run に
+混ぜうる。**不一致は警告として扱い**(集計から外し、次のクエリで定期的に検出して原因 —
+実装の不具合・申告の偽装 — を調べる)、以下の集計はすべて (runId, userId) で結合する。
+
+```sql
+-- runId は同じだが userId が食い違う ToolInvocation(警告)
+SELECT
+  ar.runId,
+  ar.userId  AS answer_run_user,
+  ti.userId  AS tool_invocation_user,
+  COUNT(*)   AS invocations
+FROM audit_records ar
+JOIN audit_records ti
+  ON ti.recordType = 'tool_invocation' AND ti.runId = ar.runId
+WHERE ar.recordType = 'answer_run'
+  AND ti.userId <> ar.userId
+GROUP BY ar.runId, ar.userId, ti.userId;
+```
+
+AnswerRun のない runId の ToolInvocation は、単発の呼び出し(runId 未申告)か、Orchestrator が
+利用者を確認できずに終えた run(describe フェーズで Gateway の認証に失敗した等。AnswerRun は
+書かない)である。
+
+注: 昇格判定レポート(`packages/promotion-report`)の集計は現状 runId だけで結合している。
+(runId, userId) での結合と不一致の警告への追随は T-014 側の残作業。
+
 ## 1. ソース別未解決率
 
 「どのソースを検索した会話が未解決に終わりやすいか」。AnswerRun の
-finalOutcome と ToolInvocation の sourceId を runId で結合する。
+finalOutcome と ToolInvocation の sourceId を (runId, userId) で結合する(§0)。
 
 ```sql
 SELECT
@@ -27,6 +59,7 @@ SELECT
 FROM audit_records ar
 JOIN audit_records ti
   ON ti.recordType = 'tool_invocation' AND ti.runId = ar.runId
+ AND ti.userId = ar.userId
 WHERE ar.recordType = 'answer_run'
   AND ar.finalOutcome IN ('resolved', 'unresolved')
 GROUP BY ti.sourceId
@@ -50,6 +83,7 @@ WITH per_run AS (
   FROM audit_records ti
   JOIN audit_records ar
     ON ar.recordType = 'answer_run' AND ar.runId = ti.runId
+   AND ar.userId = ti.userId
   WHERE ti.recordType = 'tool_invocation'
     AND ti.tool = 'search'
   GROUP BY ti.runId, ar.finalOutcome

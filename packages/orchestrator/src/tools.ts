@@ -29,7 +29,7 @@ const USAGE_HINTS: Readonly<Record<GatewayToolName, string>> = {
     "有望なヒットの本文を読むときに使う。documentId と source は search の結果の値をそのまま使う。",
   list: "検索で見つけにくいとき、区画(フォルダ・リポジトリ等)を辿るのに使う。",
   describe:
-    "ソースの説明を得る。各ソースの説明は system prompt のソース一覧に載っているので通常は呼ばなくてよい。",
+    "ソースの説明を得る。各ソースの説明は最初のメッセージのソース一覧に載っているので通常は呼ばなくてよい。",
 };
 
 /** strict のツール定義で使えないキーワード(スキル「JSON Schema Limitations」)。 */

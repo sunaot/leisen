@@ -8,6 +8,8 @@
  * - 同一Gatewayを複数ユーザーで交互・並行に使ってもユーザーコンテキストが
  *   混線しない(不変条件4)
  * - tools/list がユーザー・接続に依存しない(ADR-012)
+ * - tools/call の結果の `_meta` に、そのリクエストで認証した userId が載る(tools/list には
+ *   載らない。T-007 セキュリティレビュー H1)
  * - `_meta` の runId / iteration・実行区分がリクエストごとに扱われる。申告キーの
  *   誤記(裸キー・prefix内の大文字小文字違い。再レビュー S1 で前後の空白・区切りの
  *   違い・prefix の綴り違い・全角/ゼロ幅文字も)は既定値で通さず invalid_request(M2)
@@ -28,6 +30,7 @@ import {
   AuditLogger,
   GATEWAY_META_KEYS,
   GATEWAY_REJECTION_ERROR_CODE,
+  GATEWAY_RESULT_META_KEYS,
   Gateway,
   IdpError,
   META_KEY_PREFIX,
@@ -404,6 +407,41 @@ describe("one gateway shared by several users (不変条件4、ADR-001 追補3 �
         .map((r) => r.userId)
         .sort(),
     ).toEqual(["alice", "bob"]);
+  });
+});
+
+describe("authenticated userId in tool results over HTTP (T-007 security review H1)", () => {
+  it("returns the userId authenticated for each request, differing between alice and bob", async () => {
+    const { connect } = await startHarness({
+      providers: [
+        new StubCredentialProvider("alpha"),
+        new NotConnectedForUser("beta", "bob"),
+      ],
+    });
+    const alice = await connect("session-alice");
+    const bob = await connect("session-bob");
+    const call = (client: Client, source: string) =>
+      client.callTool({
+        name: "search",
+        arguments: { source, query: "q" },
+      }) as Promise<CallToolResult>;
+
+    const [aliceOk, bobOk, bobNotConnected] = await Promise.all([
+      call(alice, "alpha"),
+      call(bob, "alpha"),
+      call(bob, "beta"),
+    ]);
+    const key = GATEWAY_RESULT_META_KEYS.userId;
+    expect(aliceOk._meta?.[key]).toBe("alice");
+    expect(bobOk._meta?.[key]).toBe("bob");
+    // 失敗(isError)の結果にも載る
+    expect(bobNotConnected.isError).toBe(true);
+    expect(firstText(bobNotConnected)).toMatchObject({ errorClass: "source_not_connected" });
+    expect(bobNotConnected._meta?.[key]).toBe("bob");
+
+    const [aliceTools, bobTools] = await Promise.all([alice.listTools(), bob.listTools()]);
+    expect(aliceTools._meta?.[key]).toBeUndefined();
+    expect(bobTools).toEqual(aliceTools);
   });
 });
 

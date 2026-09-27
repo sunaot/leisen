@@ -22,6 +22,7 @@ import {
   startGateway,
   type GatewayHarness,
   type GatewayHarnessOptions,
+  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { fetchedDocuments, firstHit, searchHits } from "./helpers/script.js";
 
@@ -77,7 +78,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日はいつ?",
@@ -150,7 +151,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "出張費の払い戻しの期限は?",
@@ -199,7 +200,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
           unresolvedReason: "該当する文書が見つからなかった",
         }),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "来期の組織変更は決まっている?",
@@ -233,9 +234,12 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
             "alpha",
           ]);
         }
-        const runContext = context.request.system[1]?.text ?? "";
-        expect(runContext).toContain("未接続のため検索できない: beta");
-        expect(runContext).not.toContain('"sourceId":"beta"');
+        // system は固定部だけ。ソース一覧・未接続の案内は最初の user ターン(H3)
+        expect(context.request.system).toHaveLength(1);
+        const firstTurn = context.lastUserTexts.join("\n");
+        expect(firstTurn).toContain("未接続のため検索できない: beta");
+        expect(firstTurn).toContain('"sourceId":"alpha"');
+        expect(firstTurn).not.toContain('"sourceId":"beta"');
         // (強制されないモデルを想定して)beta も並行に要求しても Gateway には送られない
         return scriptedToolUse([
           { name: "search", input: { source: "alpha", query: "経費精算" } },
@@ -255,7 +259,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -285,7 +289,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
     const alpha = new CorpusConnector("alpha", [EXPENSE_POLICY]);
     const harness = await setup({ connectors: [alpha], notConnected: ["alpha"] });
     const llm = new ScriptedLlmClient([]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger });
+    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",

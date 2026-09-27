@@ -25,6 +25,10 @@ export const DEFAULT_EFFORT = "high";
 export const DEFAULT_MAX_TOKENS_PER_TURN = 16_000;
 /** product-design §4.3 の初期値 N=6(deployment.yaml の既定と同じ)。 */
 export const DEFAULT_MAX_ITERATIONS = 6;
+/** 1ターンに実行するツール呼び出しの上限(セキュリティレビュー 2026-09-27 m1)。 */
+export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 8;
+/** 1 run に実行する LLM 起点のツール呼び出しの上限(describe フェーズは数えない。m1)。 */
+export const DEFAULT_MAX_TOOL_CALLS_PER_RUN = 40;
 export const DEFAULT_RUN_TIMEOUT_MS = 120_000;
 /** 上限到達後に回答を促す最終ターン1回分の時間枠。 */
 export const DEFAULT_FINAL_TURN_TIMEOUT_MS = 60_000;
@@ -109,6 +113,26 @@ export const orchestratorSettingsSchema = z.strictObject({
    * 反復による API 呼び出し増幅の抑止(TM-D3)。範囲は deployment.yaml と同じ
    */
   maxIterations: z.number().int().min(1).max(20).default(DEFAULT_MAX_ITERATIONS),
+  /**
+   * 1ターンに実行するツール呼び出しの上限(応答内の順で先頭から)。超えた分は実行せず
+   * is_error の tool_result(固定文言)で返し、warnings に記録する(TM-D3 の増幅抑止)
+   */
+  maxToolCallsPerTurn: z
+    .number()
+    .int()
+    .min(1)
+    .max(64)
+    .default(DEFAULT_MAX_TOOL_CALLS_PER_TURN),
+  /**
+   * 1 run に実行する LLM 起点のツール呼び出しの上限(最初の describe は数えない)。
+   * 超えた分の扱いは maxToolCallsPerTurn と同じ
+   */
+  maxToolCallsPerRun: z
+    .number()
+    .int()
+    .min(1)
+    .max(1_000)
+    .default(DEFAULT_MAX_TOOL_CALLS_PER_RUN),
   /** 探索フェーズの時間上限(ms、run 開始から)。到達すると進行中の呼び出しを中断する */
   runTimeoutMs: z.number().int().min(1).default(DEFAULT_RUN_TIMEOUT_MS),
   /** 上限到達後の最終ターン(回答の提出を促す1回)の時間枠(ms) */

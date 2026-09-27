@@ -13,9 +13,15 @@
  *   Orchestrator は常に既定値を使う(scheduled / autonomous は実装しない)。差し替えの
  *   引数は、区分の申告が Gateway に届いて拒否される(execution_class_rejected、監査
  *   1件)ことを Orchestrator の MCP クライアント経由で確かめるテストのためだけにある
+ *
+ * 結果側の `_meta`(Gateway → Orchestrator)の読み取りもここに集約する
+ * (gatewayUserIdFromResultMeta。キーは @kp/gateway の GATEWAY_RESULT_META_KEYS)。
+ * Gateway が認証した userId で、AnswerRun の主体をこれに束縛する(セキュリティ
+ * レビュー 2026-09-27 H1、orchestrator.ts)。
  */
 import {
   GATEWAY_META_KEYS,
+  GATEWAY_RESULT_META_KEYS,
   type Actor,
   type ExecutionClass,
 } from "@kp/gateway";
@@ -46,4 +52,34 @@ export function buildGatewayMeta(
       input.executionClass ?? PHASE1_EXECUTION_CLASS,
     [GATEWAY_META_KEYS.actor]: input.actor ?? HUMAN_ACTOR,
   };
+}
+
+/** Gateway が報告する userId として受け付ける最大長(監査レコードの主体に使う)。 */
+const MAX_REPORTED_USER_ID_CHARS = 256;
+/** 制御文字・不可視の書式文字を含む値は userId として扱わない。 */
+const UNSAFE_USER_ID_CHARS = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}]/u;
+
+/**
+ * tools/call の結果の `_meta` から、Gateway が認証した userId を読む(H1)。
+ * 無い・形が不正(空文字・非文字列・過長・制御文字入り)なら undefined
+ * (呼び出し側は「Gateway が利用者を確認していない」として扱う)。
+ */
+export function gatewayUserIdFromResultMeta(meta: unknown): string | undefined {
+  if (typeof meta !== "object" || meta === null || Array.isArray(meta)) {
+    return undefined;
+  }
+  const key = GATEWAY_RESULT_META_KEYS.userId;
+  if (!Object.hasOwn(meta, key)) {
+    return undefined;
+  }
+  const value = (meta as Readonly<Record<string, unknown>>)[key];
+  if (
+    typeof value !== "string" ||
+    value === "" ||
+    value.length > MAX_REPORTED_USER_ID_CHARS ||
+    UNSAFE_USER_ID_CHARS.test(value)
+  ) {
+    return undefined;
+  }
+  return value;
 }

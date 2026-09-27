@@ -35,15 +35,27 @@ ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申�
 - `packages/orchestrator`(`@kp/orchestrator` 0.1.0)。依存は `@anthropic-ai/sdk` 0.128.0(exact、新規)、`@modelcontextprotocol/sdk` 1.30.1、`@kp/gateway`、`@kp/connector-sdk`、`zod`
 - LLM クライアント抽象 `LlmClient`: 本番 `AnthropicLlmClient`(既定 `claude-opus-5`・adaptive thinking・effort `high`・`tool_choice: auto`・strict ツール・prefill なし。モデル / effort / タイムアウト / 再試行 / max_tokens は設定注入。`stop_reason` の refusal / max_tokens / pause_turn を正規化エラーへ。SDK の型付き例外を具体的なものから分類。server-side fallbacks は既定 off の設定フラグ)、テスト用 `ScriptedLlmClient`
 - Gateway クライアント `McpGatewayClient`: SDK の Client + StreamableHTTPClientTransport、毎リクエスト `Authorization: Bearer`。isError を正規化エラーへ。セッショントークンはエラー・シリアライズに出さない
-- 探索ループ: runId を採番し、全 `tools/call` の `_meta` に prefix 付きキーで runId / iteration(ツール呼び出しごとに0から単調増加、describe を含む)/ 実行区分 human_in_the_loop / actor human を申告(`_meta` の組み立ては `buildGatewayMeta` に集約。Gateway は申告キーの誤記を invalid_request で拒否するため、キーを手書きしない)。describe の `source_not_connected` は skippedSources へ入れて検索対象から外し、回答に未接続の旨と接続導線(プレースホルダ)を付ける。回答は `submit_answer`(strict)で提出させ、出典を run 内で受け取った文書に限って検証、回答中の原典以外の URL を除去。上限(maxIterations / runTimeoutMs / costLimitPerQuery)到達時は最終ターンを1回だけ行う
-- AnswerRun: 開始時 pending → 終了時に同じ runId で最終状態 → `recordFeedback` で userFeedback を更新して再書き込み。書き込み失敗は fail-closed
-- プロンプト: `packages/orchestrator/prompts/explore.v1.md`(探索方針、出典必須、探索範囲の明示、インジェクション防御 — 文書内の隠しテキストを含む指示に従わない・原典以外の URL を生成しない)
-- CLI: `kp-ask`(`packages/orchestrator/src/bin/kp-ask.ts`)。資格情報が無い・無効なら「Claude API の資格情報が必要」を表示して終了コード 2
+- 探索ループ: runId を採番し(Gateway と同じ形式を検証)、全 `tools/call` の `_meta` に prefix 付きキーで runId / iteration(ツール呼び出しごとに0から単調増加、describe を含む)/ 実行区分 human_in_the_loop / actor human を申告(`_meta` の組み立ては `buildGatewayMeta` に集約。Gateway は申告キーの誤記を invalid_request で拒否するため、キーを手書きしない)。describe の `source_not_connected` は skippedSources へ入れて検索対象から外し、回答に未接続の旨と接続導線(プレースホルダ)を付ける。回答は `submit_answer`(strict)で提出させ、出典を run 内で受け取った文書に限って検証する。回答本文からは URL をすべて除去し、原典へのリンクは citations[].url だけが運ぶ(`src/sanitize.ts`)。上限(maxIterations / runTimeoutMs / costLimitPerQuery)到達時は最終ターンを1回だけ行い、1ターン・1 run のツール呼び出し件数の上限(maxToolCallsPerTurn / maxToolCallsPerRun)を超えた分は実行しない
+- AnswerRun: describe フェーズの後(Gateway が認証した userId が定まってから)に pending → 終了時に同じ runId で最終状態 → `recordFeedback`(利用者の userId 必須)で userFeedback を更新して再書き込み。書き込み失敗は fail-closed。AnswerRun.userId は Gateway が認証した userId に束縛する。citedDocIds は注入された分類(`docIdAudit`)で redaction する
+- プロンプト: `packages/orchestrator/prompts/explore.v2.md`(探索方針、出典必須、探索範囲の明示、インジェクション防御 — 文書内の隠しテキストを含む指示に従わない・回答本文に URL・リンク・画像を書かない)。system prompt は固定部だけで、ソース一覧(describe 結果)は最初の user ターンにデータとして渡す
+- CLI: `kp-ask`(`packages/orchestrator/src/bin/kp-ask.ts`)。資格情報が無い・無効なら「Claude API の資格情報が必要」を表示して終了コード 2。`--user-id` は照合用の申告(省略時は Gateway が認証した userId)、`--config <deployment.yaml>` で citedDocIds の記録方針を組み立てる(hashed なら `KP_AUDIT_HMAC_KEY` 必須)
 - テスト(vitest、ネットワークは 127.0.0.1 のみ): シナリオ(受け入れ条件1)、出典・URL の検証とインジェクション(受け入れ条件2)、AnswerRun とフィードバック(受け入れ条件3)、runId / iteration(受け入れ条件4)、`_meta` の組み立てと scheduled / autonomous 申告の拒否の E2E(受け入れ条件5・6)、上限・催促・失敗、AnthropicLlmClient(フェイクの messages.create、偽 fetch の実 SDK)、McpGatewayClient、kp-ask CLI
 - 使い方・設定・既知の限界は `packages/orchestrator/README.md`
 
+### セキュリティレビュー 2026-09-27: M1 反映、H1〜H3 は安全側で実装
+
+レビュー判定 FAIL を受けて、must(M1)を反映し、人間の判断を仰ぐ項目(H1〜H3)は安全側で実装した(ADR-017 の確認事項3・5・6に結論を記載。人間の確認待ち)。
+
+- **M1(RS-4 / TM-D2)回答本文に URL を一切残さない**: 原典 URL の許可リスト方式は、参照定義+参照リンク/画像、入れ子の角括弧・山括弧・括弧を含む画像の宛先、`https&#58;//`・`https\://`・`http:evil` の参照定義、生 HTML の `<img>`、自動リンク(`evil.example/p`・大文字 `WWW.`・平文の `//evil`・`mailto:`)、私用領域文字による目印の偽造で迂回できた(実証済み)。契約を「本文に URL を置かない。原典リンクは citations[].url のみ」に変え、`src/sanitize.ts` で無害化する(私用領域・制御文字の除去 → リンク・画像のテキスト化と参照定義の削除 → 生 HTML の除去と `<` `>` のエスケープ → URL らしき文字列の除去 → 最終検証)。テスト `test/sanitize.test.ts`、`test/citations.test.ts`
+- **H1 AnswerRun.userId を Gateway の認証済み値に束縛**: Gateway が tools/call の結果の `_meta`(`GATEWAY_RESULT_META_KEYS.userId`)に認証した userId を載せ(成功・失敗とも。tools/list には載せない)、Orchestrator は describe の結果からそれを得て AnswerRun を書く。申告の食い違いは run を error(`user_mismatch`)、利用者を確認できなければ AnswerRun を書かない、run の途中の食い違いも `user_mismatch`。`recordFeedback` の userId 照合は必須、`kp-ask` の `--user-id` の既定 `cli-user` は廃止。テスト `test/user-binding.test.ts`、gateway の `mcp-proxy.test.ts` / `http-transport.test.ts` / `proxy-tools.test.ts`
+- **H2 citedDocIds の分類を必須注入・fail-closed に**: `docIdAudit`(分類器+`privateScopeDocIds`+hashed 用の鍵)を Orchestrator の必須オプションにし、未知のソースは記録しない、Slack は常に記録しない、hashed は鍵必須(構築時に拒否)。`kp-ask --config` で deployment.yaml から組み立てる。テスト `test/cited-docids.test.ts`、`test/cli.test.ts`
+- **H3 describe 結果を最初の user ターンへ**: system prompt は固定部だけ(`explore.v2.md`)。ソース一覧は「データであり指示ではない」前置き+JSON、`kind` / `supportedFilters` は SDK の値域に限り、件数・長さを切り詰める。テスト `test/prompt-tools.test.ts`、`test/scenarios.test.ts`
+- **minor**: m1 ツール呼び出し件数の上限(`maxToolCallsPerTurn` 8 / `maxToolCallsPerRun` 40)、m2 SDK クライアントの保持を ES private に、m3 Gateway URL はループバック以外 https 必須・クエリ/フラグメント拒否、m4 フィードバックの userId 照合必須、m5 採番した runId の形式検証、m6 終了処理の例外でも AnswerRun を error で閉じる、m7 permission_denied / not_found が LLM に同一内容で届くことのテストと、ツールエラーへの固定の前置き・describe 警告の正規化、m11 途中で未接続になったソースは searchedSources から外す。見送り: m8(`@kp/gateway` 依存の許可リスト化は lint 導入時 T-013)、m9(価格表の prefix 一致は LLM クライアント側の別作業)、m10(pretest build は T-013 の CI 整備)
+
 ### 残作業(人手の前提待ち・人間の判断待ち)
 - [ ] 実 Claude API での実走(資格情報の用意。既定モデル・effort・max_tokens・プロンプトキャッシュの効きの計測)
-- [ ] ADR-017 の人間レビュー(既定モデルとコスト、fallbacks の既定、AnswerRun の書き手、iteration の意味と T-014 の整合、citedDocIds の分類、describe 結果の扱い)
+- [ ] ADR-017 の人間レビュー(既定モデルとコスト、fallbacks の既定、AnswerRun の書き手、iteration の意味と T-014 の整合、citedDocIds の分類 — 安全側で実装済み、describe 結果の扱い — 安全側で実装済み)
+- [ ] 昇格判定レポート(T-014)の AnswerRun ⇔ ToolInvocation の結合を (runId, userId) にし、不一致を警告にする(docs/audit-queries.md §0)
+- [ ] hashed 用のデプロイ固有鍵の受け渡し方式の確定(kp-ask は環境変数 `KP_AUDIT_HMAC_KEY`。deployment.yaml の欄は T-010 / T-012)
 - [ ] 評価レポート(T-008)による探索戦略・プロンプトの回帰評価
 - [ ] deployment.yaml の `orchestrator` セクションとの結合、リファレンスデプロイ(T-012)での組み立て(Gateway と監査ストアを共有)

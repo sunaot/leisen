@@ -2,14 +2,16 @@
  * McpGatewayClient: 実 Gateway(port 0)に Streamable HTTP で接続する。
  * - 毎リクエストに `Authorization: Bearer <セッショントークン>` を付ける
  * - ツール結果の isError を正規化エラー(errorClass を本文の JSON から読む)に写す
+ * - 結果の `_meta` から Gateway が認証した userId を読む(成功・失敗とも。H1)
  * - セッショントークンをエラー・例外メッセージ・シリアライズ結果に出さない(不変条件6)
+ * - 接続先はループバック以外 https 必須、資格情報・クエリ・フラグメント付きは拒否(m3)
  */
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { inspect } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { IdpError } from "@kp/gateway";
+import { GATEWAY_RESULT_META_KEYS, IdpError } from "@kp/gateway";
 import {
   GatewayClientError,
   McpGatewayClient,
@@ -18,6 +20,7 @@ import {
 } from "../src/index.js";
 import {
   ALICE_TOKEN,
+  BOB_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
   startGateway,
@@ -99,7 +102,18 @@ describe("McpGatewayClient", () => {
     expect(outcome).toEqual({
       ok: false,
       error: { errorClass: "source_not_connected", message: "source not connected" },
+      userId: "alice",
     });
+  });
+
+  it("結果の `_meta` から Gateway が認証した userId を読む(利用者ごとに異なる。H1)", async () => {
+    const harness = await setup();
+    const [forAlice, forBob] = await Promise.all([
+      harness.client(ALICE_TOKEN).callTool("search", { source: "alpha", query: "経費精算" }, META),
+      harness.client(BOB_TOKEN).callTool("search", { source: "alpha", query: "経費精算" }, META),
+    ]);
+    expect(forAlice).toMatchObject({ ok: true, userId: "alice" });
+    expect(forBob).toMatchObject({ ok: true, userId: "bob" });
   });
 
   it("Gateway が拒否したトークンは unauthenticated。トークンをエラーに出さない", async () => {
@@ -158,13 +172,61 @@ describe("McpGatewayClient", () => {
     expect(
       () =>
         new McpGatewayClient({
-          url: "http://user:dev-only-pass@gateway.example.test/mcp",
+          url: "https://user:dev-only-pass@gateway.example.test/mcp",
           sessionToken: "t",
         }),
-    ).toThrow(GatewayClientError);
+    ).toThrow("the gateway URL must not contain credentials");
     expect(
       () => new McpGatewayClient({ url: "http://127.0.0.1/mcp", sessionToken: "" }),
     ).toThrow(GatewayClientError);
+  });
+
+  it.each([
+    "http://gateway.example.test/mcp",
+    "http://10.0.0.5:8787/mcp",
+    "http://127.0.0.2/mcp",
+    "http://localhost.example.test/mcp",
+  ])("ループバック以外への http(%s)は拒否する(セッショントークンを平文で送らない。m3)", (url) => {
+    let caught: unknown;
+    try {
+      new McpGatewayClient({ url, sessionToken: "dev-only-t" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GatewayClientError);
+    expect(caught).toMatchObject({ errorClass: "gateway_protocol_error" });
+    // 固定文言(URL をエコーしない)
+    expect((caught as Error).message).not.toContain(new URL(url).hostname);
+  });
+
+  it.each([
+    "http://localhost:8787/mcp",
+    "http://127.0.0.1:8787/mcp",
+    "http://[::1]:8787/mcp",
+    "https://gateway.example.test/mcp",
+  ])("ループバックの http と https(%s)は受け付ける", (url) => {
+    const client = new McpGatewayClient({ url, sessionToken: "dev-only-t" });
+    closers.push(() => client.close());
+    expect(client.endpoint).toBe(new URL(url).href);
+  });
+
+  it.each([
+    "https://gateway.example.test/mcp?token=dev-only-leak",
+    "https://gateway.example.test/mcp#frag",
+    "https://gateway.example.test/mcp?",
+    "http://127.0.0.1:8787/mcp#",
+  ])("クエリ・フラグメント付きの URL(%s)は拒否する(m3)", (url) => {
+    let caught: unknown;
+    try {
+      new McpGatewayClient({ url, sessionToken: "dev-only-t" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GatewayClientError);
+    expect((caught as Error).message).toBe(
+      "the gateway URL must not contain a query string or a fragment",
+    );
+    expect((caught as Error).message).not.toContain("dev-only-leak");
   });
 });
 
@@ -201,6 +263,33 @@ describe("normalizeCallResult", () => {
         ],
       }),
     ).toMatchObject({ ok: false, error: { errorClass: "gateway_protocol_error" } });
+  });
+
+  it("結果の `_meta` の userId を読み、形が不正なら読まない(H1)", () => {
+    const key = GATEWAY_RESULT_META_KEYS.userId;
+    const text = [{ type: "text", text: "{}" }];
+    expect(
+      normalizeCallResult({ content: text, structuredContent: { a: 1 }, _meta: { [key]: "alice" } }),
+    ).toEqual({ ok: true, result: { a: 1 }, userId: "alice" });
+    expect(
+      normalizeCallResult({
+        isError: true,
+        content: [{ type: "text", text: JSON.stringify({ errorClass: "rate_limited", message: "m" }) }],
+        _meta: { [key]: "bob" },
+      }),
+    ).toMatchObject({ ok: false, userId: "bob" });
+    for (const value of ["", 42, null, ["alice"], "a\u0000b", "a\u200Bb", "x".repeat(257)]) {
+      expect(
+        normalizeCallResult({ content: text, structuredContent: {}, _meta: { [key]: value } }),
+      ).toEqual({ ok: true, result: {} });
+    }
+    // 名前空間外の userId・`_meta` 以外の場所は読まない
+    expect(
+      normalizeCallResult({ content: text, structuredContent: {}, _meta: { userId: "alice" } }),
+    ).toEqual({ ok: true, result: {} });
+    expect(
+      normalizeCallResult({ content: text, structuredContent: {}, [key]: "alice" }),
+    ).toEqual({ ok: true, result: {} });
   });
 
   it("rate_limited の retryAfterMs を保つ", () => {
