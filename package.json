@@ -2,6 +2,7 @@
   "name": "knowledge-platform",
   "private": true,
   "workspaces": [
+    "packages/connector-sdk",
     "packages/*"
   ],
   "engines": {
