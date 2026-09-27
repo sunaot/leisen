@@ -71,9 +71,16 @@ export type Answer = z.infer<typeof answerSchema>;
 
 export const SUBMIT_ANSWER_TOOL_NAME = "submit_answer";
 
+/**
+ * 回答本文の文字数上限。トークン上限(maxTokensPerTurn)とは独立した防御層で、
+ * 無害化処理(sanitize.ts)への入力サイズを多層で制限する(再レビュー 2026-09-27)。
+ * 64000 トークン(設定上限)の日本語本文でも十分に収まる値にしている。
+ */
+export const MAX_ANSWER_CHARS = 200_000;
+
 /** submit_answer の入力(strict で形は保証されるが、防御的に検証する)。 */
 export const submitAnswerInputSchema = z.object({
-  answer: z.string(),
+  answer: z.string().max(MAX_ANSWER_CHARS),
   citations: z.array(
     z.object({
       documentId: z.string(),

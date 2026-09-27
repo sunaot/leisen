@@ -167,3 +167,35 @@ describe("stripUnsafeCharacters(手順 1)", () => {
     );
   });
 });
+
+describe("敵対的な長大入力でも線形時間(再レビュー 2026-09-27 must)", () => {
+  // 連長が昇順に並ぶバッククォート連: 旧実装(候補ごとの前方走査)では
+  // 約 32 万文字で 1.7 秒、約 128 万文字で 10 秒超だった
+  function ascendingBacktickRuns(targetChars: number): string {
+    const parts: string[] = [];
+    let total = 0;
+    for (let run = 1; total < targetChars; run += 1) {
+      const chunk = `${"`".repeat(run)} x `;
+      parts.push(chunk);
+      total += chunk.length;
+    }
+    return parts.join("");
+  }
+
+  // 同じ連長の対が遠くにあり、間に空行を挟むため対応しない: 空行判定の線形化を確かめる
+  function farPairedRuns(targetChars: number): string {
+    const half = ascendingBacktickRuns(targetChars / 2).replace(/ x /g, " x\n\n");
+    return `${half}${half}`;
+  }
+
+  it.each([
+    ["昇順の連", ascendingBacktickRuns(1_200_000)],
+    ["遠い対と空行", farPairedRuns(1_200_000)],
+  ])("%s(約120万文字)を数秒以内に処理する", (_name, input) => {
+    const started = performance.now();
+    const result = sanitizeAnswerText(input);
+    const elapsedMs = performance.now() - started;
+    expect(typeof result.text).toBe("string");
+    expect(elapsedMs).toBeLessThan(3_000);
+  });
+});

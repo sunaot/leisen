@@ -216,9 +216,98 @@ function backtickRunLength(text: string, at: number): number {
   return end - at;
 }
 
-/** 空行(段落の区切り)が from 以降 to より前にあるか。 */
-function crossesBlankLine(text: string, from: number, to: number): boolean {
-  return /\n[ \t]*\n/.test(text.slice(from, to));
+/**
+ * 空行(段落の区切り)の索引。starts[k] は「改行 → 空白・タブ → 改行」の並びの
+ * 先頭の改行位置、ends[k] はその末尾の改行位置(重なりも列挙する)。
+ * scanRegions がコードスパンの候補ごとに区間を走査すると、候補が遠い入力で
+ * 全体が非線形になる(再レビュー 2026-09-27 must)ため、事前に一度だけ索引を作り
+ * 二分探索で判定する。
+ */
+interface BlankLineIndex {
+  readonly starts: readonly number[];
+  readonly ends: readonly number[];
+}
+
+function indexBlankLines(text: string): BlankLineIndex {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let p = text.indexOf("\n"); p !== -1; p = text.indexOf("\n", p + 1)) {
+    let q = p + 1;
+    while (text[q] === " " || text[q] === "\t") {
+      q += 1;
+    }
+    if (text[q] === "\n") {
+      starts.push(p);
+      ends.push(q);
+    }
+  }
+  return { starts, ends };
+}
+
+/** 空行(段落の区切り)が from 以降 to より前に完全に含まれるか(O(log n))。 */
+function crossesBlankLine(
+  blanks: BlankLineIndex,
+  from: number,
+  to: number,
+): boolean {
+  // starts は昇順で、対応する ends も昇順。from 以上の最初の start を二分探索する
+  let lo = 0;
+  let hi = blanks.starts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((blanks.starts[mid] as number) < from) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo < blanks.ends.length && (blanks.ends[lo] as number) < to;
+}
+
+/**
+ * バッククォート連(極大な連)の索引: 連長 → 開始位置(昇順)。scanRegions は
+ * 「同じ連長の次の出現」を各連長のカーソルを進めて求める(左から右へ単調に
+ * 進むため償却 O(1))。候補ごとに前方を走査する方式は、連長が昇順に並ぶ入力等で
+ * 非線形になる(再レビュー 2026-09-27 must)。
+ */
+function indexBacktickRuns(text: string): Map<number, number[]> {
+  const runs = new Map<number, number[]>();
+  let i = text.indexOf("`");
+  while (i !== -1) {
+    const run = backtickRunLength(text, i);
+    let positions = runs.get(run);
+    if (positions === undefined) {
+      positions = [];
+      runs.set(run, positions);
+    }
+    positions.push(i);
+    i = text.indexOf("`", i + run);
+  }
+  return runs;
+}
+
+/**
+ * from 以降 limit より前にある、連長 run の次の連の開始位置(なければ -1)。
+ * cursors は連長ごとの読み出し位置で、from は呼び出しごとに単調増加する。
+ */
+function nextBacktickRun(
+  runs: ReadonlyMap<number, number[]>,
+  cursors: Map<number, number>,
+  run: number,
+  from: number,
+  limit: number,
+): number {
+  const positions = runs.get(run);
+  if (positions === undefined) {
+    return -1;
+  }
+  let cursor = cursors.get(run) ?? 0;
+  while (cursor < positions.length && (positions[cursor] as number) < from) {
+    cursor += 1;
+  }
+  cursors.set(run, cursor);
+  const candidate = positions[cursor];
+  return candidate !== undefined && candidate < limit ? candidate : -1;
 }
 
 /**
@@ -227,6 +316,9 @@ function crossesBlankLine(text: string, from: number, to: number): boolean {
  */
 function scanRegions(text: string): Region[] {
   const fenced = fencedCodeRegions(text);
+  const backtickRuns = indexBacktickRuns(text);
+  const runCursors = new Map<number, number>();
+  const blanks = indexBlankLines(text);
   const regions: Region[] = [];
   let next = 0;
   let i = 0;
@@ -246,21 +338,15 @@ function scanRegions(text: string): Region[] {
     }
     if (c === "`") {
       const run = backtickRunLength(text, i);
-      let j = i + run;
-      let closed = -1;
-      while (j < limit) {
-        if (text[j] === "`") {
-          const candidate = backtickRunLength(text, j);
-          if (candidate === run) {
-            closed = j;
-            break;
-          }
-          j += candidate;
-          continue;
-        }
-        j += 1;
-      }
-      if (closed !== -1 && !crossesBlankLine(text, i, closed)) {
+      // 同じ連長の次の連を索引から引く(前方走査しない。入力長に対して線形)
+      const closed = nextBacktickRun(
+        backtickRuns,
+        runCursors,
+        run,
+        i + run,
+        limit,
+      );
+      if (closed !== -1 && !crossesBlankLine(blanks, i, closed)) {
         regions.push({ start: i, end: closed + run, kind: "code" });
         i = closed + run;
       } else {
