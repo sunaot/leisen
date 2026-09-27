@@ -15,7 +15,7 @@ npm test
 ## 構成
 
 - `packages/connector-sdk` — コネクタ共通IF
-- `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面)。HTTPトランスポートは未配線(ADR-001追補3の承認待ち)
+- `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面)。HTTPトランスポートは未配線(T-003 残作業。ADR-001追補3 承認済みで着手可能)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
 - `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `docs/adr` — 設計判断の記録
