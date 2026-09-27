@@ -264,6 +264,6 @@ const answer = await new Orchestrator({ llm, auditLogger: harness.auditLogger })
 - **回答本文の URL の検出の限界**: スキーム・`www.`・`//`・パス/クエリのない裸のドメイン名(`evil.example`)とメールアドレスは残す(ファイル名等と区別できない)。利用側は fuzzy な自動リンク(裸のドメインのリンク化)を無効にし、外部画像を自動取得しない(T-009)。検出は保守的(fail-closed)で、`Node.js/Express` のような表記やコード片の中の URL も除去される(除去は warnings に出る)。ゼロ幅接合子(ZWJ)も除くため、絵文字の合成列は分かれて表示される
 - **AnswerRun の書き手**: Gateway と同じ監査ストアを共有する構成が前提。別プロセス構成では Gateway 側の run 登録の口が要る(将来 ADR)
 - **フィードバックの保持**: `recordFeedback` はプロセス内に覚えている run(既定 1000 件)に対してだけ使える
-- **iteration と T-014**: iteration は「run 内のツール呼び出しの通番」。昇格判定レポート(T-014)の再検索回数(search の max(iteration)+1)とは意味がずれている(ADR-017 確認事項4)
+- **iteration と T-014**: iteration は「run 内のツール呼び出しの通番」(describe を含む、並列呼び出しも個別に採番)。昇格判定レポート(T-014)の再検索回数は、2026-09-27 以降 run 内の `search` の ToolInvocation 件数(重複行を除き、(runId, userId) で束ねたもの)で数える。iteration は順序付けにのみ使う(ADR-017 確認事項4、docs/audit-queries.md §2)
 - **ストリーミングなし**: 途中経過の表示は T-009 で必要になった時点で検討する
 - **deployment.yaml 未結合**: 設定は自パッケージの zod スキーマで受ける。deployment.yaml の `orchestrator` セクションとの結合は後続タスク

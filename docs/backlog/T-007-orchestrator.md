@@ -55,7 +55,7 @@ ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申�
 ### 残作業(人手の前提待ち・人間の判断待ち)
 - [ ] 実 Claude API での実走(資格情報の用意。既定モデル・effort・max_tokens・プロンプトキャッシュの効きの計測)
 - [ ] ADR-017 の人間レビュー(既定モデルとコスト、fallbacks の既定、AnswerRun の書き手、iteration の意味と T-014 の整合、citedDocIds の分類 — 安全側で実装済み、describe 結果の扱い — 安全側で実装済み)
-- [ ] 昇格判定レポート(T-014)の AnswerRun ⇔ ToolInvocation の結合を (runId, userId) にし、不一致を警告にする(docs/audit-queries.md §0)
+- [x] 昇格判定レポート(T-014)の AnswerRun ⇔ ToolInvocation の結合を (runId, userId) にし、不一致を警告にする(docs/audit-queries.md §0)— 2026-09-27 T-014 側で実装済み(再検索回数も search 件数に変更)
 - [ ] hashed 用のデプロイ固有鍵の受け渡し方式の確定(kp-ask は環境変数 `KP_AUDIT_HMAC_KEY`。deployment.yaml の欄は T-010 / T-012)
 - [ ] 評価レポート(T-008)による探索戦略・プロンプトの回帰評価
 - [ ] deployment.yaml の `orchestrator` セクションとの結合、リファレンスデプロイ(T-012)での組み立て(Gateway と監査ストアを共有)
