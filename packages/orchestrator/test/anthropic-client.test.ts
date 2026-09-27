@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AnthropicLlmClient,
   LlmError,
+  adaptRequestToCapabilities,
   SERVER_SIDE_FALLBACK_BETA,
   ScriptedLlmClient,
   buildSystemPrompt,
@@ -60,14 +61,15 @@ function throwingClient(error: unknown, credentials: { apiKey?: string | null } 
   }, credentials).client;
 }
 
+/** Orchestrator が組む要求(能力フラグに合わせて thinking / effort を付けた形)。 */
 async function request(): Promise<LlmRequest> {
   const fixed = await loadExplorePrompt();
-  return {
+  return adaptRequestToCapabilities(new AnthropicLlmClient({ client: fakeClient(endTurn).client }).capabilities, {
     system: buildSystemPrompt(fixed),
     messages: [{ role: "user", content: [{ type: "text", text: "質問:\n締め日は?" }] }],
     tools: [submitAnswerTool(["alpha"])],
     maxTokens: 16_000,
-  };
+  });
 }
 
 const endTurn = () =>
@@ -130,6 +132,24 @@ describe("リクエストの形", () => {
       output_config: { effort: "medium" },
     });
     expect(calls[0]?.options).toEqual({ timeout: 5_000, maxRetries: 0 });
+  });
+
+  it("能力フラグ: 全機能に対応し、thinking / effort は要求で指定されたときだけ送る", async () => {
+    const { client, calls } = fakeClient(endTurn);
+    const llm = new AnthropicLlmClient({ client });
+    expect(llm.provider).toBe("anthropic");
+    expect(llm.capabilities).toMatchObject({
+      strictTools: true,
+      thinking: "adaptive",
+      effort: true,
+      promptCaching: true,
+    });
+    const { thinking: _thinking, effort: _effort, ...bare } = await request();
+
+    await llm.complete(bare);
+
+    expect(calls[0]?.body).not.toHaveProperty("thinking");
+    expect(calls[0]?.body).not.toHaveProperty("output_config");
   });
 
   it("末尾が assistant の履歴(prefill)は送らずに失敗させる", async () => {

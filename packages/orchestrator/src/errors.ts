@@ -8,33 +8,45 @@
  * 写さない(不変条件6)。
  */
 
-/** LLM 呼び出しの正規化分類(AnthropicLlmClient / ScriptedLlmClient が投げる)。 */
+/**
+ * LLM 呼び出しの正規化分類(AnthropicLlmClient / OpenAiCompatibleLlmClient /
+ * ScriptedLlmClient が投げる。バックエンドが違っても同じ分類に揃える)。
+ */
 export type LlmErrorClass =
-  /** Claude API の資格情報が解決できない(ANTHROPIC_API_KEY 等が無い) */
+  /**
+   * 資格情報がない。Anthropic: ANTHROPIC_API_KEY 等が解決できない。OpenAI 互換:
+   * apiKeyEnv の環境変数が空、またはキーを送らずに 401 が返った
+   */
   | "llm_credentials_missing"
-  /** 資格情報はあるが API が 401 で拒否した */
+  /** 資格情報を送ったが API が 401 で拒否した */
   | "llm_authentication_failed"
   /** 403(組織・ワークスペースの権限) */
   | "llm_permission_denied"
-  /** 429(SDK の再試行後も解消しない) */
+  /** 429(再試行後も解消しない) */
   | "llm_rate_limited"
-  /** 529 overloaded_error */
+  /** 529 overloaded_error(Anthropic) */
   | "llm_overloaded"
-  /** 5xx・409・接続失敗(SDK の再試行後も解消しない) */
+  /** 5xx・409・接続失敗(再試行後も解消しない)、OpenAI 互換で 200 のエラー本文 */
   | "llm_unavailable"
-  /** SDK のリクエストタイムアウト */
+  /** 1リクエストのタイムアウト(OpenAI 互換は 408 も) */
   | "llm_timeout"
   /** 呼び出し側の AbortSignal による中断(run の時間上限など) */
   | "llm_aborted"
-  /** 400 / 404 / 422、または prefill を含むリクエスト */
+  /**
+   * 400 / 404 / 422、prefill を含むリクエスト、他形式に写せないブロック、
+   * OpenAI 互換のリダイレクト(3xx)
+   */
   | "llm_invalid_request"
-  /** stop_reason: refusal(安全分類器またはモデル自身の辞退) */
+  /**
+   * stop_reason: refusal(安全分類器またはモデル自身の辞退)。OpenAI 互換は
+   * finish_reason: content_filter と message.refusal
+   */
   | "llm_refusal"
-  /** stop_reason: max_tokens(出力・ツール入力が途中で切れている) */
+  /** stop_reason: max_tokens / finish_reason: length(出力・ツール入力が途中で切れている) */
   | "llm_max_tokens"
   /** stop_reason: pause_turn(サーバーツールを使わない本構成では想定外) */
   | "llm_pause_turn"
-  /** stop_reason: model_context_window_exceeded */
+  /** stop_reason: model_context_window_exceeded / OpenAI 互換の context_length_exceeded */
   | "llm_context_window_exceeded"
   /** 応答の形が想定外(stop_reason 欠落、未知のブロック型など) */
   | "llm_unexpected_response"
@@ -46,7 +58,10 @@ export class LlmError extends Error {
     public readonly errorClass: LlmErrorClass,
     /** 固定文言のみ。SDK の例外メッセージ・API キー・応答本文を含めない */
     message: string,
-    /** refusal のカテゴリ(stop_details.category。秘密情報ではない) */
+    /**
+     * refusal のカテゴリ(Anthropic: stop_details.category / OpenAI 互換: content_filter)。
+     * 秘密情報ではない
+     */
     public readonly refusalCategory?: string,
   ) {
     super(message);

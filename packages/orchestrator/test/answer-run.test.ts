@@ -171,6 +171,8 @@ describe("AnswerRun の書き方", () => {
     const sink = new TappingSink(new BufferedAuditSink(new InMemoryAuditStore()));
     const scripted = resolvingScript();
     const llm = {
+      provider: scripted.provider,
+      capabilities: scripted.capabilities,
       complete: async (...args: Parameters<ScriptedLlmClient["complete"]>) => {
         const turn = await scripted.complete(...args);
         if (scripted.requests.length === 2) {

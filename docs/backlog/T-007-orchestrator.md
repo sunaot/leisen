@@ -59,3 +59,20 @@ ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申�
 - [ ] hashed 用のデプロイ固有鍵の受け渡し方式の確定(kp-ask は環境変数 `KP_AUDIT_HMAC_KEY`。deployment.yaml の欄は T-010 / T-012)
 - [ ] 評価レポート(T-008)による探索戦略・プロンプトの回帰評価
 - [ ] deployment.yaml の `orchestrator` セクションとの結合、リファレンスデプロイ(T-012)での組み立て(Gateway と監査ストアを共有)
+
+## バックエンド抽象(2026-09-27)
+
+リポジトリオーナーの方針(ローカル開発は LM Studio が配信するオープンウェイトモデル、本番は自前 GPU のオープンウェイトか商用 API を費用で選ぶ、フロンティア性能は不要)を受けて、ADR-017 決定1を「Claude API 固定」から「**LLM バックエンドは設定で選ぶプラグイン境界**」に書き直した(Proposed のまま)。今回の目的は疎通確認とハーネスの頑健性で、精度は T-008 で測るまで判断しない。
+
+- `LlmClient` に `provider` と能力フラグ `capabilities`(`LlmCapabilities { strictTools, thinking, effort, parallelToolCalls, promptCaching, maxContextTokens? }`)を追加。Orchestrator は正準形の要求を `adaptRequestToCapabilities` に1回通し、strict / thinking / effort / キャッシュのブレークポイントをバックエンドが対応するときだけ付ける(`AnthropicLlmClient` が固定で付けていたものを能力フラグ経由にした。Anthropic への要求の形は変わらない)
+- `OpenAiCompatibleLlmClient`(`src/llm/openai-compatible.ts`): 新規依存なしの fetch で `POST {baseUrl}/chat/completions`(OpenAI API リファレンスどおり)。LM Studio / vLLM / llama.cpp server / Ollama が対象。`apiKeyEnv`(環境変数名。キー不要なら省略)、`timeoutMs`、`maxRetries`(429 / 5xx / 接続失敗のみ、指数バックオフ)、`reasoningEffort`、`extraHeaders`。壊れた `arguments` は run を落とさず不正なツール入力として `is_error` の tool_result を返す。エラーは Anthropic 側と同じ正規化分類。キー・ベース URL のクエリ・応答本文を例外に入れない
+- 生成の集約: `createLlmClient(config)`(zod の `llmBackendConfigSchema`、provider で選ぶ)。kp-ask に `--llm anthropic|openai-compatible`・`--llm-base-url`・`--llm-api-key-env`・`--reasoning-effort`(`--model` は両方。環境変数 `KP_LLM_PROVIDER` / `KP_LLM_BASE_URL` / `KP_LLM_MODEL`)。既定は anthropic のまま。資格情報が無い・拒否されたときの案内はプロバイダごと
+- 費用: 価格表をプロバイダ別(`pricing: { anthropic, openai_compatible }`)にし、モデルは日付スナップショット付き ID でも元の ID の行で引く(T-007 レビュー m9)。価格表にないモデル(ローカル推論の既定)は費用 0 ではなく「不明」。`costLimitPerQuery` 未設定なら探索を止めない(設定時は fail-closed のまま)
+- テスト: テスト内蔵のモック API サーバー(`test/helpers/mock-anthropic-server.ts` / `mock-openai-server.ts`)+ 実 Gateway(port 0)+ 実 LLM クライアントの e2e(`test/e2e-anthropic-mock.test.ts` / `test/e2e-openai-compatible-mock.test.ts`)で、1発ヒット / 再検索 / 未解決 / 未接続ソース、要求の形、壊れた JSON の arguments、`finish_reason: length`、429 の再試行、kp-ask を CI で固定した。OpenAI 互換クライアントの単体テスト(偽 fetch)、能力フラグ・価格表・`createLlmClient`・kp-ask の指定の単体テストを追加。既存の `ScriptedLlmClient` のテストは高速な単体経路として残した
+- README に LM Studio での使い方(**モックでのみ検証、実モデル未検証**)とモック e2e の説明を追記
+
+### 残作業(バックエンド抽象)
+- [ ] LM Studio + オープンウェイト(gpt-oss 20B クラス以上)での実走(オーナーが手元で行う。README「LM Studio で使う」)
+- [ ] T-008 でバックエンド・モデルごとの精度を計測し、必要ならバックエンド別のプロンプト派生を `prompts/` に置く
+- [ ] ADR-017 の確認事項(既定バックエンド・モデル、ADR-005 との関係、不正な submit_answer の扱い ほか)の人間レビュー
+- [ ] LLM バックエンドの設定(`llmBackendConfigSchema`)と deployment.yaml の結合

@@ -1,14 +1,17 @@
 /**
- * Claude API の LlmClient 実装(T-007、ADR-017 決定1)。公式 SDK
- * `@anthropic-ai/sdk` を薄く包む。
+ * Anthropic Messages API の LlmClient 実装(T-007、ADR-017 決定1 の参照実装の1つ)。
+ * 公式 SDK `@anthropic-ai/sdk` を薄く包む。
  *
  * - 資格情報は SDK が環境から解決する(`new Anthropic()`: ANTHROPIC_API_KEY /
- *   ANTHROPIC_AUTH_TOKEN / `ant auth login` のプロファイル等)。キーをコード・設定に書かない
+ *   ANTHROPIC_AUTH_TOKEN / `ant auth login` のプロファイル等)。キーをコード・設定に書かない。
+ *   接続先を変える場合も SDK 標準の ANTHROPIC_BASE_URL を使う
  * - モデル・effort・タイムアウト・再試行回数・server-side fallbacks は設定注入
  *   (config.ts の anthropicLlmSettingsSchema)
- * - thinking は adaptive 固定、tool_choice は auto(Claude Opus 5.5 / Fable 5.1 は
- *   強制ツール指定を 400 にするため。submit_answer の提出はプロンプトで指示し、
- *   ツール定義の strict: true で引数の形を保証する)
+ * - 能力フラグ(ANTHROPIC_CAPABILITIES)はすべて対応。thinking(adaptive)と effort は
+ *   要求(LlmRequest.thinking / effort)で指定されたときだけ送り、strict はツール定義に
+ *   付いたまま送る。どれを付けるかは Orchestrator が能力フラグを見て決める
+ * - tool_choice は auto(Claude Opus 5.5 / Fable 5.1 は強制ツール指定を 400 にするため。
+ *   submit_answer の提出はプロンプトで指示し、ツール定義の strict: true で引数の形を保証する)
  * - prefill(末尾が assistant の履歴)は送らない(現行モデルでは 400)
  * - 非ストリーミング(messages.create)。1ターンの出力はツール呼び出しか
  *   submit_answer で短く、途中経過を表示しないため。ストリーミングにする場合は
@@ -25,9 +28,12 @@ import {
   type AnthropicLlmSettingsInput,
 } from "../config.js";
 import { LlmError } from "../errors.js";
+import { ANTHROPIC_CAPABILITIES } from "./capabilities.js";
+import { assertNoPrefill, assertUsableStop } from "./stop.js";
 import type {
   LlmAttemptUsage,
   LlmCallOptions,
+  LlmCapabilities,
   LlmClient,
   LlmRequest,
   LlmTurn,
@@ -65,17 +71,21 @@ export interface AnthropicMessagesApi {
 }
 
 export interface AnthropicLlmClientOptions extends AnthropicLlmSettingsInput {
+  /** バックエンドの種別(llmBackendConfigSchema の値をそのまま渡せるように受ける) */
+  readonly provider?: "anthropic";
   /** 差し替え用の SDK クライアント。省略時は `new Anthropic()`(資格情報は環境から) */
   readonly client?: AnthropicMessagesApi;
 }
 
 export class AnthropicLlmClient implements LlmClient {
+  readonly provider = "anthropic" as const;
+  readonly capabilities: LlmCapabilities = ANTHROPIC_CAPABILITIES;
   readonly settings: AnthropicLlmSettings;
   // 資格情報を持つ SDK クライアントは ES の private に持つ(JSON 化・inspect に出さない)
   readonly #client: AnthropicMessagesApi;
 
   constructor(options: AnthropicLlmClientOptions = {}) {
-    const { client, ...settings } = options;
+    const { client, provider: _provider, ...settings } = options;
     this.settings = anthropicLlmSettingsSchema.parse(settings);
     this.#client =
       client ??
@@ -97,8 +107,13 @@ export class AnthropicLlmClient implements LlmClient {
       messages: [...request.messages],
       tools: [...request.tools],
       tool_choice: { type: "auto" },
-      thinking: { type: "adaptive" },
-      output_config: { effort: this.settings.effort },
+      // 思考・effort は要求で指定されたときだけ送る(Orchestrator が能力フラグを見て付ける)
+      ...(request.thinking === "adaptive"
+        ? { thinking: { type: "adaptive" as const } }
+        : {}),
+      ...(request.effort === true
+        ? { output_config: { effort: this.settings.effort } }
+        : {}),
       // 会話の末尾まで自動でキャッシュする(system 固定部の明示ブレークポイントと併用。
       // スキル「The robust combination for agent loops」)
       cache_control: { type: "ephemeral" },
@@ -132,69 +147,6 @@ export class AnthropicLlmClient implements LlmClient {
     }
     assertUsableStop(turn.message);
     return turn;
-  }
-}
-
-/** 末尾が assistant の履歴(prefill)は現行モデルで 400 になるため送らない。 */
-function assertNoPrefill(messages: readonly Anthropic.MessageParam[]): void {
-  const last = messages.at(-1);
-  if (last === undefined) {
-    throw new LlmError("llm_invalid_request", "messages must not be empty");
-  }
-  if (last.role === "assistant") {
-    throw new LlmError(
-      "llm_invalid_request",
-      "assistant prefill is not supported by the current models",
-    );
-  }
-}
-
-/** stop_reason を content より先に判定し、続行できない応答を LlmError にする。 */
-function assertUsableStop(message: Anthropic.Message): void {
-  const reason = message.stop_reason;
-  switch (reason) {
-    case "end_turn":
-    case "tool_use":
-    case "stop_sequence":
-      return;
-    case "refusal":
-      // 部分出力(ストリーミング時)や空 content を回答として扱わない
-      throw new LlmError(
-        "llm_refusal",
-        "the model declined the request (stop_reason: refusal)",
-        message.stop_details?.category ?? undefined,
-      );
-    case "max_tokens":
-      // ツール入力・回答が途中で切れている。切れた入力でツールを実行しない
-      throw new LlmError(
-        "llm_max_tokens",
-        "the response was cut off at max_tokens",
-      );
-    case "pause_turn":
-      // サーバーツールを宣言しないため想定外。再開には末尾 assistant の送信が要り、
-      // サーバーツール以外では prefill 扱いの 400 になるので再開しない
-      throw new LlmError(
-        "llm_pause_turn",
-        "unexpected pause_turn without server tools",
-      );
-    case "model_context_window_exceeded":
-      throw new LlmError(
-        "llm_context_window_exceeded",
-        "the conversation exceeded the model context window",
-      );
-    case null:
-      throw new LlmError(
-        "llm_unexpected_response",
-        "the response has no stop_reason",
-      );
-    default: {
-      const unknown: never = reason;
-      void unknown;
-      throw new LlmError(
-        "llm_unexpected_response",
-        "the response has an unknown stop_reason",
-      );
-    }
   }
 }
 

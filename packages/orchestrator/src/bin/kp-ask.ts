@@ -11,6 +11,8 @@
  * - Claude API の資格情報は SDK が環境から解決する(ANTHROPIC_API_KEY、
  *   ANTHROPIC_AUTH_TOKEN、`ant auth login` のプロファイル等)。無い・無効な場合は
  *   その旨を表示して終了コード 2
+ * - LLM バックエンドは --llm で選ぶ(既定 anthropic。openai-compatible は LM Studio 等の
+ *   OpenAI 互換エンドポイント。指定の解釈は bin/llm-options.ts、ADR-017 決定1)
  * - AnswerRun の監査レコードは stderr に JSON 1行で出す(開発用。ToolInvocation は
  *   Gateway 側の監査に記録される)
  * - AnswerRun の質問者は Gateway が認証した userId。--user-id(または環境変数 KP_USER_ID)は
@@ -37,10 +39,8 @@ import {
   type CitedDocIdAudit,
 } from "../audit.js";
 import {
-  anthropicLlmSettingsSchema,
-  effortSchema,
   orchestratorSettingsSchema,
-  type AnthropicLlmSettingsInput,
+  type LlmBackendConfigInput,
   type OrchestratorSettings,
 } from "../config.js";
 import {
@@ -51,9 +51,22 @@ import {
 } from "../errors.js";
 import { McpGatewayClient } from "../gateway/mcp-client.js";
 import type { GatewayClient } from "../gateway/types.js";
-import { AnthropicLlmClient } from "../llm/anthropic.js";
-import type { LlmCallOptions, LlmClient, LlmRequest, LlmTurn } from "../llm/types.js";
+import { createLlmClient } from "../llm/factory.js";
+import type {
+  LlmCallOptions,
+  LlmCapabilities,
+  LlmClient,
+  LlmProvider,
+  LlmRequest,
+  LlmTurn,
+} from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
+import {
+  LLM_USAGE_LINES,
+  backendHintFor,
+  credentialsMessageFor,
+  parseLlmCliOptions,
+} from "./llm-options.js";
 
 export const USAGE = [
   "usage: kp-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
@@ -63,12 +76,15 @@ export const USAGE = [
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(省略時は Gateway が認証した利用者を記録します)。",
   "  --config の audit.privateScopeDocIds が hashed なら KP_AUDIT_HMAC_KEY が必要です。",
+  ...LLM_USAGE_LINES,
 ].join("\n");
 
-export const CREDENTIALS_REQUIRED_MESSAGE =
-  "Claude API の資格情報が必要です。ANTHROPIC_API_KEY を設定するか、`ant auth login` でプロファイルを作成してから再実行してください。";
-export const CREDENTIALS_REJECTED_MESSAGE =
-  "Claude API が資格情報を拒否しました(401)。ANTHROPIC_API_KEY などの資格情報を確認してください。";
+export {
+  CREDENTIALS_REJECTED_MESSAGE,
+  CREDENTIALS_REQUIRED_MESSAGE,
+  OPENAI_COMPATIBLE_CREDENTIALS_REJECTED_MESSAGE,
+  OPENAI_COMPATIBLE_CREDENTIALS_REQUIRED_MESSAGE,
+} from "./llm-options.js";
 
 export interface CliIo {
   stdout(line: string): void;
@@ -77,13 +93,14 @@ export interface CliIo {
 
 export interface CliDependencies {
   readonly env: Readonly<Record<string, string | undefined>>;
-  createLlmClient(settings: AnthropicLlmSettingsInput): LlmClient;
+  /** LLM バックエンドの設定(provider 付き)からクライアントを作る */
+  createLlmClient(config: LlmBackendConfigInput): LlmClient;
   createGatewayClient(options: { url: string; sessionToken: string }): GatewayClient;
 }
 
 export const defaultCliDependencies: CliDependencies = {
   env: process.env,
-  createLlmClient: (settings) => new AnthropicLlmClient(settings),
+  createLlmClient: (config) => createLlmClient(config),
   createGatewayClient: (options) => new McpGatewayClient(options),
 };
 
@@ -98,7 +115,7 @@ interface CliArgs {
   readonly config: string | undefined;
   readonly json: boolean;
   readonly settings: OrchestratorSettings;
-  readonly llm: AnthropicLlmSettingsInput;
+  readonly llm: LlmBackendConfigInput;
 }
 
 function parseCliArgs(
@@ -142,19 +159,9 @@ function parseCliArgs(
     throw new UsageError("--max-iterations は 1〜20 の整数で指定してください。");
   }
 
-  const llm: AnthropicLlmSettingsInput = {};
-  if (values.effort !== undefined) {
-    const effort = effortSchema.safeParse(values.effort);
-    if (!effort.success) {
-      throw new UsageError("--effort は low / medium / high / xhigh / max のいずれかです。");
-    }
-    llm.effort = effort.data;
-  }
-  if (values.model !== undefined) {
-    llm.model = values.model;
-  }
-  if (!anthropicLlmSettingsSchema.safeParse(llm).success) {
-    throw new UsageError("--model の指定が不正です。");
+  const llm = parseLlmCliOptions(values, env);
+  if (!llm.ok) {
+    throw new UsageError(llm.message);
   }
 
   return {
@@ -165,7 +172,7 @@ function parseCliArgs(
     config: values.config,
     json: values.json === true,
     settings: settings.data,
-    llm,
+    llm: llm.config,
   };
 }
 
@@ -178,6 +185,10 @@ function parseArgsStrict(argv: readonly string[]) {
       model: { type: "string" },
       "max-iterations": { type: "string" },
       effort: { type: "string" },
+      llm: { type: "string" },
+      "llm-base-url": { type: "string" },
+      "llm-api-key-env": { type: "string" },
+      "reasoning-effort": { type: "string" },
       "user-id": { type: "string" },
       config: { type: "string" },
       json: { type: "boolean" },
@@ -195,6 +206,14 @@ class ObservingLlmClient implements LlmClient {
 
   constructor(inner: LlmClient) {
     this.#inner = inner;
+  }
+
+  get provider(): LlmProvider {
+    return this.#inner.provider;
+  }
+
+  get capabilities(): LlmCapabilities {
+    return this.#inner.capabilities;
   }
 
   async complete(request: LlmRequest, options?: LlmCallOptions): Promise<LlmTurn> {
@@ -324,13 +343,18 @@ export async function runCli(
       gateway,
       ...(args.userId !== undefined ? { userId: args.userId } : {}),
     });
-    if (answer.outcome === "error" && llm.lastErrorClass === "llm_credentials_missing") {
-      io.stderr(CREDENTIALS_REQUIRED_MESSAGE);
+    const credentials =
+      answer.outcome === "error"
+        ? credentialsMessageFor(args.llm.provider, llm.lastErrorClass)
+        : undefined;
+    if (credentials !== undefined) {
+      io.stderr(credentials);
       return 2;
     }
-    if (answer.outcome === "error" && llm.lastErrorClass === "llm_authentication_failed") {
-      io.stderr(CREDENTIALS_REJECTED_MESSAGE);
-      return 2;
+    const hint =
+      answer.outcome === "error" ? backendHintFor(args.llm.provider, llm.lastErrorClass) : undefined;
+    if (hint !== undefined) {
+      io.stderr(hint);
     }
     io.stdout(args.json ? JSON.stringify(answer, null, 2) : renderAnswer(answer));
     return answer.outcome === "error" ? 1 : 0;

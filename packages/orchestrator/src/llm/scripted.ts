@@ -8,10 +8,22 @@
  *
  * 中断(LlmCallOptions.signal)に従う: ステップが返す Promise の完了より先に
  * シグナルが中断されれば LlmError("llm_aborted") で失敗する(run の時間上限の再現用)。
+ *
+ * provider / capabilities は既定で Anthropic と同じ。オプションで差し替えると、能力の
+ * 違うバックエンド(OpenAI 互換など)に対する Orchestrator の要求の組み方・価格表の
+ * 引き当てを、ネットワークなしで検証できる。
  */
 import type Anthropic from "@anthropic-ai/sdk";
 import { LlmError } from "../errors.js";
-import type { LlmCallOptions, LlmClient, LlmRequest, LlmTurn } from "./types.js";
+import { ANTHROPIC_CAPABILITIES } from "./capabilities.js";
+import type {
+  LlmCallOptions,
+  LlmCapabilities,
+  LlmClient,
+  LlmProvider,
+  LlmRequest,
+  LlmTurn,
+} from "./types.js";
 
 /** 直前の user ターンに含まれていたツール結果1件。 */
 export interface ScriptToolResult {
@@ -40,13 +52,30 @@ export interface ScriptContext {
 
 export type ScriptStep = (context: ScriptContext) => LlmTurn | Promise<LlmTurn>;
 
+export interface ScriptedLlmClientOptions {
+  /** 名乗るバックエンドの種類(価格表の引き当てに使われる)。既定 anthropic */
+  readonly provider?: LlmProvider;
+  /** 能力フラグの上書き(既定は ANTHROPIC_CAPABILITIES) */
+  readonly capabilities?: Partial<LlmCapabilities>;
+}
+
 export class ScriptedLlmClient implements LlmClient {
+  readonly provider: LlmProvider;
+  readonly capabilities: LlmCapabilities;
   /** 受け取った要求の記録(アサーション用) */
   readonly requests: LlmRequest[] = [];
   private readonly steps: readonly ScriptStep[] | ScriptStep;
 
-  constructor(script: readonly ScriptStep[] | ScriptStep) {
+  constructor(
+    script: readonly ScriptStep[] | ScriptStep,
+    options: ScriptedLlmClientOptions = {},
+  ) {
     this.steps = script;
+    this.provider = options.provider ?? "anthropic";
+    this.capabilities = Object.freeze({
+      ...ANTHROPIC_CAPABILITIES,
+      ...options.capabilities,
+    });
   }
 
   async complete(

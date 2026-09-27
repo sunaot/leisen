@@ -11,8 +11,9 @@
  * - tools.ts          Gateway のツール定義 → strict な Claude ツール定義
  * - cost.ts           usage × 価格表の費用概算
  * - audit.ts          AnswerRun レコードの組み立て、stderr デバッグシンク
- * - config.ts         設定スキーマ(探索の上限・価格表、Claude API クライアント)
- * - llm/              LlmClient IF、AnthropicLlmClient、ScriptedLlmClient(テスト用)
+ * - config.ts         設定スキーマ(探索の上限・プロバイダ別の価格表、LLM バックエンドの選択)
+ * - llm/              LlmClient IF と能力フラグ、createLlmClient(生成の集約)、
+ *                     AnthropicLlmClient、OpenAiCompatibleLlmClient、ScriptedLlmClient(テスト用)
  * - gateway/          GatewayClient IF、McpGatewayClient(Streamable HTTP)、
  *                     Gateway へ送る `_meta` の組み立て(buildGatewayMeta)
  * - bin/kp-ask.ts     CLI
@@ -28,7 +29,10 @@ export * from "./prompt.js";
 export * from "./sanitize.js";
 export * from "./tools.js";
 export * from "./llm/types.js";
+export * from "./llm/capabilities.js";
+export * from "./llm/factory.js";
 export * from "./llm/anthropic.js";
+export * from "./llm/openai-compatible.js";
 export * from "./llm/scripted.js";
 export * from "./gateway/types.js";
 export * from "./gateway/meta.js";

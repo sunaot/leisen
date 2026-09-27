@@ -10,8 +10,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseAuditRecord } from "@kp/gateway";
 import {
-  AnthropicLlmClient,
   McpGatewayClient,
+  createLlmClient,
   ScriptedLlmClient,
   answerSchema,
   scriptedSubmit,
@@ -201,7 +201,7 @@ describe("kp-ask: 実行", () => {
       }),
     );
 
-    expect(received).toEqual([{ model: "claude-opus-5-5", effort: "low" }]);
+    expect(received).toEqual([{ provider: "anthropic", model: "claude-opus-5-5", effort: "low" }]);
   });
 
   it("Claude API の資格情報が無ければ「資格情報が必要」と表示して終了コード 2(実 SDK、外部に出ない)", async () => {
@@ -215,12 +215,8 @@ describe("kp-ask: 実行", () => {
     const code = await runCli(
       ["--gateway", harness.url, "--token", ALICE_TOKEN, "経費精算の締め日は?"],
       io,
-      deps(
-        (settings) =>
-          new AnthropicLlmClient({
-            ...settings,
-            client: new Anthropic({ fetch, maxRetries: 0 }),
-          }),
+      deps((settings) =>
+        createLlmClient(settings, { anthropicClient: new Anthropic({ fetch, maxRetries: 0 }) }),
       ),
     );
 
@@ -250,12 +246,10 @@ describe("kp-ask: 実行", () => {
     const code = await runCli(
       ["--gateway", harness.url, "--token", ALICE_TOKEN, "締め日は?"],
       io,
-      deps(
-        (settings) =>
-          new AnthropicLlmClient({
-            ...settings,
-            client: new Anthropic({ apiKey: "dev-only-not-a-real-key", fetch, maxRetries: 0 }),
-          }),
+      deps((settings) =>
+        createLlmClient(settings, {
+          anthropicClient: new Anthropic({ apiKey: "dev-only-not-a-real-key", fetch, maxRetries: 0 }),
+        }),
       ),
     );
 

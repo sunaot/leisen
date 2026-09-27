@@ -1,8 +1,12 @@
 /**
  * 脚本(ScriptedLlmClient)を書くためのテストヘルパー。直前のツール結果から
- * ヒット・取得した文書を読み出す。
+ * ヒット・取得した文書を読み出す。モック API サーバー(mock-anthropic-server.ts /
+ * mock-openai-server.ts)の脚本も、受けた要求から同じ形(ScriptView)を作って使う。
  */
 import type { ScriptContext } from "../../src/index.js";
+
+/** 脚本が読む直前の user ターンの要約(ScriptedLlmClient とモックサーバーで共通)。 */
+export type ScriptView = Pick<ScriptContext, "lastToolResults" | "lastUserTexts">;
 
 export interface HitView {
   readonly source: string;
@@ -16,7 +20,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** 直前のターンの search 結果のヒット(成功した結果のみ)。 */
-export function searchHits(context: ScriptContext): HitView[] {
+export function searchHits(context: ScriptView): HitView[] {
   const hits: HitView[] = [];
   for (const result of context.lastToolResults) {
     const json = result.json;
@@ -41,7 +45,7 @@ export function searchHits(context: ScriptContext): HitView[] {
 }
 
 /** 直前のターンで fetch した文書。 */
-export function fetchedDocuments(context: ScriptContext): HitView[] {
+export function fetchedDocuments(context: ScriptView): HitView[] {
   const documents: HitView[] = [];
   for (const result of context.lastToolResults) {
     const json = result.json;
@@ -62,14 +66,14 @@ export function fetchedDocuments(context: ScriptContext): HitView[] {
 }
 
 /** 直前の user ターンにオーケストレーターの最終ターン指示が含まれるか。 */
-export function isFinalInstruction(context: ScriptContext): boolean {
+export function isFinalInstruction(context: ScriptView): boolean {
   return context.lastUserTexts.some(
     (text) => text.startsWith("[オーケストレーター]") && text.includes("これ以上の検索・取得は行わず"),
   );
 }
 
 /** 最初に見つかったヒット(無ければテストを失敗させる)。 */
-export function firstHit(context: ScriptContext): HitView {
+export function firstHit(context: ScriptView): HitView {
   const hit = searchHits(context)[0];
   if (hit === undefined) {
     throw new Error("script expected at least one search hit in the last tool results");

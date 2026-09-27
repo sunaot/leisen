@@ -62,6 +62,8 @@ import { EvidenceLedger, verifyCitations } from "./citations.js";
 import {
   MAX_QUESTION_CHARS,
   orchestratorSettingsSchema,
+  pricingFor,
+  type ModelPricing,
   type OrchestratorSettings,
   type OrchestratorSettingsInput,
 } from "./config.js";
@@ -78,6 +80,7 @@ import type {
   GatewayToolError,
   GatewayToolSchema,
 } from "./gateway/types.js";
+import { adaptRequestToCapabilities } from "./llm/capabilities.js";
 import { attemptsOf, type LlmClient, type LlmTurn } from "./llm/types.js";
 import {
   buildFirstUserContent,
@@ -299,7 +302,7 @@ class RunState {
 
   constructor(
     readonly runId: string,
-    pricing: OrchestratorSettings["pricing"],
+    pricing: ModelPricing,
   ) {
     this.meter = new UsageMeter(pricing);
   }
@@ -386,7 +389,8 @@ export class Orchestrator {
       );
     }
     const startedMs = this.#now();
-    const state = new RunState(runId, this.settings.pricing);
+    // 価格表は LLM バックエンドのプロバイダの表を使う(ADR-017 決定1)
+    const state = new RunState(runId, pricingFor(this.settings.pricing, this.#llm.provider));
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), this.settings.runTimeoutMs);
     timer.unref();
@@ -785,13 +789,15 @@ export class Orchestrator {
     let turn: LlmTurn;
     try {
       turn = await this.#llm.complete(
-        {
+        // strict / thinking / effort / キャッシュのブレークポイントは、バックエンドが
+        // 対応するものだけを付ける(能力フラグ、ADR-017 決定1)
+        adaptRequestToCapabilities(this.#llm.capabilities, {
           system: conversation.system,
           // 呼び出し時点の履歴の複製を渡す(後の追記を要求に混ぜない)
           messages: [...conversation.messages],
           tools: conversation.tools,
           maxTokens: this.settings.maxTokensPerTurn,
-        },
+        }),
         { signal },
       );
     } catch (error) {
