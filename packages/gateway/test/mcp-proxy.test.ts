@@ -1,19 +1,36 @@
 /**
- * MCPプロキシE2E(T-003受け入れ条件):
- * モックコネクタ2つを登録し、MCPクライアント(InMemoryTransport)から
- * search / fetch がプロキシ経由で通ること、認証注入・監査・エラー正規化が
- * MCP境界でも保たれることを検証する。
+ * MCPサーバー面のテスト(T-003受け入れ条件)。InMemoryTransport で
+ * createGatewayMcpServer(ユーザー状態を持たない部品)を直接検証する:
+ * - モックコネクタ2つを登録し、search / fetch がプロキシ経由で通ること、
+ *   認証注入・監査1件・エラー正規化・snippet truncate がMCP境界でも保たれること
+ * - 利用者は extra.authInfo(本テストではHTTP層の代役として付与)からリクエスト
+ *   ごとに解決され、1つのサーバーインスタンスを複数ユーザーで共有しても混線
+ *   しないこと、Identity のないリクエストは fail-closed で拒否されること
+ *   (ADR-001 追補3 決定1・2)
+ * - `_meta` の名前空間prefix付き申告(runId / iteration の4ケース、実行区分・
+ *   actor)(決定3・4、ADR-011 追記、ADR-015)
+ * HTTP層(Authorizationヘッダ・HTTPステータス)は http-transport.test.ts で検証する。
  */
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import {
+  McpError,
+  type CallToolResult,
+  type JSONRPCMessage,
+} from "@modelcontextprotocol/sdk/types.js";
+import { MAX_SNIPPET_CHARS } from "@kp/connector-sdk";
 import {
   AuditLogger,
+  GATEWAY_META_KEYS,
+  GATEWAY_REJECTION_ERROR_CODE,
   Gateway,
+  META_KEY_PREFIX,
   createGatewayMcpServer,
   digestQuery,
-  type SessionDeclaration,
+  gatewayAuthInfo,
+  type AuditRecord,
 } from "../src/index.js";
 import {
   CollectingAuditSink,
@@ -22,11 +39,11 @@ import {
   testIdpAdapter,
 } from "./helpers/proxy.js";
 
-async function connect(
-  sessionToken = "session-alice",
-  declaration: SessionDeclaration = {},
-) {
-  const alpha = new MockConnector("alpha");
+function buildGateway(alphaSnippet?: string) {
+  const alpha = new MockConnector(
+    "alpha",
+    alphaSnippet !== undefined ? { snippet: alphaSnippet } : {},
+  );
   const beta = new MockConnector("beta");
   const sink = new CollectingAuditSink();
   const gateway = new Gateway({
@@ -35,19 +52,44 @@ async function connect(
     connectors: [alpha, beta],
     auditLogger: new AuditLogger(sink),
   });
+  return { gateway, alpha, beta, sink };
+}
 
-  // トランスポート層でセッショントークンを検証し、確立済みセッションに
-  // 束縛されたMCPサーバーを接続する(1接続=1セッション)
-  const session = await gateway.establishSession(sessionToken, declaration);
-  const server = createGatewayMcpServer(gateway, session);
+/**
+ * HTTP層(http.ts)の代役: クライアント発の各メッセージに AuthInfo を付けて
+ * サーバーへ渡す。authFor が undefined を返したメッセージは未認証のまま届く。
+ */
+async function connectClient(
+  gateway: Gateway,
+  authFor: (message: JSONRPCMessage) => AuthInfo | undefined,
+) {
+  const server = createGatewayMcpServer(gateway);
   const client = new Client({ name: "test-orchestrator", version: "0.0.1" });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
+  const send = clientTransport.send.bind(clientTransport);
+  clientTransport.send = (message, options) => {
+    const authInfo = authFor(message);
+    return send(message, {
+      ...options,
+      ...(authInfo !== undefined ? { authInfo } : {}),
+    });
+  };
   await Promise.all([
     server.connect(serverTransport),
     client.connect(clientTransport),
   ]);
-  return { gateway, session, server, client, alpha, beta, sink };
+  return client;
+}
+
+/** 1ユーザーとして接続する(トークン検証はHTTP層と同じ Gateway.authenticate)。 */
+async function connectAs(sessionToken = "session-alice", alphaSnippet?: string) {
+  const harness = buildGateway(alphaSnippet);
+  const authInfo = gatewayAuthInfo(
+    await harness.gateway.authenticate(sessionToken),
+  );
+  const client = await connectClient(harness.gateway, () => authInfo);
+  return { ...harness, client };
 }
 
 function firstText(result: CallToolResult): unknown {
@@ -58,9 +100,13 @@ function firstText(result: CallToolResult): unknown {
   return JSON.parse(content.text);
 }
 
+function toolRecords(records: readonly AuditRecord[]) {
+  return records.flatMap((r) => (r.recordType === "tool_invocation" ? [r] : []));
+}
+
 describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", () => {
   it("lists the four connector tools with enabled sources self-described", async () => {
-    const { client } = await connect();
+    const { client } = await connectAs();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "describe",
@@ -75,8 +121,8 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
     expect(sourceProp?.enum?.sort()).toEqual(["alpha", "beta"]);
   });
 
-  it("routes search to the requested connector and returns truncated hits", async () => {
-    const { client, alpha, beta, sink } = await connect();
+  it("routes search to the requested connector with the caller's credential", async () => {
+    const { client, alpha, beta, sink } = await connectAs();
     const result = (await client.callTool({
       name: "search",
       arguments: { source: "alpha", query: "hello world" },
@@ -105,8 +151,19 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
     });
   });
 
+  it("truncates oversized snippets at the MCP boundary (ADR-016)", async () => {
+    const oversized = "あ".repeat(MAX_SNIPPET_CHARS + 50);
+    const { client } = await connectAs("session-alice", oversized);
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    const payload = firstText(result) as { hits: { snippet: string }[] };
+    expect(payload.hits[0]?.snippet).toBe(oversized.slice(0, MAX_SNIPPET_CHARS));
+  });
+
   it("routes fetch to the other connector through the same proxy", async () => {
-    const { client, alpha, beta, sink } = await connect();
+    const { client, alpha, beta, sink } = await connectAs();
     const result = (await client.callTool({
       name: "fetch",
       arguments: { source: "beta", documentId: "beta-doc-9" },
@@ -126,7 +183,7 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
   });
 
   it("supports list and describe through the proxy", async () => {
-    const { client } = await connect();
+    const { client } = await connectAs();
     const list = (await client.callTool({
       name: "list",
       arguments: { source: "alpha" },
@@ -140,18 +197,8 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
     expect(firstText(describe)).toMatchObject({ sourceId: "beta" });
   });
 
-  it("honours orchestrator-declared runId/iteration via _meta (ADR-011)", async () => {
-    const { client, sink } = await connect();
-    await client.callTool({
-      name: "search",
-      arguments: { source: "alpha", query: "q" },
-      _meta: { runId: "run-e2e", iteration: 3 },
-    });
-    expect(sink.records[0]).toMatchObject({ runId: "run-e2e", iteration: 3 });
-  });
-
   it("returns a normalized in-band error for unknown sources (no raw internals)", async () => {
-    const { client } = await connect();
+    const { client } = await connectAs();
     const result = (await client.callTool({
       name: "search",
       arguments: { source: "gamma", query: "q" },
@@ -160,8 +207,8 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
     expect(firstText(result)).toMatchObject({ errorClass: "unknown_source" });
   });
 
-  it("rejects malformed tool arguments as invalid_request", async () => {
-    const { client, alpha, beta } = await connect();
+  it("rejects malformed tool arguments as invalid_request before dispatch", async () => {
+    const { client, alpha, beta, sink } = await connectAs();
     const result = (await client.callTool({
       name: "search",
       arguments: { source: "alpha" }, // queryなし
@@ -170,26 +217,11 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
     expect(firstText(result)).toMatchObject({ errorClass: "invalid_request" });
     expect(alpha.calls).toHaveLength(0);
     expect(beta.calls).toHaveLength(0);
-  });
-
-  it("rejects scheduled sessions at the MCP boundary too (ADR-015)", async () => {
-    const { client, alpha } = await connect("session-alice", {
-      executionClass: "scheduled",
-      actor: { kind: "agent", agentId: "cron-1", onBehalfOfChain: ["alice"] },
-    });
-    const result = (await client.callTool({
-      name: "search",
-      arguments: { source: "alpha", query: "q" },
-    })) as CallToolResult;
-    expect(result.isError).toBe(true);
-    expect(firstText(result)).toMatchObject({
-      errorClass: "execution_class_rejected",
-    });
-    expect(alpha.calls).toHaveLength(0);
+    expect(sink.records).toHaveLength(0);
   });
 
   it("never leaks the session token or access token through MCP responses", async () => {
-    const { client } = await connect();
+    const { client } = await connectAs();
     const results = await Promise.all([
       client.listTools(),
       client.callTool({
@@ -205,4 +237,234 @@ describe("MCP proxy end-to-end (acceptance: search/fetch through the proxy)", ()
     expect(serialized).not.toContain("session-alice");
     expect(serialized).not.toContain("stub-access-");
   });
+});
+
+describe("stateless server component (ADR-001 追補3 決定1・2)", () => {
+  it("serves alice and bob from one server instance without mixing user contexts", async () => {
+    const { gateway, alpha, sink } = buildGateway();
+    const auth = {
+      alice: gatewayAuthInfo(await gateway.authenticate("session-alice")),
+      bob: gatewayAuthInfo(await gateway.authenticate("session-bob")),
+    };
+    // 同一サーバー・同一接続上で、メッセージごとに別ユーザーのAuthInfoが届く
+    const client = await connectClient(gateway, (message) => {
+      const query =
+        "method" in message && message.method === "tools/call"
+          ? (message.params?.["arguments"] as { query?: string } | undefined)?.query
+          : undefined;
+      return query?.startsWith("bob-") ? auth.bob : auth.alice;
+    });
+
+    const queries = ["alice-1", "bob-1", "alice-2", "bob-2", "bob-3", "alice-3"];
+    await Promise.all(
+      queries.map((query) =>
+        client.callTool({ name: "search", arguments: { source: "alpha", query } }),
+      ),
+    );
+
+    expect(alpha.calls).toHaveLength(queries.length);
+    for (const call of alpha.calls) {
+      const owner = call.target?.split("-")[0];
+      expect(call.auth.userId).toBe(owner);
+      expect(call.auth.credential).toMatchObject({
+        accessToken: `stub-access-${owner}-alpha`,
+      });
+    }
+    const records = toolRecords(sink.records);
+    expect(records).toHaveLength(queries.length);
+    for (const query of queries) {
+      const record = records.find((r) => r.queryDigest === digestQuery(query));
+      expect(record?.userId).toBe(query.split("-")[0]);
+    }
+  });
+
+  it("fails closed for requests without a verified identity (no schema, no dispatch, no audit)", async () => {
+    const { gateway, alpha, beta, sink } = buildGateway();
+    const client = await connectClient(gateway, () => undefined);
+
+    const listError = await client.listTools().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(listError).toBeInstanceOf(McpError);
+    expect(listError).toMatchObject({
+      code: GATEWAY_REJECTION_ERROR_CODE,
+      data: { errorClass: "unauthenticated" },
+    });
+
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatchObject({ errorClass: "unauthenticated" });
+    expect(alpha.calls).toHaveLength(0);
+    expect(beta.calls).toHaveLength(0);
+    expect(sink.records).toHaveLength(0);
+  });
+
+  it("does not trust an incomplete identity attached to the request", async () => {
+    const { gateway, alpha, sink } = buildGateway();
+    const forged = gatewayAuthInfo({
+      userId: "",
+      session: { subjectToken: "dev-only-forged" },
+    });
+    const client = await connectClient(gateway, () => forged);
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    expect(firstText(result)).toMatchObject({ errorClass: "unauthenticated" });
+    expect(alpha.calls).toHaveLength(0);
+    expect(sink.records).toHaveLength(0);
+  });
+});
+
+describe("_meta runId / iteration (ADR-001 追補3 決定3・4、ADR-011 追記)", () => {
+  it("uses the provisional namespace prefix defined in one place", () => {
+    expect(META_KEY_PREFIX).toBe("io.github.sunaot.leisen/");
+    expect(GATEWAY_META_KEYS).toEqual({
+      runId: `${META_KEY_PREFIX}runId`,
+      iteration: `${META_KEY_PREFIX}iteration`,
+      executionClass: `${META_KEY_PREFIX}executionClass`,
+      actor: `${META_KEY_PREFIX}actor`,
+    });
+  });
+
+  const K = GATEWAY_META_KEYS;
+  it.each([
+    [
+      "prefixed keys",
+      { [K.runId]: "run-prefixed", [K.iteration]: 3 },
+      { runId: "run-prefixed", iteration: 3 },
+    ],
+    [
+      "bare keys (migration period)",
+      { runId: "run-bare", iteration: 2 },
+      { runId: "run-bare", iteration: 2 },
+    ],
+    [
+      "both (prefixed wins)",
+      { [K.runId]: "run-prefixed", [K.iteration]: 4, runId: "run-bare", iteration: 9 },
+      { runId: "run-prefixed", iteration: 4 },
+    ],
+  ] as const)("records the declared run for %s", async (_label, meta, expected) => {
+    const { client, sink } = await connectAs();
+    await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: meta,
+    });
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]).toMatchObject(expected);
+  });
+
+  it.each([
+    ["non-string runId / negative iteration", { [K.runId]: 42, [K.iteration]: -1 }],
+    ["empty runId / fractional iteration", { [K.runId]: "", [K.iteration]: 1.5 }],
+    ["string iteration", { [K.runId]: null, [K.iteration]: "3" }],
+    // prefix付きキーがあれば裸キーへはフォールバックしない
+    ["invalid prefixed runId shadows a valid bare key", { [K.runId]: "", runId: "run-bare" }],
+  ] as const)(
+    "treats invalid values as undeclared: single-shot run (%s)",
+    async (_label, meta) => {
+      const { client, alpha, sink } = await connectAs();
+      const result = (await client.callTool({
+        name: "search",
+        arguments: { source: "alpha", query: "q" },
+        _meta: meta,
+      })) as CallToolResult;
+      // 相関メタデータの不正で呼び出し自体は失敗させず、監査は単発runとして残す
+      expect(result.isError).toBeFalsy();
+      expect(alpha.calls).toHaveLength(1);
+      const [record] = toolRecords(sink.records);
+      expect(record?.iteration).toBe(0);
+      expect(record?.runId).toMatch(/^[0-9a-f-]{36}$/);
+    },
+  );
+
+  it("gives each undeclared call its own single-shot run on the same connection", async () => {
+    const { client, sink } = await connectAs();
+    for (const query of ["first", "second"]) {
+      await client.callTool({
+        name: "search",
+        arguments: { source: "alpha", query },
+      });
+    }
+    const records = toolRecords(sink.records);
+    expect(records.map((r) => r.iteration)).toEqual([0, 0]);
+    expect(records[0]?.runId).not.toBe(records[1]?.runId);
+  });
+});
+
+describe("_meta execution class / actor, declared per request (ADR-015)", () => {
+  const K = GATEWAY_META_KEYS;
+
+  it.each(["scheduled", "autonomous"] as const)(
+    "rejects %s calls at the MCP boundary and audits the rejection",
+    async (executionClass) => {
+      const { client, alpha, sink } = await connectAs();
+      const result = (await client.callTool({
+        name: "search",
+        arguments: { source: "alpha", query: "q" },
+        _meta: {
+          [K.executionClass]: executionClass,
+          [K.actor]: { kind: "agent", agentId: "batch-1", onBehalfOfChain: ["alice"] },
+        },
+      })) as CallToolResult;
+      expect(result.isError).toBe(true);
+      expect(firstText(result)).toMatchObject({
+        errorClass: "execution_class_rejected",
+      });
+      expect(alpha.calls).toHaveLength(0);
+      // 区分の拒否はGatewayコアの内側なので1レコード残る
+      expect(sink.records).toHaveLength(1);
+      expect(sink.records[0]).toMatchObject({
+        errorClass: "execution_class_rejected",
+        userId: "alice",
+      });
+    },
+  );
+
+  it("defaults to human_in_the_loop / human and accepts an explicit declaration", async () => {
+    const { client, alpha } = await connectAs();
+    const undeclared = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+    })) as CallToolResult;
+    const declared = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: { [K.executionClass]: "human_in_the_loop", [K.actor]: { kind: "human" } },
+    })) as CallToolResult;
+    expect(undeclared.isError).toBeFalsy();
+    expect(declared.isError).toBeFalsy();
+    expect(alpha.calls).toHaveLength(2);
+  });
+
+  it.each([
+    ["unknown execution class", { [K.executionClass]: "cron" }],
+    ["non-string execution class", { [K.executionClass]: 1 }],
+    ["null execution class", { [K.executionClass]: null }],
+    [
+      "agent actor without on-behalf-of chain",
+      { [K.actor]: { kind: "agent", agentId: "a1", onBehalfOfChain: [] } },
+    ],
+    ["malformed actor", { [K.actor]: "alice" }],
+  ] as const)(
+    "rejects an invalid declaration (%s) before dispatch instead of defaulting it",
+    async (_label, meta) => {
+      const { client, alpha, beta, sink } = await connectAs();
+      const result = (await client.callTool({
+        name: "search",
+        arguments: { source: "alpha", query: "q" },
+        _meta: meta,
+      })) as CallToolResult;
+      expect(result.isError).toBe(true);
+      expect(firstText(result)).toMatchObject({ errorClass: "invalid_request" });
+      expect(alpha.calls).toHaveLength(0);
+      expect(beta.calls).toHaveLength(0);
+      expect(sink.records).toHaveLength(0);
+    },
+  );
 });

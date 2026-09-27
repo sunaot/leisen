@@ -106,6 +106,35 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+/**
+ * GatewayのHTTP待ち受け(T-003、MCP Streamable HTTP)。既定はループバックのみで、
+ * 外部へ公開する構成はリファレンスデプロイ(T-012)で定める。listen は起動コードが
+ * host / port で行い、path は createGatewayHttpServer(proxy/http.ts)に渡す。
+ */
+export const DEFAULT_GATEWAY_HTTP_HOST = "127.0.0.1";
+export const DEFAULT_GATEWAY_HTTP_PORT = 8787;
+export const DEFAULT_GATEWAY_HTTP_PATH = "/mcp";
+/** 認証不要の死活確認パス。予約済みのためMCPエンドポイントの path に使えない */
+export const GATEWAY_HEALTH_PATH = "/healthz";
+
+const gatewayHttpSchema = z.strictObject({
+  host: z.string().min(1).default(DEFAULT_GATEWAY_HTTP_HOST),
+  port: z.number().int().min(1).max(65535).default(DEFAULT_GATEWAY_HTTP_PORT),
+  path: z
+    .string()
+    .regex(/^\/[A-Za-z0-9._~\-/]*$/, {
+      error: "path must start with '/' and contain only unreserved URL characters",
+    })
+    .refine((path) => path !== GATEWAY_HEALTH_PATH, {
+      error: `path "${GATEWAY_HEALTH_PATH}" is reserved for the health check`,
+    })
+    .default(DEFAULT_GATEWAY_HTTP_PATH),
+});
+
+const gatewaySchema = z.strictObject({
+  http: gatewayHttpSchema.prefault({}),
+});
+
 const orchestratorSchema = z.strictObject({
   // 上限は探索ループのコスト・API呼び出し増幅の抑止(TM-D3、AT-5の過大設定)
   maxIterations: z.number().int().min(1).max(20).default(6),
@@ -174,6 +203,7 @@ export const deploymentConfigSchema = z.strictObject({
   idp: z.strictObject({
     adapter: idpAdapterSchema,
   }),
+  gateway: gatewaySchema.prefault({}),
   connectors: z.array(connectorSchema).default([]),
   orchestrator: orchestratorSchema.prefault({}),
   audit: auditSchema.prefault({}),
@@ -185,5 +215,6 @@ export type DeploymentConfig = z.infer<typeof deploymentConfigSchema>;
 export type ConnectorConfig = DeploymentConfig["connectors"][number];
 export type ConnectorLimits = ConnectorConfig["limits"];
 export type IdpAdapterConfigSection = DeploymentConfig["idp"]["adapter"];
+export type GatewayHttpConfig = DeploymentConfig["gateway"]["http"];
 export type AuditConfig = DeploymentConfig["audit"];
 export type AgentExecutionConfig = DeploymentConfig["agentExecution"];

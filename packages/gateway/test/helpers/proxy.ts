@@ -43,6 +43,8 @@ export interface MockConnectorOptions {
 interface RecordedCall {
   tool: "search" | "fetch" | "list" | "describe";
   auth: AuthContext;
+  /** search のクエリ / fetch の documentId(ユーザー混線テストで呼び出し元を突合する) */
+  target?: string;
 }
 
 export class MockConnector implements Connector {
@@ -60,8 +62,12 @@ export class MockConnector implements Connector {
     private readonly options: MockConnectorOptions = {},
   ) {}
 
-  private async simulate(tool: RecordedCall["tool"], auth: AuthContext) {
-    this.calls.push({ tool, auth });
+  private async simulate(
+    tool: RecordedCall["tool"],
+    auth: AuthContext,
+    target?: string,
+  ) {
+    this.calls.push({ tool, auth, ...(target !== undefined ? { target } : {}) });
     if (this.options.delayMs !== undefined) {
       await new Promise((resolve) => setTimeout(resolve, this.options.delayMs));
     }
@@ -76,7 +82,7 @@ export class MockConnector implements Connector {
     filters?: SearchFilters,
     options?: SearchOptions,
   ): Promise<SearchResult> {
-    await this.simulate("search", auth);
+    await this.simulate("search", auth, query);
     this.lastSearch = {
       query,
       ...(filters !== undefined ? { filters } : {}),
@@ -99,7 +105,7 @@ export class MockConnector implements Connector {
     documentId: string,
     _pageCursor?: string,
   ): Promise<FetchResult> {
-    await this.simulate("fetch", auth);
+    await this.simulate("fetch", auth, documentId);
     return {
       documentId,
       title: `${this.sourceId} ${documentId}`,

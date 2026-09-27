@@ -1,5 +1,7 @@
 /**
  * Gatewayコアパイプラインのテスト(T-003受け入れ条件)。
+ * - リクエスト単位のセッション解決(ADR-001 追補3、状態を持たない)
+ * - runId / iteration: 申告値の記録、未申告は単発run(ADR-011 追記)
  * - 資格情報取得失敗時にコネクタ呼び出しが行われない
  * - 監査ログがリクエストごとに正確に1レコード、書き込み失敗時fail-closed
  * - scheduled/autonomous区分の呼び出し拒否(ADR-015)
@@ -15,8 +17,10 @@ import {
   IdpError,
   InMemoryRawQueryStore,
   digestQuery,
+  type ExecutionClass,
   type GatewaySession,
   type GatewayToolResult,
+  type IdpAdapter,
 } from "../src/index.js";
 import {
   CollectingAuditSink,
@@ -84,19 +88,47 @@ async function expectGatewayError(
   throw new Error(`expected GatewayError(${errorClass}) but call succeeded`);
 }
 
-describe("session establishment", () => {
-  it("binds the authenticated identity to the session", async () => {
+describe("request-scoped session resolution (ADR-001 追補3)", () => {
+  it("binds the authenticated identity to a request-scoped session", async () => {
     const { gateway } = build();
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     expect(session.identity.userId).toBe("alice");
     expect(session.executionClass).toBe("human_in_the_loop");
     expect(session.actor).toEqual({ kind: "human" });
+    // セッションIDを持たない(Gatewayが保持・再利用する状態がない)
+    expect(Object.keys(session).sort()).toEqual([
+      "actor",
+      "executionClass",
+      "identity",
+    ]);
+  });
+
+  it("authenticates each token independently (no cached binding between calls)", async () => {
+    const { gateway } = build();
+    const alice = await gateway.authenticate("session-alice");
+    const bob = await gateway.authenticate("session-bob");
+    expect(alice.userId).toBe("alice");
+    expect(bob.userId).toBe("bob");
+    await expectGatewayError(
+      gateway.authenticate("no-such-token"),
+      "unauthenticated",
+    );
+  });
+
+  it("rejects an unknown execution class instead of defaulting it (ADR-015)", async () => {
+    const { gateway } = build();
+    await expectGatewayError(
+      gateway.resolveSession("session-alice", {
+        executionClass: "cron" as ExecutionClass,
+      }),
+      "invalid_request",
+    );
   });
 
   it("rejects unknown session tokens as unauthenticated", async () => {
     const { gateway } = build();
     await expectGatewayError(
-      gateway.establishSession("no-such-token"),
+      gateway.resolveSession("no-such-token"),
       "unauthenticated",
     );
   });
@@ -104,7 +136,7 @@ describe("session establishment", () => {
   it("rejects an agent actor without an on-behalf-of chain (ADR-015)", async () => {
     const { gateway } = build();
     await expectGatewayError(
-      gateway.establishSession("session-alice", {
+      gateway.resolveSession("session-alice", {
         actor: { kind: "agent", agentId: "a1", onBehalfOfChain: [] },
       }),
       "invalid_request",
@@ -116,7 +148,7 @@ describe("tool call pipeline", () => {
   it("proxies search to the target connector with the caller's credential", async () => {
     const { gateway, connectors } = build();
     const [alpha, beta] = connectors as [MockConnector, MockConnector];
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
 
     const outcome = await search(gateway, session, "alpha", "hello");
     expect(outcome.tool).toBe("search");
@@ -136,7 +168,7 @@ describe("tool call pipeline", () => {
 
   it("rejects sources that are not part of the deployment", async () => {
     const { gateway, sink } = build();
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     await expectGatewayError(
       search(gateway, session, "gamma"),
       "unknown_source",
@@ -151,7 +183,7 @@ describe("tool call pipeline", () => {
     });
     const { gateway, connectors } = build({ config });
     const [, beta] = connectors as [MockConnector, MockConnector];
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     await expectGatewayError(
       search(gateway, session, "beta"),
       "source_disabled",
@@ -175,7 +207,7 @@ describe("credential failure (acceptance: connector must not be called)", () => 
       ]);
       const sink = new CollectingAuditSink();
       const { gateway } = build({ connectors: [alpha, beta], idpAdapter, sink });
-      const session = await gateway.establishSession("session-alice");
+      const session = await gateway.resolveSession("session-alice");
 
       await expectGatewayError(search(gateway, session, "alpha"), expectedClass);
 
@@ -195,6 +227,37 @@ describe("credential failure (acceptance: connector must not be called)", () => 
   );
 });
 
+describe("identity binding check (TM-C6)", () => {
+  it("does not call the connector when the credential belongs to another user", async () => {
+    // IdP Adapter実装の取り違えを注入: aliceのリクエストにbobの資格情報を返す
+    const inner = testIdpAdapter();
+    const mixedUp: IdpAdapter = {
+      authenticate: (token) => inner.authenticate(token),
+      getCredential: async (_identity, sourceId) =>
+        inner.getCredential(await inner.authenticate("session-bob"), sourceId),
+      invalidateUser: (userId) => inner.invalidateUser(userId),
+    };
+    const alpha = new MockConnector("alpha");
+    const sink = new CollectingAuditSink();
+    const gateway = new Gateway({
+      config: testConfig(),
+      idpAdapter: mixedUp,
+      connectors: [alpha, new MockConnector("beta")],
+      auditLogger: new AuditLogger(sink),
+    });
+    const session = await gateway.resolveSession("session-alice");
+
+    await expectGatewayError(search(gateway, session, "alpha"), "internal_error");
+    expect(alpha.calls).toHaveLength(0);
+    // 拒否も本人(alice)のuserIdで1レコード残る
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]).toMatchObject({
+      userId: "alice",
+      errorClass: "internal_error",
+    });
+  });
+});
+
 describe("audit logging (acceptance: exactly one record per request)", () => {
   it("writes exactly one tool_invocation record per request, success or failure", async () => {
     const alpha = new MockConnector("alpha");
@@ -203,7 +266,7 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
     });
     const sink = new CollectingAuditSink();
     const { gateway } = build({ connectors: [alpha, beta], sink });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
 
     await search(gateway, session, "alpha", "first");
     await gateway.handleToolCall(session, {
@@ -235,7 +298,7 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
       tool: "fetch",
       fetchedDocCount: 1,
       queryDigest: null,
-      iteration: 1,
+      iteration: 0,
     });
     expect(sink.records[2]).toMatchObject({
       tool: "search",
@@ -248,7 +311,7 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
   it("uses the orchestrator-declared runId/iteration when provided", async () => {
     const sink = new CollectingAuditSink();
     const { gateway } = build({ sink });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     await gateway.handleToolCall(
       session,
       { tool: "search", sourceId: "alpha", query: "q" },
@@ -257,11 +320,44 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
     expect(sink.records[0]).toMatchObject({ runId: "run-42", iteration: 7 });
   });
 
+  it("records undeclared calls as single-shot runs (new runId each, iteration 0; ADR-011 追記)", async () => {
+    const sink = new CollectingAuditSink();
+    const { gateway } = build({ sink });
+    const session = await gateway.resolveSession("session-alice");
+    // 同一セッション・同一runの継続に見える連続呼び出しでも採番状態を持たない
+    await search(gateway, session, "alpha", "first");
+    await search(gateway, session, "alpha", "second");
+    await search(gateway, session, "beta", "third");
+
+    const records = sink.records.map((r) =>
+      r.recordType === "tool_invocation"
+        ? { runId: r.runId, iteration: r.iteration }
+        : undefined,
+    );
+    expect(records.map((r) => r?.iteration)).toEqual([0, 0, 0]);
+    expect(new Set(records.map((r) => r?.runId)).size).toBe(3);
+  });
+
+  it("treats iteration as meaningful only together with runId", async () => {
+    const sink = new CollectingAuditSink();
+    const { gateway } = build({ sink });
+    const session = await gateway.resolveSession("session-alice");
+    const call = { tool: "search", sourceId: "alpha", query: "q" } as const;
+    // runIdのみ申告: iterationは0
+    await gateway.handleToolCall(session, call, { runId: "run-7" });
+    // iterationのみ申告: runIdがないため単発run(新規runId、iteration 0)
+    await gateway.handleToolCall(session, call, { iteration: 5 });
+
+    expect(sink.records[0]).toMatchObject({ runId: "run-7", iteration: 0 });
+    expect(sink.records[1]).toMatchObject({ iteration: 0 });
+    expect(sink.records[1]).not.toMatchObject({ runId: "run-7" });
+  });
+
   it("fails closed when the audit write fails (default failureMode)", async () => {
     const alpha = new MockConnector("alpha");
     const sink = new FailingAuditSink();
     const { gateway } = build({ connectors: [alpha, new MockConnector("beta")], sink });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
 
     // コネクタ呼び出しは成功しているが、監査が書けないため結果は返さない
     await expectGatewayError(
@@ -277,7 +373,7 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
       audit: { failureMode: "fail-open", confirmFailOpen: true },
     });
     const { gateway } = build({ config, sink: new FailingAuditSink() });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     const outcome = await search(gateway, session, "alpha");
     expect(outcome.tool).toBe("search");
   });
@@ -286,7 +382,7 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
     const rawQueryStore = new InMemoryRawQueryStore();
     const sink = new CollectingAuditSink();
     const { gateway } = build({ rawQueryStore, sink });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     await search(gateway, session, "alpha", "社内の秘密の質問");
 
     const found = await rawQueryStore.findByDigest(
@@ -306,7 +402,7 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
     // 書けている以上、原文保存の失敗でツール呼び出しを拒否しない
     const sink = new CollectingAuditSink();
     const { gateway } = build({ sink, rawQueryStore: new FailingRawQueryStore() });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     const outcome = await search(gateway, session, "alpha");
     expect(outcome.tool).toBe("search");
     expect(sink.records).toHaveLength(1);
@@ -320,7 +416,7 @@ describe("execution class policy (acceptance: scheduled/autonomous rejected)", (
       const alpha = new MockConnector("alpha");
       const sink = new CollectingAuditSink();
       const { gateway } = build({ connectors: [alpha, new MockConnector("beta")], sink });
-      const session = await gateway.establishSession("session-alice", {
+      const session = await gateway.resolveSession("session-alice", {
         executionClass,
         actor: {
           kind: "agent",
@@ -344,7 +440,7 @@ describe("execution class policy (acceptance: scheduled/autonomous rejected)", (
 
   it("allows human-in-the-loop calls (Phase 1 default)", async () => {
     const { gateway } = build();
-    const session = await gateway.establishSession("session-alice", {
+    const session = await gateway.resolveSession("session-alice", {
       executionClass: "human_in_the_loop",
     });
     const outcome = await search(gateway, session);
@@ -357,7 +453,7 @@ describe("snippet truncation (acceptance: MAX_SNIPPET_CHARS enforced)", () => {
     const oversized = "あ".repeat(MAX_SNIPPET_CHARS + 200);
     const alpha = new MockConnector("alpha", { snippet: oversized });
     const { gateway } = build({ connectors: [alpha, new MockConnector("beta")] });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
 
     const outcome = await search(gateway, session, "alpha");
     if (outcome.tool !== "search") throw new Error("unreachable");
@@ -369,7 +465,7 @@ describe("snippet truncation (acceptance: MAX_SNIPPET_CHARS enforced)", () => {
 
   it("leaves snippets within the limit untouched", async () => {
     const { gateway } = build();
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
     const outcome = await search(gateway, session, "alpha");
     if (outcome.tool !== "search") throw new Error("unreachable");
     expect(outcome.result.hits[0]?.snippet).toBe("snippet from alpha");
@@ -388,7 +484,7 @@ describe("per-source limits from deployment config", () => {
     const beta = new MockConnector("beta");
     const sink = new CollectingAuditSink();
     const { gateway } = build({ config, connectors: [alpha, beta], sink });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
 
     await search(gateway, session, "alpha");
     await search(gateway, session, "alpha");
@@ -412,7 +508,7 @@ describe("per-source limits from deployment config", () => {
     const alpha = new MockConnector("alpha", { delayMs: 200 });
     const sink = new CollectingAuditSink();
     const { gateway } = build({ config, connectors: [alpha, new MockConnector("beta")], sink });
-    const session = await gateway.establishSession("session-alice");
+    const session = await gateway.resolveSession("session-alice");
 
     await expectGatewayError(search(gateway, session, "alpha"), "timeout");
     expect(sink.records[0]).toMatchObject({ errorClass: "timeout" });

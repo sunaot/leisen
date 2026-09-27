@@ -7,6 +7,11 @@
  *   コネクタ呼び出し(タイムアウト付き) → snippet強制truncate(ADR-016) →
  *   監査記録(正確に1レコード、失敗時は既定fail-closed、ADR-011 §4)
  *
+ * ステートレス(ADR-001 追補3 決定1〜3): Gatewayは利用者ごとの状態を持たない。
+ * 本人の確定はリクエスト単位(authenticate → bindSession)で行い、runId /
+ * iteration は呼び出しごとの申告を記録する(呼び出しをまたぐ採番状態なし)。
+ * インスタンス内の共有状態はソース別のレート制御窓のみ(ユーザー非依存)。
+ *
  * 不変条件:
  * - 認可はデータソースに委譲する。ここでは本人資格情報の取得と受け渡しのみを
  *   行い、権限判定・ACL複製はしない(不変条件1)
@@ -29,9 +34,9 @@ import type { AuditLogger } from "../audit/sink.js";
 import type { RawQueryStore } from "../audit/rawquery.js";
 import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
-import { IdpError, type IdpAdapter } from "../idp/types.js";
+import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";
 import { SourceRateLimiter } from "./ratelimit.js";
-import { GatewaySessionManager } from "./session.js";
+import { resolveCallContext, validateDeclaration } from "./session.js";
 import {
   GatewayError,
   type CallContext,
@@ -79,7 +84,6 @@ export class Gateway {
   private readonly rawQueryStore: RawQueryStore | undefined;
   private readonly registry = new Map<string, RegistryEntry>();
   private readonly rateLimiter: SourceRateLimiter;
-  private readonly sessions: GatewaySessionManager;
   private readonly now: () => number;
   private readonly ids: () => string;
 
@@ -90,7 +94,6 @@ export class Gateway {
     this.rawQueryStore = options.rawQueryStore;
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
-    this.sessions = new GatewaySessionManager(options.idpAdapter, this.ids);
 
     // コネクタ実体の重複と、設定との突合(危険設定は起動時拒否、ADR-005)
     const capabilities: Record<string, ConnectorCapabilities> = {};
@@ -133,21 +136,31 @@ export class Gateway {
     this.rateLimiter = new SourceRateLimiter(rateLimits, this.now);
   }
 
-  /** セッション確立(認証)。以降の呼び出しはこのセッションに束縛される。 */
-  async establishSession(
-    sessionToken: string,
-    declaration: SessionDeclaration = {},
-  ): Promise<GatewaySession> {
+  /**
+   * リクエスト単位の認証(ADR-001 追補3 決定1)。HTTP層がJSON-RPCを
+   * ディスパッチする前に毎リクエスト呼ぶ。失敗は正規化エラー
+   * (unauthenticated / idp_unavailable / misconfigured / internal_error)。
+   */
+  async authenticate(sessionToken: string): Promise<Identity> {
     try {
-      return await this.sessions.establish(sessionToken, declaration);
+      return await this.idpAdapter.authenticate(sessionToken);
     } catch (error) {
       throw toGatewayError(error);
     }
   }
 
-  /** セッション破棄(接続クローズ時)。 */
-  discardSession(sessionId: string): void {
-    this.sessions.discard(sessionId);
+  /**
+   * リクエスト単位のセッション解決(認証+申告の検証)。in-processの呼び出し元・
+   * テスト向けの合成であり、結果をGateway側に保持しない。MCP経由では
+   * HTTP層(http.ts)の authenticate と tools.ts の bindSession に分かれる。
+   */
+  async resolveSession(
+    sessionToken: string,
+    declaration: SessionDeclaration = {},
+  ): Promise<GatewaySession> {
+    // 申告の検証を先に行う(不正な申告でIdPへの照会を発生させない)
+    const declared = validateDeclaration(declaration);
+    return { identity: await this.authenticate(sessionToken), ...declared };
   }
 
   /** 有効なソースID一覧(MCPツールスキーマの自己記述用)。 */
@@ -167,10 +180,7 @@ export class Gateway {
     call: GatewayToolCall,
     context: CallContext = {},
   ): Promise<GatewayToolResult> {
-    const { runId, iteration } = this.sessions.resolveCallContext(
-      session,
-      context,
-    );
+    const { runId, iteration } = resolveCallContext(context, this.ids);
     const requestId = this.ids();
     const startedMs = this.now();
 
@@ -287,6 +297,14 @@ export class Gateway {
       session.identity,
       call.sourceId,
     );
+    // 束縛検証(TM-C6): 資格情報の主体がリクエストの本人と一致しなければ
+    // コネクタを呼ばない(IdP Adapter実装の取り違えによる他人の資格情報の使用を防ぐ)
+    if (auth.userId !== session.identity.userId) {
+      throw new GatewayError(
+        "internal_error",
+        "credential subject does not match the authenticated user (TM-C6)",
+      );
+    }
 
     const raw = await withTimeout(
       this.invokeConnector(entry.connector, auth, call),

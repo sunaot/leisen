@@ -5,6 +5,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AUTHZ_CACHE_TTL_SEC,
+  DEFAULT_GATEWAY_HTTP_HOST,
+  DEFAULT_GATEWAY_HTTP_PATH,
+  DEFAULT_GATEWAY_HTTP_PORT,
   DeploymentConfigError,
   parseDeploymentConfig,
 } from "../src/index.js";
@@ -63,6 +66,31 @@ describe("deployment config schema defaults", () => {
     const config = parseDeploymentConfig(MINIMAL_YAML);
     expect(config.orchestrator.maxIterations).toBe(6);
   });
+
+  it("gateway.httpの既定はループバック127.0.0.1:8787の/mcp(T-003)", () => {
+    const config = parseDeploymentConfig(MINIMAL_YAML);
+    expect(config.gateway.http).toEqual({
+      host: DEFAULT_GATEWAY_HTTP_HOST,
+      port: DEFAULT_GATEWAY_HTTP_PORT,
+      path: DEFAULT_GATEWAY_HTTP_PATH,
+    });
+    expect(config.gateway.http).toEqual({
+      host: "127.0.0.1",
+      port: 8787,
+      path: "/mcp",
+    });
+  });
+
+  it("gateway.httpの明示値を受け、省略キーは既定で補う", () => {
+    const yaml =
+      MINIMAL_YAML + `gateway:\n  http:\n    host: 0.0.0.0\n    path: /kp/mcp\n`;
+    const config = parseDeploymentConfig(yaml);
+    expect(config.gateway.http).toEqual({
+      host: "0.0.0.0",
+      port: 8787,
+      path: "/kp/mcp",
+    });
+  });
 });
 
 describe("deployment config schema rejection", () => {
@@ -84,6 +112,21 @@ describe("deployment config schema rejection", () => {
   it("orchestrator.maxIterationsの上限超過を拒否する(TM-D3)", () => {
     const yaml = MINIMAL_YAML + `orchestrator:\n  maxIterations: 21\n`;
     expect(() => parseDeploymentConfig(yaml)).toThrow(DeploymentConfigError);
+  });
+
+  it.each([
+    ["未知キー(typo)", "gateway:\n  http:\n    prot: 8080\n"],
+    ["gateway直下の未知キー", "gateway:\n  sse: true\n"],
+    ["port 0(待ち受け先が不定になる)", "gateway:\n  http:\n    port: 0\n"],
+    ["port 範囲外", "gateway:\n  http:\n    port: 70000\n"],
+    ["pathが/で始まらない", "gateway:\n  http:\n    path: mcp\n"],
+    ["pathにクエリ文字列", "gateway:\n  http:\n    path: /mcp?x=1\n"],
+    ["死活確認の予約パス", "gateway:\n  http:\n    path: /healthz\n"],
+    ["空のhost", "gateway:\n  http:\n    host: ''\n"],
+  ])("gateway.httpの不正設定を拒否する: %s", (_label, section) => {
+    expect(() => parseDeploymentConfig(MINIMAL_YAML + section)).toThrow(
+      DeploymentConfigError,
+    );
   });
 
   it("不正YAMLを拒否する", () => {

@@ -7,7 +7,7 @@ product-design.md 4.3の探索ループを実装する。品質は単発検索�
 - Claude APIのツール使用でGateway経由のツール群を呼ぶエージェントループ
 - システムプロンプトに探索方針(広く→絞る、類義語・英日変換、最大N回、出典必須、不確実性の開示)を実装。プロンプトは `packages/orchestrator/prompts/` にバージョン管理
 - **未接続ソースの扱い(ADR-010)**: 資格情報未取得のソースはスキップし、回答に「未接続のため検索していない」旨と接続導線を含める
-- **実行区分の申告(ADR-015)**: Gatewayに human-in-the-loop を申告する。scheduled/autonomousは実装しない
+- **実行区分の申告(ADR-015)**: Gatewayに human-in-the-loop を申告する。scheduled/autonomousは実装しない。申告はリクエストごとに `_meta` の `io.github.sunaot.leisen/executionClass` / `io.github.sunaot.leisen/actor` で行う(未申告は human_in_the_loop / human として扱われる。T-003)
 - **runId / iteration の申告(ADR-001追補3、ADR-011)**: Orchestratorが探索ループの開始時にrunIdを採番し、全ツール呼び出しの `_meta`(名前空間prefix付きキー)で runId / iteration を申告する。Gateway側のセッション単位自動採番には依存しない(ステートレス前提)。未申告の呼び出しは単発runとして記録され、run内の継続性は保証されない
 - 反復上限・タイムアウト・コスト上限を設定注入可能に
 - 回答スキーマ: answer, citations[], searchedSources[], skippedSources[](未接続), confidence
@@ -21,3 +21,5 @@ product-design.md 4.3の探索ループを実装する。品質は単発検索�
 
 ## 更新(2026-09-17)
 ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申告が本タスクの必須要件になった。`_meta` のprefixは暫定 `io.github.sunaot.leisen/`(2026-09-27確認、最終確定はT-013)。Gateway側がprefix付きキーを受けるまでは現行キー(`runId` / `iteration`)で実装し、Gateway移行後に追随する。
+
+追記(T-003 HTTP配線): Gatewayはprefix付きキー(`io.github.sunaot.leisen/runId` / `iteration` / `executionClass` / `actor`)を受けるよう移行済み。本タスクはprefix付きキーで申告する(`runId` / `iteration` の裸キーは移行期間の後方互換としてのみ受ける。`executionClass` / `actor` はprefix付きキーのみを解釈する)。Gatewayへの接続はStreamable HTTP(既定 `POST /mcp`)で、毎リクエストの `Authorization: Bearer <セッショントークン>` で利用者を認証する。
