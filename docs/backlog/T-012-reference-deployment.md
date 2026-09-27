@@ -14,7 +14,7 @@
 - アップグレード手順(イメージ差し替え+マイグレーション実行)の骨子
 
 ## 受け入れ条件
-- [ ] クリーンなマシン相当(CIコンテナ)で起動確認が自動化されている — CI の `reference-deploy` ジョブで自動化済み。**CI での実行結果は未確認**(確認できたら [x] にする。下記「実装状況」)
+- [x] クリーンなマシン相当(CIコンテナ)で起動確認が自動化されている — CI の `reference-deploy` ジョブで自動化済み。PR #14(2026-09-27)で初めて実行し、イメージのビルド → compose 起動(keycloak → gateway が healthy)→ Keycloak 発行トークンでのスモーク(healthz / initialize / tools/list / search / 401)が成功した。初回は Dockerfile の build ステージに orchestrator の manifest がなく `npm run build` が失敗した(orchestrator は Dockerfile より後に追加された workspace)。COPY を 1 行足して修正
 - [x] Helm化はスコープ外とし、要件だけ docs に記録(docs/install.md §11)
 - [x] ループバック以外へ公開する前に、T-003 レビューの minor-6(MCP リクエスト単位の期限)/ minor-7(拒否応答への `connection: close`)/ minor-11(非ループバック公開の確認フラグと Host / Origin 検証)を Gateway 側で実装するか、リバースプロキシで同等の緩和(リクエストタイムアウト、接続数上限、Host / Origin の許可リスト)を入れる。**現時点ではリバースプロキシ側の緩和を前提とする**: 緩和の内容と nginx の設定例を docs/install.md §6 に記載し、compose のホストへの公開は `127.0.0.1:8787` に限定した(外部公開はリバースプロキシ経由)。minor-11 のうち確認フラグ(`gateway.http.confirmExposedHost`)は Gateway に実装済み
 - [ ] (上記の Gateway 側の実装)minor-6 / minor-7 と Host / Origin 検証を `proxy/http.ts` に入れる — 本タスクの範囲外(T-003 の残作業)。実装されたら docs/install.md §6.2 を更新する
@@ -26,7 +26,7 @@
 - **スモーク**(`scripts/smoke/`): `gateway-smoke.sh`(healthz → initialize → tools/list → search → 認証なし・不正トークンの 401。curl と node のみ。トークンと検索結果の中身を出力しない)、`keycloak-token.sh`(開発・CI 専用のパスワードグラント)
 - **CI**: `.github/workflows/ci.yml` に `reference-deploy` ジョブ(`docker compose ... up -d --build --wait` → `e2e/keycloak/wait-ready.sh` → トークン取得 → スモーク → ログ出力 → `down -v`)。既存ジョブは変更なし
 - **文書**: docs/install.md(5分手順、設定の注入と事前検証、秘密の渡し方、TLS 終端とリバースプロキシ(nginx 例)、監査ログの永続化、未実装事項、アップグレード骨子、導入チェックリスト、Helm 化の要件)
-- **検証の範囲**: 作成環境に Docker デーモンがなく、`docker build` / `docker compose up` は未実行。確認済みなのは (1) `docker compose config`(静的検証)、(2) hadolint / shellcheck / actionlint、(3) Dockerfile の2ステージと同じファイル集合・npm コマンドのコンテナ外での再現と、その成果物での `validate`・`serve`・HEALTHCHECK のコマンド・スモーク(Keycloak は代役のサーバー)・SIGTERM での停止、(4) モック IdP での `gateway-smoke.sh`、(5) nginx 設定例の構文と挙動、(6) `packages/gateway/test/reference-deploy.test.ts`(リファレンス設定の検証・組み立てと、compose / .env.example / Dockerfile / realm との整合)。**本物の Keycloak との結合(`KC_HOSTNAME` による `iss` の一致を含む)とイメージのビルドは CI で初めて実行される**
+- **検証の範囲**: 作成環境に Docker デーモンがなく、`docker build` / `docker compose up` は未実行。確認済みなのは (1) `docker compose config`(静的検証)、(2) hadolint / shellcheck / actionlint、(3) Dockerfile の2ステージと同じファイル集合・npm コマンドのコンテナ外での再現と、その成果物での `validate`・`serve`・HEALTHCHECK のコマンド・スモーク(Keycloak は代役のサーバー)・SIGTERM での停止、(4) モック IdP での `gateway-smoke.sh`、(5) nginx 設定例の構文と挙動、(6) `packages/gateway/test/reference-deploy.test.ts`(リファレンス設定の検証・組み立てと、compose / .env.example / Dockerfile / realm との整合)。本物の Keycloak との結合(`KC_HOSTNAME` による `iss` の一致を含む)とイメージのビルドは PR #14 の CI(`reference-deploy`)で確認済み(2026-09-27。上記受け入れ条件1)。手元の Docker での起動は未確認
 
 ### 残課題
 - 保持期限の定期削除ジョブ(`runRetentionPurge` の定期実行)と JSONL のローテーション(docs/install.md §8)

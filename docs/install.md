@@ -26,11 +26,11 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
 - Keycloak は `e2e/keycloak` の realm(ローカル専用のダミー秘密)を流用する開発モード(`start-dev`、
   データは永続化しない)。本番の IdP ではない
 - 実SaaSの認可経路は検証しない(ADR-010。`e2e/keycloak/README.md` と同じ限界)
-- **起動確認の自動化(T-012 受け入れ条件1)は CI の `reference-deploy` ジョブが担う。CI での実行結果は
-  未確認。** 本構成は Docker デーモンのない環境で作成した。確認済みなのは、`docker compose config` による
-  静的検証、Dockerfile の2ステージと同じファイル集合・同じ npm コマンドのコンテナ外での再現と、その成果物での
-  起動・HEALTHCHECK・スモーク(Keycloak は代役のサーバー)、§6.3 の nginx 設定例の構文と挙動まで。
-  **イメージのビルドとコンテナでの起動は CI で初めて実行される**
+- **起動確認の自動化(T-012 受け入れ条件1)は CI の `reference-deploy` ジョブが担い、PR #14(2026-09-27)で
+  実行を確認した**(イメージのビルド → compose 起動 → Keycloak 発行トークンでのスモークまで成功)。本構成は
+  Docker デーモンのない環境で作成した。作成時に確認したのは `docker compose config` による静的検証、Dockerfile の
+  2ステージと同じファイル集合・同じ npm コマンドのコンテナ外での再現と、その成果物での起動・HEALTHCHECK・
+  スモーク(Keycloak は代役のサーバー)、§6.3 の nginx 設定例の構文と挙動まで。手元の Docker での起動は未確認
 
 ## 1. 前提
 

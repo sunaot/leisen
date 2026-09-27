@@ -88,7 +88,7 @@ docker compose up -d --build --wait
 KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/gateway-smoke.sh
 ```
 
-起動確認は CI の `reference-deploy` ジョブが担う(**CI での実行結果は未確認**)。
+起動確認は CI の `reference-deploy` ジョブが担う(PR #14 で成功を確認)。
 
 ## 構成
 

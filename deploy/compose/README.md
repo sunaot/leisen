@@ -19,4 +19,4 @@ KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/
   本番の本人資格情報の取得方式は T-004
 - ホストへの公開は `127.0.0.1` だけ。外部への公開は TLS を終端するリバースプロキシ経由にする
   (docs/install.md §6)
-- 起動確認は CI の `reference-deploy` ジョブが担う。**CI での実行結果は未確認**(docs/install.md §0)
+- 起動確認は CI の `reference-deploy` ジョブが担う(PR #14 で成功を確認。docs/install.md §0)
