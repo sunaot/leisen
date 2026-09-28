@@ -105,7 +105,8 @@ describe("permission_denied / not_found を LLM に区別させない(m7、TM-B2
     expect(answer.warnings).toContain(
       "ソース beta の説明(describe)を取得できませんでした(not_available)。検索対象には残しています。",
     );
-    expect(JSON.stringify(answer)).not.toMatch(/permission_denied|SAML|403/);
+    // runId は乱数の UUID で "403" を含みうる(約 1%)ため、比較から外す
+    expect(JSON.stringify({ ...answer, runId: "" })).not.toMatch(/permission_denied|SAML|403/);
     const firstTurn = JSON.stringify(llm.requests[0]?.messages[0]);
     expect(firstTurn).toContain('\\"describeError\\":\\"not_available\\"');
     expect(firstTurn).not.toContain("permission_denied");

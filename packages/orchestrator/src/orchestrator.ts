@@ -203,6 +203,16 @@ export interface RunInput {
   readonly gateway: GatewayClient;
 }
 
+/**
+ * runDetailed の結果。failureReason は run の結果の正規化コード(lower snake_case。
+ * AnswerRun の failureReason と同じ値。resolved なら null)。Answer の表示契約には含めず、
+ * MCP サーバー(server/)が structuredContent.errorClass に写す(ADR-018 決定6)。
+ */
+export interface RunResult {
+  readonly answer: Answer;
+  readonly failureReason: string | null;
+}
+
 /** run の内部結果(Answer に組み立てる前)。 */
 interface RunOutcome {
   readonly outcome: AnswerOutcome;
@@ -367,6 +377,15 @@ export class Orchestrator {
    * 失敗させる(fail-closed、ADR-011 §4)。
    */
   async run(input: RunInput): Promise<Answer> {
+    return (await this.runDetailed(input)).answer;
+  }
+
+  /**
+   * run と同じ処理で、回答に加えて結果の正規化コード(failureReason)を返す
+   * (outcome が unresolved / error の理由。MCP サーバーの structuredContent.errorClass、
+   * ADR-018 決定6)。失敗・例外の扱いは run と同じ。
+   */
+  async runDetailed(input: RunInput): Promise<RunResult> {
     const question = input.question.trim();
     if (question === "" || question.length > MAX_QUESTION_CHARS) {
       throw new OrchestratorError(
@@ -400,7 +419,10 @@ export class Orchestrator {
       const discovery = await this.#discover(input.gateway, state, deadline.signal);
       if (discovery.kind === "unbound") {
         // 確認できない主体で AnswerRun を書かない(H1)。回答は error で返す
-        return this.#assemble(failure(discovery.reason), state);
+        return {
+          answer: this.#assemble(failure(discovery.reason), state),
+          failureReason: discovery.reason,
+        };
       }
       pending = pendingAnswerRun({
         runId,
@@ -441,7 +463,7 @@ export class Orchestrator {
       await this.#writeAudit(finished);
       closed = true;
       this.#remember(finished);
-      return answer;
+      return { answer, failureReason: result.failureReason };
     } catch (error) {
       if (pending !== undefined && !closed) {
         // 想定外の失敗(実装の不具合・監査の書き込み失敗)。AnswerRun を pending の

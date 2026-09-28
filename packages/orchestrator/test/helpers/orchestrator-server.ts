@@ -1,0 +1,204 @@
+/**
+ * T-021 テストハーネス: Orchestrator の MCP サーバー(server/http.ts)を port 0 で listen させる。
+ * Gateway は test/helpers/harness.ts の startGateway(実 Gateway、モック IdP、コーパス型の
+ * モックコネクタ)。MCP クライアントは SDK の Client + StreamableHTTPClientTransport
+ * (Authorization: Bearer は requestInit.headers)。ネットワークは 127.0.0.1 のみ。
+ *
+ * 秘密情報の実値は使わない(ダミーは dev-only-...、不変条件6)。
+ */
+import { once } from "node:events";
+import { mkdtemp, readFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { AuditLogger, parseAuditRecord, type AuditRecord } from "@kp/gateway";
+import {
+  AnswerRunJsonlSink,
+  Orchestrator,
+  ServerLimits,
+  createOrchestratorHttpServer,
+  scriptedSubmit,
+  scriptedToolUse,
+  type GatewayClientFactory,
+  type LlmClient,
+  type LlmTurn,
+  type RetentionClass,
+  type ScriptContext,
+  type ServerLimitsInput,
+} from "../../src/index.js";
+import { TEST_DOC_ID_AUDIT } from "./harness.js";
+import { searchHits } from "./script.js";
+
+export type AnswerRunRecord = Extract<AuditRecord, { recordType: "answer_run" }>;
+
+export interface OrchestratorServerOptions {
+  readonly gatewayUrl: string;
+  readonly llm: LlmClient;
+  readonly limits?: ServerLimitsInput;
+  readonly retentionClass?: RetentionClass;
+  readonly createGatewayClient?: GatewayClientFactory;
+  readonly newVerificationRunId?: () => string;
+  readonly path?: string;
+  /** AnswerRun の JSONL の出力先(既定: 一時ディレクトリの answer-runs.jsonl) */
+  readonly answerRunJsonlPath?: string;
+}
+
+export interface OrchestratorServerHarness {
+  /** MCP エンドポイント(http://127.0.0.1:<port>/mcp) */
+  readonly url: string;
+  readonly origin: string;
+  readonly jsonlPath: string;
+  readonly orchestrator: Orchestrator;
+  readonly limits: ServerLimits;
+  /** SDK の MCP クライアントで接続する(token 省略時は Authorization を付けない) */
+  connect(token?: string): Promise<Client>;
+  /** AnswerRun の JSONL を行順に読む(空行は飛ばす) */
+  answerRunLines(): Promise<AnswerRunRecord[]>;
+  close(): Promise<void>;
+}
+
+export async function startOrchestratorServer(
+  options: OrchestratorServerOptions,
+): Promise<OrchestratorServerHarness> {
+  const jsonlPath =
+    options.answerRunJsonlPath ??
+    join(await mkdtemp(join(tmpdir(), "t021-answer-runs-")), "answer-runs.jsonl");
+  const orchestrator = new Orchestrator({
+    llm: options.llm,
+    auditLogger: new AuditLogger(new AnswerRunJsonlSink(jsonlPath)),
+    docIdAudit: TEST_DOC_ID_AUDIT,
+  });
+  const limits = new ServerLimits(options.limits);
+  const server = createOrchestratorHttpServer(
+    {
+      orchestrator,
+      gatewayUrl: options.gatewayUrl,
+      limits,
+      ...(options.retentionClass !== undefined ? { retentionClass: options.retentionClass } : {}),
+      ...(options.createGatewayClient !== undefined
+        ? { createGatewayClient: options.createGatewayClient }
+        : {}),
+      ...(options.newVerificationRunId !== undefined
+        ? { newVerificationRunId: options.newVerificationRunId }
+        : {}),
+    },
+    options.path !== undefined ? { path: options.path } : {},
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  const origin = `http://127.0.0.1:${port}`;
+  const url = `${origin}${options.path ?? "/mcp"}`;
+  const clients: Client[] = [];
+
+  return {
+    url,
+    origin,
+    jsonlPath,
+    orchestrator,
+    limits,
+    async connect(token) {
+      const client = await connectMcpClient(url, token);
+      clients.push(client);
+      return client;
+    },
+    async answerRunLines() {
+      let text: string;
+      try {
+        text = await readFile(jsonlPath, "utf8");
+      } catch {
+        return [];
+      }
+      return text
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .map((line) => {
+          const record = parseAuditRecord(JSON.parse(line));
+          if (record.recordType !== "answer_run") {
+            throw new Error("unexpected record type in the AnswerRun JSONL");
+          }
+          return record;
+        });
+    },
+    async close() {
+      await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+/** SDK の MCP クライアント(Streamable HTTP)。token があれば Authorization: Bearer を付ける。 */
+export async function connectMcpClient(url: string, token?: string): Promise<Client> {
+  const client = new Client({ name: "t021-test-client", version: "0.0.0" });
+  const transport = new StreamableHTTPClientTransport(
+    new URL(url),
+    token === undefined ? {} : { requestInit: { headers: { Authorization: `Bearer ${token}` } } },
+  );
+  // SDK の型宣言が exactOptionalPropertyTypes に非対応のため型だけ合わせる
+  await client.connect(transport as Transport);
+  return client;
+}
+
+/** JSON-RPC の本文(認証の前段の検証用。生の HTTP で送る)。 */
+export const RAW_BODIES = {
+  initialize: {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "t021-raw", version: "0.0.0" },
+    },
+  },
+  "tools/list": { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+  "tools/call": {
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: { name: "ask", arguments: { question: "経費精算の締め日は?" } },
+  },
+} as const;
+
+/** 生の HTTP POST(MCP の Accept / Content-Type を付ける)。 */
+export function rawPost(
+  url: string,
+  body: unknown,
+  authorization?: string,
+): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...(authorization !== undefined ? { authorization } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * 全ターン共通の脚本: 直前に search のヒットがなければ alpha を検索し、あれば最初の
+ * ヒットを出典にして回答を提出する(複数の run で同じ LLM クライアントを共有できる)。
+ */
+export function searchThenSubmit(
+  answer = "経費精算の締め日は毎月25日です。",
+  query = "締め日",
+): (context: ScriptContext) => LlmTurn {
+  return (context) => {
+    const [hit] = searchHits(context);
+    if (hit === undefined) {
+      return scriptedToolUse([{ name: "search", input: { source: "alpha", query } }]);
+    }
+    return scriptedSubmit({
+      answer,
+      citations: [{ documentId: hit.documentId, sourceId: hit.source }],
+      confidence: 0.9,
+    });
+  };
+}
+

@@ -2,6 +2,8 @@
 
 利用者の質問に対し、LLM が Gateway 経由のツール(search / fetch / list / describe)を反復して呼び、出典付きで回答する探索ループ(product-design §4.3)。LLM バックエンドは設定で選ぶプラグイン境界で、参照実装は Anthropic Messages API(`AnthropicLlmClient`)と OpenAI 互換 Chat Completions(`OpenAiCompatibleLlmClient`。LM Studio / vLLM / llama.cpp server / Ollama 等)の2つ。設計判断は [ADR-017](../../docs/adr/ADR-017-orchestrator-llm-client.md)(Proposed、人間レビュー待ち)。
 
+利用者向けの面は2つ: 1問ずつ答える CLI `kp-ask` と、チャット UI などの MCP クライアントから使う MCP サーバー `kp-ask serve`(下記「kp-ask serve(MCP サーバー)」、[ADR-018](../../docs/adr/ADR-018-orchestrator-mcp-server-and-chat-ui.md)、T-021)。
+
 **実モデルでの実走は未検証です。** Claude API の資格情報も、LM Studio 等のローカル推論環境もこの開発環境にはないため、テストは脚本(`ScriptedLlmClient`)と、テスト内蔵のモック API サーバー(Anthropic 形式・OpenAI 互換形式)を相手にした e2e で行っています(下記「モック API サーバーでの e2e」)。
 
 ## 使い方(kp-ask)
@@ -21,7 +23,7 @@ node packages/orchestrator/dist/bin/kp-ask.js \
 
 | オプション | 内容 |
 |---|---|
-| `--gateway <URL>` | Gateway の MCP エンドポイント(必須)。ループバック(`localhost` / `127.0.0.1` / `[::1]`)以外は `https` 必須。資格情報・クエリ・フラグメントを含む URL は拒否する |
+| `--gateway <URL>` | Gateway の MCP エンドポイント(必須)。ループバック(`localhost` / `127.0.0.1` / `[::1]`)以外は `https` 必須(`--allow-insecure-upstream` のときだけ例外)。資格情報・クエリ・フラグメントを含む URL は拒否する |
 | `--token <トークン>` | セッショントークン。プロセス一覧に残るため環境変数 `KP_SESSION_TOKEN` を推奨 |
 | `--llm <種類>` | LLM バックエンド。`anthropic`(既定)/ `openai-compatible`。環境変数 `KP_LLM_PROVIDER` でも指定可 |
 | `--model <ID>` | モデル ID。anthropic は既定 `claude-opus-5`、openai-compatible は必須(サーバーでロードしたモデル名)。環境変数 `KP_LLM_MODEL` でも指定可 |
@@ -29,6 +31,7 @@ node packages/orchestrator/dist/bin/kp-ask.js \
 | `--llm-base-url <URL>` | openai-compatible のみ・必須。ベース URL(例: LM Studio は `http://localhost:1234/v1`)。環境変数 `KP_LLM_BASE_URL` でも指定可(anthropic では使わない。Claude API の接続先は SDK 標準の `ANTHROPIC_BASE_URL` で変える) |
 | `--llm-api-key-env <名前>` | openai-compatible のみ。API キーを入れた**環境変数の名前**(キーの値そのものは渡さない)。LM Studio 等キー不要のサーバーでは省略 |
 | `--reasoning-effort <level>` | openai-compatible のみ。`low` / `medium` / `high`(`reasoning_effort` に対応するモデルのみ。指定したときだけ送る) |
+| `--allow-insecure-upstream` | 環境変数 `KP_ALLOW_INSECURE_UPSTREAM=1` でも可。Gateway の URL と LLM のベース URL について、ループバック以外の `http` を許す(開発・評価用途。`NODE_ENV=production` では固定文言で拒否して終了コード 2。有効時は平文 http の上流をホスト名で列挙した WARNING を stderr に1行) |
 | `--max-iterations <N>` | ツールを呼べるターン数の上限(1〜20、既定 6) |
 | `--user-id <ID>` | 照合用の質問者の申告(環境変数 `KP_USER_ID` でも可)。AnswerRun に記録するのは Gateway が認証した userId で、申告と食い違えば run は `error`(`user_mismatch`)。省略時は照合しない |
 | `--config <deployment.yaml>` | citedDocIds の記録方針に使う(`connectors[].kind` が `slack` なら Slack、`privateScopes` が `excluded` 以外ならプライベートスコープ、`audit.privateScopeDocIds`)。`hashed` なら環境変数 `KP_AUDIT_HMAC_KEY` にデプロイ固有鍵が必要(ないと終了コード 2)。省略時は citedDocIds を記録しない |
@@ -37,6 +40,128 @@ node packages/orchestrator/dist/bin/kp-ask.js \
 - 表示: 回答・出典(タイトル、`sourceId:documentId`、原典 URL)・検索したソース・未接続でスキップしたソース・結果と確信度・使用量(トークン、LLM ターン、ツール呼び出し回数、概算費用)・警告・runId。回答本文には URL を含まない(原典 URL は出典の欄に出す)
 - 監査: AnswerRun を stderr に JSON 1行で出す(開発用。本番の監査ストアへの書き込みはリファレンスデプロイで組む)。ToolInvocation は Gateway 側の監査に記録される
 - 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー(Gateway の拒否・利用者の不一致など。openai-compatible で接続できない・要求を拒否されたときは確認の手がかりを stderr に添える)、2 引数・設定の不備、または LLM バックエンドの資格情報が無い・無効(プロバイダごとの案内を表示)
+- `npm ci && npm run build` の後は `npx kp-ask ...` でも起動できる(npm の bin は起動シム `bin/kp-ask.js`。dist がなければ `Run npm run build first.` と表示して終了コード 1)
+
+## kp-ask serve(MCP サーバー)
+
+Orchestrator を MCP サーバー(Streamable HTTP、ステートレス)として公開する(T-021、[ADR-018](../../docs/adr/ADR-018-orchestrator-mcp-server-and-chat-ui.md))。チャット UI(LibreChat 等)や MCP クライアント(Claude Code、MCP Inspector、自作エージェント)から、利用者本人のトークンで `ask` / `feedback` を呼ぶ。LibreChat との接続手順は [docs/ui-librechat.md](../../docs/ui-librechat.md) を参照。
+
+```sh
+npm run build
+mkdir -p var                          # AnswerRun の JSONL の置き場(ディレクトリは作らない)
+export KP_AUDIT_HMAC_KEY=...          # --config の audit.privateScopeDocIds が hashed(既定)のとき
+export ANTHROPIC_API_KEY=...          # LLM バックエンドの資格情報(kp-ask と同じ。起動時には接続しない)
+npx kp-ask serve \
+  --gateway http://127.0.0.1:8787/mcp \
+  --config examples/deployment.dev.yaml \
+  --answer-run-jsonl var/answer-runs.jsonl
+# kp-ask serve: listening on http://127.0.0.1:8790/mcp (health check: http://127.0.0.1:8790/healthz)
+```
+
+| オプション | 既定 | 内容 |
+|---|---|---|
+| `--gateway <URL>` | (必須) | Gateway の MCP エンドポイント。ループバック以外は `https` 必須(`--allow-insecure-upstream` のときだけ例外)。資格情報・クエリ・フラグメントを含む URL は拒否(kp-ask と同じ規則) |
+| `--config <deployment.yaml>` | (必須) | citedDocIds の記録方針(`connectors[]` と `audit.privateScopeDocIds`)、探索の上限(`orchestrator.maxIterations` / `costLimitPerQuery`)、永続化不可のソースの判定に使う。読めない・不正なら終了コード 2 |
+| `--listen <ホスト:ポート>` | `127.0.0.1:8790`(環境変数 `KP_LISTEN`) | 待ち受け。IPv6 は `[::1]:8790`。ループバック以外は `--confirm-exposed-host` が必要 |
+| `--path <パス>` | `/mcp` | MCP エンドポイントのパス(`/healthz` は不可) |
+| `--answer-run-jsonl <path>` | 環境変数 `KP_ANSWER_RUN_JSONL` | AnswerRun の追記先(下記)。省略時は stderr に出す(開発用。起動ログに WARNING) |
+| `--max-concurrent-runs <N>` | 4 | 同時に実行する run の上限(1〜256)。超えた `ask` は待たせずに `busy` |
+| `--max-question-chars <N>` | 4000 | 質問の長さの上限(1〜10000、前後の空白を除いた文字数)。超えた `ask` は `question_too_long` |
+| `--confirm-exposed-host` | なし | ループバック以外で待ち受ける確認(TLS を終端するリバースプロキシを前段に置く前提。Gateway の `confirmExposedHost` と同じ規約) |
+| `--allow-non-persistable-sources` | なし | 永続化不可のソース(Slack)が有効な構成で起動する(下記「不変条件7」) |
+| `--llm` / `--model` / `--effort` / `--llm-base-url` / `--llm-api-key-env` / `--reasoning-effort` | kp-ask と同じ | LLM バックエンド(環境変数 `KP_LLM_PROVIDER` / `KP_LLM_MODEL` / `KP_LLM_BASE_URL` も同じ)。クライアントは起動時に1回作り、接続はしない |
+| `--allow-insecure-upstream` | なし(環境変数 `KP_ALLOW_INSECURE_UPSTREAM=1`) | Gateway の URL(`--gateway`)と LLM のベース URL(`--llm-base-url`)の両方について、ループバック以外の `http` を許す(開発・評価用途)。`NODE_ENV=production` では固定文言で拒否して終了コード 2。有効時は平文 http の上流をホスト名だけで列挙した WARNING を起動ログに1行 |
+
+- リファレンス構成の LibreChat overlay(`deploy/compose/docker-compose.librechat.yml`)は、compose のネットワーク内の Gateway(`http://gateway:8787/mcp`)とホストの LM Studio(`http://host.docker.internal:1234/v1`)に平文の http で接続するため `--allow-insecure-upstream`(または `KP_ALLOW_INSECURE_UPSTREAM=1`)を使う。平文の http では利用者のトークンと会話(利用者の権限で取得した文書の本文)が経路上で読めるので、本番では上流を https(またはループバック)にする
+- 起動ログ(stderr): `listening on …`、`deployment: …`、`gateway: <スキーム://ホスト:ポート>`(パス・クエリは出さない)、`answer-run sink: jsonl <path>`(省略時は WARNING)、`limits: max-concurrent-runs=… max-question-chars=… max-iterations=…`、`llm: <プロバイダ> (model: …)`(`--allow-insecure-upstream` で平文の http の上流があるときは、そのホスト名を列挙した WARNING を1行)。トークン・API キー・HMAC 鍵・環境変数の値は出さない
+- 終了コード: 0 停止の合図(SIGINT / SIGTERM)で正常に止まった、1 起動の拒否(不変条件7・公開境界・書けない AnswerRun の出力先・探索プロンプトがない・待ち受けの失敗)や停止時に進行中のリクエストが残った、2 引数・設定の不備(`--config` が読めない、hashed なのに `KP_AUDIT_HMAC_KEY` がない等)。`kp-ask serve --help` で使い方
+- 停止: SIGINT / SIGTERM で受付を止め、進行中のリクエスト(run を含む)の応答を返し終えるまで最大 30 秒待つ。残ったものは接続を切って終了コード 1(2回目の合図は即時終了)
+- ライブラリとして組む場合は `createOrchestratorHttpServer({ orchestrator, gatewayUrl, limits: new ServerLimits(...) }, { path })`(`src/server/http.ts`)
+
+### 認証の規約(Gateway に委譲)
+
+- MCP クライアントは全リクエスト(`initialize` / `tools/list` / `tools/call`)に `Authorization: Bearer <トークン>` を付ける。トークンは **IdP(Keycloak 等)が利用者に発行したアクセストークン**で、Gateway が検証するものと同じ
+- Orchestrator は IdP を持たず、トークンを検証しない。リクエストごとに、そのトークンで Gateway の `tools/list` を呼んで(preflight)Gateway の判断に従う。結果はキャッシュしない(失効に次のリクエストで従う)。JSON-RPC の本文を読む前に次のとおり拒否し、LLM もソースも呼ばない:
+
+| 状況 | HTTP | `error.data.errorClass` |
+|---|---|---|
+| `Authorization` がない・`Bearer` でない・形式不正 | 401(`WWW-Authenticate: Bearer`。Gateway にも問い合わせない) | `unauthenticated` |
+| Gateway がトークンを拒否 | 401(`WWW-Authenticate: Bearer error="invalid_token"`) | `unauthenticated` |
+| Gateway に届かない・5xx(IdP 不達の 503 を含む)・タイムアウト(10 秒) | 503 | `gateway_unavailable` |
+| それ以外(Gateway の URL のパスの誤り等) | 500 | `internal_error` |
+
+- 拒否の本文は Gateway と同じ形(`{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":<固定文言>,"data":{"errorClass":…}}}`)。トークン・Gateway 由来の文言は含めない
+- `GET` / `DELETE` の MCP エンドポイントは 405(`Allow: POST`)、未知のパスは 404、`GET /healthz` は認証不要で `{"status":"ok"}`
+- `ask` の run では、AnswerRun の userId は Gateway がそのリクエストで認証した userId(H1。呼び出し元の申告は受け付けない)。実行区分は human_in_the_loop / actor human 固定(ADR-015)
+
+### ツール `ask`
+
+入力 `{ "question": string }`(1〜`--max-question-chars` 文字。他のプロパティは不可)。処理の順: 引数の検証 → 質問長 → 同時実行の枠 → run(利用者のトークンで Gateway に接続)。
+
+text(Markdown。Answer 表示契約の v1、ADR-018 決定6):
+
+```
+{注意書き: outcome が resolved 以外で、本文の先頭に既知の注意書きがないとき}
+
+{本文: Answer.answer。無害化済みで URL を含まない}
+
+## 出典
+- [1] {title}(`{sourceId}:{documentId}`)— {url}
+(出典が 0 件なら「出典: なし」)
+
+runId: `{runId}`
+```
+
+- 出典の url は `http:` / `https:` の絶対 URL だけを描画する(`javascript:` / `data:` / 相対 URL / 資格情報付きは url を省く)。title はソース由来の文字列なので、制御文字を除き、本文と同じ無害化(リンク・画像・HTML・URL の除去)を通して Markdown の記号をエスケープする。ID はコードスパン。本文が閉じていないコードフェンスで終わっていれば閉じてから出典節を足す
+- runId は `feedback` に渡す識別子。structuredContent を LLM に渡さないクライアントのため text の末尾にも置く
+
+structuredContent: Answer の全フィールド(`runId` / `answer` / `citations` / `searchedSources` / `skippedSources` / `confidence` / `outcome` / `usage` / `warnings`)+ `retentionClass`(v1 は `persistable`。`--allow-non-persistable-sources` で起動したときだけ `non_persistable`)+ outcome が resolved 以外なら `errorClass`(AnswerRun の failureReason と同じ正規化コード。例 `no_citations` / `model_reported_unresolved` / `llm_unavailable` / `gateway_unauthenticated`)。ツール定義の `outputSchema` はこの形と、エラー形 `{ "errorClass": … }` のどちらかに合う JSON Schema(`anyOf`。SDK の Client はこれで structuredContent を検証する)。
+
+| 結果 | `isError` | text | `structuredContent` |
+|---|---|---|---|
+| resolved / unresolved | なし | 上の Markdown | Answer + `retentionClass`(+ unresolved は `errorClass`) |
+| outcome: error(LLM・Gateway の失敗など) | true | 上の Markdown(先頭に注意書き) | Answer + `retentionClass` + `errorClass` |
+| 質問が長すぎる | true | 「質問が長すぎます(N 文字まで)。…」 | `{ errorClass: "question_too_long" }` |
+| 同時実行の上限 | true | 「混み合っています。しばらくして再度お試しください。」 | `{ errorClass: "busy" }` |
+| 空の質問・不正な引数 | true | 固定文言 | `{ errorClass: "invalid_request" }` |
+| run が例外で終わった(AnswerRun を書けない等) | true | 分類ごとの固定文言 | `{ errorClass: "audit_write_failed" など }` |
+
+initialize の `instructions`: 「ask の結果の本文と出典節は改変・要約・言い換えをせず、そのまま利用者に提示する」「リンクは出典節の URL だけを使う」「outcome が resolved 以外のときは注意書きを省かない」「feedback は利用者が解決した / しなかったと明示したときだけ呼ぶ」。最終文面を書くのは UI 側の LLM なので、出典の保証はツール境界までで、instructions とツール定義の文言で抑えるにとどまる(ADR-018 帰結)。
+
+### ツール `feedback`
+
+入力 `{ "runId": string, "outcome": "resolved" | "unresolved" }`。本人確認: Gateway は userId を tools/call の結果の `_meta` にしか載せないため、Gateway の `tools/list` の最初のソースに `describe` を1回呼び、結果の userId(Gateway が認証した利用者)で `recordFeedback` する。run の利用者と一致したときだけ AnswerRun の `userFeedback` を更新して再書き込みする。Gateway の監査にはこの `describe` が1件残る(runId は `feedback:<UUID>` で別に採番し、対象 run の ToolInvocation には混ぜない)。
+
+| 結果 | `isError` | `structuredContent` |
+|---|---|---|
+| 記録した | なし | `{ runId, outcome }` |
+| 他人の run | true | `{ errorClass: "feedback_forbidden" }` |
+| 未知・保持期間外の runId(プロセス内に最新 1000 件。再起動で消える) | true | `{ errorClass: "run_not_found" }` |
+| 利用者を確認できない(ソースがない・Gateway が報告しない) | true | `{ errorClass: "user_unverified" }` |
+| 不正な引数 | true | `{ errorClass: "invalid_request" }` |
+
+### 不変条件7(永続化不可のソース)
+
+汎用 UI は会話の履歴を保存するため、`--config` に kind が `slack` / `slack-*` のソースが有効なら起動を拒否する(終了コード 1。ADR-018 決定5、ADR-014)。`--allow-non-persistable-sources` で解除できるが、UI 側で一時チャットの強制と保持期間を設定し、法務確認を経ることが前提(docs/ui-librechat.md)。解除して起動した場合は起動ログに WARNING を出し、`ask` の `retentionClass` を `non_persistable` にする(describe の結果も LLM に渡るため、run 単位ではなくデプロイ単位で判定する)。
+
+### AnswerRun の JSONL と昇格判定レポート
+
+- `--answer-run-jsonl` のファイルに AnswerRun を1行1レコードで追記する(Gateway の監査 JSONL と同じスキーマ、別ファイル。ADR-018 決定4)。追記のみ・新規作成は 0600・書き込みはプロセス内で直列化・ディレクトリは作らない。同じ runId の行が pending → 最終状態 → フィードバックの順に並ぶ(読み手は runId で重複を除き後の行を採る)
+- 書けなければ fail-closed: 開始時なら LLM を呼ばずに `audit_write_failed`、終了時なら回答を返さない(ADR-011 §4)
+- Gateway の `audit.jsonl.path` / `rawQueryPath` と同じファイルは指定できない(1ファイルに書くのは1プロセス)。Gateway と同じ運用者・同じ信頼境界で動かす前提(リファレンス構成では同じ監査ボリューム)
+- 昇格判定レポートは `--audit` を複数回指定して両方を読む(全ファイルのレコードを結合してから集計する):
+
+```sh
+npx kp-promotion-report \
+  --audit var/audit.jsonl --audit var/answer-runs.jsonl \
+  --sources sources.json --accessor <監査閲覧担当の userId> --meta-audit-out var/meta-audit.jsonl
+```
+
+### 運用上の注意
+
+- 1回の `ask` は探索の時間上限(`runTimeoutMs` 既定 120 秒)+ 最終ターン(`finalTurnTimeoutMs` 既定 60 秒)まで応答を返さないことがある。MCP クライアント側のツール呼び出しのタイムアウトはこれより長くする(SDK の既定は 60 秒)。クライアントが接続を切っても進行中の run は止めない(時間上限で終わる)
+- 進捗のストリーミング(MCP の progress 通知)はしない(応答は単発 JSON)
+- TLS・Host / Origin の検証・利用者単位の流量制御はリバースプロキシで担う(docs/install.md)。`--max-concurrent-runs` はプロセス全体の上限
 
 ## LM Studio で使う(OpenAI 互換バックエンド)
 
@@ -57,7 +182,7 @@ node packages/orchestrator/dist/bin/kp-ask.js \
 ```
 
 - LM Studio はキー不要なので `--llm-api-key-env` は付けない(`Authorization` ヘッダを送らない)。キーを要求するサーバー(vLLM の `--api-key` 等)では、キーを環境変数に入れて `--llm-api-key-env その変数名` を付ける
-- `--llm-base-url` はループバック(`localhost` / `127.0.0.1` / `[::1]`)以外では `https` 必須(Gateway の URL と同じ規則。会話には取得した文書の本文が入る)。別のマシンの LM Studio / vLLM は https で公開するか、SSH のポート転送で localhost に向ける
+- `--llm-base-url` はループバック(`localhost` / `127.0.0.1` / `[::1]`)以外では `https` 必須(Gateway の URL と同じ規則。会話には取得した文書の本文が入る)。別のマシンの LM Studio / vLLM は https で公開するか、SSH のポート転送で localhost に向ける。開発・評価用途に限り `--allow-insecure-upstream` で平文の http を許せる(本番の `NODE_ENV=production` では拒否)
 - `--config` と `KP_AUDIT_HMAC_KEY` は上の例と同じ(省略すると citedDocIds を記録しない)。`--user-id` は照合用で省略できる
 - ローカル推論は1ターンが遅いことがある。1リクエストのタイムアウトは 120 秒(`timeoutMs`)、run 全体の時間上限は `runTimeoutMs`(既定 120 秒)。上限に達すると、その時点の情報で回答を促す最終ターンを1回行う(警告に出る)
 - 費用は価格表がないため「不明」と表示される(0 円とはみなさない)。`costLimitPerQuery` を設定していなければ探索は止まらない
@@ -152,7 +277,7 @@ LLM バックエンドの設定は `llmBackendConfigSchema`(`provider` で選ぶ
 
 | 項目 | 既定 | 内容 |
 |---|---|---|
-| `baseUrl` | (必須) | ベース URL。ループバック(`localhost` / `127.0.0.1` / `[::1]`)以外は `https` 必須(Gateway の URL と同じ規則)。資格情報・フラグメントは不可。`{baseUrl}/chat/completions` を呼ぶ。クエリは保つが表示・例外には出さない |
+| `baseUrl` | (必須) | ベース URL。ループバック(`localhost` / `127.0.0.1` / `[::1]`)以外は `https` 必須(Gateway の URL と同じ規則。`allowInsecureHttp` のときだけ例外)。資格情報・フラグメントは不可。`{baseUrl}/chat/completions` を呼ぶ。クエリは保つが表示・例外には出さない |
 | `model` | (必須) | モデル名 |
 | `apiKeyEnv` | なし | API キーを入れた環境変数の名前(英数字と `_`)。指定時だけ `Authorization: Bearer` を送る |
 | `timeoutMs` | 120000 | 1リクエストのタイムアウト。タイムアウトは再試行しない |
@@ -160,6 +285,7 @@ LLM バックエンドの設定は `llmBackendConfigSchema`(`provider` で選ぶ
 | `reasoningEffort` | なし | `low` / `medium` / `high`。指定したときだけ `reasoning_effort` を送る(能力フラグ effort が true になる) |
 | `extraHeaders` | なし | 追加の HTTP ヘッダ(秘密でないもの。値は表示可能な ASCII)。`Authorization` / `Cookie` / `X-Api-Key` / `Api-Key` 等の認証系・トランスポート系ヘッダは置けない |
 | `maxContextTokens` | なし | サーバーでロードしたコンテキスト長(参照用。能力フラグに出すだけで上限判定には使っていない) |
+| `allowInsecureHttp` | なし(false) | true のときだけループバック以外の `http` の `baseUrl` を受ける(kp-ask の `--allow-insecure-upstream`。開発・評価用途)。`NODE_ENV=production` では `OpenAiCompatibleLlmClient` の構築を拒否する(`invalid_configuration`)。`McpGatewayClient` にも同名のオプションがあり、Gateway の URL について同じ規則 |
 
 既定の価格表(`pricing.anthropic`。claude-api スキルの価格表、2026-06-24 時点): `claude-opus-5` 5 / 25、`claude-opus-5-5` 4 / 20、`claude-fable-5-1` 10 / 50、`claude-opus-4-8` 5 / 25、`claude-sonnet-5` 2 / 10、`claude-haiku-4-5` 1 / 5(入力 / 出力、USD)。キャッシュ書き込みは入力単価の 1.25 倍、読み出しは 0.1 倍(Opus 5.5 は $0.20、Fable 5.1 は $0.25)。導入先の契約単価・通貨に合わせて差し替える。`pricing.openai_compatible` の既定は空(ローカル推論の費用は「不明」のまま扱い、0 とみなさない。商用の OpenAI 互換 API を使う導入先は単価を設定する)。
 
@@ -262,8 +388,8 @@ const answer = await new Orchestrator({ llm, auditLogger: harness.auditLogger })
 - **評価ハーネス(T-008)未実装**: 解決率・引用正確性・インジェクション耐性(RS-3 / RS-4)の率は測れていない
 - **Slack コネクタ未実装**: Slack コネクタ(T-006)は法務確認待ち。citedDocIds の分類は注入式で実装済み(Slack は記録しない、分類できないソースは記録しない)。分類器の組み立ては kp-ask の `--config` と同じ規則(`docIdAuditFromDeployment`)を、リファレンス構成(T-012)の Orchestrator 組み込み時に使う
 - **回答本文の URL の検出の限界**: スキーム・`www.`・`//`・パス/クエリのない裸のドメイン名(`evil.example`)とメールアドレスは残す(ファイル名等と区別できない)。利用側は fuzzy な自動リンク(裸のドメインのリンク化)を無効にし、外部画像を自動取得しない(T-009)。検出は保守的(fail-closed)で、`Node.js/Express` のような表記やコード片の中の URL も除去される(除去は warnings に出る)。ゼロ幅接合子(ZWJ)も除くため、絵文字の合成列は分かれて表示される
-- **AnswerRun の書き手**: Gateway と同じ監査ストアを共有する構成が前提。別プロセス構成では Gateway 側の run 登録の口が要る(将来 ADR)
-- **フィードバックの保持**: `recordFeedback` はプロセス内に覚えている run(既定 1000 件)に対してだけ使える
+- **AnswerRun の書き手**: ライブラリとして組む場合は Gateway と同じ監査ストアを共有する構成が前提。`kp-ask serve` は Gateway と同じ信頼境界で別ファイルの JSONL に書く(ADR-018 決定4)。別の信頼境界に置く構成は別 ADR
+- **フィードバックの保持**: `recordFeedback` はプロセス内に覚えている run(既定 1000 件)に対してだけ使える(`kp-ask serve` の再起動で消え、それ以前の run への `feedback` は `run_not_found`)
 - **iteration と T-014**: iteration は「run 内のツール呼び出しの通番」(describe を含む、並列呼び出しも個別に採番)。昇格判定レポート(T-014)の再検索回数は、2026-09-27 以降 run 内の `search` の ToolInvocation 件数(重複行を除き、(runId, userId) で束ねたもの)で数える。iteration は順序付けにのみ使う(ADR-017 確認事項4、docs/audit-queries.md §2)
 - **ストリーミングなし**: 途中経過の表示は T-009 で必要になった時点で検討する
-- **deployment.yaml 未結合**: 設定は自パッケージの zod スキーマで受ける。deployment.yaml の `orchestrator` セクションとの結合は後続タスク
+- **deployment.yaml との結合**: ライブラリ・kp-ask(1問)の設定は自パッケージの zod スキーマで受ける。`kp-ask serve` だけは `--config` の `orchestrator` セクション(`maxIterations` / `costLimitPerQuery`)を探索の設定に使う。それ以外の項目(`runTimeoutMs` 等)の結合は後続タスク

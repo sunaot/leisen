@@ -205,9 +205,10 @@ export function citedDocIdAuditProblem(docIdAudit: unknown): string | undefined 
 
 /**
  * Slack と分類するコネクタの kind(`slack`、または `slack-` で始まるプラグイン名)。
- * 広めに取るほど記録しない側に倒れる(ADR-013 §2)。
+ * 広めに取るほど記録しない側に倒れる(ADR-013 §2)。kp-ask serve が永続化不可のソース
+ * (不変条件7、ADR-014)の有効化を判定するのにも同じ規則を使う(ADR-018 決定5)。
  */
-function isSlackKind(kind: string): boolean {
+export function isSlackKind(kind: string): boolean {
   return kind === "slack" || kind.startsWith("slack-");
 }
 

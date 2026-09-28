@@ -22,6 +22,12 @@
  *   要る。--config を省略すると citedDocIds を記録しない
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
+ *
+ * サブコマンド `kp-ask serve`(bin/serve.ts): Orchestrator を MCP サーバーとして公開する
+ * (T-021、ADR-018)。最初の引数が `serve` のときだけ振り分ける。
+ *
+ * npm の bin(`npx kp-ask`)からは、リポジトリに含まれる起動シム packages/orchestrator/bin/kp-ask.js
+ * 経由で読み込まれ、main() が呼ばれる(このファイルは自分がエントリのときだけ自動実行する)。
  */
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -67,6 +73,14 @@ import {
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
+import { runServe, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import {
+  INSECURE_UPSTREAM_HINT,
+  INSECURE_UPSTREAM_USAGE_LINE,
+  insecureUpstreamWarning,
+  isInsecureGatewayUrl,
+  parseInsecureUpstreamOption,
+} from "./upstream-options.js";
 
 export const USAGE = [
   "usage: kp-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
@@ -77,6 +91,8 @@ export const USAGE = [
   "  --user-id は照合用(省略時は Gateway が認証した利用者を記録します)。",
   "  --config の audit.privateScopeDocIds が hashed なら KP_AUDIT_HMAC_KEY が必要です。",
   ...LLM_USAGE_LINES,
+  INSECURE_UPSTREAM_USAGE_LINE,
+  "  MCP サーバーとして起動する: kp-ask serve --gateway <URL> --config <deployment.yaml>(詳細は kp-ask serve --help)",
 ].join("\n");
 
 export {
@@ -85,6 +101,7 @@ export {
   OPENAI_COMPATIBLE_CREDENTIALS_REJECTED_MESSAGE,
   OPENAI_COMPATIBLE_CREDENTIALS_REQUIRED_MESSAGE,
 } from "./llm-options.js";
+export { INSECURE_UPSTREAM_IN_PRODUCTION_MESSAGE } from "./upstream-options.js";
 
 export interface CliIo {
   stdout(line: string): void;
@@ -95,13 +112,28 @@ export interface CliDependencies {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** LLM バックエンドの設定(provider 付き)からクライアントを作る */
   createLlmClient(config: LlmBackendConfigInput): LlmClient;
-  createGatewayClient(options: { url: string; sessionToken: string }): GatewayClient;
+  createGatewayClient(options: {
+    readonly url: string;
+    readonly sessionToken: string;
+    /** MCP 1リクエストのタイムアウト(ms)。省略時はクライアントの既定 */
+    readonly requestTimeoutMs?: number;
+    /** ループバック以外の http の Gateway を許す(--allow-insecure-upstream) */
+    readonly allowInsecureHttp?: boolean;
+  }): GatewayClient;
+  /**
+   * serve: 停止の合図を待つ(既定: 最初の SIGINT / SIGTERM)。引数は待ち受け中の
+   * エンドポイント。解決値はログ用の理由
+   */
+  readonly waitForShutdown?: (endpoint: ServeEndpoint) => Promise<string>;
+  /** serve: 停止時に進行中のリクエストを待つ上限(ms、既定 30000) */
+  readonly shutdownGraceMs?: number;
 }
 
 export const defaultCliDependencies: CliDependencies = {
   env: process.env,
   createLlmClient: (config) => createLlmClient(config),
   createGatewayClient: (options) => new McpGatewayClient(options),
+  waitForShutdown: () => waitForTerminationSignal(),
 };
 
 class UsageError extends Error {}
@@ -116,6 +148,8 @@ interface CliArgs {
   readonly json: boolean;
   readonly settings: OrchestratorSettings;
   readonly llm: LlmBackendConfigInput;
+  /** --allow-insecure-upstream(Gateway・LLM のループバック以外の http を許す) */
+  readonly allowInsecureUpstream: boolean;
 }
 
 function parseCliArgs(
@@ -132,6 +166,11 @@ function parseCliArgs(
   const { values, positionals } = parsed;
   if (values.help === true) {
     return "help";
+  }
+  // 本番で平文 http の上流を許すフラグは、他の引数より先に固定文言で拒否する
+  const insecure = parseInsecureUpstreamOption(values["allow-insecure-upstream"], env);
+  if (!insecure.ok) {
+    throw new UsageError(insecure.message);
   }
   const gateway = values.gateway;
   if (gateway === undefined || gateway === "") {
@@ -159,7 +198,7 @@ function parseCliArgs(
     throw new UsageError("--max-iterations は 1〜20 の整数で指定してください。");
   }
 
-  const llm = parseLlmCliOptions(values, env);
+  const llm = parseLlmCliOptions(values, env, { allowInsecureHttp: insecure.enabled });
   if (!llm.ok) {
     throw new UsageError(llm.message);
   }
@@ -173,6 +212,7 @@ function parseCliArgs(
     json: values.json === true,
     settings: settings.data,
     llm: llm.config,
+    allowInsecureUpstream: insecure.enabled,
   };
 }
 
@@ -189,6 +229,7 @@ function parseArgsStrict(argv: readonly string[]) {
       "llm-base-url": { type: "string" },
       "llm-api-key-env": { type: "string" },
       "reasoning-effort": { type: "string" },
+      "allow-insecure-upstream": { type: "boolean" },
       "user-id": { type: "string" },
       config: { type: "string" },
       json: { type: "boolean" },
@@ -273,6 +314,9 @@ export async function runCli(
   io: CliIo,
   deps: CliDependencies = defaultCliDependencies,
 ): Promise<number> {
+  if (argv[0] === "serve") {
+    return runServe(argv.slice(1), io, deps);
+  }
   let args: CliArgs;
   try {
     const parsed = parseCliArgs(argv, deps.env);
@@ -287,16 +331,32 @@ export async function runCli(
     return 2;
   }
 
+  // 平文 http の上流(--allow-insecure-upstream)は WARNING を1行出す(ホスト名だけ)
+  const insecureWarning = args.allowInsecureUpstream
+    ? insecureUpstreamWarning({ gatewayUrl: args.gateway, llm: args.llm })
+    : undefined;
+  if (insecureWarning !== undefined) {
+    io.stderr(insecureWarning);
+  }
+
   let gateway: GatewayClient;
   let llm: ObservingLlmClient;
   try {
-    gateway = deps.createGatewayClient({ url: args.gateway, sessionToken: args.token });
+    gateway = deps.createGatewayClient({
+      url: args.gateway,
+      sessionToken: args.token,
+      ...(args.allowInsecureUpstream ? { allowInsecureHttp: true } : {}),
+    });
     llm = new ObservingLlmClient(deps.createLlmClient(args.llm));
   } catch (error) {
     // GatewayClientError のメッセージは固定文言(トークン・URL の中身を含まない)
     io.stderr(
       error instanceof GatewayClientError
-        ? `Gateway の指定が不正です: ${error.message}`
+        ? `Gateway の指定が不正です: ${error.message}${
+            !args.allowInsecureUpstream && isInsecureGatewayUrl(args.gateway)
+              ? ` ${INSECURE_UPSTREAM_HINT}`
+              : ""
+          }`
         : "クライアントを初期化できませんでした。",
     );
     return 2;
@@ -383,10 +443,24 @@ function isMainModule(): boolean {
   }
 }
 
-if (isMainModule()) {
-  const code = await runCli(process.argv.slice(2), {
+/**
+ * プロセスのエントリ。標準入出力につなぎ、終了コードを process.exitCode に設定する。
+ * `node dist/bin/kp-ask.js`(下の isMainModule)と npm の bin(起動シム bin/kp-ask.js)の
+ * 両方から呼ばれる。
+ */
+export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
+  process.exitCode = await runCli(argv, {
     stdout: (line) => process.stdout.write(`${line}\n`),
     stderr: (line) => process.stderr.write(`${line}\n`),
+  }).catch((error: unknown) => {
+    // 想定外の失敗。生の例外メッセージ・スタックは出さない(トークン等を含みうる、不変条件6)
+    process.stderr.write(
+      `kp-ask: unexpected error (${error instanceof Error ? error.name : typeof error})\n`,
+    );
+    return 1;
   });
-  process.exitCode = code;
+}
+
+if (isMainModule()) {
+  await main();
 }

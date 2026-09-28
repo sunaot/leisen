@@ -195,20 +195,37 @@ describe("敵対的な長大入力でも線形時間(再レビュー 2026-09-27 
     return performance.now() - started;
   }
 
+  /**
+   * 複数回の計測の最小値(GC や並列実行の負荷による一時的な遅れは最小値には乗りにくい。
+   * 1回だけの計測では、大きい入力の計測中に負荷が重なると比が跳ねてフレークになった)。
+   */
+  function minElapsedMs(input: string, repeat: number): number {
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < repeat; i += 1) {
+      best = Math.min(best, elapsedMs(input));
+    }
+    return best;
+  }
+
   // 絶対時間ではなく入力長 4 倍に対する所要時間の比で判定する(並列実行の負荷で
   // 絶対時間は数倍ぶれる)。線形なら約 4 倍、旧実装の約 1.5 乗なら約 8 倍、二乗なら 16 倍。
   it.each([
     ["昇順の連", ascendingBacktickRuns],
     ["遠い対と空行", farPairedRuns],
-  ])("%s: 入力長 4 倍で所要時間が 6 倍を超えない(線形)", (_name, generate) => {
-    const small = generate(300_000);
-    const large = generate(1_200_000);
-    // ウォームアップ(JIT)後に計測する
-    elapsedMs(small);
-    const smallMs = Math.max(elapsedMs(small), 5);
-    const largeMs = elapsedMs(large);
-    expect(largeMs / smallMs).toBeLessThan(6);
-    // 約120万文字の絶対時間の上限(負荷下でも十分に余裕のある値)
-    expect(largeMs).toBeLessThan(20_000);
-  });
+  ])(
+    "%s: 入力長 4 倍で所要時間が 6 倍を超えない(線形)",
+    (_name, generate) => {
+      const small = generate(300_000);
+      const large = generate(1_200_000);
+      // ウォームアップ(JIT)後に計測する
+      elapsedMs(small);
+      const smallMs = Math.max(minElapsedMs(small, 3), 5);
+      const largeMs = minElapsedMs(large, 3);
+      expect(largeMs / smallMs).toBeLessThan(6);
+      // 約120万文字の絶対時間の上限(負荷下でも十分に余裕のある値)
+      expect(largeMs).toBeLessThan(20_000);
+    },
+    // 計測を繰り返すため、既定(5 秒)より長くとる
+    60_000,
+  );
 });

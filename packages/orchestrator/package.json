@@ -5,9 +5,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "kp-ask": "dist/bin/kp-ask.js"
+    "kp-ask": "bin/kp-ask.js"
   },
   "files": [
+    "bin",
     "dist",
     "prompts"
   ],

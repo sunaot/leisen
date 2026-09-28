@@ -8,6 +8,10 @@
  *   --llm-api-key-env <環境変数名>        openai-compatible のみ(キー不要のサーバーでは省略)
  *   --reasoning-effort low|medium|high   openai-compatible のみ(対応モデルのみ)
  *
+ * ループバック以外の http のベース URL は、呼び出し側が --allow-insecure-upstream
+ * (bin/upstream-options.ts)を解釈して options.allowInsecureHttp で許したときだけ通す
+ * (httpBaseUrlSchema は変えず、ここで入口を分岐する)。
+ *
  * フラグは環境変数より優先する。KP_LLM_BASE_URL は openai-compatible のときだけ使う
  * (Claude API の接続先は SDK 標準の ANTHROPIC_BASE_URL で変える。残った環境変数で
  * Claude の資格情報を別の宛先へ送らないため)。エラーメッセージは固定文言で、入力値
@@ -17,6 +21,7 @@ import {
   effortSchema,
   envVarNameSchema,
   httpBaseUrlSchema,
+  insecureHttpBaseUrlSchema,
   llmBackendConfigSchema,
   reasoningEffortSchema,
   type LlmBackendConfigInput,
@@ -51,6 +56,14 @@ export interface LlmCliValues {
   readonly "reasoning-effort"?: string | undefined;
 }
 
+export interface LlmCliParseOptions {
+  /**
+   * ループバック以外の http のベース URL を許す(--allow-insecure-upstream を解釈した結果。
+   * NODE_ENV=production の拒否は解釈する側が済ませている)
+   */
+  readonly allowInsecureHttp?: boolean;
+}
+
 export type LlmCliParseResult =
   | { readonly ok: true; readonly config: LlmBackendConfigInput }
   | { readonly ok: false; readonly message: string };
@@ -73,7 +86,9 @@ function nonEmpty(value: string | undefined): string | undefined {
 export function parseLlmCliOptions(
   values: LlmCliValues,
   env: Readonly<Record<string, string | undefined>>,
+  options: LlmCliParseOptions = {},
 ): LlmCliParseResult {
+  const allowInsecureHttp = options.allowInsecureHttp === true;
   const providerName = values.llm ?? nonEmpty(env["KP_LLM_PROVIDER"]) ?? "anthropic";
   const provider = Object.hasOwn(PROVIDER_NAMES, providerName)
     ? PROVIDER_NAMES[providerName]
@@ -125,9 +140,17 @@ export function parseLlmCliOptions(
       "--llm openai-compatible では --llm-base-url(または環境変数 KP_LLM_BASE_URL)でベース URL を指定してください(例: LM Studio は http://localhost:1234/v1)。",
     );
   }
-  if (!httpBaseUrlSchema.safeParse(baseUrl).success) {
+  // 検証の入口で分岐する: --allow-insecure-upstream のときだけループバック以外の http も通す
+  if (allowInsecureHttp) {
+    if (!insecureHttpBaseUrlSchema.safeParse(baseUrl).success) {
+      return fail(
+        "--llm-base-url は http / https の URL で指定してください(資格情報・フラグメントを含めない)。",
+      );
+    }
+  } else if (!httpBaseUrlSchema.safeParse(baseUrl).success) {
     return fail(
-      "--llm-base-url は https の URL で指定してください(http はループバック localhost / 127.0.0.1 / [::1] のみ。資格情報を含めない)。",
+      "--llm-base-url は https の URL で指定してください(http はループバック localhost / 127.0.0.1 / [::1] のみ。資格情報を含めない)。" +
+        "開発・評価用途で別ホストの http に接続する場合は --allow-insecure-upstream を付けます(本番では使えません)。",
     );
   }
   if (model === undefined || model === "") {
@@ -151,6 +174,7 @@ export function parseLlmCliOptions(
     model,
     ...(apiKeyEnv !== undefined ? { apiKeyEnv } : {}),
     ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+    ...(allowInsecureHttp ? { allowInsecureHttp: true } : {}),
   };
   const checked = llmBackendConfigSchema.safeParse(config);
   return checked.success

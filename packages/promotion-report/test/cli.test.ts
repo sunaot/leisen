@@ -208,6 +208,129 @@ describe("kp-promotion-report CLI", () => {
   });
 });
 
+describe("--audit の複数指定(Gateway の JSONL と Orchestrator の AnswerRun の JSONL、T-021)", () => {
+  /**
+   * リファレンス構成(ADR-018 決定4)の2ファイル: Gateway の監査 JSONL には ToolInvocation
+   * (とメタ監査)、kp-ask serve の JSONL には AnswerRun(同じ runId の pending → 最終状態 →
+   * フィードバックの行が並ぶ)。
+   */
+  async function writeSplitFiles(dir: string): Promise<{ gateway: string; answerRuns: string }> {
+    const records = fixtureRecords();
+    const gateway = join(dir, "gateway-audit.jsonl");
+    const answerRuns = join(dir, "answer-runs.jsonl");
+    await writeFile(
+      gateway,
+      records
+        .filter((r) => r.recordType !== "answer_run")
+        .map((r) => JSON.stringify(r))
+        .join("\n") + "\n",
+    );
+    const lines: string[] = [];
+    for (const record of records) {
+      if (record.recordType !== "answer_run") continue;
+      // Orchestrator は開始時に pending を書き、終了時に同じ runId で最終状態を書く
+      if (record.finalOutcome !== "pending") {
+        lines.push(JSON.stringify({ ...record, finalOutcome: "pending", endedAt: null, confidence: null }));
+      }
+      lines.push(JSON.stringify(record));
+    }
+    await writeFile(answerRuns, lines.join("\n") + "\n");
+    return { gateway, answerRuns };
+  }
+
+  async function report(
+    audits: readonly string[],
+    metaOut: string,
+    sources: string,
+  ): Promise<{ code: number; body: Record<string, unknown>; err: string[] }> {
+    const { out, err, io } = capture();
+    const code = await runCli(
+      [
+        ...audits.flatMap((path) => ["--audit", path]),
+        "--sources", sources,
+        "--accessor", "auditor-1",
+        "--meta-audit-out", metaOut,
+        "--format", "json",
+      ],
+      io,
+    );
+    return { code, body: code === 0 ? JSON.parse(out.join("\n")) : {}, err };
+  }
+
+  it("2つの JSONL を結合して1つの JSONL と同じ集計になる(ファイルの順序に依らない)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t021-"));
+    const files = await writeFixtureFiles(dir);
+    const split = await writeSplitFiles(dir);
+
+    const combined = await report([files.audit], files.metaOut, files.sources);
+    const both = await report([split.gateway, split.answerRuns], files.metaOut, files.sources);
+    const reversed = await report([split.answerRuns, split.gateway], files.metaOut, files.sources);
+
+    expect(both.code).toBe(0);
+    expect(both.body["totalRuns"]).toBe(6);
+    const comparable = (body: Record<string, unknown>) => ({
+      totalRuns: body["totalRuns"],
+      sourceStats: body["sourceStats"],
+      searchCountDistribution: body["searchCountDistribution"],
+      userMismatchWarnings: body["userMismatchWarnings"],
+    });
+    expect(comparable(both.body)).toEqual(comparable(combined.body));
+    expect(comparable(reversed.body)).toEqual(comparable(combined.body));
+    // AnswerRun の pending 行は同じ runId の後の行で置き換わる(重複として数える)
+    expect(both.body["duplicateRecordCount"]).toBe(5);
+    expect(both.body["inputRecordCount"]).toBe(
+      (combined.body["inputRecordCount"] as number) + 5,
+    );
+  });
+
+  it("Gateway の JSONL だけでは run を数えられない(AnswerRun が Orchestrator 側にあるため)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t021-"));
+    const files = await writeFixtureFiles(dir);
+    const split = await writeSplitFiles(dir);
+
+    const gatewayOnly = await report([split.gateway], files.metaOut, files.sources);
+
+    expect(gatewayOnly.code).toBe(0);
+    expect(gatewayOnly.body["totalRuns"]).toBe(0);
+  });
+
+  it("メタ監査の audit_log アクセスは結合した入力全体で1件", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t021-"));
+    const files = await writeFixtureFiles(dir);
+    const split = await writeSplitFiles(dir);
+
+    await report([split.gateway, split.answerRuns], files.metaOut, files.sources);
+
+    const meta = (await readFile(files.metaOut, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => parseAuditRecord(JSON.parse(line)));
+    expect(meta).toHaveLength(1);
+    expect(meta[0]).toMatchObject({ recordType: "audit_access", target: "audit_log" });
+  });
+
+  it("どちらかのファイルの不正な行は、そのファイル名と行番号で拒否する", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t021-"));
+    const files = await writeFixtureFiles(dir);
+    const split = await writeSplitFiles(dir);
+    await writeFile(split.answerRuns, "{\"recordType\":\"answer_run\"}\n");
+
+    const result = await report([split.gateway, split.answerRuns], files.metaOut, files.sources);
+
+    expect(result.code).toBe(1);
+    expect(result.err.join("\n")).toMatch(/answer-runs\.jsonl:1: /);
+  });
+
+  it("--audit が1つもなければ usage エラー", async () => {
+    const { err, io } = capture();
+    expect(
+      await runCli(["--sources", "s.json", "--accessor", "u", "--meta-audit-out", "m.jsonl"], io),
+    ).toBe(2);
+    expect(err.join("\n")).toContain("--audit is required");
+    expect(err.join("\n")).toContain("[--audit <more.jsonl> ...]");
+  });
+});
+
 describe("isMainModule(エントリとして実行されたかの判定)", () => {
   it("argv[1] がシンボリックリンクでも実体が同じなら true(npm の bin リンク経由)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t014-main-"));

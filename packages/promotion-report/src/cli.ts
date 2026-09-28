@@ -7,12 +7,16 @@
  *
  * 使い方:
  *   kp-promotion-report \
- *     --audit audit-records.jsonl \
+ *     --audit audit-records.jsonl [--audit answer-runs.jsonl ...] \
  *     --sources sources.json \
  *     --accessor <監査閲覧担当のuserId> \
  *     --meta-audit-out meta-audit.jsonl \
  *     [--raw-queries raw-queries.jsonl] [--format text|json]
  *
+ * - --audit は複数回指定できる(T-021、ADR-018 決定4)。Gateway の監査 JSONL(ToolInvocation
+ *   等)と Orchestrator サービス(kp-ask serve)の AnswerRun の JSONL を別ファイルで渡し、
+ *   全ファイルのレコードを結合してから集計する(順序はファイル順・行順。重複行は冪等キーで
+ *   除く)。メタ監査の audit_log アクセスは結合した入力全体で1件
  * - sources.json: { "<sourceId>": { "nativeSearch": "full|degraded|none", "slack": bool } }
  * - 監査ログの閲覧はメタ監査の対象(ADR-013 §3)。本CLIは audit_access
  *   レコードを --meta-audit-out に追記する。このファイルを監査ストアへ
@@ -35,8 +39,8 @@ import { renderPromotionReportText } from "./render.js";
 import { sourcesMetaSchema } from "./sources.js";
 
 const USAGE =
-  "usage: kp-promotion-report --audit <records.jsonl> --sources <sources.json> " +
-  "--accessor <userId> --meta-audit-out <meta.jsonl> " +
+  "usage: kp-promotion-report --audit <records.jsonl> [--audit <more.jsonl> ...] " +
+  "--sources <sources.json> --accessor <userId> --meta-audit-out <meta.jsonl> " +
   "[--raw-queries <raw.jsonl>] [--format text|json]";
 
 interface CliIo {
@@ -45,7 +49,8 @@ interface CliIo {
 }
 
 interface CliArgs {
-  audit: string;
+  /** 監査 JSONL(1つ以上。指定順に読んで結合する) */
+  audit: string[];
   sources: string;
   accessor: string;
   metaAuditOut: string;
@@ -55,14 +60,23 @@ interface CliArgs {
 
 function parseArgs(argv: readonly string[]): CliArgs {
   const values = new Map<string, string>();
+  const audit: string[] = [];
   for (let i = 0; i < argv.length; i += 2) {
     const flag = argv[i];
     const value = argv[i + 1];
     if (!flag?.startsWith("--") || value === undefined) {
       throw new UsageError(`invalid argument: ${flag ?? ""}`);
     }
-    values.set(flag.slice(2), value);
+    const name = flag.slice(2);
+    if (name === "audit") {
+      // 複数回指定できる(Gateway の監査 JSONL と Orchestrator の AnswerRun の JSONL)
+      if (!value) throw new UsageError("--audit is required");
+      audit.push(value);
+      continue;
+    }
+    values.set(name, value);
   }
+  if (audit.length === 0) throw new UsageError("--audit is required");
   const required = (name: string): string => {
     const v = values.get(name);
     if (!v) throw new UsageError(`--${name} is required`);
@@ -85,7 +99,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
   }
   const rawQueries = values.get("raw-queries");
   return {
-    audit: required("audit"),
+    audit,
     sources: required("sources"),
     accessor: required("accessor"),
     metaAuditOut: required("meta-audit-out"),
@@ -136,11 +150,16 @@ export async function runCli(
   }
 
   try {
-    const records = parseJsonl<AuditRecord>(
-      await readFile(args.audit, "utf8"),
-      args.audit,
-      parseAuditRecord,
-    );
+    // 全ファイルのレコードをファイル順・行順に結合してから集計する
+    const records: AuditRecord[] = [];
+    for (const path of args.audit) {
+      const parsed = parseJsonl<AuditRecord>(
+        await readFile(path, "utf8"),
+        path,
+        parseAuditRecord,
+      );
+      for (const record of parsed) records.push(record);
+    }
     const sources = sourcesMetaSchema.parse(
       JSON.parse(await readFile(args.sources, "utf8")),
     );

@@ -31,7 +31,7 @@ import {
   type OpenAiCompatibleLlmSettingsInput,
   type ReasoningEffort,
 } from "../config.js";
-import { LlmError } from "../errors.js";
+import { LlmError, OrchestratorError } from "../errors.js";
 import { OPENAI_COMPATIBLE_BASE_CAPABILITIES } from "./capabilities.js";
 import { assertNoPrefill, assertUsableStop } from "./stop.js";
 import type {
@@ -56,7 +56,10 @@ export interface OpenAiCompatibleLlmClientOptions extends OpenAiCompatibleLlmSet
   readonly provider?: "openai_compatible";
   /** HTTP クライアント(既定: グローバル fetch)。テストで差し替える */
   readonly fetch?: typeof fetch;
-  /** apiKeyEnv を読む環境(既定: process.env) */
+  /**
+   * apiKeyEnv を読む環境(既定: process.env)。NODE_ENV=production の判定にも使う
+   * (process.env の NODE_ENV も常に見る。安全側に倒す)
+   */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** 再試行の待機の基準(ms、既定 500)。テストで短くする */
   readonly retryBaseDelayMs?: number;
@@ -174,6 +177,17 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
       ...settings
     } = options;
     this.#settings = openAiCompatibleLlmSettingsSchema.parse(settings);
+    if (
+      this.#settings.allowInsecureHttp === true &&
+      (process.env["NODE_ENV"] === "production" || env?.["NODE_ENV"] === "production")
+    ) {
+      // 本番で平文 http の LLM 接続を許さない(kp-ask の引数の解釈でも拒否する。ライブラリとして
+      // 直接組んだ場合の防波堤)
+      throw new OrchestratorError(
+        "invalid_configuration",
+        "allowInsecureHttp (plain http to the LLM backend) is not allowed when NODE_ENV=production",
+      );
+    }
     this.#url = chatCompletionsUrl(this.#settings.baseUrl);
     this.model = this.#settings.model;
     const apiKeyEnv = this.#settings.apiKeyEnv;

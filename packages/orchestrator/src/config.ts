@@ -255,6 +255,34 @@ export const httpBaseUrlSchema = z.string().refine(
 );
 
 /**
+ * allowInsecureHttp(kp-ask の `--allow-insecure-upstream`)のときだけ使うベース URL の検証。ループバック
+ * 以外の http も通す(開発・評価用途。例: compose のコンテナからホストの LM Studio へ
+ * `http://host.docker.internal:1234/v1`)。平文の http では会話(利用者の権限で取得した文書の本文)
+ * とキーが経路上で読めるため、本番(NODE_ENV=production)では使わせない(kp-ask の引数の解釈と
+ * OpenAiCompatibleLlmClient の構築で拒否する)。資格情報・フラグメントを載せない規則は
+ * httpBaseUrlSchema と同じ。エラーメッセージに入力値を含めない。
+ */
+export const insecureHttpBaseUrlSchema = z.string().refine(
+  (value) => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return false;
+    }
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      url.username === "" &&
+      url.password === "" &&
+      url.hash === ""
+    );
+  },
+  {
+    message: "http / https の URL を指定する(資格情報・フラグメントを含めない)",
+  },
+);
+
+/**
  * API キーを入れた環境変数の名前。キーの値そのものを設定に書かせないため、名前の形
  * (英数字と _)に限る。エラーメッセージに入力値を含めない。
  */
@@ -304,10 +332,13 @@ export const extraHeadersSchema = z
     },
   );
 
-/** OpenAI 互換 Chat Completions クライアント(OpenAiCompatibleLlmClient)の設定。 */
-export const openAiCompatibleLlmSettingsSchema = z.strictObject({
-  /** ベース URL(例: LM Studio は http://localhost:1234/v1)。`/chat/completions` を足して呼ぶ */
-  baseUrl: httpBaseUrlSchema,
+/** OpenAI 互換 Chat Completions クライアント(OpenAiCompatibleLlmClient)の設定の項目。 */
+const openAiCompatibleLlmSettingsShape = {
+  /**
+   * ベース URL(例: LM Studio は http://localhost:1234/v1)。`/chat/completions` を足して呼ぶ。
+   * 形の検証は allowInsecureHttp で分岐する(refineBaseUrl)
+   */
+  baseUrl: z.string(),
   /** モデル名(LM Studio ならロードしたモデルの ID。GET {baseUrl}/models で確認できる) */
   model: z.string().min(1),
   /**
@@ -332,7 +363,38 @@ export const openAiCompatibleLlmSettingsSchema = z.strictObject({
   extraHeaders: extraHeadersSchema.optional(),
   /** サーバーでロードしたコンテキスト長(参照用。能力フラグ maxContextTokens に出す) */
   maxContextTokens: z.number().int().positive().optional(),
-});
+  /**
+   * ループバック以外の http のベース URL を許す(kp-ask の `--allow-insecure-upstream`。開発・評価用途)。
+   * 本番(NODE_ENV=production)では OpenAiCompatibleLlmClient の構築を拒否する
+   */
+  allowInsecureHttp: z.boolean().optional(),
+};
+
+/**
+ * ベース URL の検証(入口で分岐する)。allowInsecureHttp が true のときだけ
+ * insecureHttpBaseUrlSchema(ループバック以外の http も通す)、それ以外は httpBaseUrlSchema。
+ */
+function refineBaseUrl(
+  settings: { readonly baseUrl: string; readonly allowInsecureHttp?: boolean | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  const schema =
+    settings.allowInsecureHttp === true ? insecureHttpBaseUrlSchema : httpBaseUrlSchema;
+  const checked = schema.safeParse(settings.baseUrl);
+  if (!checked.success) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["baseUrl"],
+      // スキーマの固定文言だけを使う(入力値を含めない)
+      message: checked.error.issues[0]?.message ?? "invalid base URL",
+    });
+  }
+}
+
+/** OpenAI 互換 Chat Completions クライアント(OpenAiCompatibleLlmClient)の設定。 */
+export const openAiCompatibleLlmSettingsSchema = z
+  .strictObject(openAiCompatibleLlmSettingsShape)
+  .superRefine(refineBaseUrl);
 export type OpenAiCompatibleLlmSettings = z.infer<typeof openAiCompatibleLlmSettingsSchema>;
 export type OpenAiCompatibleLlmSettingsInput = z.input<
   typeof openAiCompatibleLlmSettingsSchema
@@ -345,9 +407,12 @@ export type OpenAiCompatibleLlmSettingsInput = z.input<
 export const anthropicBackendConfigSchema = anthropicLlmSettingsSchema.extend({
   provider: z.literal("anthropic"),
 });
-export const openAiCompatibleBackendConfigSchema = openAiCompatibleLlmSettingsSchema.extend({
-  provider: z.literal("openai_compatible"),
-});
+export const openAiCompatibleBackendConfigSchema = z
+  .strictObject({
+    ...openAiCompatibleLlmSettingsShape,
+    provider: z.literal("openai_compatible"),
+  })
+  .superRefine(refineBaseUrl);
 
 /**
  * LLM バックエンドの設定(ADR-017 決定1)。provider で実装を選ぶ。

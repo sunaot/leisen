@@ -16,7 +16,11 @@
  *                     AnthropicLlmClient、OpenAiCompatibleLlmClient、ScriptedLlmClient(テスト用)
  * - gateway/          GatewayClient IF、McpGatewayClient(Streamable HTTP)、
  *                     Gateway へ送る `_meta` の組み立て(buildGatewayMeta)
- * - bin/kp-ask.ts     CLI
+ * - server/           MCP サーバー(T-021、ADR-018): ツール ask / feedback(tools.ts、
+ *                     SDK 非依存)、回答の Markdown(render.ts)、SDK との接合(mcp.ts)、
+ *                     Streamable HTTP と認証の前段 preflight(http.ts)、上限(limits.ts)、
+ *                     AnswerRun の JSONL シンク(answer-run-jsonl.ts)
+ * - bin/kp-ask.ts     CLI(bin/serve.ts: `kp-ask serve`)
  */
 export * from "./answer.js";
 export * from "./audit.js";
@@ -37,3 +41,9 @@ export * from "./llm/scripted.js";
 export * from "./gateway/types.js";
 export * from "./gateway/meta.js";
 export * from "./gateway/mcp-client.js";
+export * from "./server/limits.js";
+export * from "./server/answer-run-jsonl.js";
+export * from "./server/render.js";
+export * from "./server/tools.js";
+export * from "./server/mcp.js";
+export * from "./server/http.js";
