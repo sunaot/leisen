@@ -12,3 +12,11 @@
 - [ ] 出典リンクがクリックで原典に遷移する
 - [ ] 履歴の保持期間がdeployment.yamlから注入され、期限超過分が削除されることがテストされている
 - [ ] Slackソースを含む回答が既定で永続履歴に残らない(または残す場合Slack由来部分がredactされる)ことがテストされている
+
+## 更新(2026-09-28): 汎用チャット UI での充足(ADR-018、T-021)
+自前の UI は作らず、Orchestrator を MCP サーバーとして公開して LibreChat をつなぐ(ADR-018)。本タスクの要件のうち、LibreChat の overlay で満たすもの・委ねるものを分ける:
+- 未ログイン時にツール呼び出しが起きない: Orchestrator サービスが Bearer を Gateway で確かめてから run を始めるため満たす(T-021 受け入れ条件1)
+- 出典リンク: `ask` の出典欄(url は http/https のみ)で満たす
+- 履歴の保持期間: LibreChat の `interface.retentionMode` / `generalChatRetention` に委ねる(deployment.yaml からの注入はしない。docs/ui-librechat.md に設定を記す)
+- Slack を含む回答の非永続: Orchestrator サービスは Slack kind が有効な構成では起動しない(ADR-018 決定5)。解除は明示フラグと法務確認(ADR-014)
+- 初回接続同意の導線(ADR-010)とフィードバックボタンの自動連携は未対応(T-021 残課題、T-004 以降)
