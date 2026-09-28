@@ -31,10 +31,11 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:3080/*"],
+      "redirectUris": ["http://localhost:3080/oauth/openid/callback"],
       "webOrigins": ["http://localhost:3080"],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:3080/*",
+        "post.logout.redirect.uris": "http://localhost:3080/login",
+        "pkce.code.challenge.method": "S256",
         "access.token.lifespan": "900"
       },
       "protocolMappers": [

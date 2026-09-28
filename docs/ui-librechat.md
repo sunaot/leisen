@@ -25,8 +25,10 @@ Status: v0(T-021)/ Date: 2026-09-28
 - **不変条件7 は起動時に守る**(決定5)。汎用 UI は会話履歴を保存するため、deployment.yaml で永続化
   できないソース(Slack、kind が `slack` / `slack-*`)が有効なら `kp-ask serve` は起動を拒否する
   (解除の条件は [1.4](#14-履歴の保持と不変条件7))
-- AnswerRun は Orchestrator が Gateway と同じ監査ボリュームの別ファイル(`answer-runs.jsonl`)に追記する
-  (決定4)。昇格判定レポートは `--audit` を 2 回指定して両方を読む(docs/install.md §7)
+- AnswerRun は Orchestrator が Gateway の監査ボリュームとは別のボリューム(`kp-answer-runs`)の
+  `answer-runs.jsonl` に追記する(決定4)。Orchestrator のコンテナは Gateway の監査ログ・生クエリ原文の
+  ボリュームをマウントしない(読めない・書けない)。昇格判定レポートは両方のボリュームを読めるようにして
+  `--audit` を 2 回指定する([1.7](#17-answerrun-と昇格判定レポート)、docs/install.md §7)
 - リファレンス構成は**評価用**(開発用の部品・ローカル専用のダミー秘密・開発モードの Keycloak)。
   限界は docs/install.md §0 と同じ
 
@@ -51,7 +53,7 @@ Gateway(:8787)─(イントロスペクション)→ Keycloak(http://keycloak:80
 |---|---|
 | `orchestrator` | `kp-ask serve`。gateway と同じイメージを別エントリポイントで動かす。`127.0.0.1:8790` |
 | `librechat` | LibreChat v0.8.7(安定版に固定)。`127.0.0.1:3080` |
-| `mongodb` | LibreChat の保存先(会話履歴・利用者)。ホストへは公開しない |
+| `mongodb` | LibreChat の保存先(会話履歴・利用者)。ホストへは公開せず、librechat と共有する内部ネットワーク `librechat-internal` だけに置く(他のコンテナからは届かない) |
 | `keycloak-tls` | Keycloak の前段の TLS 終端(Caddy のローカル CA)。`127.0.0.1:8443`([1.3](#13-keycloaklocalhost-と証明書)) |
 
 設定ファイルは `deploy/compose/librechat/`: `librechat.yaml`(MCP サーバー・保持期間・LLM エンドポイント)、
@@ -78,10 +80,27 @@ Gateway(:8787)─(イントロスペクション)→ Keycloak(http://keycloak:80
 ```bash
 cd deploy/compose
 cp .env.example .env                                         # KP_LLM_MODEL を LM Studio のモデル名にする
-cp librechat/librechat.env.example librechat/librechat.env   # ローカル評価専用のダミー値
+# librechat.env を雛形から作り、LibreChat 自身のセッション・保存時暗号化の鍵を生成した値に置き換える
+# (鍵は画面にもコマンドライン引数にも出さない。ファイルは 0600)
+(
+  umask 077
+  JWT_SECRET="$(openssl rand -hex 32)" JWT_REFRESH_SECRET="$(openssl rand -hex 32)" \
+  CREDS_KEY="$(openssl rand -hex 32)" CREDS_IV="$(openssl rand -hex 16)" \
+  OPENID_SESSION_SECRET="$(openssl rand -hex 32)" \
+  awk -F= '$1 ~ /^(JWT_SECRET|JWT_REFRESH_SECRET|CREDS_KEY|CREDS_IV|OPENID_SESSION_SECRET)$/ { print $1 "=" ENVIRON[$1]; next } { print }' \
+    librechat/librechat.env.example > librechat/librechat.env
+)
 docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
 ```
 
+- **`librechat.env` の鍵は必ず生成する。** 雛形 `librechat.env.example` の `JWT_SECRET` / `JWT_REFRESH_SECRET` /
+  `CREDS_KEY` / `CREDS_IV` / `OPENID_SESSION_SECRET` はこのリポジトリで公開しているダミーで、雛形の値のままだと
+  `127.0.0.1:3080` に届く人が LibreChat のセッション(JWT)を偽造できる(利用者の ID が分かればその利用者に
+  なりすまし、会話履歴 = 本人の権限で得た回答を読める)。上のコマンドは `openssl rand -hex 32`(`CREDS_IV`
+  だけ `openssl rand -hex 16`)で生成した値に置き換える(bash / zsh。Windows は WSL で実行する)。手で編集する
+  場合も同じコマンドで生成して置き換える。雛形を `cp` したまま使うのは CI の `reference-deploy`(使い捨ての
+  ランナー)だけ。`OPENID_CLIENT_SECRET` は realm(`e2e/keycloak/realm/kp-realm.json`)のダミーと対なので、
+  変えるときは realm も合わせる
 - `.env` の `KP_LLM_MODEL` は LM Studio でロードしたモデル名(`curl http://localhost:1234/v1/models` の
   `id`)。`KP_LLM_BASE_URL` の既定はホストの LM Studio
 - `-f` を毎回書かない場合は `.env` に `COMPOSE_FILE=docker-compose.yml:docker-compose.librechat.yml` を
@@ -110,15 +129,17 @@ LibreChat での操作(UI の表記は版によって異なる):
    ツールの追加 → MCP から Leisen を選ぶ
 6. 質問する(例: 「VPN の接続手順を教えて」。評価用構成の検索対象は開発用の合成コーパス
    `examples/fixtures/dev-corpus.yaml`)。UI 側の LLM が `ask` を呼び、Orchestrator が Gateway 経由で
-   本人の権限で検索して回答する。回答には「出典」節(`[n] タイトル(sourceId:documentId)— url`)と
-   `runId` が付く。本文の URL は除去済みで、原典へのリンクは出典欄だけが運ぶ(ADR-018 決定6)
+   本人の権限で検索して回答する。回答には「出典」節(`[n] タイトル(sourceId:documentId)— <url>`。url は
+   Markdown の自動リンク)と `runId` が付く。本文の URL は除去済みで、原典へのリンクは出典欄だけが運ぶ
+   (ADR-018 決定6)
 7. フィードバック: 回答で解決したかどうかを会話で伝える(例: 「今の回答で解決した。feedback して」)。
    UI 側の LLM が `feedback({ runId, outcome: "resolved" | "unresolved" })` を呼び、AnswerRun に記録される。
    記録できるのは質問した本人の run だけ。LibreChat の 👍👎 とは連携しない(未実装)
 8. ユーザーを切り替えるときはログアウトする(Keycloak のセッションも終わる。`OPENID_USE_END_SESSION_ENDPOINT`)
 
 停止は `docker compose -f docker-compose.yml -f docker-compose.librechat.yml down`。`down -v` は会話履歴
-(MongoDB)・監査ログ・ローカル CA のボリュームも消す(評価以外では監査ログの削除は ADR-013 §3 に従う)。
+(MongoDB)・監査ログ・AnswerRun・ローカル CA のボリュームも消す(評価以外では監査ログの削除は ADR-013 §3 に
+従う)。
 
 ### 1.3 keycloak.localhost と証明書
 
@@ -134,24 +155,29 @@ LibreChat での操作(UI の表記は版によって異なる):
   ループバックに解決し、compose 内はネットワークエイリアスで `keycloak-tls` に解決する
 - **名前が解決できない環境**(Safari など): hosts に `127.0.0.1 keycloak.localhost` を足す
   (macOS / Linux は `/etc/hosts`、Windows は `C:\Windows\System32\drivers\etc\hosts`)
-- **証明書の警告**: ローカル CA はブラウザに信頼されていないため、初回に警告が出る。評価では続行してよい
-  (Chrome は「詳細設定」→「keycloak.localhost にアクセスする(安全ではありません)」、Firefox は
-  「詳細情報」→「危険性を承知で続行」)。警告を消したい場合は、ルート証明書を取り出して信頼ストアに入れる:
+- **証明書の警告**: ローカル CA はブラウザに信頼されていないため、初回に警告が出る。**第一の方法は、警告を
+  受け入れて続行すること**(評価用構成の割り切り。Chrome は「詳細設定」→「keycloak.localhost にアクセスする
+  (安全ではありません)」、Firefox は「詳細情報」→「危険性を承知で続行」)。例外は `keycloak.localhost` の
+  証明書に限られ、ブラウザ・OS の信頼ストアは変わらない
+- **CA を信頼させる場合(任意)**: 警告を毎回出したくないときだけ、ルート証明書を取り出して、**ブラウザの
+  プロファイル単位か、その利用者だけの信頼ストア(macOS は login キーチェーン)**に入れる。マシン全体の信頼ストア
+  (macOS の System キーチェーン、Windows のローカルコンピューターのストア、Linux の
+  `/usr/local/share/ca-certificates` など)には入れない。この CA の秘密鍵はボリューム `kp-caddy-data` にあり、
+  ボリュームを読める人は、この CA を信頼したブラウザに通用する任意の名前(実在のサイトを含む)の証明書を作れる。
+  信頼させる範囲は最小にする:
 
   ```bash
   docker compose -f docker-compose.yml -f docker-compose.librechat.yml cp keycloak-tls:/ca/root.crt ./kp-dev-root.crt
   ```
 
-  | 環境 | 信頼する | 評価後に削除する |
+  | 環境 | 信頼させる(範囲) | 評価後に削除する |
   |---|---|---|
-  | macOS(Safari / Chrome) | `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain kp-dev-root.crt` | キーチェーンアクセスの「システム」から `Caddy Local Authority - <年> ECC Root` を削除 |
-  | Windows(Edge / Chrome) | `certutil -user -addstore Root kp-dev-root.crt` | `certmgr.msc` の「信頼されたルート証明機関」から同じ名前の証明書を削除 |
-  | Firefox(OS によらず) | 設定 → プライバシーとセキュリティ → 証明書を表示 → 認証局証明書 → インポート(ウェブサイトの識別を信頼する) | 同じ画面で削除 |
-  | Linux の Chrome | 設定 → プライバシーとセキュリティ → セキュリティ → 証明書の管理 → 認証局 → インポート | 同じ画面で削除 |
+  | Firefox(OS によらず) | 設定 → プライバシーとセキュリティ → 証明書を表示 → 認証局証明書 → インポート(ウェブサイトの識別を信頼する)。**そのプロファイルだけ** | 同じ画面で削除 |
+  | macOS(Safari / Chrome) | `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db kp-dev-root.crt`(`sudo`・`-d`・System キーチェーンは使わない)。**login キーチェーン = その利用者だけ** | キーチェーンアクセスの「ログイン」から `Caddy Local Authority - <年> ECC Root` を削除 |
+  | Windows(Edge / Chrome) | `certutil -user -addstore Root kp-dev-root.crt`(`-user` を必ず付ける)。**現在のユーザーのストアだけ** | `certmgr.msc`(現在のユーザー)の「信頼されたルート証明機関」から同じ名前の証明書を削除 |
+  | Linux の Chrome | 設定 → プライバシーとセキュリティ → セキュリティ → 証明書の管理 → 認証局 → インポート。**その利用者の NSS データベース(`~/.pki/nssdb`)だけ** | 同じ画面で削除 |
 
-  この CA の秘密鍵はボリューム `kp-caddy-data` にある。**評価が終わったら信頼ストアから必ず削除する**
-  (ボリュームを読める人が、ブラウザに信頼される任意の名前の証明書を作れるため)。`down -v` で CA も
-  作り直しになる(次回は新しいルート証明書を入れ直す)
+  **評価が終わったら必ず削除する**。`down -v` で CA も作り直しになる(次回は新しいルート証明書を入れ直す)
 - Gateway のイントロスペクションは従来どおりネットワーク内の `http://keycloak:8080` を直接呼び、
   スモーク用のトークン取得(`scripts/smoke/keycloak-token.sh`)も `http://localhost:8080` を使う。
   どちらのトークンも発行者は `https://keycloak.localhost:8443/realms/kp`(`KC_HOSTNAME` で固定)
@@ -160,6 +186,12 @@ LibreChat での操作(UI の表記は版によって異なる):
   イントロスペクションで確かめるため、ログアウト・利用者の無効化は有効期間によらず反映される
 - このクライアントには Gateway を audience に加えるマッパーを入れてある(Gateway が aud / azp の検証を
   入れたときのため。ADR-018 決定8)
+- このクライアントのリダイレクト先はコールバック `http://localhost:3080/oauth/openid/callback`、ログアウト後の
+  戻り先は `http://localhost:3080/login` の完全一致だけで(ワイルドカードを使わない)、認可コードフローには PKCE
+  (S256)を必須にしている(`pkce.code.challenge.method`。LibreChat 側は `OPENID_USE_PKCE=true`)。
+  `librechat.env` の `DOMAIN_SERVER` / `DOMAIN_CLIENT` / `OPENID_CALLBACK_URL` を変えたら、realm の
+  `redirectUris` / `post.logout.redirect.uris` も同じ値に直す(`packages/gateway/test/reference-deploy.test.ts` が
+  整合を検査する)
 
 ### 1.4 履歴の保持と不変条件7
 
@@ -196,8 +228,26 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
 - **直接転送は、Orchestrator を運用者が信頼できる場合に限る。** LibreChat は
   `{{LIBRECHAT_OPENID_ACCESS_TOKEN}}` の転送を「信頼できる MCP サーバーにだけ使う」よう注意している。
   Orchestrator は Gateway と同じ運用者が同じ信頼境界で動かす前提(ADR-018 決定4・8)。第三者の MCP
-  サーバーにこのプレースホルダを書かない。LibreChat の MCP 接続は SSRF 防御で私設アドレスを拒否するため、
-  例外は `mcpSettings.allowedAddresses` の `orchestrator:8790` だけにしている
+  サーバーにこのプレースホルダを書かない(v0.8.7 は `librechat.yaml` に定義したサーバーでだけ展開し、
+  利用者が追加したサーバーでは展開しない)
+- **UI 側の LLM が呼べる外部のツールは Orchestrator だけにする**(threat-model TM-I2 / TM-I3)。
+  `librechat.yaml` で次の 3 つを設定している(挙動は LibreChat v0.8.7 のソースで確認):
+
+  | 設定 | 値 | 効果 |
+  |---|---|---|
+  | `interface.mcpServers` | `use: true`、`create: false`、`share: false`、`public: false` | 利用者は Leisen を使えるが、MCP サーバーを追加・共有できない。起動のたびに USER・ADMIN の両ロールへ適用される(書かない場合のロールの既定値は、USER が追加不可、ADMIN が追加・共有可) |
+  | `mcpSettings.allowedDomains` | `http://orchestrator:8790`(Leisen の `url` の origin) | MCP の接続先の許可リスト。`librechat.yaml` に定義したサーバーも利用者が追加したサーバーも、スキーム・ホスト・ポートが一致する接続先にしか接続しない |
+  | `endpoints.agents.capabilities` | v0.8.7 の既定の一覧から `actions`・`web_search`・`execute_code` を除いたもの | エージェント(MCP サーバーを選んだ通常の会話も内部ではエージェント)が、利用者の定義した外部 API(Actions)と Web 検索・コード実行の外部サービス(利用者が自分のキーや URL を入れて使える)を呼ばない。UI にも出ない |
+
+  - `mcpSettings.allowedAddresses` は**私設 IP 宛ての SSRF 防御の例外**にすぎず、接続先の制限にはならない。
+    `allowedDomains` が未設定だと LibreChat は私設 IP・localhost・内部向けの名前だけを拒否し、公開ホストへは
+    すべて接続できる。`allowedDomains` を設定すると MCP の判定で `allowedAddresses` は参照されないため、この
+    overlay には書かない。逆に `allowedDomains` に書いた接続先は私設 IP でも接続される(SSRF 防御の対象外に
+    なる)ため、運用者が信頼する接続先だけを書く
+  - MCP サーバーを足すときは `mcpServers` に定義し、`allowedDomains` にその origin を足す(足さないと起動時の
+    検査で拒否され(起動ログに `[MCP][<名前>] Failed to initialize` と `Domain "…" is not allowed`)、接続
+    できない)。LibreChat の版を上げるときは、これらの項目の意味と既定値を新しい版で確かめ直す
+    (`capabilities` に書いていない機能は無効になる)
 - **公開はループバックだけ。** 外部に公開する場合は、LibreChat(3080)・Orchestrator(8790)・Keycloak の
   前段に TLS を終端するリバースプロキシを置き、Host / Origin の許可リスト、リクエストの期限、利用者単位の
   流量制御をそこで担う(docs/install.md §6。Orchestrator 側の上限は同時実行数 `--max-concurrent-runs 4` と
@@ -209,15 +259,25 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
   起動ログに WARNING が出る)。Gateway へは利用者のトークンが、LLM へは本人の権限で取得した文書の本文が
   流れる。本番では上流を https にするか、同じホストのループバックにする
 - **秘密情報**: `.env` と `librechat/librechat.env` は git 管理外。雛形の値はダミー(`dev-only-` と作り物の
-  16 進列)。評価以外では `JWT_SECRET` / `JWT_REFRESH_SECRET` / `CREDS_KEY` / `CREDS_IV` /
-  `OPENID_SESSION_SECRET` と Keycloak のクライアント secret を新しく生成し、秘密ストアから注入する
+  16 進列)で、このリポジトリで公開されている。手元でも LibreChat 自身の鍵(`JWT_SECRET` / `JWT_REFRESH_SECRET` /
+  `CREDS_KEY` / `CREDS_IV` / `OPENID_SESSION_SECRET`)は必ず生成する([1.2](#12-5-分手順)。雛形の値のままだと
+  `127.0.0.1:3080` に届く人がセッションを偽造できる)。評価以外では、これらと Keycloak のクライアント secret を
+  新しく生成し、秘密ストアから注入する
+- **MongoDB**: 認証なしで動かしている(LibreChat の上流の構成と同じ)代わりに、librechat と共有する内部
+  ネットワーク `librechat-internal` だけに置く。ホストにも他のコンテナ(gateway・orchestrator・keycloak・
+  keycloak-tls)にも見えない(名前解決も接続もできない)。`internal: true` のため MongoDB から外部へも出られない
 - **ログ**: LibreChat の `DEBUG_OPENID_REQUESTS` は有効にしない(トークン交換の本文がログに出る)。
   `DEBUG_LOGGING` を調査で有効にしたら、終わったら戻してログを消す
-- 利用者が自分で MCP サーバーを追加する機能(LibreChat の既定で有効)を止めるなら
-  `librechat.yaml` の `interface.mcpServers.create: false`
 - 最終文面を書くのは UI 側の LLM。出典の保証はツール境界まで(`instructions` とツール定義で「出典は
   改変せずに提示する」と指示している)。LibreChat の Markdown 描画が本文中の裸のドメイン名を自動リンク
   する可能性は残余リスク(threat-model RS-4)
+- **ask の本文は UI 側の LLM にとって信頼できない入力。** 本文は検索対象文書(社内の誰かが書ける)にもとづくため、
+  文書に埋め込まれた指示が UI 側の LLM に届き、feedback の誤記録(利用者が言っていない解決・未解決)や、
+  回答の内容を外部のツールへ送ることを誘導しうる(threat-model TM-I3)。対策は、外部のツールを Orchestrator
+  だけにする上の設定、原典へのリンクを出典欄の url(autolink)だけが運ぶこと(本文に URL を残さない。ADR-018
+  決定6)、`instructions` とツール定義での指示(出典を改変しない・出典欄以外のリンクを作らない・feedback は
+  利用者が明示したときだけ呼ぶ)。`instructions` は UI 側の LLM への指示で強制力はなく、本人の run への
+  誤った feedback は残余リスク(feedback が更新できるのは質問した本人の run だけ)
 
 ### 1.6 トラブルシュート
 
@@ -231,12 +291,45 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
 | ログインボタンがない・ログイン開始が 500 になる | LibreChat が起動時に OpenID のディスカバリに失敗した(ディスカバリは起動時に1回だけ)。`docker compose logs librechat` の `[openidStrategy]` を見る。多い原因は keycloak-tls の証明書を信頼できない(`NODE_EXTRA_CA_CERTS`)・http の発行者・`OPENID_ISSUER` の誤記。直したら `docker compose restart librechat` |
 | ブラウザで keycloak.localhost が開けない | 名前が解決できない → hosts に `127.0.0.1 keycloak.localhost`。証明書の警告 → [1.3](#13-keycloaklocalhost-と証明書) |
 | ログイン後に invalid issuer 等で失敗する | 発行者の不一致。`librechat.env` の `OPENID_ISSUER` は overlay の `KC_HOSTNAME` + `/realms/kp` と同じにする(`packages/gateway/test/reference-deploy.test.ts` が整合を検査する) |
-| Leisen が選べない・接続できない | `docker compose logs orchestrator` と LibreChat のログの `[MCP][leisen]` を見る。`librechat.yaml` の `url` と `mcpSettings.allowedAddresses` が orchestrator の待ち受けと一致しているか |
+| Leisen が選べない・接続できない | `docker compose logs orchestrator` と LibreChat のログの `[MCP][leisen]` を見る。`librechat.yaml` の `url` と `mcpSettings.allowedDomains`(`url` の origin)が orchestrator の待ち受けと一致しているか(一致しないと `Domain "…" is not allowed` で拒否される) |
+| Keycloak の画面に `Invalid parameter: redirect_uri` 等が出る | realm のクライアント `librechat` はリダイレクト先・ログアウト後の戻り先を完全一致で照合する。`librechat.env` の `DOMAIN_SERVER` / `DOMAIN_CLIENT` / `OPENID_CALLBACK_URL` を変えたなら realm の `redirectUris` / `post.logout.redirect.uris` も合わせ、keycloak を作り直す(`up -d --force-recreate keycloak`。realm は起動時の import だけで反映される。[1.3](#13-keycloaklocalhost-と証明書)) |
+| ツールの呼び出しが `config_mismatch` で失敗する | Gateway が公開しているソースが、orchestrator に渡した `deployment.yaml` の有効なコネクタにない(設定のずれ)。両方に同じファイルを渡し、gateway と orchestrator を作り直す。永続化できないソース(Slack)を含めて動かすには `--allow-non-persistable-sources`([1.4](#14-履歴の保持と不変条件7)) |
+| ツールの呼び出しが `busy` で失敗する | 同時に走れる run(既定 4)か feedback(既定 4)の上限。しばらく待って送り直す。上限は overlay の `--max-concurrent-runs` |
+| 400 / 413 で失敗する | JSON-RPC のバッチ(配列)は受け付けない(400)。本文は 64 KiB まで(413)。質問は 4,000 字まで(`--max-question-chars`) |
 | UI の LLM が ask を呼ばない | ツール呼び出しに対応していないモデル。対応モデルに替え、MCP サーバー Leisen が選ばれているか確かめる |
 | LM Studio に届かない | orchestrator から確かめる: `docker compose exec orchestrator node -e "fetch(process.env.KP_LLM_BASE_URL+'/models').then(r=>console.log(r.status),e=>console.log(e.cause?.code))"`。Linux はローカルネットワークでの待ち受けが要る([1.1](#11-前提)) |
-| orchestrator が起動しない | `docker compose logs orchestrator`。Slack のソースが有効([1.4](#14-履歴の保持と不変条件7))、`KP_AUDIT_HMAC_KEY` / `KP_LLM_MODEL` の未設定、引数の誤りは起動ログに固定文言で出る |
+| orchestrator が起動しない | `docker compose logs orchestrator`。Slack のソースが有効([1.4](#14-履歴の保持と不変条件7))、`KP_AUDIT_HMAC_KEY` / `KP_LLM_MODEL` の未設定、引数の誤りは起動ログに固定文言で出る。`NODE_ENV=production` では `--answer-run-jsonl` と https の上流が必須(評価用構成の overlay は development) |
 | LibreChat が起動しない | `docker compose logs librechat`。`librechat.yaml` が不正だと `Invalid custom config file` を出して終了する(MCP サーバーの `title` は英数字と空白だけ)。正常なら設定の読み込み・`OpenID Connect configured successfully`・待ち受けの順にログが出る |
 | MongoDB が起動直後に落ちる | CPU が MongoDB 8 の要件(x86-64 は AVX)を満たさない。LibreChat の Docker 手順の注意に従い、override で古い版のイメージに替える |
+
+### 1.7 AnswerRun と昇格判定レポート
+
+orchestrator は AnswerRun を Gateway の監査ボリューム(`kp-audit`)とは別のボリューム `kp-answer-runs` の
+`/var/lib/kp/answer-runs/answer-runs.jsonl` に追記する(ADR-018 決定4)。orchestrator のコンテナは Gateway の
+監査ログ・生クエリ原文のボリュームをマウントしないため、Orchestrator から Gateway の監査ログは読めず、書き換え
+られない(threat-model TM-I4)。
+
+昇格判定レポート(docs/install.md §7、docs/playbook.md「有効化判定」)は、Gateway の監査ボリュームに加えて
+AnswerRun のボリュームを読み取り専用で見せ、`--audit` を 2 回指定して実行する(`deploy/compose` で。
+名前付きボリュームの実名は compose の project 名 `kp-reference` + `_kp-answer-runs`):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.librechat.yml run --rm --no-deps \
+  -v kp-reference_kp-answer-runs:/var/lib/kp/answer-runs:ro \
+  -v "$PWD/sources.json:/tmp/sources.json:ro" \
+  --entrypoint node gateway packages/promotion-report/dist/cli.js \
+  --audit /var/lib/kp/audit/audit.jsonl \
+  --audit /var/lib/kp/answer-runs/answer-runs.jsonl \
+  --raw-queries /var/lib/kp/rawquery/raw-queries.jsonl \
+  --sources /tmp/sources.json \
+  --accessor <監査閲覧担当のuserId> \
+  --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
+```
+
+レポートの実行自体がメタ監査の対象(`--meta-audit-out` のファイルを監査ストアに残す)。`sources.json` の形式は
+docs/playbook.md を参照。以前の overlay(AnswerRun を `/var/lib/kp/audit/answer-runs.jsonl` に書いていた版)を
+動かしたことがある場合、それまでの AnswerRun は `kp-audit` に残っている。集計に含めるときは
+`--audit /var/lib/kp/audit/answer-runs.jsonl` も足す。
 
 ## 2. MCP クライアントの場合
 
@@ -310,3 +403,9 @@ kp_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feedback
   overlay と同じ引数(`--confirm-exposed-host`・`--allow-insecure-upstream` を含む)で動かした kp-ask serve と
   Gateway(モック IdP)に対する `orchestrator-smoke.sh`、[2](#2-mcp-クライアントの場合) の curl の手順
   (LLM はモック)までを確認した)
+- セキュリティレビューの反映(2026-09-28: MCP の接続先の制限・エージェントの機能の制限・AnswerRun の
+  ボリューム分離・MongoDB の内部ネットワーク・realm のリダイレクト先の完全一致と PKCE)は、Docker デーモンの
+  ない環境で `docker compose config`、LibreChat v0.8.7 の設定スキーマでの `librechat.yaml` の検証、v0.8.7 の
+  MCP の接続先判定(`packages/api/src/auth/domain.ts`)をそのまま動かした照合までを確認した。コンテナでの
+  起動とスモークは CI の `reference-deploy` で確かめる。PKCE を必須にした realm でのブラウザのログインは
+  手元で人が確かめる(スモークは LibreChat のリダイレクトまでで、Keycloak の画面には進まない)

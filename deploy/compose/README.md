@@ -21,6 +21,8 @@ UI(LibreChat)から問い合わせる場合は overlay を重ねる(手順・前
 
 ```bash
 cp librechat/librechat.env.example librechat/librechat.env   # .env の KP_LLM_MODEL も LM Studio のモデル名に
+# ↑ 手元では LibreChat のセッション・暗号化の鍵を生成して置き換える(雛形は公開済みのダミー。
+#   生成のコマンドは docs/ui-librechat.md §1.2。雛形のまま使うのは CI だけ)
 docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
 ```
 

@@ -62,9 +62,15 @@
 #     docs/install.md「未実装事項」)。イメージに curl がないため node で確認する。
 #     待ち受けのポートを変えたら KP_HEALTHCHECK_URL も合わせる。orchestrator として
 #     起動するコンテナは compose 側で healthcheck を上書きする(kp-ask serve の /healthz)
-#   - orchestrator(kp-ask serve)の AnswerRun は Gateway と同じ監査ボリュームの別ファイル
-#     (/var/lib/kp/audit/answer-runs.jsonl)に追記する(ADR-018 決定4)。同じ uid 1000 で
-#     動くため、ディレクトリの所有者・権限はそのまま使える
+#   - orchestrator(kp-ask serve)の AnswerRun は /var/lib/kp/answer-runs(Gateway の監査
+#     ボリュームとは別のボリューム)の answer-runs.jsonl に追記する(ADR-018 決定4)。compose
+#     の overlay は orchestrator にこのボリュームだけを書き込み可能でマウントし、Gateway の
+#     監査ログ・生クエリ原文のボリュームはマウントしない(Orchestrator から Gateway の監査
+#     ログを読めない・書けない)。kp-ask serve はディレクトリを作らないため、ここで用意する
+#     (所有者・権限は監査ボリュームと同じ)。Gateway として起動するコンテナでは使わない。
+#     VOLUME の宣言により、compose がマウントしないパスには空の匿名ボリュームが付く
+#     (gateway の /var/lib/kp/answer-runs、orchestrator の /var/lib/kp/audit 等。どちらも
+#     名前付きボリュームとは別物で、互いのデータは見えない)
 
 ARG NODE_IMAGE=node:22-bookworm-slim
 
@@ -109,11 +115,11 @@ COPY --from=build /app/packages/orchestrator/dist packages/orchestrator/dist
 COPY --from=build /app/packages/orchestrator/prompts packages/orchestrator/prompts
 COPY --from=build /app/packages/promotion-report/dist packages/promotion-report/dist
 
-RUN mkdir -p /etc/kp /var/lib/kp/audit /var/lib/kp/rawquery \
-    && chown 1000:1000 /var/lib/kp/audit /var/lib/kp/rawquery \
-    && chmod 0700 /var/lib/kp/audit /var/lib/kp/rawquery
+RUN mkdir -p /etc/kp /var/lib/kp/audit /var/lib/kp/rawquery /var/lib/kp/answer-runs \
+    && chown 1000:1000 /var/lib/kp/audit /var/lib/kp/rawquery /var/lib/kp/answer-runs \
+    && chmod 0700 /var/lib/kp/audit /var/lib/kp/rawquery /var/lib/kp/answer-runs
 # 空の名前付きボリュームは初回マウント時にこのディレクトリの所有者・権限を引き継ぐ
-VOLUME ["/var/lib/kp/audit", "/var/lib/kp/rawquery"]
+VOLUME ["/var/lib/kp/audit", "/var/lib/kp/rawquery", "/var/lib/kp/answer-runs"]
 
 USER 1000:1000
 # 8787: Gateway(既定)、8790: orchestrator(kp-ask serve、compose overlay の --listen)

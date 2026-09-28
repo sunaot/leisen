@@ -82,12 +82,15 @@ gateway-smoke: all checks passed
 
 ```bash
 cp librechat/librechat.env.example librechat/librechat.env   # deploy/compose で。.env の KP_LLM_MODEL も合わせる
+# ↑ 手元では LibreChat のセッション・暗号化の鍵を生成して置き換える(docs/ui-librechat.md §1.2)
 docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
 # → http://localhost:3080(Keycloak の alice / bob でログイン)
 ```
 
-手順・前提(LM Studio、`keycloak.localhost` と証明書)・履歴の保持と不変条件7・MCP クライアント
-(Claude Code 等)からの接続・トラブルシュートは [docs/ui-librechat.md](ui-librechat.md)。
+`librechat.env.example` の `JWT_SECRET` 等は公開されたダミーで、雛形のままだと `127.0.0.1:3080` に届く人が
+LibreChat のセッションを偽造できる。手順・前提(LM Studio、鍵の生成、`keycloak.localhost` と証明書)・
+履歴の保持と不変条件7・MCP クライアント(Claude Code 等)からの接続・トラブルシュートは
+[docs/ui-librechat.md](ui-librechat.md)。
 
 ## 3. コンテナを使わない同等手順(Node 22)
 
@@ -274,17 +277,38 @@ server {
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、
   短くして SIGKILL されるとバッファ内のレコードを失う
 - 1ファイルに書き込むのは1プロセスに限る(Gateway は単一レプリカで動かす)
-- LibreChat overlay の orchestrator(`kp-ask serve`)は、AnswerRun を同じ監査ボリュームの別ファイル
-  `/var/lib/kp/audit/answer-runs.jsonl` に追記する(ADR-018 決定4。同じスキーマ、追記のみ、0600)。1ファイルに
-  書くのは1プロセスという規則は変わらない(Gateway は `audit.jsonl`、orchestrator は `answer-runs.jsonl`)
+- LibreChat overlay の orchestrator(`kp-ask serve`)は、AnswerRun を**別のボリューム** `kp-answer-runs` の
+  `/var/lib/kp/answer-runs/answer-runs.jsonl` に追記する(ADR-018 決定4。同じスキーマ、追記のみ、0600。
+  ディレクトリはイメージが uid 1000・0700 で用意する)。orchestrator のコンテナは Gateway の監査ログ
+  (`kp-audit`)・生クエリ原文(`kp-rawquery`)のボリュームをマウントしない。Orchestrator は Gateway が信頼
+  しない側(threat-model §1 の TB2)にあり、侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない
+  ようにするため。1ファイルに書くのは1プロセスという規則も保たれる(Gateway は `audit.jsonl`、orchestrator は
+  `answer-runs.jsonl`)
 - 昇格判定レポートはコンテナ内で監査ボリュームを読んで実行できる(手順と注意は docs/playbook.md
-  「有効化判定」。レポートの実行自体がメタ監査の対象で、`--meta-audit-out` のファイルを監査ストアに残す)。
-  LibreChat overlay を使っている場合は `--audit /var/lib/kp/audit/answer-runs.jsonl` も足し、両方を結合して集計する:
+  「有効化判定」。レポートの実行自体がメタ監査の対象で、`--meta-audit-out` のファイルを監査ストアに残す):
 
   ```bash
   docker compose run --rm --no-deps -v "$PWD/sources.json:/tmp/sources.json:ro" \
     --entrypoint node gateway packages/promotion-report/dist/cli.js \
     --audit /var/lib/kp/audit/audit.jsonl \
+    --raw-queries /var/lib/kp/rawquery/raw-queries.jsonl \
+    --sources /tmp/sources.json \
+    --accessor <監査閲覧担当のuserId> \
+    --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
+  ```
+
+  LibreChat overlay を使っている場合は、AnswerRun のボリュームも読み取り専用で見せて `--audit` を 2 回指定し、
+  両方を結合して集計する。gateway サービスには Gateway の監査ボリュームがマウントされており、AnswerRun の
+  ボリュームだけを `-v` で足す(名前付きボリュームの実名は compose の project 名 `kp-reference` +
+  `_kp-answer-runs`。`docker volume ls` で確かめられる):
+
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.librechat.yml run --rm --no-deps \
+    -v kp-reference_kp-answer-runs:/var/lib/kp/answer-runs:ro \
+    -v "$PWD/sources.json:/tmp/sources.json:ro" \
+    --entrypoint node gateway packages/promotion-report/dist/cli.js \
+    --audit /var/lib/kp/audit/audit.jsonl \
+    --audit /var/lib/kp/answer-runs/answer-runs.jsonl \
     --raw-queries /var/lib/kp/rawquery/raw-queries.jsonl \
     --sources /tmp/sources.json \
     --accessor <監査閲覧担当のuserId> \
@@ -314,7 +338,8 @@ server {
 
 ## 9. アップグレード手順(骨子)
 
-1. リリースノートと ADR の変更を確認し、監査ボリューム(`kp-audit` / `kp-rawquery`)をバックアップする
+1. リリースノートと ADR の変更を確認し、監査ボリューム(`kp-audit` / `kp-rawquery`。LibreChat overlay を
+   使っている場合は AnswerRun の `kp-answer-runs` も)をバックアップする
 2. 新しいイメージを用意する(イメージタグの差し替え)。現状はソースからビルドする:
    対象のタグを checkout して `docker compose build gateway`。レジストリ配布が整備されたら、
    `image:` を配布タグに差し替えて `build:` を外す

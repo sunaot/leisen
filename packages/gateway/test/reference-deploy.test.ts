@@ -114,20 +114,42 @@ interface ComposeService {
   env_file?: string[];
   ports?: string[];
   volumes?: string[];
-  networks?: Record<string, { aliases?: string[] } | null>;
+  /** compose の配列形式(名前だけ)とマップ形式(エイリアス等)のどちらも */
+  networks?: string[] | Record<string, { aliases?: string[] } | null>;
   healthcheck?: { test?: string[] };
   cap_drop?: string[];
   security_opt?: string[];
   ulimits?: Record<string, number>;
 }
 
+interface ComposeDocument {
+  services: Record<string, ComposeService>;
+  volumes?: Record<string, unknown>;
+  networks?: Record<string, { internal?: boolean } | null>;
+}
+
+async function composeDocument(file: string = COMPOSE_FILE): Promise<ComposeDocument> {
+  return YAML.parse(await readFile(file, "utf8")) as ComposeDocument;
+}
+
 async function composeServices(
   file: string = COMPOSE_FILE,
 ): Promise<Record<string, ComposeService>> {
-  const compose = YAML.parse(await readFile(file, "utf8")) as {
-    services: Record<string, ComposeService>;
-  };
-  return compose.services;
+  return (await composeDocument(file)).services;
+}
+
+/** サービスが属するネットワーク(networks を書かなければ compose の default だけ)。 */
+function networkNames(service: ComposeService): string[] {
+  const networks = service.networks;
+  if (networks === undefined) return ["default"];
+  return Array.isArray(networks) ? [...networks] : Object.keys(networks);
+}
+
+/** マップ形式で書いたネットワークのエイリアス。 */
+function networkAliases(service: ComposeService, network: string): string[] {
+  const networks = service.networks;
+  if (networks === undefined || Array.isArray(networks)) return [];
+  return networks[network]?.aliases ?? [];
 }
 
 /** LibreChat overlay の1サービス(なければテストを失敗させる)。 */
@@ -153,6 +175,7 @@ interface RealmClient {
   secret?: string;
   publicClient?: boolean;
   standardFlowEnabled?: boolean;
+  implicitFlowEnabled?: boolean;
   directAccessGrantsEnabled?: boolean;
   redirectUris?: string[];
   attributes?: Record<string, string>;
@@ -166,12 +189,27 @@ async function realmFile(): Promise<{ realm: string; clients: RealmClient[] }> {
   };
 }
 
-/** Keycloak の redirect URI の照合(末尾の * だけをワイルドカードとして扱う)。 */
-function redirectUriAllowed(patterns: readonly string[], uri: string): boolean {
-  return patterns.some((pattern) =>
-    pattern.endsWith("*") ? uri.startsWith(pattern.slice(0, -1)) : uri === pattern,
-  );
-}
+/**
+ * LibreChat v0.8.7 のエージェントの機能の名前(packages/data-provider/src/config.ts の
+ * AgentCapabilities)。librechat.yaml にこれ以外を書くと、LibreChat は起動時の設定検証で終了する。
+ */
+const LIBRECHAT_V087_AGENT_CAPABILITIES: ReadonlySet<string> = new Set([
+  "hide_sequential_outputs",
+  "programmatic_tools",
+  "end_after_tools",
+  "deferred_tools",
+  "execute_code",
+  "file_search",
+  "web_search",
+  "artifacts",
+  "subagents",
+  "actions",
+  "context",
+  "skills",
+  "tools",
+  "chain",
+  "ocr",
+]);
 
 interface LibreChatConfig {
   version?: string;
@@ -190,6 +228,7 @@ interface LibreChatConfig {
     }
   >;
   endpoints?: {
+    agents?: { capabilities?: string[] };
     custom?: { name?: string; apiKey?: string; baseURL?: string }[];
   };
 }
@@ -381,12 +420,18 @@ describe("deploy/ の各ファイルの整合", () => {
     expect(client?.secret).toBe((await envExample())[adapter.clientSecretEnv]);
   });
 
-  it("Dockerfile の既定の設定パス・監査ボリューム・待ち受けポートが deployment.yaml と一致する", async () => {
+  it("Dockerfile の既定の設定パス・監査ボリューム(AnswerRun を含む)・待ち受けポートが deployment.yaml と overlay に一致する", async () => {
     const dockerfile = await readFile(DOCKERFILE, "utf8");
     const config = referenceConfig();
     expect(dockerfile).toContain(`KP_DEPLOYMENT_CONFIG=${CONTAINER_CONFIG_PATH}`);
     expect(dockerfile).toContain(
       `KP_HEALTHCHECK_URL=http://127.0.0.1:${config.gateway.http.port}/healthz`,
+    );
+    // 監査ログ本体・生クエリ原文(Gateway)と AnswerRun(LibreChat overlay の orchestrator)は
+    // それぞれ別ボリューム(ADR-011 §3、ADR-018 決定4)
+    const orchestrator = await overlayService("orchestrator");
+    const answerRunsDir = posix.dirname(
+      flagValue(orchestrator.command ?? [], "--answer-run-jsonl") ?? "",
     );
     const volume = /^VOLUME \[(.+)\]$/m.exec(dockerfile)?.[1] ?? "";
     const volumes = volume.split(",").map((v) => JSON.parse(v.trim()) as string);
@@ -394,8 +439,22 @@ describe("deploy/ の各ファイルの整合", () => {
       [
         posix.dirname(config.audit.jsonl?.path ?? ""),
         posix.dirname(config.audit.jsonl?.rawQueryPath ?? ""),
+        answerRunsDir,
       ].sort(),
     );
+    // 各ディレクトリは実行ユーザー所有・0700 でイメージが用意する(Gateway も kp-ask serve も
+    // ディレクトリを作らない。空の名前付きボリュームは初回マウント時に所有者・権限を引き継ぐ)
+    const prepare =
+      /^RUN mkdir -p (.+?) \\\n\s+&& chown 1000:1000 (.+?) \\\n\s+&& chmod 0700 (.+?)$/m.exec(
+        dockerfile,
+      );
+    expect(prepare).not.toBeNull();
+    const [, created = "", owned = "", restricted = ""] = prepare ?? [];
+    for (const dir of volumes) {
+      expect(created.split(" "), `mkdir ${dir}`).toContain(dir);
+      expect(owned.split(" "), `chown ${dir}`).toContain(dir);
+      expect(restricted.split(" "), `chmod ${dir}`).toContain(dir);
+    }
     expect(dockerfile).toMatch(/^USER 1000:1000$/m);
   });
 });
@@ -453,7 +512,7 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     await expect(readFile(source, "utf8")).resolves.toContain("serve");
   });
 
-  it("orchestrator は gateway と同じイメージを kp-ask serve で動かし、設定・監査ボリュームが deployment.yaml と Gateway にそろう", async () => {
+  it("orchestrator は gateway と同じイメージを kp-ask serve で動かし、設定は Gateway と同じ・AnswerRun は Gateway の監査ボリュームとは別のボリュームに書く", async () => {
     const config = referenceConfig();
     const gateway = (await composeServices())["gateway"] as ComposeService;
     const orchestrator = await overlayService("orchestrator");
@@ -476,15 +535,34 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
       readOnly: true,
     });
 
-    // AnswerRun は Gateway の監査ボリュームの別ファイル(ADR-018 決定4)
+    // AnswerRun は Gateway の監査ボリュームとは別のボリュームの別ファイル(ADR-018 決定4)。
+    // orchestrator がマウントするのは設定(読み取り専用)と AnswerRun のボリュームだけで、Gateway の
+    // 監査ログ・生クエリ原文のボリュームはマウントしない(Orchestrator は TB2 で信頼しない側。
+    // 侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない。threat-model TM-I4)
     const answerRuns = flagValue(command, "--answer-run-jsonl") ?? "";
-    const auditPath = config.audit.jsonl?.path ?? "";
-    const auditDir = posix.dirname(auditPath);
-    expect(posix.dirname(answerRuns)).toBe(auditDir);
-    expect(answerRuns).not.toBe(auditPath);
-    expect(answerRuns).not.toBe(config.audit.jsonl?.rawQueryPath);
-    const auditMount = mounts(orchestrator).get(auditDir);
-    expect(auditMount).toEqual({ source: mounts(gateway).get(auditDir)?.source, readOnly: false });
+    const answerRunsDir = posix.dirname(answerRuns);
+    const gatewayAuditDirs = [
+      posix.dirname(config.audit.jsonl?.path ?? ""),
+      posix.dirname(config.audit.jsonl?.rawQueryPath ?? ""),
+    ];
+    expect(answerRuns).toMatch(/^\/.+\.jsonl$/);
+    expect(gatewayAuditDirs).not.toContain(answerRunsDir);
+    const orchestratorMounts = mounts(orchestrator);
+    expect([...orchestratorMounts.keys()].sort()).toEqual(
+      [CONTAINER_CONFIG_PATH, answerRunsDir].sort(),
+    );
+    const answerRunsMount = orchestratorMounts.get(answerRunsDir);
+    expect(answerRunsMount?.readOnly).toBe(false);
+    const gatewaySources = [...mounts(gateway).values()].map((m) => m.source);
+    for (const dir of gatewayAuditDirs) {
+      const gatewayVolume = mounts(gateway).get(dir)?.source;
+      expect(gatewayVolume).toBeDefined();
+      expect([...orchestratorMounts.values()].map((m) => m.source)).not.toContain(gatewayVolume);
+    }
+    // AnswerRun のボリュームは overlay で定義した名前付きボリュームで、Gateway はマウントしない
+    const overlay = await composeDocument(LIBRECHAT_COMPOSE_FILE);
+    expect(Object.keys(overlay.volumes ?? {})).toContain(answerRunsMount?.source);
+    expect(gatewaySources).not.toContain(answerRunsMount?.source);
 
     // 待ち受けはコンテナ内の全インターフェース → 確認フラグが要る。公開・healthcheck と同じポート
     const [listenHost, listenPort] = (flagValue(command, "--listen") ?? "").split(":");
@@ -532,9 +610,12 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     expect(server?.serverInstructions).toBe(true);
     // LibreChat の設定検証は title に英数字と空白しか許さない(違反すると起動しない)
     expect(server?.title).toMatch(/^[a-zA-Z0-9 ]+$/);
-    // compose ネットワーク内の Orchestrator だけを SSRF 防御の例外にする
-    expect(lc.mcpSettings?.allowedAddresses).toEqual([`orchestrator:${listenPort}`]);
-    expect(lc.mcpSettings?.allowedDomains).toBeUndefined();
+    // MCP の接続先は Orchestrator の origin だけ。LibreChat v0.8.7 の allowedDomains は接続先の
+    // 許可リスト(スキーム・ホスト・ポートを照合)で、未設定だと公開ホストへはすべて接続できる。
+    // allowedAddresses は私設 IP 宛ての SSRF 防御の例外にすぎず、allowedDomains を設定すると MCP の
+    // 判定では参照されない(packages/api/src/auth/domain.ts)ので書かない
+    expect(lc.mcpSettings?.allowedDomains).toEqual([new URL(server?.url ?? "").origin]);
+    expect(lc.mcpSettings).not.toHaveProperty("allowedAddresses");
 
     // UI 側の LLM の API キーは環境変数から(librechat.yaml に秘密を書かない)
     const endpoint = lc.endpoints?.custom?.[0];
@@ -545,6 +626,33 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     const baseUrlEnv = /^\$\{([A-Z0-9_]+)\}$/.exec(endpoint?.baseURL ?? "")?.[1] ?? "";
     const librechat = await overlayService("librechat");
     expect(librechat.environment?.[baseUrlEnv]).toBe(orchestrator.environment?.[baseUrlEnv]);
+  });
+
+  it("UI 側の LLM が呼べる外部のツールは Orchestrator だけ(MCP サーバーの追加なし、Actions・Web 検索・コード実行なし)", async () => {
+    const lc = await libreChatConfig();
+    // 利用者は定義済みの MCP サーバー(leisen)を使えるが、追加・共有できない。v0.8.7 はここに書いた
+    // 値を起動のたびに USER / ADMIN の両ロールへ適用する(packages/api/src/app/permissions.ts)
+    expect(lc.interface?.["mcpServers"]).toEqual({
+      use: true,
+      create: false,
+      share: false,
+      public: false,
+    });
+    // 本人トークンを転送する MCP サーバーは Orchestrator の定義だけ(接続先は上の allowedDomains)
+    expect(Object.keys(lc.mcpServers ?? {})).toEqual(["leisen"]);
+
+    // エージェント(MCP サーバーを選んだ通常の会話も含む)の機能。一覧にない機能はサーバー側で
+    // 実行されない(api/server/services/ToolService.js)。MCP のツールには tools が要る
+    const capabilities = lc.endpoints?.agents?.capabilities ?? [];
+    expect(capabilities).toContain("tools");
+    // 会話の内容を外部のサービスへ送る機能は外す(利用者定義の外部 API、Web 検索、コード実行)
+    for (const external of ["actions", "web_search", "execute_code"]) {
+      expect(capabilities, external).not.toContain(external);
+    }
+    // v0.8.7 の設定検証が受け付ける名前だけ(誤記すると LibreChat が起動しない)
+    for (const capability of capabilities) {
+      expect(LIBRECHAT_V087_AGENT_CAPABILITIES.has(capability), capability).toBe(true);
+    }
   });
 
   it("librechat.yaml の履歴の保持期間は deployment.yaml の chatHistory.retentionDays と同じ(v0.8.7 の意味で)", async () => {
@@ -582,8 +690,20 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     expect(client?.standardFlowEnabled).toBe(true);
     // ブラウザのログイン(認可コード)だけ。パスワードグラントは開発用の e2e-cli に限る
     expect(client?.directAccessGrantsEnabled).toBe(false);
+    expect(client?.implicitFlowEnabled).toBe(false);
+    // リダイレクト先はコールバックの完全一致だけ(ワイルドカードを使わない)。LibreChat v0.8.7 は
+    // DOMAIN_SERVER + OPENID_CALLBACK_URL を redirect_uri に使う(api/strategies/openidStrategy.js)
     const callback = `${env["DOMAIN_SERVER"]}${env["OPENID_CALLBACK_URL"]}`;
-    expect(redirectUriAllowed(client?.redirectUris ?? [], callback)).toBe(true);
+    expect(client?.redirectUris).toEqual([callback]);
+    // ログアウト後の戻り先も完全一致の1つだけ。v0.8.7 は OPENID_POST_LOGOUT_REDIRECT_URI、未設定なら
+    // DOMAIN_CLIENT + /login を送る(api/server/controllers/auth/LogoutController.js)
+    const postLogout = env["OPENID_POST_LOGOUT_REDIRECT_URI"] ?? `${env["DOMAIN_CLIENT"]}/login`;
+    expect(client?.attributes?.["post.logout.redirect.uris"]).toBe(postLogout);
+    expect([callback, postLogout].join(" ")).not.toContain("*");
+    // 認可コードフローは PKCE(S256)必須。LibreChat 側も明示する(v0.8.7 の openid-client 6.5.0 は
+    // この値によらず常に S256 のコードチャレンジを送る)
+    expect(client?.attributes?.["pkce.code.challenge.method"]).toBe("S256");
+    expect(env["OPENID_USE_PKCE"]).toBe("true");
     // Gateway が aud を検証するようになったときのため、Gateway を audience に加える(決定8)
     if (config.idp.adapter.kind !== "keycloak") throw new Error("unexpected idp adapter");
     const gatewayClientId = config.idp.adapter.clientId;
@@ -629,7 +749,7 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     const hostname = new URL(keycloak.environment?.["KC_HOSTNAME"] ?? "");
 
     // ブラウザとコンテナが同じ名前で TLS 終端に届く(エイリアス + ループバックの同じポート)
-    expect(tls.networks?.["default"]?.aliases).toContain(hostname.hostname);
+    expect(networkAliases(tls, "default")).toContain(hostname.hostname);
     expect(tls.ports).toEqual([`127.0.0.1:${hostname.port}:${hostname.port}`]);
     // ディスカバリの URL は常に発行者(TLS 終端)側。転送元ヘッダは信頼しない
     expect(keycloak.environment?.["KC_HOSTNAME_BACKCHANNEL_DYNAMIC"]).toBe("false");
@@ -654,5 +774,28 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     expect(/KP_SMOKE_OIDC_AUTH_URL:-([^}]+)\}/.exec(smoke)?.[1]).toBe(
       `${env["OPENID_ISSUER"]}/protocol/openid-connect/auth`,
     );
+  });
+
+  it("MongoDB は librechat と共有する内部ネットワークだけに置き、他のコンテナから届かない", async () => {
+    const overlay = await composeDocument(LIBRECHAT_COMPOSE_FILE);
+    const mongodb = await overlayService("mongodb");
+    const librechat = await overlayService("librechat");
+    const internal = "librechat-internal";
+
+    // 外部への経路を持たない内部ネットワーク
+    expect(overlay.networks?.[internal]?.internal).toBe(true);
+    // mongodb はそのネットワークだけ(default に属さない)。ホストへも公開しない
+    expect(networkNames(mongodb)).toEqual([internal]);
+    expect(mongodb.ports).toBeUndefined();
+    // librechat は default(orchestrator・keycloak-tls・LLM への経路)と内部ネットワークの両方
+    expect(networkNames(librechat).sort()).toEqual(["default", internal].sort());
+    expect(new URL(librechat.environment?.["MONGO_URI"] ?? "").hostname).toBe("mongodb");
+    // それ以外のサービス(基本の compose を含む)は内部ネットワークに属さない
+    for (const file of [COMPOSE_FILE, LIBRECHAT_COMPOSE_FILE]) {
+      for (const [name, service] of Object.entries(await composeServices(file))) {
+        if (name === "mongodb" || name === "librechat") continue;
+        expect(networkNames(service), `${file}: ${name}`).not.toContain(internal);
+      }
+    }
   });
 });

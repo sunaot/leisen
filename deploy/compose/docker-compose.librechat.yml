@@ -4,6 +4,8 @@
 #   cd deploy/compose
 #   cp .env.example .env                                         # KP_LLM_MODEL を手元のモデル名に
 #   cp librechat/librechat.env.example librechat/librechat.env
+#   # ↑ 手元では LibreChat のセッション・暗号化の鍵を生成して置き換える(雛形の値は公開済みの
+#   #   ダミー。docs/ui-librechat.md §1.2 に生成のコマンドがある)
 #   docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
 #   # → http://localhost:3080(手順・前提・トラブルシュートは docs/ui-librechat.md)
 #
@@ -13,7 +15,8 @@
 #                 利用者のトークンを保存しない(ADR-018 決定1・2)
 #   librechat     汎用チャット UI。Keycloak の OpenID でログインし、利用者本人のアクセストークンを
 #                 MCP の Authorization ヘッダでそのまま Orchestrator へ転送する(決定8)
-#   mongodb       LibreChat の保存先(会話履歴・利用者)。ホストへ公開しない
+#   mongodb       LibreChat の保存先(会話履歴・利用者)。ホストへ公開せず、LibreChat 専用の
+#                 内部ネットワーク(librechat-internal)にだけ置く
 #   keycloak-tls  Keycloak の前段の TLS 終端(Caddy、評価用のローカル CA)
 #
 # Keycloak を https で見せる理由: LibreChat の OpenID クライアント(openid-client v6)は発行者と
@@ -34,6 +37,8 @@
 #   プロキシ経由にする(docs/install.md §6、docs/ui-librechat.md「セキュリティ上の注意」)
 # - deployment.yaml に永続化できないソース(Slack)が有効なら orchestrator は起動を拒否する
 #   (不変条件7、ADR-018 決定5)
+# - orchestrator は AnswerRun を専用のボリューム kp-answer-runs に書き、Gateway の監査ログ・
+#   生クエリ原文のボリューム(kp-audit / kp-rawquery)はマウントしない(ADR-018 決定4)
 # - LLM は既定でホストの LM Studio(OpenAI 互換 API、http://host.docker.internal:1234/v1)。
 #   UI 側の LLM(LibreChat の会話相手)と Orchestrator の探索ループの両方が使う
 # - orchestrator から上流(Gateway・LLM)へは非ループバックの平文 http のため、
@@ -110,9 +115,10 @@ services:
       - --path
       - /mcp
       - --confirm-exposed-host
-      # AnswerRun は Gateway と同じ監査ボリュームの別ファイルに追記する(ADR-018 決定4)
+      # AnswerRun は Gateway の監査ボリュームとは別のボリューム(下の kp-answer-runs)に追記する
+      # (ADR-018 決定4)
       - --answer-run-jsonl
-      - /var/lib/kp/audit/answer-runs.jsonl
+      - /var/lib/kp/answer-runs/answer-runs.jsonl
       - --max-concurrent-runs
       - "4"
       - --max-question-chars
@@ -142,8 +148,13 @@ services:
       - "127.0.0.1:8790:8790"
     volumes:
       - ./deployment.yaml:/etc/kp/deployment.yaml:ro
-      # Gateway と同じ名前付きボリューム(docker-compose.yml で定義)。書くのは answer-runs.jsonl だけ
-      - kp-audit:/var/lib/kp/audit
+      # AnswerRun の書き先。orchestrator 専用のボリュームで、Gateway の監査ログ(kp-audit)・
+      # 生クエリ原文(kp-rawquery)はマウントしない。Orchestrator は信頼境界 TB2 の外側に
+      # あり(threat-model §1)、侵害・誤動作しても Gateway の監査ログを読めない・書き換え
+      # られないようにする。昇格判定レポートは両方のボリュームを読めるようにして実行する
+      # (docs/install.md §7)。イメージの VOLUME により /var/lib/kp/audit 等には空の匿名
+      # ボリュームが付くが、Gateway のボリュームとは別物
+      - kp-answer-runs:/var/lib/kp/answer-runs
     healthcheck:
       # イメージの HEALTHCHECK は Gateway の /healthz を見るため、kp-ask serve の /healthz に替える
       test:
@@ -168,8 +179,14 @@ services:
 
   mongodb:
     # LibreChat v0.8.7 の docker-compose.yml と同じ版に固定する。ホストへは公開せず、
-    # compose ネットワーク内の librechat だけが使う(認証なし。上流の構成と同じ)
+    # librechat だけが使う(認証なし。上流の構成と同じ)
     image: mongo:8.0.20
+    # LibreChat 専用の内部ネットワークだけに置く。default ネットワークに属さないため、
+    # librechat 以外のコンテナ(gateway・orchestrator・keycloak・keycloak-tls)からは名前解決も
+    # 接続もできない(認証なしの MongoDB に会話履歴 = 本人の権限で得た回答が入っている)。
+    # 内部ネットワークなので MongoDB から外部へも出られない
+    networks:
+      - librechat-internal
     volumes:
       - kp-librechat-mongo:/data/db
     healthcheck:
@@ -207,6 +224,11 @@ services:
       SEARCH: "false"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # default(orchestrator・keycloak-tls・LM Studio への経路)と、mongodb のいる
+    # librechat-internal の両方に属する
+    networks:
+      - default
+      - librechat-internal
     ports:
       - "127.0.0.1:3080:3080"
     volumes:
@@ -231,3 +253,11 @@ volumes:
   kp-caddy-data:
   kp-dev-ca:
   kp-librechat-mongo:
+  # AnswerRun(orchestrator の --answer-run-jsonl)。所有者・権限はイメージの
+  # /var/lib/kp/answer-runs(uid 1000、0700)を初回マウント時に引き継ぐ
+  kp-answer-runs:
+
+networks:
+  # mongodb と librechat だけが属する内部ネットワーク(internal: 外部への経路を持たない)
+  librechat-internal:
+    internal: true
