@@ -33,12 +33,17 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
    ```
    kp-promotion-report \
      --audit audit-records.jsonl \
+     --audit answer-runs.jsonl \
      --sources sources.json \
      --raw-queries raw-queries.jsonl \
      --accessor <監査閲覧担当のuserId> \
      --meta-audit-out meta-audit.jsonl
    ```
 
+   - `--audit` は複数回指定できる。Gateway の監査ログ(ToolInvocation)と、Orchestrator を
+     MCP サーバーとして動かす構成(ADR-018)で別ファイルに書かれる AnswerRun
+     (`answer-runs.jsonl`)を両方渡す。kp-ask を単発で使う構成では AnswerRun は stderr にしか
+     出ないため、集計に載せるにはファイルへ取り込むこと
    - `sources.json` は sourceId → `{ nativeSearch, slack }` の分類メタ。コネクタ実装の
      ConnectorCapabilities と一致させる
    - 監査ログの閲覧はメタ監査の対象(ADR-013 §3)。`--meta-audit-out` に出力される

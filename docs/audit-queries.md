@@ -19,6 +19,12 @@ ToolInvocation と userId が一致する。runId は呼び出し元が申告す
 混ぜうる。**不一致は警告として扱い**(集計から外し、次のクエリで定期的に検出して原因 —
 実装の不具合・申告の偽装 — を調べる)、以下の集計はすべて (runId, userId) で結合する。
 
+レコードの所在: Gateway は ToolInvocation を `audit.jsonl` に、Orchestrator を MCP サーバーとして
+動かす構成(`kp-ask serve`、ADR-018 決定4)は AnswerRun を別ファイル `answer-runs.jsonl` に書く
+(同じスキーマ、追記のみ、1 ファイル 1 プロセス)。以下の SQL は両ファイルを 1 つの表
+`audit_records` に取り込んだ前提で書いてある。昇格判定レポートは `--audit` を複数回指定して
+両方を読む。
+
 ```sql
 -- runId は同じだが userId が食い違う ToolInvocation(警告)
 SELECT
