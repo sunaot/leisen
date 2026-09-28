@@ -32,21 +32,37 @@ jobs:
   # T-012: リファレンスデプロイ(deploy/compose)の起動確認(受け入れ条件1)。
   # クリーンなランナー上で deploy/Dockerfile のイメージをビルドし、gateway + keycloak を
   # docker compose で起動して、Keycloak 発行のトークンでスモーク(scripts/smoke/)を通す。
+  # 続けて T-021 の LibreChat overlay(docker-compose.librechat.yml: orchestrator + librechat +
+  # mongodb + keycloak-tls)を重ねて起動し、orchestrator が「トークンなしは 401、Keycloak の
+  # トークンで tools/list が通る」こと、LibreChat が healthy になり OpenID ログインを構成できた
+  # ことを確かめる(受け入れ条件7)。LLM(LM Studio)はランナーにないため ask は呼ばない。
   # 注意: 開発用の部品(dev-fixture / mock_env)を使う評価用構成であり、実SaaSの認可経路は
   # 検証しない(ADR-010。keycloak-e2e と同じ限界)。compose の変数展開に必要な値は
   # .env.example(ローカル専用のダミー)から渡すため、compose の各コマンドに --env-file を付ける。
   reference-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      BASE_COMPOSE: deploy/compose/docker-compose.yml
+      LIBRECHAT_COMPOSE: deploy/compose/docker-compose.librechat.yml
+      COMPOSE_ENV_EXAMPLE: deploy/compose/.env.example
     steps:
       - uses: actions/checkout@v4
       # スモーク用スクリプト(curl + node)を動かすため。npm の依存は入れない(ビルドはイメージ内)
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      # LibreChat overlay の env_file(雛形のダミー値)。overlay を含む compose の各コマンドは
+      # このファイルがないと解釈できないため、最初に用意する(手順は docs/ui-librechat.md と同じ)
+      - name: Prepare the LibreChat env file (dummy values)
+        run: cp deploy/compose/librechat/librechat.env.example deploy/compose/librechat/librechat.env
+      - name: Validate the compose files (base and LibreChat overlay)
+        run: |
+          docker compose -f "$BASE_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE" config --quiet
+          docker compose -f "$BASE_COMPOSE" -f "$LIBRECHAT_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE" config --quiet
       # --wait: keycloak(realm の import 完了)と gateway(イメージの HEALTHCHECK = /healthz)が
       # healthy になるまで待つ
       - name: Build the image and start gateway + keycloak
-        run: docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example up -d --build --wait --wait-timeout 300
+        run: docker compose -f "$BASE_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE" up -d --build --wait --wait-timeout 300
       # ホストへ公開したポート経由で realm に届くことを確かめる(トークン取得の前提)。
       # e2e/keycloak/wait-ready.sh を再利用する(タイムアウト時に同スクリプトが出すログは
       # e2e 側の compose のものなので、この構成のログは下の always() ステップで出す)
@@ -60,14 +76,38 @@ jobs:
           echo "::add-mask::$KP_SESSION_TOKEN"
           export KP_SESSION_TOKEN
           scripts/smoke/gateway-smoke.sh http://127.0.0.1:8787
-      - name: Show container status and gateway logs
+      # T-021: overlay を重ねる。keycloak は発行者(KC_HOSTNAME)が変わるため作り直される。
+      # --wait: orchestrator(/healthz)、mongodb、keycloak-tls(ローカル CA の書き出し)、
+      # librechat(/health)が healthy になるまで待つ
+      - name: Start the LibreChat overlay (orchestrator + librechat + mongodb + keycloak-tls)
+        run: docker compose -f "$BASE_COMPOSE" -f "$LIBRECHAT_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE" up -d --build --wait --wait-timeout 300
+      - name: Wait for the Keycloak realm on the host port (after the overlay)
+        run: e2e/keycloak/wait-ready.sh
+        env:
+          KEYCLOAK_BASE_URL: http://localhost:8080
+      - name: Smoke test the orchestrator (token from Keycloak)
+        run: |
+          KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"
+          echo "::add-mask::$KP_SESSION_TOKEN"
+          export KP_SESSION_TOKEN
+          scripts/smoke/orchestrator-smoke.sh http://127.0.0.1:8790
+      - name: Smoke test LibreChat (health and the OpenID login redirect)
+        run: scripts/smoke/librechat-smoke.sh http://127.0.0.1:3080
+      - name: Show container status and gateway / orchestrator logs
         if: always()
         run: |
-          docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example ps -a
-          docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example logs --no-color gateway | tail -n 100
-      - name: Show keycloak logs
+          compose=(docker compose -f "$BASE_COMPOSE" -f "$LIBRECHAT_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE")
+          "${compose[@]}" ps -a
+          "${compose[@]}" logs --no-color gateway | tail -n 100
+          "${compose[@]}" logs --no-color orchestrator | tail -n 100
+      - name: Show keycloak / LibreChat logs
         if: failure()
-        run: docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example logs --no-color keycloak | tail -n 100
+        run: |
+          compose=(docker compose -f "$BASE_COMPOSE" -f "$LIBRECHAT_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE")
+          "${compose[@]}" logs --no-color keycloak | tail -n 100
+          "${compose[@]}" logs --no-color keycloak-tls | tail -n 50
+          "${compose[@]}" logs --no-color librechat | tail -n 150
+          "${compose[@]}" logs --no-color mongodb | tail -n 30
       - name: Tear down
         if: always()
-        run: docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env.example down -v
+        run: docker compose -f "$BASE_COMPOSE" -f "$LIBRECHAT_COMPOSE" --env-file "$COMPOSE_ENV_EXAMPLE" down -v

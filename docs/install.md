@@ -1,6 +1,6 @@
 # 導入手順(リファレンスデプロイ)
 
-Status: v0(T-012)/ Date: 2026-09-27
+Status: v0(T-012。T-021 の LibreChat overlay を追記)/ Date: 2026-09-28
 
 Gateway を Docker Compose で起動するリファレンスデプロイの手順と、導入時に確認すべき事項をまとめる。
 導入工程全体(アセスメント → PoC → 全社展開 → 検索層有効化判定)は [docs/playbook.md](playbook.md)、
@@ -10,11 +10,14 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
 
 | パス | 内容 |
 |---|---|
-| `deploy/Dockerfile` | Gateway のイメージ(multi-stage、非 root、`kp-gateway serve`) |
+| `deploy/Dockerfile` | Gateway のイメージ(multi-stage、非 root、`kp-gateway serve`)。Orchestrator(`kp-ask serve`)と昇格判定レポートも含む |
 | `deploy/compose/docker-compose.yml` | gateway + keycloak。検索バックエンドは profile `search-backend` の枠のみ |
+| `deploy/compose/docker-compose.librechat.yml` | LibreChat overlay(T-021): orchestrator + librechat + mongodb + keycloak-tls(Keycloak の TLS 終端)。`-f` で重ねる([docs/ui-librechat.md](ui-librechat.md)) |
+| `deploy/compose/librechat/` | overlay の設定(`librechat.yaml`、`librechat.env.example`、TLS 終端の `Caddyfile` / `keycloak-tls.sh`) |
 | `deploy/compose/deployment.yaml` | リファレンス設定(コンテナの `/etc/kp/deployment.yaml`) |
 | `deploy/compose/.env.example` | 環境変数の雛形(ローカル評価専用のダミー値) |
 | `scripts/smoke/gateway-smoke.sh` | スモークテスト(CI とローカルで共用) |
+| `scripts/smoke/orchestrator-smoke.sh` / `librechat-smoke.sh` | LibreChat overlay のスモークテスト(CI とローカルで共用) |
 | `scripts/smoke/keycloak-token.sh` | 開発・CI 専用のトークン取得(パスワードグラント) |
 
 ## 0. この構成の位置づけ(最初に読む)
@@ -31,6 +34,9 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
   Docker デーモンのない環境で作成した。作成時に確認したのは `docker compose config` による静的検証、Dockerfile の
   2ステージと同じファイル集合・同じ npm コマンドのコンテナ外での再現と、その成果物での起動・HEALTHCHECK・
   スモーク(Keycloak は代役のサーバー)、§6.3 の nginx 設定例の構文と挙動まで。手元の Docker での起動は未確認
+- 同じジョブで LibreChat overlay(T-021)も重ねて起動し、orchestrator の認証の配線(トークンなし・不正なトークンは
+  401、Keycloak のトークンで `tools/list` が通る)と LibreChat の起動(`/health` と OpenID ログインの開始)を
+  確かめる。LLM はランナーにないため `ask` は CI では呼ばない([docs/ui-librechat.md](ui-librechat.md))
 
 ## 1. 前提
 
@@ -38,6 +44,8 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
   (`docker compose up --wait` が使えること)
 - ホストの `127.0.0.1:8787`(Gateway)と `127.0.0.1:8080`(Keycloak)が空いていること
 - スモーク用に `curl` と Node.js(22 を推奨。スクリプトは JSON の解析にだけ使う)
+- LibreChat overlay を使う場合は、加えて `127.0.0.1` の 3080 / 8443 / 8790 が空いていることと、LLM
+  (LM Studio 等の OpenAI 互換 API)が要る([docs/ui-librechat.md](ui-librechat.md) §1.1)
 - コンテナを使わずに動かす場合は Node 22 と npm(§3)
 
 ## 2. 5分手順(Docker Compose)
@@ -66,6 +74,20 @@ gateway-smoke: all checks passed
 - ユーザー `bob` で試すときは `KP_SMOKE_USERNAME=bob KP_SMOKE_PASSWORD=dev-only-bob-password`
 - 停止は `docker compose down`(監査ボリュームは残る)。`down -v` は監査ログのボリュームも消す。
   評価以外の環境では、監査ログの削除は保持期間の規程(ADR-013 §3)に従う
+
+### 2.1 UI(LibreChat)・MCP クライアントから問い合わせる
+
+利用者が自然言語で問い合わせる面は、Orchestrator を MCP サーバーとして公開し(`kp-ask serve`)、汎用の
+チャット UI や MCP クライアントからつなぐ(ADR-018)。リファレンス構成では LibreChat の overlay を重ねる:
+
+```bash
+cp librechat/librechat.env.example librechat/librechat.env   # deploy/compose で。.env の KP_LLM_MODEL も合わせる
+docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
+# → http://localhost:3080(Keycloak の alice / bob でログイン)
+```
+
+手順・前提(LM Studio、`keycloak.localhost` と証明書)・履歴の保持と不変条件7・MCP クライアント
+(Claude Code 等)からの接続・トラブルシュートは [docs/ui-librechat.md](ui-librechat.md)。
 
 ## 3. コンテナを使わない同等手順(Node 22)
 
@@ -107,7 +129,11 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   `connectors[].settings` の `<name>Env`)。スキーマは秘密情報らしいキーを拒否する(不変条件6)
 - compose は `deploy/compose/.env`(git 管理外。`.dockerignore` でイメージにも入らない)を変数展開に使い、
   各コンテナに必要な変数だけを渡す(gateway: `KP_KEYCLOAK_CLIENT_SECRET` / `KP_MOCK_TOKEN_DEV_DOCS`、
-  keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`)。未設定なら compose が起動前に止まる
+  keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`。LibreChat overlay の orchestrator: `KP_AUDIT_HMAC_KEY`(AnswerRun の
+  citedDocIds の HMAC 鍵)と LLM の接続先・モデル名)。未設定なら compose が起動前に止まる
+- LibreChat overlay の LibreChat 固有の秘密(OpenID のクライアント secret、セッション・保存時暗号化の鍵)は
+  `deploy/compose/librechat/librechat.env`(git 管理外。雛形は `librechat.env.example`)から librechat
+  コンテナにだけ渡す
 - `.env.example` の値は realm(`e2e/keycloak/realm/kp-realm.json`)と揃えたローカル専用のダミー。
   `KP_KEYCLOAK_CLIENT_SECRET` は realm のクライアント `gateway` の secret と一致させる必要がある
 - 本番では秘密をオーケストレーターの秘密ストア(Docker secrets、Kubernetes Secret 等)から環境変数として
@@ -248,8 +274,12 @@ server {
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、
   短くして SIGKILL されるとバッファ内のレコードを失う
 - 1ファイルに書き込むのは1プロセスに限る(Gateway は単一レプリカで動かす)
+- LibreChat overlay の orchestrator(`kp-ask serve`)は、AnswerRun を同じ監査ボリュームの別ファイル
+  `/var/lib/kp/audit/answer-runs.jsonl` に追記する(ADR-018 決定4。同じスキーマ、追記のみ、0600)。1ファイルに
+  書くのは1プロセスという規則は変わらない(Gateway は `audit.jsonl`、orchestrator は `answer-runs.jsonl`)
 - 昇格判定レポートはコンテナ内で監査ボリュームを読んで実行できる(手順と注意は docs/playbook.md
-  「有効化判定」。レポートの実行自体がメタ監査の対象で、`--meta-audit-out` のファイルを監査ストアに残す):
+  「有効化判定」。レポートの実行自体がメタ監査の対象で、`--meta-audit-out` のファイルを監査ストアに残す)。
+  LibreChat overlay を使っている場合は `--audit /var/lib/kp/audit/answer-runs.jsonl` も足し、両方を結合して集計する:
 
   ```bash
   docker compose run --rm --no-deps -v "$PWD/sources.json:/tmp/sources.json:ro" \
@@ -279,6 +309,8 @@ server {
 - イメージのレジストリ配布・署名、ベースイメージのダイジェスト固定(`deploy/Dockerfile` の
   `ARG NODE_IMAGE`)は未整備
 - 検索バックエンド(profile `search-backend`)は T-016 の PoC で選定後に定義する
+- LibreChat overlay の制約(👍👎 と feedback の連携なし、進捗のストリーミングなし、LibreChat v0.8.7 では通常の
+  会話と一時チャットの保持期限を分けられない等)は [docs/ui-librechat.md](ui-librechat.md)「未実装・制約」
 
 ## 9. アップグレード手順(骨子)
 

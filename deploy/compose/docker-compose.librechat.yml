@@ -1,0 +1,233 @@
+# リファレンスデプロイの LibreChat overlay(T-021、ADR-018 決定8・11)。基本の
+# docker-compose.yml(gateway + keycloak)に -f で重ねて、利用者が問い合わせる面を足す。
+#
+#   cd deploy/compose
+#   cp .env.example .env                                         # KP_LLM_MODEL を手元のモデル名に
+#   cp librechat/librechat.env.example librechat/librechat.env
+#   docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
+#   # → http://localhost:3080(手順・前提・トラブルシュートは docs/ui-librechat.md)
+#
+# 追加するサービス:
+#   orchestrator  kp-ask serve。Orchestrator を MCP サーバー(Streamable HTTP)として公開する。
+#                 gateway と同じイメージを別のエントリポイントで動かす。認証は Gateway に委ね、
+#                 利用者のトークンを保存しない(ADR-018 決定1・2)
+#   librechat     汎用チャット UI。Keycloak の OpenID でログインし、利用者本人のアクセストークンを
+#                 MCP の Authorization ヘッダでそのまま Orchestrator へ転送する(決定8)
+#   mongodb       LibreChat の保存先(会話履歴・利用者)。ホストへ公開しない
+#   keycloak-tls  Keycloak の前段の TLS 終端(Caddy、評価用のローカル CA)
+#
+# Keycloak を https で見せる理由: LibreChat の OpenID クライアント(openid-client v6)は発行者と
+# 各エンドポイントに https を要求し、http の発行者ではログインを構成できない。評価用に Caddy の
+# 内部 CA で keycloak.localhost の証明書を発行し、LibreChat にはそのルート証明書だけを追加で
+# 信頼させる(NODE_EXTRA_CA_CERTS)。ブラウザには初回に証明書の警告が出る(docs/ui-librechat.md)。
+#
+# 発行者 URL(https://keycloak.localhost:8443/realms/kp)は、ブラウザ(ログイン画面への
+# リダイレクト)とコンテナ(LibreChat のディスカバリ・トークン交換)の両方が同じ名前で参照する。
+# *.localhost は Chrome / Firefox がループバックに解決し、compose 内はネットワークエイリアスで
+# keycloak-tls に解決する。解決しない環境(Safari など)は hosts に「127.0.0.1 keycloak.localhost」
+# を足す。Gateway のイントロスペクションは従来どおりネットワーク内の http://keycloak:8080
+# (deployment.yaml)で、トークンの発行者は KC_HOSTNAME で固定される。
+#
+# - 評価用構成: 値はすべてローカル評価専用のダミー。秘密は .env と librechat/librechat.env
+#   (どちらも git 管理外)にだけ入れ、このファイル・librechat.yaml には書かない(不変条件6)
+# - ホストへの公開はループバック(127.0.0.1)に限る。外部への公開は TLS を終端するリバース
+#   プロキシ経由にする(docs/install.md §6、docs/ui-librechat.md「セキュリティ上の注意」)
+# - deployment.yaml に永続化できないソース(Slack)が有効なら orchestrator は起動を拒否する
+#   (不変条件7、ADR-018 決定5)
+# - LLM は既定でホストの LM Studio(OpenAI 互換 API、http://host.docker.internal:1234/v1)。
+#   UI 側の LLM(LibreChat の会話相手)と Orchestrator の探索ループの両方が使う
+# - orchestrator から上流(Gateway・LLM)へは非ループバックの平文 http のため、
+#   --allow-insecure-upstream を付けている。評価用構成の設定で、本番では上流を https にするか、
+#   同じホストのループバックにする
+
+services:
+  keycloak:
+    environment:
+      # 発行者(iss)と各エンドポイントを TLS 終端(keycloak-tls)の URL に固定する
+      KC_HOSTNAME: https://keycloak.localhost:8443
+      # ディスカバリが返すバックチャネルの URL もリクエストによらず上の URL にする(LibreChat は
+      # ディスカバリの token / jwks / userinfo を https で呼ぶ)。Gateway と scripts/smoke は
+      # ディスカバリを使わず http://keycloak:8080 / http://localhost:8080 を直接呼ぶため影響しない。
+      # 転送元のヘッダ(X-Forwarded-*)は信頼しない(KC_PROXY_HEADERS は設定しない)
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "false"
+
+  keycloak-tls:
+    image: caddy:2.11.4-alpine
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    # Caddy を起動し、内部 CA のルート証明書を LibreChat が読める形でボリューム kp-dev-ca に
+    # 書き出す(秘密鍵は書き出さない)
+    entrypoint: ["/bin/sh", "/usr/local/bin/keycloak-tls.sh"]
+    networks:
+      default:
+        aliases:
+          - keycloak.localhost
+    ports:
+      # ブラウザからのログイン用。ループバックのみ
+      - "127.0.0.1:8443:8443"
+    volumes:
+      - ./librechat/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./librechat/keycloak-tls.sh:/usr/local/bin/keycloak-tls.sh:ro
+      - kp-caddy-data:/data
+      - kp-dev-ca:/ca
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /ca/root.crt"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    security_opt:
+      - no-new-privileges:true
+    # caddy のバイナリはファイルケーパビリティ(cap_net_bind_service)付きのため、全て落とすと
+    # 実行できない。8443 番の待ち受け自体には要らない
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+  orchestrator:
+    # gateway と同じイメージ(deploy/Dockerfile。build は docker-compose.yml の gateway 側にあり、
+    # compose は gateway のビルド後にこのサービスを作る)
+    image: kp-gateway:local
+    pull_policy: never
+    depends_on:
+      gateway:
+        condition: service_healthy
+    entrypoint: ["node", "packages/orchestrator/dist/bin/kp-ask.js"]
+    command:
+      - serve
+      # Gateway はネットワーク内のサービス名で呼ぶ(deployment.yaml の gateway.http の port / path)
+      - --gateway
+      - http://gateway:8787/mcp
+      # 永続化できないソース(Slack)の有効化の判定と、AnswerRun の citedDocIds の記録方針に使う
+      - --config
+      - /etc/kp/deployment.yaml
+      # コンテナ内では全インターフェースで待ち受ける(ホストへの公開は下の ports で 127.0.0.1 に
+      # 限る)。ループバック以外で待ち受けるため確認フラグが要る(Gateway の confirmExposedHost と
+      # 同じ規約。TLS・Host / Origin の検証・流量制御は前段のリバースプロキシの役目)
+      - --listen
+      - 0.0.0.0:8790
+      - --path
+      - /mcp
+      - --confirm-exposed-host
+      # AnswerRun は Gateway と同じ監査ボリュームの別ファイルに追記する(ADR-018 決定4)
+      - --answer-run-jsonl
+      - /var/lib/kp/audit/answer-runs.jsonl
+      - --max-concurrent-runs
+      - "4"
+      - --max-question-chars
+      - "4000"
+      # LLM バックエンド。ベース URL とモデル名は環境変数 KP_LLM_BASE_URL / KP_LLM_MODEL(下)
+      - --llm
+      - openai-compatible
+      # 上流(Gateway の http://gateway:8787/mcp と LLM の http://host.docker.internal:1234/v1)は
+      # compose ネットワーク・ホスト宛ての非ループバックの平文 http のため、明示して許可する
+      # (既定では拒否。NODE_ENV=production では使えず、起動ログに WARNING)。評価用構成の設定。
+      # 本番では上流を https にするか、同じホストのループバックにする
+      - --allow-insecure-upstream
+    environment:
+      # 評価用構成(開発用の部品を含む deployment.yaml、--allow-insecure-upstream)は
+      # NODE_ENV=production では拒否されるため(gateway と同じ)
+      NODE_ENV: development
+      # deployment.yaml の audit.privateScopeDocIds: hashed の HMAC 鍵(デプロイ固有、秘密)
+      KP_AUDIT_HMAC_KEY: ${KP_AUDIT_HMAC_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
+      # 既定はホストの LM Studio(extra_hosts の host.docker.internal)
+      KP_LLM_BASE_URL: ${KP_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      # LM Studio でロードしたモデル名(curl http://localhost:1234/v1/models の id)
+      KP_LLM_MODEL: ${KP_LLM_MODEL:?set it in deploy/compose/.env (the model name loaded in LM Studio)}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # MCP クライアント(Claude Code・MCP Inspector 等)からの接続用。ループバックのみ
+      - "127.0.0.1:8790:8790"
+    volumes:
+      - ./deployment.yaml:/etc/kp/deployment.yaml:ro
+      # Gateway と同じ名前付きボリューム(docker-compose.yml で定義)。書くのは answer-runs.jsonl だけ
+      - kp-audit:/var/lib/kp/audit
+    healthcheck:
+      # イメージの HEALTHCHECK は Gateway の /healthz を見るため、kp-ask serve の /healthz に替える
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8790/healthz',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    # 停止時は受付を止め、処理中のリクエスト(run)の応答を最大 30 秒待ってから終了する。
+    # それより長く取る(短いと SIGKILL で AnswerRun の最終状態を書けずに終わる)
+    stop_grace_period: 40s
+    # コアダンプにメモリ上のトークンを残さない(threat-model TM-C3)
+    ulimits:
+      core: 0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  mongodb:
+    # LibreChat v0.8.7 の docker-compose.yml と同じ版に固定する。ホストへは公開せず、
+    # compose ネットワーク内の librechat だけが使う(認証なし。上流の構成と同じ)
+    image: mongo:8.0.20
+    volumes:
+      - kp-librechat-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  librechat:
+    # LibreChat の安定版(v0.8.7、2026-06-23)に固定する。rc(v0.8.8-rc*)は使わない。
+    # 上流の compose は registry.librechat.ai 経由の同じイメージ(librechat-ai/librechat)を参照する。
+    # 版を上げるときは librechat.yaml の version と保持期間の項目(docs/ui-librechat.md)を見直す
+    image: ghcr.io/librechat-ai/librechat:v0.8.7
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      keycloak-tls:
+        condition: service_healthy
+      orchestrator:
+        condition: service_healthy
+    # OpenID・セッション鍵などの LibreChat 固有の値(git 管理外。雛形は librechat.env.example)
+    env_file:
+      - ./librechat/librechat.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3080"
+      MONGO_URI: mongodb://mongodb:27017/LibreChat
+      CONFIG_PATH: /app/librechat.yaml
+      # Keycloak の TLS 終端(keycloak-tls)のローカル CA だけを追加で信頼する
+      NODE_EXTRA_CA_CERTS: /etc/kp-dev-ca/root.crt
+      # librechat.yaml の LM Studio エンドポイントの baseURL(orchestrator と同じ既定)
+      KP_LLM_BASE_URL: ${KP_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      # 会話検索(Meilisearch)は使わない(この構成には含めない)
+      SEARCH: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:3080:3080"
+    volumes:
+      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+      - kp-dev-ca:/etc/kp-dev-ca:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3080/health',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  kp-caddy-data:
+  kp-dev-ca:
+  kp-librechat-mongo:

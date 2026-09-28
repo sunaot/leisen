@@ -67,6 +67,7 @@ curl -s http://127.0.0.1:8787/mcp \
 - MCP Inspector(CLIモード、v2.8.0 で確認): `npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8787/mcp --transport http --header "Authorization: Bearer dev-token" --method tools/list`(`--method tools/call --tool-name search --tool-arg source=dev-docs --tool-arg query=VPN` で検索)
 - MCP Inspector(ブラウザUI、**未検証**): `npx @modelcontextprotocol/inspector` を起動し、Transport に Streamable HTTP、URL に `http://127.0.0.1:8787/mcp`、ヘッダに `Authorization: Bearer dev-token` を指定する
 - Claude Code: `claude mcp add --transport http kp-gateway http://127.0.0.1:8787/mcp --header "Authorization: Bearer dev-token"`。`claude mcp list` で `Connected` になることまで確認済み(対話の中でのツール呼び出しは**未検証**)
+- 出典付きの回答(Orchestrator の `ask` / `feedback`)をチャット UI(LibreChat)や MCP クライアントから使う場合は、Orchestrator を MCP サーバーとして起動する(`kp-ask serve`。T-021)。手順は [docs/ui-librechat.md](docs/ui-librechat.md)
 
 ### 本番では開発用の部品が拒否される
 
@@ -90,17 +91,19 @@ KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/
 
 起動確認は CI の `reference-deploy` ジョブが担う(PR #14 で成功を確認)。
 
+チャット UI から問い合わせる場合は LibreChat の overlay を重ねる(`deploy/compose` で `cp librechat/librechat.env.example librechat/librechat.env` のあと `docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait` → http://localhost:3080。LM Studio が要る)。手順と MCP クライアント(Claude Code 等)からの接続は [docs/ui-librechat.md](docs/ui-librechat.md)。
+
 ## 構成
 
 - `packages/connector-sdk` — コネクタ共通IF
 - `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP。HTTPトランスポートは配線済みで `kp-gateway serve` で起動する)と起動コード(`kp-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
 - `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち
-- `packages/orchestrator` — Orchestrator 探索戦略 v1(T-007)と `kp-ask` CLI。LLM バックエンドは設定で選ぶ(Anthropic Messages API / OpenAI 互換。LM Studio・llama.cpp 等のローカルモデルは `--llm openai-compatible`)。使い方・LM Studio 手順・出典検証の契約は `packages/orchestrator/README.md`。設計は ADR-017(Proposed)
+- `packages/orchestrator` — Orchestrator 探索戦略 v1(T-007)と `kp-ask` CLI(`kp-ask serve` で MCP サーバーとして公開する。T-021、ADR-018)。LLM バックエンドは設定で選ぶ(Anthropic Messages API / OpenAI 互換。LM Studio・llama.cpp 等のローカルモデルは `--llm openai-compatible`)。使い方・LM Studio 手順・出典検証の契約は `packages/orchestrator/README.md`。設計は ADR-017(Proposed)
 - `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `examples/deployment.dev.yaml` — 手元で動かすための開発用設定(上記「手元で動かす」)
-- `deploy/` — リファレンスデプロイ(T-012): `Dockerfile` と `compose/`(gateway + keycloak の評価用構成)。導入手順は `docs/install.md`
-- `scripts/smoke/` — スモークテスト(`gateway-smoke.sh`)と開発・CI 専用のトークン取得(`keycloak-token.sh`)
+- `deploy/` — リファレンスデプロイ(T-012): `Dockerfile` と `compose/`(gateway + keycloak の評価用構成と、LibreChat の overlay)。導入手順は `docs/install.md`、UI からの利用は `docs/ui-librechat.md`
+- `scripts/smoke/` — スモークテスト(`gateway-smoke.sh`、LibreChat overlay の `orchestrator-smoke.sh` / `librechat-smoke.sh`)と開発・CI 専用のトークン取得(`keycloak-token.sh`)
 - `docs/adr` — 設計判断の記録
 - `docs/backlog` — Phase 1タスク(受け入れ条件付き)
 

@@ -3,6 +3,8 @@
 # docker-compose.yml がコンテナの /etc/kp/deployment.yaml に読み取り専用でマウントする
 # (イメージの KP_DEPLOYMENT_CONFIG の既定値)。ファイル内のパスはすべてコンテナ内のもの。
 # 手順は docs/install.md。スキーマの正は packages/gateway/src/config/schema.ts。
+# LibreChat overlay(docker-compose.librechat.yml)の orchestrator(kp-ask serve)も同じファイルを
+# 読む(永続化できないソースの有効化の判定、AnswerRun の citedDocIds の記録方針。docs/ui-librechat.md)。
 #
 # **評価用構成**: 開発用の部品(auth.provider: mock_env、kind: dev-fixture)を使うため、
 # compose は NODE_ENV=development で起動する(NODE_ENV=production では起動時に
@@ -72,4 +74,6 @@ audit:
   telemetryRetentionDays: 14
 
 chatHistory:
-  retentionDays: 90 # ADR-013 §4
+  # ADR-013 §4。LibreChat overlay の保持期限(librechat/librechat.yaml の temporaryChatRetention:
+  # 2160 時間)をこの値に合わせる(packages/gateway/test/reference-deploy.test.ts が検査する)
+  retentionDays: 90

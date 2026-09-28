@@ -1,6 +1,6 @@
 # deploy/Dockerfile のビルドコンテキスト(リポジトリルート)から除外するもの(T-012)。
 # イメージのビルドに使うのは、ルートの package.json / package-lock.json /
-# tsconfig.base.json と packages/*(package.json と src)だけ。
+# tsconfig.base.json と packages/*(package.json と src。orchestrator は prompts も)だけ。
 # 秘密情報・ローカルの依存とビルド成果物・ビルドに不要なディレクトリを送らない。
 
 # 秘密情報(deploy/compose/.env 等。雛形の .env.example もイメージには不要)
@@ -25,3 +25,7 @@ scripts
 spikes
 packages/*/test
 **/*.md
+# 例外: orchestrator の system prompt の固定部は実行時に読む Markdown(T-021)。
+# deploy/Dockerfile が build ステージから runtime へコピーする。上の **/*.md より後に置く
+# (.dockerignore は後の行が優先)
+!packages/orchestrator/prompts/*.md

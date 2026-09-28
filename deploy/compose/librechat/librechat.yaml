@@ -1,0 +1,66 @@
+# LibreChat の設定(deploy/compose の LibreChat overlay、T-021、ADR-018 決定8)。
+#
+# docker-compose.librechat.yml が librechat コンテナの /app/librechat.yaml に読み取り専用で
+# マウントする。LibreChat v0.8.7(設定の version 1.3.13)の librechat.example.yaml の構造に
+# 合わせ、この構成で使う項目だけを書く。LibreChat は起動時にこのファイルを検証し、不正なら
+# 終了する(docker compose logs librechat で確認する)。
+#
+# 秘密情報は書かない(不変条件6)。${VAR} は LibreChat が実行時に環境変数から展開する
+# (librechat/librechat.env と compose の environment)。
+version: 1.3.13
+cache: true
+
+interface:
+  # 会話履歴の保持期間(ADR-013 §4。deployment.yaml の chatHistory.retentionDays: 90)。
+  # v0.8.7 の retentionMode: all は、一時チャットに限らずすべての会話・メッセージに
+  # temporaryChatRetention(時間)の期限を付ける(期限は保存・更新のたびに付け直す)。
+  # 90 日 = 2160 時間。一時チャットだけを短くする generalChatRetention は v0.8.8 以降の
+  # 項目で、v0.8.7 では無視される(docs/ui-librechat.md「履歴の保持」)
+  retentionMode: all
+  temporaryChatRetention: 2160
+
+mcpSettings:
+  # LibreChat は既定で私設 IP・localhost 宛ての MCP 接続を SSRF として拒否する。compose
+  # ネットワーク内の Orchestrator だけを例外にする(host:port の組で指定する)
+  allowedAddresses:
+    - 'orchestrator:8790'
+
+mcpServers:
+  leisen:
+    type: streamable-http
+    url: 'http://orchestrator:8790/mcp'
+    # 表示名(英数字と空白だけ。LibreChat の制約)
+    title: 'Leisen'
+    description: '社内ナレッジ検索。利用者本人の権限で検索し、出典付きで回答します'
+    headers:
+      # OpenID でログインした利用者本人のアクセストークンをそのまま転送する(ADR-018 決定8。
+      # OPENID_REUSE_TOKENS=true が前提)。Orchestrator はトークンを保存せず、Gateway に
+      # 渡して有効性の判断を委ねる
+      Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}'
+    # OAuth の自動検出をしない(認可は本人トークンの直接転送で行う)
+    requiresOAuth: false
+    # 起動時には接続しない(利用者のトークンは利用者のリクエストにしかない)
+    startup: false
+    # ask は探索ループ(LLM と Gateway の往復)を回すため長めにとる(ミリ秒)
+    timeout: 300000
+    # Orchestrator が initialize で返す instructions(出典を改変せずに提示する等)を
+    # UI 側の LLM に渡す
+    serverInstructions: true
+
+endpoints:
+  custom:
+    # UI 側の LLM(チャットの相手。ask / feedback を呼ぶ)。LM Studio の OpenAI 互換 API
+    - name: 'LM Studio'
+      # LM Studio は API キーを見ない。空でない値が要るため librechat.env のダミーを使う
+      apiKey: '${LIBRECHAT_LLM_API_KEY}'
+      # 既定 http://host.docker.internal:1234/v1(docker-compose.librechat.yml)
+      baseURL: '${KP_LLM_BASE_URL}'
+      models:
+        # LM Studio の /v1/models から取得する。取得できないときはこの既定値を表示する
+        # (.env.example の KP_LLM_MODEL と同じ名前)
+        default:
+          - 'openai/gpt-oss-20b'
+        fetch: true
+      # 会話タイトルの生成に LLM を使わない(評価の負荷を増やさない)
+      titleConvo: false
+      modelDisplayLabel: 'LM Studio'

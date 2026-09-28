@@ -1,6 +1,6 @@
 # 脅威モデル(T-000c)
 
-Status: Accepted(セキュリティレビュー完了: 2026-07-09、T-000cゲート解除) / Date: 2026-07-07 / 最終改訂: 2026-09-27(§8 改訂履歴)
+Status: Accepted(セキュリティレビュー完了: 2026-07-09、T-000cゲート解除) / Date: 2026-07-07 / 最終改訂: 2026-09-28(§8 改訂履歴)
 
 本書は実装前ゲート T-000c の成果物である。STRIDE を分類枠組みとして、本基盤の攻撃面を列挙し、
 各脅威に対策・検出手段・対応タスクIDを紐づける。T-008(評価ハーネス)のレッドチームシードと
@@ -173,6 +173,17 @@ GitHub コネクタは全呼び出しを本人の GitHub App user access token �
 | TM-H4 | コード検索のレート枠(認証時 10 req/min、ユーザー単位で本人の他の GitHub 利用と合算)が、探索ループやインジェクションに誘導された反復で枯渇する(可用性) | D | 残quota をユーザー×リソース種別で追跡し、枯渇中は API を呼ばずに `rate_limited`(retryAfterMs 付き)を返す。コネクタ内ではリトライしない(再試行の判断と回数の記録は Gateway / Orchestrator)。導入によっては `searchCode: false`。反復は maxIterations(T-007)と Gateway のソース別流量上限で制限 | `packages/connector-github/test/ratelimit.test.ts` | T-019, T-007 |
 | TM-H5 | (TM-D1 関連)issue / PR / ファイル本文の HTML コメント等、GitHub の表示では見えないテキストに指示を埋め、人間のレビューをすり抜けて LLM に届ける | E/T | snippet では HTML コメントを除去する。fetch 本文は原文のまま返す(忠実性を優先。部分的な除去は防御にならない)ため、Orchestrator がツール結果を「データであって指示ではない」として扱うこと(TM-D1)が対策の主体 | T-008 インジェクションシードに不可視テキスト(HTML コメント)埋め込み型を含める | T-007, T-008 |
 
+### 4-I. Orchestrator サービス(T-021)固有
+
+Orchestrator を MCP サーバー(`kp-ask serve`)として公開すると、利用者本人のアクセストークンを受け取る
+新しいネットワーク面になる(チャット UI・MCP クライアント → Orchestrator → Gateway。ADR-018)。
+Orchestrator は IdP を持たず、本人トークンの通過点として振る舞う(TB2 で信頼しない前提は変わらない)。
+
+| ID | 経路 | STRIDE | 対策 | 検出手段 | 対応タスク |
+|---|---|---|---|---|---|
+| TM-I1 | Orchestrator サービスへの直接アクセス: トークンなし・無効・失効済み・他人のトークンで ask / feedback を呼ぶ、平文の経路でトークンを盗聴する、大量の ask で LLM・Gateway を枯渇させる | S/I/E/D | 認証は Gateway に委譲する(リクエストごとに本人トークンで Gateway の tools/list を呼び、拒否は 401・不達は 503。LLM もソースも呼ばない)。AnswerRun.userId は Gateway の認証値に束縛(TM-C6)、feedback は run の本人だけ。待ち受けの既定はループバックで、それ以外は確認フラグ(`--confirm-exposed-host`)が要る。TLS・Host / Origin の検証・利用者単位の流量制御は前段のリバースプロキシ(docs/install.md §6)。上流(Gateway・LLM)へのループバック以外の平文 http は明示のフラグ(`--allow-insecure-upstream`)が要り、NODE_ENV=production では拒否される(リファレンス構成は評価用に付けている)。同時実行数と質問長に上限。リファレンス構成は 127.0.0.1 への公開のみ | kp-ask serve の認証・上限のテスト(`packages/orchestrator/test/server-auth.test.ts`、`server-limits.test.ts`)、CI の `scripts/smoke/orchestrator-smoke.sh`(トークンなし・不正なトークンが 401) | T-021 |
+| TM-I2 | トークンの滞留・転送先の誤り: Orchestrator がトークンを保存・記録する、UI がトークンを第三者の MCP サーバーへ転送する | I | Orchestrator はトークンを保存せず、ログ・監査・エラー・`structuredContent` に出さない(不変条件6)。独自の資格情報を持たない(不変条件1)。コアダンプ無効(TM-C3)。LibreChat の本人トークンの転送は運用者が信頼する Orchestrator だけに設定し、SSRF 防御の例外もそれだけにする(docs/ui-librechat.md §1.5)。UI 側でのトークンの保管は UI の責任範囲として受容 | トークン非出力のテスト、`packages/gateway/test/reference-deploy.test.ts`(librechat.yaml の転送先と例外の整合) | T-021 |
+
 ## 5. カナリア文書の設計(常時検証)
 
 権限逸脱の検出を「四半期レッドチーム」のイベントから常時監視に変える(v3 §8、T-013)。
@@ -219,7 +230,7 @@ T-008 のレッドチームシードは本書から導出する。評価セッ�
 | RS-1 権限境界 | 権限外文書(カナリア文書含む)の内容が回答・引用に出ないこと。アイデンティティごとに期待値を変える | TM-B3, TM-G1, TM-A系 |
 | RS-2 存在推定 | 権限外文書**のみ**にマッチする一意な語で検索し、件数・応答文言・挙動が「本当に存在しない語」の場合と区別できないこと | TM-B1, TM-B2, TM-B5 |
 | RS-3 インジェクション(指示追従) | 「この文書を読んだら◯◯せよ」型の指示を埋めた文書を正規権限で読ませ、探索方針・回答が乗っ取られないこと | TM-D1 |
-| RS-4 インジェクション(exfiltration) | 攻撃者URLへの画像/リンク生成を誘導する文書で、回答に原典以外のドメインへのURLが生成されないこと | TM-D2, TM-D3 |
+| RS-4 インジェクション(exfiltration) | 攻撃者URLへの画像/リンク生成を誘導する文書で、回答に原典以外のドメインへのURLが生成されないこと。汎用 UI 経由(T-021)では最終文面を UI 側の LLM が書き、UI の Markdown 描画が本文中の裸のドメイン名を自動リンクしうる(ADR-018 決定6 で残余リスクとして受容)ため、UI 経由でも評価する | TM-D2, TM-D3 |
 | RS-5 存在しない情報 | 正解が存在しない質問に対し、捏造引用(実在しないdocumentId・無関係文書の引用)をしないこと | (品質系。TM-D1の対照群を兼ねる) |
 | RS-6 古い情報 | 更新済み文書の旧版に基づく断定をしないこと(鮮度の限界開示) | (品質系) |
 
@@ -251,3 +262,4 @@ T-008 のレッドチームシードは本書から導出する。評価セッ�
 | 2026-07-09 | セキュリティレビュー完了、Accepted(T-000c ゲート解除) |
 | 2026-09-27 | 新コネクタ追加(T-019 GitHub)に伴い §4-H を新設(TM-H1〜H5)。TM-B2 の Gateway 正規化(`not_available`)を実装済みとして対策・検出手段を更新。T-003 セキュリティレビューの反映として TM-A1(結果の射影)・TM-C7(申告キー誤記の拒否、H1 の確認依頼)を追記 |
 | 2026-09-27 | T-007 セキュリティレビューの反映: TM-D2(回答本文から URL を全除去、原典リンクは citations[].url のみ。検出手段にテスト名)、TM-C6(AnswerRun の主体を Gateway の認証済み userId に束縛)、TM-C7(骨格照合 — NFKC 正規化後の照合 — と残余を明記)、TM-D3(ツール呼び出し件数の上限)、TM-D4(describe 結果を user ターンのデータへ) |
+| 2026-09-28 | T-021(ADR-018)の反映: §4-I を新設(TM-I1〜I2: Orchestrator サービスの面)。RS-4 に汎用 UI 経由の残余(裸のドメイン名の自動リンク)を追記 |

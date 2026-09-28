@@ -20,6 +20,37 @@
       "publicClient": true,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": true
+    },
+    {
+      "clientId": "librechat",
+      "name": "LibreChat (OpenID login, reference overlay T-021 / ADR-018)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-only-librechat-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:3080/*"],
+      "webOrigins": ["http://localhost:3080"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3080/*",
+        "access.token.lifespan": "900"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-gateway",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "gateway",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
