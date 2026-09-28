@@ -1,7 +1,10 @@
 /**
  * ask ツールの text(Markdown)と structuredContent の組み立て(T-021、ADR-018 決定6)の単体:
- * - 出典節: `- [n] title(`sourceId:documentId`)— url`、0 件なら「出典: なし」
- * - url は http / https の絶対 URL(資格情報なし)だけ。title は無害化してエスケープする
+ * - 出典節: `- [n] title(`sourceId:documentId`)— <url>`、0 件なら「出典: なし」
+ * - url は http / https の絶対 URL(資格情報なし)だけで、CommonMark の自動リンク `<…>` で
+ *   描く(パスの `[` `]` `(` `)` で別のリンクを作らせない。セキュリティレビュー S1)。
+ *   title は無害化してエスケープする
+ * - structuredContent の citations も同じ規則で無害化する(m3)
  * - 注意書き: resolved 以外で、本文の先頭に既知の注意書きがないときだけ付ける
  * - 閉じていないコードフェンスは閉じてから出典節を足す
  * - structuredContent は outputSchema に適合する(成功形・エラー形とも)。errorClass は
@@ -56,7 +59,7 @@ describe("renderAnswerMarkdown", () => {
     expect(renderAnswerMarkdown(answer())).toBe(
       [
         "経費精算の締め日は毎月25日です。",
-        "## 出典\n- [1] 経費精算規程(`alpha:doc-expense-policy`)— https://alpha.example.test/docs/doc-expense-policy",
+        "## 出典\n- [1] 経費精算規程(`alpha:doc-expense-policy`)— <https://alpha.example.test/docs/doc-expense-policy>",
         "runId: `run-1`",
       ].join("\n\n"),
     );
@@ -122,8 +125,47 @@ describe("出典の行", () => {
     ["not a url", undefined],
     ["https://wiki.example.test/a b/<x>", "https://wiki.example.test/a%20b/%3Cx%3E"],
     ["http://intranet.example.test/p?q=1#f", "http://intranet.example.test/p?q=1#f"],
+    ["https://wiki.example.test/q?a=<b> c#<f>", "https://wiki.example.test/q?a=%3Cb%3E%20c#%3Cf%3E"],
+    // WHATWG URL はパスの [ ] ( ) ! をエンコードしない(だから自動リンクで囲む。S1)
+    [
+      "https://docs.example.test/a[x](https://evil.example/x)!",
+      "https://docs.example.test/a[x](https://evil.example/x)!",
+    ],
   ])("url %j は %j として描画する", (raw, expected) => {
     expect(displayableSourceUrl(raw)).toBe(expected);
+  });
+
+  it("url は自動リンク <…> で描き、パスの [x](…) で別のリンクを作らせない(S1)", () => {
+    const url = "https://docs.example.test/guide/a[x](https://evil.example/x)";
+    const line = renderCitationLine(
+      { sourceId: "alpha", documentId: "doc-1", title: "公式ガイド", url },
+      0,
+    );
+    expect(line).toBe(
+      "- [1] 公式ガイド(`alpha:doc-1`)— <https://docs.example.test/guide/a[x](https://evil.example/x)>",
+    );
+    // URL 全体が <…> で囲まれ、`](` は URL の中にしか現れない
+    const start = line.indexOf("<");
+    expect(line.slice(start)).toBe(`<${url}>`);
+    expect(line.indexOf(">")).toBe(line.length - 1);
+    const linkOpeners = [...line.matchAll(/\]\(/g)].map((match) => match.index);
+    expect(linkOpeners.length).toBeGreaterThan(0);
+    for (const index of linkOpeners) {
+      expect(index).toBeGreaterThan(start);
+      expect(index).toBeLessThan(line.length - 1);
+    }
+    // 自動リンクの前に、リンク・画像を始める未エスケープの [ や ![ がない(先頭の [1] を除く)
+    expect(line.slice("- [1]".length, start)).not.toMatch(/(?<!\\)\[/);
+  });
+
+  it("自動リンクの中身に空白・制御文字・< > が残らない(URL の正規化形。念のため %エンコードもする)", () => {
+    const line = renderCitationLine(
+      { sourceId: "alpha", documentId: "doc-1", url: "https://wiki.example.test/a b\t<c>" },
+      0,
+    );
+    const url = line.slice(line.indexOf("<") + 1, -1);
+    expect(url).toBe("https://wiki.example.test/a%20b%3Cc%3E");
+    expect(url).not.toMatch(/[\u0000-\u0020<>]/);
   });
 
   it("title の制御文字・改行・リンク・HTML・URL を無害化し、Markdown の記号をエスケープする", () => {
@@ -154,6 +196,52 @@ describe("出典の行", () => {
 describe("askOutcomeFromAnswer と outputSchema", () => {
   const [askTool] = orchestratorToolDefinitions({ maxQuestionChars: 4000 });
   const validate = new AjvJsonSchemaValidator().getValidator(askTool?.outputSchema as never);
+
+  it("structuredContent の citations も出典欄と同じ規則で無害化する(m3)", () => {
+    const outcome = askOutcomeFromAnswer(
+      answer({
+        citations: [
+          {
+            sourceId: "alpha",
+            documentId: "doc-trap",
+            title: "経費\u0007規程\u200b [罠](https://evil.example/x) <img src=x onerror=alert(1)>",
+            url: "javascript:alert(1)",
+          },
+          { sourceId: "alpha", documentId: "doc-cred", title: "資格情報付き", url: "https://u:pw@evil.example/" },
+          { sourceId: "alpha", documentId: "doc-rel", title: "相対", url: "/docs/relative" },
+          { sourceId: "alpha", documentId: "doc-ok", title: "通常の文書", url: "https://wiki.example.test/a b" },
+          { sourceId: "alpha", documentId: "doc-empty", title: "\u0007" },
+        ],
+      }),
+      null,
+      "persistable",
+    );
+    const citations = outcome.structuredContent["citations"] as Record<string, unknown>[];
+    expect(citations).toHaveLength(5);
+    const [trap, cred, rel, ok, empty] = citations;
+    // title: 制御文字・不可視の書式文字・リンク・HTML・URL を除く(Markdown のエスケープはしない)
+    expect(trap).toMatchObject({ sourceId: "alpha", documentId: "doc-trap" });
+    expect(trap?.["title"]).toEqual(expect.stringContaining("経費規程"));
+    expect(trap?.["title"]).not.toMatch(/[\u0000-\u001f\u200b]/);
+    expect(trap?.["title"]).not.toContain("evil.example");
+    expect(trap?.["title"]).not.toContain("<img");
+    expect(trap?.["title"]).not.toMatch(/\]\(/);
+    // url: http / https(資格情報なし)の正規化形だけ。それ以外は省く
+    expect(trap).not.toHaveProperty("url");
+    expect(cred).not.toHaveProperty("url");
+    expect(rel).not.toHaveProperty("url");
+    expect(ok).toEqual({
+      sourceId: "alpha",
+      documentId: "doc-ok",
+      title: "通常の文書",
+      url: "https://wiki.example.test/a%20b",
+    });
+    // 無害化で空になった title は省く
+    expect(empty).toEqual({ sourceId: "alpha", documentId: "doc-empty" });
+    // text の出典欄と同じ値(url は自動リンクの中身、title はエスケープ前)
+    expect(outcome.text).toContain("通常の文書(`alpha:doc-ok`)— <https://wiki.example.test/a%20b>");
+    expect(validate(outcome.structuredContent)).toMatchObject({ valid: true });
+  });
 
   it("resolved: isError なし、errorClass なし、Answer の全フィールド + retentionClass", () => {
     const outcome = askOutcomeFromAnswer(answer(), null, "persistable");

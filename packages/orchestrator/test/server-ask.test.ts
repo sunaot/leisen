@@ -3,11 +3,16 @@
  *
  * - AnswerRun.userId は Gateway が認証した userId(alice / bob。呼び出し元の申告ではない)
  * - AnswerRun は --answer-run-jsonl の JSONL に pending → 最終状態の順で追記される
- * - text は Markdown(本文 + 「## 出典」+ runId)。出典の url は http / https だけを描画する
+ * - text は Markdown(本文 + 「## 出典」+ runId)。出典の url は http / https だけを自動リンク
+ *   `<…>` で描画する(S1)
  * - structuredContent は Answer + retentionClass(+ resolved 以外は errorClass)で、ツールの
- *   outputSchema に適合する(SDK の Client の検証と、Ajv での明示の検証)
+ *   outputSchema に適合する(SDK の Client の検証と、Ajv での明示の検証)。citations は出典欄と
+ *   同じ規則で無害化する(m3)
  * - outcome: error は isError、例外(監査の書き込み失敗など)は固定文言の isError
  * - initialize の instructions に出典の扱いを書いている
+ * - Gateway が公開するソースと --config の照合(S6): --config にないソースがあれば ask /
+ *   feedback は config_mismatch。non_persistable の方針(--allow-non-persistable-sources)なら
+ *   許して retentionClass を non_persistable にする
  */
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,12 +21,15 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CONFIG_MISMATCH_TEXT,
   ERROR_NOTICE,
   LlmError,
   NO_CITATION_NOTICE,
   ScriptedLlmClient,
+  checkGatewaySources,
   scriptedSubmit,
   scriptedToolUse,
+  type GatewaySourcePolicy,
   type ScriptStep,
 } from "../src/index.js";
 import {
@@ -127,7 +135,7 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     expect(text).toBe(
       [
         "経費精算の締め日は毎月25日です。",
-        "## 出典\n- [1] 経費精算規程(`alpha:doc-expense-policy`)— https://alpha.example.test/docs/doc-expense-policy",
+        "## 出典\n- [1] 経費精算規程(`alpha:doc-expense-policy`)— <https://alpha.example.test/docs/doc-expense-policy>",
         `runId: \`${runId}\``,
       ].join("\n\n"),
     );
@@ -222,9 +230,10 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
 
     const lines = sourcesSection(text);
     expect(lines).toHaveLength(3);
-    // url は http / https だけ(javascript: と相対 URL は url を省く)
-    const urls = text.match(/[a-z][a-z0-9+.-]*:\/\/[^\s)]+|javascript:[^\s]*/gi) ?? [];
+    // url は http / https だけ(javascript: と相対 URL は url を省く)。自動リンク <…> で描く
+    const urls = text.match(/[a-z][a-z0-9+.-]*:\/\/[^\s)>]+|javascript:[^\s]*/gi) ?? [];
     expect(urls).toEqual(["https://alpha.example.test/docs/doc-expense-policy"]);
+    expect(text).toContain("— <https://alpha.example.test/docs/doc-expense-policy>");
     expect(text).not.toContain("javascript:");
     expect(text).not.toContain("/docs/relative");
     const trapLine = lines.find((line) => line.includes("alpha:doc-trap")) ?? "";
@@ -237,10 +246,23 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     expect(lines.find((line) => line.includes("alpha:doc-relative"))).toBe(
       "- [3] 相対URLの文書(`alpha:doc-relative`)",
     );
-    // structuredContent には Answer をそのまま載せる(url の判断は描画側の責務)
-    expect(structured["citations"]).toContainEqual(
-      expect.objectContaining({ documentId: "doc-trap", url: "javascript:alert(1)" }),
-    );
+    // structuredContent の citations も同じ規則で無害化する(m3): url は http / https だけ、
+    // title は制御文字・リンク・HTML を除く
+    const citations = structured["citations"] as Record<string, unknown>[];
+    const trapCitation = citations.find((citation) => citation["documentId"] === "doc-trap");
+    expect(trapCitation).toBeDefined();
+    expect(trapCitation).not.toHaveProperty("url");
+    const trapTitle = String(trapCitation?.["title"]);
+    expect(trapTitle).toContain("経費規程");
+    expect(trapTitle).not.toContain("\u0007");
+    expect(trapTitle).not.toContain("evil.example");
+    expect(trapTitle).not.toContain("<img");
+    expect(citations.find((citation) => citation["documentId"] === "doc-relative")).toEqual({
+      sourceId: "alpha",
+      documentId: "doc-relative",
+      title: "相対URLの文書",
+    });
+    expect(JSON.stringify(structured)).not.toContain("javascript:");
     await expectValidAgainstOutputSchema(client, structured);
   });
 
@@ -343,5 +365,93 @@ describe("ask: ツール定義と instructions", () => {
       expect(tool.outputSchema?.type).toBe("object");
       expect(tool.outputSchema).not.toHaveProperty("$schema");
     }
+  });
+});
+
+describe("Gateway が公開するソースと --config の照合(S6)", () => {
+  /** Gateway には alpha と、--config にない beta を公開させる。 */
+  async function setupWithUnlistedSource(policy: GatewaySourcePolicy) {
+    const alpha = new CorpusConnector("alpha", [EXPENSE_POLICY]);
+    const beta = new CorpusConnector("beta", []);
+    const gateway = await startGateway({ connectors: [alpha, beta] });
+    cleanups.push(() => gateway.close());
+    const llm = new ScriptedLlmClient(searchThenSubmit());
+    const server = await startOrchestratorServer({
+      gatewayUrl: gateway.url,
+      llm,
+      sourcePolicy: policy,
+    });
+    cleanups.push(() => server.close());
+    return { gateway, server, llm, alpha, beta };
+  }
+
+  it("--config にないソースを Gateway が公開していれば ask / feedback は config_mismatch(LLM もソースも呼ばない)", async () => {
+    const { gateway, server, llm, alpha, beta } = await setupWithUnlistedSource({
+      knownSourceIds: ["alpha"],
+      onUnknownSource: "reject",
+    });
+    const client = await server.connect(ALICE_TOKEN);
+    // initialize / tools/list は通る
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(["ask", "feedback"]);
+
+    const asked = await ask(client, "経費精算の締め日は?");
+    expect(asked).toEqual({
+      isError: true,
+      text: CONFIG_MISMATCH_TEXT,
+      structured: { errorClass: "config_mismatch" },
+    });
+    // ソース名をエコーしない
+    expect(asked.text).not.toContain("beta");
+
+    const feedback = await client.callTool({
+      name: "feedback",
+      arguments: { runId: "dev-only-run", outcome: "resolved" },
+    });
+    expect(feedback.isError).toBe(true);
+    expect(feedback.structuredContent).toEqual({ errorClass: "config_mismatch" });
+
+    expect(llm.requests).toHaveLength(0);
+    expect(alpha.calls).toEqual([]);
+    expect(beta.calls).toEqual([]);
+    expect(gateway.toolInvocations()).toEqual([]);
+    expect(await server.answerRunLines()).toEqual([]);
+  });
+
+  it("non_persistable の方針(--allow-non-persistable-sources)なら不一致を許し、retentionClass を non_persistable にする", async () => {
+    const { server } = await setupWithUnlistedSource({
+      knownSourceIds: ["alpha"],
+      onUnknownSource: "non_persistable",
+    });
+    const client = await server.connect(ALICE_TOKEN);
+
+    const { isError, structured } = await ask(client, "経費精算の締め日は?");
+
+    expect(isError).toBe(false);
+    expect(structured).toMatchObject({ outcome: "resolved", retentionClass: "non_persistable" });
+    await expectValidAgainstOutputSchema(client, structured);
+  });
+
+  it("Gateway のソースがすべて --config の有効なコネクタにあれば通る(retentionClass は設定のまま)", async () => {
+    const { server } = await setupWithUnlistedSource({
+      knownSourceIds: ["alpha", "beta", "gamma"],
+      onUnknownSource: "reject",
+    });
+    const client = await server.connect(ALICE_TOKEN);
+
+    const { isError, structured } = await ask(client, "経費精算の締め日は?");
+
+    expect(isError).toBe(false);
+    expect(structured).toMatchObject({ outcome: "resolved", retentionClass: "persistable" });
+  });
+
+  it.each([
+    ["方針なし(照合しない)", undefined, ["alpha", "beta"], { configMismatch: false, retentionClass: "persistable" }],
+    ["すべて既知", { knownSourceIds: ["alpha", "beta"], onUnknownSource: "reject" }, ["alpha"], { configMismatch: false, retentionClass: "persistable" }],
+    ["Gateway のソースが空", { knownSourceIds: ["alpha"], onUnknownSource: "reject" }, [], { configMismatch: false, retentionClass: "persistable" }],
+    ["未知のソース + reject", { knownSourceIds: ["alpha"], onUnknownSource: "reject" }, ["alpha", "beta"], { configMismatch: true, retentionClass: "persistable" }],
+    ["未知のソース + non_persistable", { knownSourceIds: ["alpha"], onUnknownSource: "non_persistable" }, ["beta"], { configMismatch: false, retentionClass: "non_persistable" }],
+  ] as const)("checkGatewaySources: %s", (_label, policy, gatewaySourceIds, expected) => {
+    expect(checkGatewaySources(policy, gatewaySourceIds, "persistable")).toEqual(expected);
   });
 });

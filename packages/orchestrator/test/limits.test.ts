@@ -7,8 +7,10 @@
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
+import { AuditLogger } from "@kp/gateway";
 import {
   LlmError,
+  McpGatewayClient,
   NO_CITATION_NOTICE,
   NUDGE_MESSAGE,
   Orchestrator,
@@ -20,6 +22,7 @@ import {
   type ScriptContext,
 } from "../src/index.js";
 import {
+  ALICE_TOKEN,
   BOB_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
@@ -27,6 +30,7 @@ import {
   type GatewayHarness,
   TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
+import { startStalledMcpServer } from "./helpers/mock-http.js";
 import { firstHit, isFinalInstruction, searchHits } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
@@ -171,6 +175,42 @@ describe("runTimeoutMs", () => {
     // 打ち切ったターンの応答は履歴に入らない(最終要求の直前は指示の user ターン)
     const finalMessages = llm.requests[2]?.messages ?? [];
     expect(finalMessages.map((m) => m.role)).toEqual(["user", "assistant", "user", "user"]);
+  });
+});
+
+describe("runTimeoutMs: Gateway への接続(セキュリティレビュー m1)", () => {
+  it.each([
+    ["initialize に応答しない", false],
+    ["notifications/initialized に応答しない", true],
+  ])("Gateway が %s とき、接続も run の時間上限で打ち切る(LLM を呼ばず run_timeout)", async (_label, respondToInitialize) => {
+    const stalled = await startStalledMcpServer({ respondToInitialize });
+    const gateway = new McpGatewayClient({ url: `${stalled.url}/mcp`, sessionToken: ALICE_TOKEN });
+    try {
+      const llm = new ScriptedLlmClient(() => scriptedText("呼ばれない"));
+      const orchestrator = new Orchestrator({
+        docIdAudit: TEST_DOC_ID_AUDIT,
+        llm,
+        // 利用者を確認できないので AnswerRun は書かれない
+        auditLogger: new AuditLogger({ write: async () => undefined }),
+        settings: { runTimeoutMs: 200 },
+      });
+
+      const started = Date.now();
+      const { answer, failureReason } = await orchestrator.runDetailed({
+        question: "経費精算の締め日は?",
+        gateway,
+      });
+
+      // 1リクエストの期限(既定 60 秒)や、期限のない notifications/initialized の送信を待たない
+      expect(Date.now() - started).toBeLessThan(3_000);
+      expect(answer.outcome).toBe("error");
+      expect(failureReason).toBe("run_timeout");
+      expect(llm.requests).toHaveLength(0);
+      expect(stalled.methods).not.toContain("tools/list");
+    } finally {
+      await gateway.close();
+      await stalled.close();
+    }
   });
 });
 

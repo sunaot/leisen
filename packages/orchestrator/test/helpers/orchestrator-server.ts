@@ -17,14 +17,17 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AuditLogger, parseAuditRecord, type AuditRecord } from "@kp/gateway";
 import {
   AnswerRunJsonlSink,
+  McpGatewayClient,
   Orchestrator,
   ServerLimits,
   createOrchestratorHttpServer,
   scriptedSubmit,
   scriptedToolUse,
   type GatewayClientFactory,
+  type GatewaySourcePolicy,
   type LlmClient,
   type LlmTurn,
+  type OrchestratorSettingsInput,
   type RetentionClass,
   type ScriptContext,
   type ServerLimitsInput,
@@ -41,7 +44,17 @@ export interface OrchestratorServerOptions {
   readonly retentionClass?: RetentionClass;
   readonly createGatewayClient?: GatewayClientFactory;
   readonly newVerificationRunId?: () => string;
+  /** feedback の本人確認の期限(ms) */
+  readonly verificationTimeoutMs?: number;
+  /** Gateway が公開するソースと --config の照合(S6) */
+  readonly sourcePolicy?: GatewaySourcePolicy;
   readonly path?: string;
+  /** POST 本文の上限(バイト) */
+  readonly maxBodyBytes?: number;
+  /** preflight 全体の期限(ms) */
+  readonly preflightTimeoutMs?: number;
+  /** 探索の設定(runTimeoutMs 等) */
+  readonly settings?: OrchestratorSettingsInput;
   /** AnswerRun の JSONL の出力先(既定: 一時ディレクトリの answer-runs.jsonl) */
   readonly answerRunJsonlPath?: string;
 }
@@ -70,6 +83,7 @@ export async function startOrchestratorServer(
     llm: options.llm,
     auditLogger: new AuditLogger(new AnswerRunJsonlSink(jsonlPath)),
     docIdAudit: TEST_DOC_ID_AUDIT,
+    ...(options.settings !== undefined ? { settings: options.settings } : {}),
   });
   const limits = new ServerLimits(options.limits);
   const server = createOrchestratorHttpServer(
@@ -84,8 +98,18 @@ export async function startOrchestratorServer(
       ...(options.newVerificationRunId !== undefined
         ? { newVerificationRunId: options.newVerificationRunId }
         : {}),
+      ...(options.verificationTimeoutMs !== undefined
+        ? { verificationTimeoutMs: options.verificationTimeoutMs }
+        : {}),
+      ...(options.sourcePolicy !== undefined ? { sourcePolicy: options.sourcePolicy } : {}),
     },
-    options.path !== undefined ? { path: options.path } : {},
+    {
+      ...(options.path !== undefined ? { path: options.path } : {}),
+      ...(options.maxBodyBytes !== undefined ? { maxBodyBytes: options.maxBodyBytes } : {}),
+      ...(options.preflightTimeoutMs !== undefined
+        ? { preflightTimeoutMs: options.preflightTimeoutMs }
+        : {}),
+    },
   );
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -202,3 +226,37 @@ export function searchThenSubmit(
   };
 }
 
+
+/** Orchestrator から Gateway への呼び出しの数(countingGatewayClients が数える)。 */
+export interface GatewayCallCounts {
+  listTools: number;
+  callTool: number;
+  readonly calledTools: string[];
+}
+
+/**
+ * 呼び出しを数える Gateway クライアントの factory(実体は McpGatewayClient)。preflight の
+ * tools/list と、ask / feedback が Gateway に送った tools/list・tools/call を数える。
+ */
+export function countingGatewayClients(): {
+  readonly counts: GatewayCallCounts;
+  readonly factory: GatewayClientFactory;
+} {
+  const counts: GatewayCallCounts = { listTools: 0, callTool: 0, calledTools: [] };
+  const factory: GatewayClientFactory = (options) => {
+    const inner = new McpGatewayClient(options);
+    return {
+      listTools(callOptions) {
+        counts.listTools += 1;
+        return inner.listTools(callOptions);
+      },
+      callTool(name, args, meta, callOptions) {
+        counts.callTool += 1;
+        counts.calledTools.push(name);
+        return inner.callTool(name, args, meta, callOptions);
+      },
+      close: () => inner.close(),
+    };
+  };
+  return { counts, factory };
+}

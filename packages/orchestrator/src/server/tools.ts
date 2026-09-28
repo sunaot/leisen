@@ -13,14 +13,26 @@
  * - ask: 質問長 → 同時実行 → run(利用者のトークンで Gateway に接続するクライアント)→
  *   Markdown(render.ts)+ structuredContent(Answer + retentionClass、outcome が resolved
  *   以外なら errorClass)。outcome: error は isError: true(ツールとして失敗した回答)
- * - feedback: Gateway の tools/list の最初のソースに describe を1回呼び、結果の `_meta` から
+ * - structuredContent の citations は text の出典欄と同じ規則で無害化する(m3。render.ts の
+ *   structuredCitation): title は制御文字・リンク・HTML・URL を除き、url は http / https の
+ *   正規化形だけ(それ以外は省く)
+ * - feedback: 同時実行の上限(ServerLimits.feedback。超過は ask と同じ固定文言の busy)→
+ *   Gateway の tools/list の最初のソースに describe を1回呼び、結果の `_meta` から
  *   Gateway が認証した userId を得て、その userId で recordFeedback する(本人の run だけ。
  *   監査に describe が1件残るのは意図どおり。runId は feedback 用に別に採番し、対象 run の
- *   ToolInvocation には混ぜない)
+ *   ToolInvocation には混ぜない)。本人確認の往復には期限(verificationTimeoutMs、既定
+ *   FEEDBACK_VERIFICATION_TIMEOUT_MS)を置き、応答しない Gateway で枠を抱え続けない
  * - retentionClass: v1 は persistable。永続化不可のソース(Slack)が有効な構成は起動を拒否
  *   するため(決定5)。--allow-non-persistable-sources で起動した場合だけ non_persistable
  *   (Slack 由来の内容・メタデータが回答に入りうる。describe の結果も LLM に渡るため run
  *   単位ではなくデプロイ単位で判定する)
+ * - Gateway が公開するソースと --config の照合(セキュリティレビュー S6、checkGatewaySources):
+ *   不変条件7 の判定と citedDocIds の分類は --config の中身で行うため、Gateway が --config で
+ *   有効でないソースを公開していると Slack ソースを見逃す。preflight(http.ts)で得た Gateway の
+ *   tools/list の search のソース enum(Orchestrator の discover と同じ読み方、sourcesFromTools)に
+ *   --config の有効なコネクタにないソースがあれば、そのリクエストの ask / feedback を固定文言の
+ *   config_mismatch にする(initialize / tools/list は通す)。--allow-non-persistable-sources の
+ *   ときは不一致を許し、そのリクエストの retentionClass を non_persistable にする
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -34,8 +46,8 @@ import { buildGatewayMeta } from "../gateway/meta.js";
 import type { GatewayClient } from "../gateway/types.js";
 import type { Orchestrator, UserFeedback } from "../orchestrator.js";
 import { sourcesFromTools } from "../tools.js";
-import type { ServerLimits } from "./limits.js";
-import { renderAnswerMarkdown } from "./render.js";
+import { untilAborted, type ServerLimits } from "./limits.js";
+import { renderAnswerMarkdown, structuredCitation } from "./render.js";
 
 export const ASK_TOOL_NAME = "ask";
 export const FEEDBACK_TOOL_NAME = "feedback";
@@ -50,6 +62,56 @@ export type RetentionClass = (typeof RETENTION_CLASSES)[number];
 /** Orchestrator のうちサーバーが使う面(テストで差し替えられるように絞る)。 */
 export type OrchestratorPort = Pick<Orchestrator, "runDetailed" | "recordFeedback">;
 
+/** feedback の本人確認(Gateway の tools/list と describe の往復全体)の既定の期限(ms)。 */
+export const FEEDBACK_VERIFICATION_TIMEOUT_MS = 10_000;
+
+/**
+ * Gateway が公開するソースと --config の照合の方針(セキュリティレビュー S6)。
+ */
+export interface GatewaySourcePolicy {
+  /**
+   * --config で有効なコネクタの sourceId(不変条件7 の判定と citedDocIds の分類に使った集合。
+   * Gateway の tools/list は有効なコネクタだけを公開するため、無効なコネクタは含めない)
+   */
+  readonly knownSourceIds: readonly string[];
+  /**
+   * knownSourceIds にないソースを Gateway が公開していたときの扱い。
+   * - reject: そのリクエストの ask / feedback を config_mismatch で拒否する
+   * - non_persistable: 許し、そのリクエストの retentionClass を non_persistable にする
+   *   (--allow-non-persistable-sources)
+   */
+  readonly onUnknownSource: "reject" | "non_persistable";
+}
+
+/** 1リクエスト分の照合結果。 */
+export interface GatewaySourceCheck {
+  /** true なら ask / feedback を config_mismatch で拒否する */
+  readonly configMismatch: boolean;
+  /** このリクエストの ask の retentionClass */
+  readonly retentionClass: RetentionClass;
+}
+
+/**
+ * Gateway の公開するソース(preflight の tools/list から sourcesFromTools で読んだもの)を
+ * --config と照合する(S6)。policy がなければ照合しない(ライブラリとして組む場合)。
+ */
+export function checkGatewaySources(
+  policy: GatewaySourcePolicy | undefined,
+  gatewaySourceIds: readonly string[],
+  retentionClass: RetentionClass,
+): GatewaySourceCheck {
+  if (policy === undefined) {
+    return { configMismatch: false, retentionClass };
+  }
+  const known = new Set(policy.knownSourceIds);
+  if (gatewaySourceIds.every((sourceId) => known.has(sourceId))) {
+    return { configMismatch: false, retentionClass };
+  }
+  return policy.onUnknownSource === "non_persistable"
+    ? { configMismatch: false, retentionClass: "non_persistable" }
+    : { configMismatch: true, retentionClass };
+}
+
 /** 利用者本人のトークンで Gateway に接続するクライアントを作る(リクエストごとに作り捨てる)。 */
 export type RequestGatewayClientFactory = () => GatewayClient;
 
@@ -59,8 +121,15 @@ export interface ToolContext {
   readonly createGatewayClient: RequestGatewayClientFactory;
   readonly limits: ServerLimits;
   readonly retentionClass: RetentionClass;
+  /**
+   * Gateway が公開するソースが --config と食い違う(checkGatewaySources)。true なら ask /
+   * feedback を config_mismatch で拒否する(S6)
+   */
+  readonly configMismatch?: boolean;
   /** feedback の本人確認で Gateway に申告する runId の採番(既定 feedback:<UUID>) */
   readonly newVerificationRunId?: () => string;
+  /** feedback の本人確認の期限(ms、既定 FEEDBACK_VERIFICATION_TIMEOUT_MS) */
+  readonly verificationTimeoutMs?: number;
 }
 
 /** ツール実行の結果(SDK 非依存。mcp.ts が CallToolResult に写す)。 */
@@ -214,6 +283,9 @@ export const EMPTY_QUESTION_TEXT = "質問文を入力してください。";
 export const BUSY_TEXT = "混み合っています。しばらくして再度お試しください。";
 export const USER_UNVERIFIED_TEXT =
   "利用者を確認できなかったため、フィードバックを記録していません。サインインし直してから再度お試しください。";
+/** Gateway が公開するソースと --config の食い違い(S6)。ソース名はエコーしない。 */
+export const CONFIG_MISMATCH_TEXT =
+  "このサーバーの設定と Gateway が公開しているデータソースが一致しないため、処理を中止しました。管理者に連絡してください。";
 
 export function questionTooLongText(maxQuestionChars: number): string {
   return `質問が長すぎます(${maxQuestionChars} 文字まで)。短くして再度お試しください。`;
@@ -310,6 +382,8 @@ export function askOutcomeFromAnswer(
 ): ToolOutcome {
   const structuredContent: AskStructuredContent = {
     ...answer,
+    // 出典欄と同じ規則で無害化する(m3)
+    citations: answer.citations.map(structuredCitation),
     retentionClass,
     ...(answer.outcome !== "resolved"
       ? { errorClass: normalizeErrorClass(failureReason ?? "unclassified") }
@@ -323,6 +397,9 @@ export function askOutcomeFromAnswer(
 }
 
 async function runAsk(context: ToolContext, args: unknown): Promise<ToolOutcome> {
+  if (context.configMismatch === true) {
+    return toolError("config_mismatch", CONFIG_MISMATCH_TEXT);
+  }
   const parsed = askArgsSchema.safeParse(args ?? {});
   if (!parsed.success) {
     return toolError("invalid_request", INVALID_ARGUMENTS_TEXT);
@@ -359,24 +436,33 @@ async function runAsk(context: ToolContext, args: unknown): Promise<ToolOutcome>
 /**
  * Gateway が認証した利用者の userId を得る(feedback の本人確認)。Gateway は userId を
  * tools/call の結果の `_meta` にしか載せないため、tools/list の最初のソースに describe を
- * 1回呼ぶ。確認できなければ undefined。
+ * 1回呼ぶ。往復の全体(接続を含む)に期限を置く。確認できなければ(期限切れを含む)undefined。
  */
 async function verifiedUserId(context: ToolContext): Promise<string | undefined> {
+  const signal = AbortSignal.timeout(
+    context.verificationTimeoutMs ?? FEEDBACK_VERIFICATION_TIMEOUT_MS,
+  );
   let gateway: GatewayClient | undefined;
   try {
-    gateway = context.createGatewayClient();
-    const [source] = sourcesFromTools(await gateway.listTools());
-    if (source === undefined) {
-      return undefined;
-    }
-    const runId = (context.newVerificationRunId ?? defaultVerificationRunId)();
-    const outcome = await gateway.callTool(
-      "describe",
-      { source },
-      buildGatewayMeta({ runId, iteration: 0 }),
-    );
-    // 成功・失敗(未接続など)を問わず、結果に載った userId が Gateway の認証した利用者
-    return outcome.userId;
+    const client = context.createGatewayClient();
+    gateway = client;
+    const verify = async (): Promise<string | undefined> => {
+      const [source] = sourcesFromTools(await client.listTools({ signal }));
+      if (source === undefined) {
+        return undefined;
+      }
+      const runId = (context.newVerificationRunId ?? defaultVerificationRunId)();
+      const outcome = await client.callTool(
+        "describe",
+        { source },
+        buildGatewayMeta({ runId, iteration: 0 }),
+        { signal },
+      );
+      // 成功・失敗(未接続など)を問わず、結果に載った userId が Gateway の認証した利用者
+      return outcome.userId;
+    };
+    // signal に従わないクライアントでも期限で打ち切る(後始末は finally の close)
+    return await untilAborted(verify(), signal);
   } catch {
     return undefined;
   } finally {
@@ -389,27 +475,39 @@ function defaultVerificationRunId(): string {
 }
 
 async function runFeedback(context: ToolContext, args: unknown): Promise<ToolOutcome> {
+  if (context.configMismatch === true) {
+    return toolError("config_mismatch", CONFIG_MISMATCH_TEXT);
+  }
   const parsed = feedbackArgsSchema.safeParse(args ?? {});
   if (!parsed.success) {
     return toolError("invalid_request", INVALID_ARGUMENTS_TEXT);
   }
   const { runId, outcome } = parsed.data;
-  const userId = await verifiedUserId(context);
-  if (userId === undefined) {
-    return toolError("user_unverified", USER_UNVERIFIED_TEXT);
+  // 本人確認で Gateway に describe を呼ぶため、ask とは別枠で同時実行数を抑える(待たせない)
+  const release = context.limits.feedback.tryAcquire();
+  if (release === undefined) {
+    return toolError("busy", BUSY_TEXT);
   }
   try {
-    await context.orchestrator.recordFeedback(runId, outcome, { userId });
-  } catch (error) {
-    const errorClass = error instanceof OrchestratorError ? error.errorClass : "internal_error";
-    return toolError(
-      errorClass,
-      FEEDBACK_FAILURE_TEXTS[errorClass] ?? FEEDBACK_FAILURE_DEFAULT_TEXT,
-    );
+    const userId = await verifiedUserId(context);
+    if (userId === undefined) {
+      return toolError("user_unverified", USER_UNVERIFIED_TEXT);
+    }
+    try {
+      await context.orchestrator.recordFeedback(runId, outcome, { userId });
+    } catch (error) {
+      const errorClass = error instanceof OrchestratorError ? error.errorClass : "internal_error";
+      return toolError(
+        errorClass,
+        FEEDBACK_FAILURE_TEXTS[errorClass] ?? FEEDBACK_FAILURE_DEFAULT_TEXT,
+      );
+    }
+    return {
+      isError: false,
+      text: FEEDBACK_RECORDED_TEXTS[outcome],
+      structuredContent: { runId, outcome },
+    };
+  } finally {
+    release();
   }
-  return {
-    isError: false,
-    text: FEEDBACK_RECORDED_TEXTS[outcome],
-    structuredContent: { runId, outcome },
-  };
 }

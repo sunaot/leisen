@@ -18,6 +18,12 @@
  *   (gatewayUserIdFromResultMeta。AnswerRun の主体の束縛に使う、H1)
  * - 接続(initialize)は最初の呼び出しで1回だけ行い、以降の要求で使い回す。
  *   Gateway はステートレスなので、接続の使い回しにユーザー状態の意味はない
+ * - 接続にも最初の呼び出しの signal(run の時間上限など)を効かせる(セキュリティレビュー m1):
+ *   initialize の要求は SDK が signal で取り消すが、続く notifications/initialized の送信には
+ *   期限がないため、signal が中断されたら SDK クライアントを閉じて進行中の HTTP 要求ごと止める。
+ *   close() も接続の完了を待たずに閉じる(応答しない Gateway で close が止まらない)。
+ *   同じ接続を待つ他の呼び出しも同じ失敗になる(Orchestrator は1つの run の呼び出しに同じ
+ *   signal を使う)
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -145,6 +151,8 @@ export class McpGatewayClient implements GatewayClient {
   readonly #sessionToken: string;
   readonly #requestTimeoutMs: number;
   #connection: Promise<Client> | undefined;
+  /** 接続中・接続済みの SDK クライアント(close で接続の完了を待たずに閉じるため) */
+  #sdkClient: Client | undefined;
   #closed = false;
 
   constructor(options: McpGatewayClientOptions) {
@@ -213,11 +221,13 @@ export class McpGatewayClient implements GatewayClient {
 
   async close(): Promise<void> {
     this.#closed = true;
-    const connection = this.#connection;
+    const client = this.#sdkClient;
+    this.#sdkClient = undefined;
     this.#connection = undefined;
-    if (connection !== undefined) {
+    if (client !== undefined) {
       try {
-        await (await connection).close();
+        // 接続の途中(initialize の応答待ちなど)でも待たずに閉じる(進行中の HTTP 要求を中断する)
+        await client.close();
       } catch {
         // 接続に失敗していた、または既に閉じている
       }
@@ -241,7 +251,7 @@ export class McpGatewayClient implements GatewayClient {
       );
     }
     if (this.#connection === undefined) {
-      this.#connection = this.#open().catch((error: unknown) => {
+      this.#connection = this.#open(options.signal).catch((error: unknown) => {
         // 失敗した接続は使い回さない(次の呼び出しで張り直す)
         this.#connection = undefined;
         throw toGatewayClientError(error, options.signal);
@@ -250,17 +260,33 @@ export class McpGatewayClient implements GatewayClient {
     return this.#connection;
   }
 
-  async #open(): Promise<Client> {
+  async #open(signal: AbortSignal | undefined): Promise<Client> {
+    if (signal?.aborted === true) {
+      throw new GatewayClientError("aborted", "the gateway request was aborted");
+    }
     const client = new Client(ORCHESTRATOR_CLIENT_INFO);
     const transport = new StreamableHTTPClientTransport(this.#url, {
       requestInit: {
         headers: { Authorization: `Bearer ${this.#sessionToken}` },
       },
     });
-    // SDK の型宣言が exactOptionalPropertyTypes に非対応のため型だけ合わせる
-    // (packages/gateway/src/proxy/http.ts と同じ理由。実体は Transport IF を実装している)
-    await client.connect(transport as Transport, { timeout: this.#requestTimeoutMs });
-    return client;
+    this.#sdkClient = client;
+    // 中断されたら接続の途中でも閉じる(notifications/initialized の送信には SDK の期限がない)
+    const abort = () => {
+      void client.close().catch(() => undefined);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      // SDK の型宣言が exactOptionalPropertyTypes に非対応のため型だけ合わせる
+      // (packages/gateway/src/proxy/http.ts と同じ理由。実体は Transport IF を実装している)
+      await client.connect(transport as Transport, {
+        timeout: this.#requestTimeoutMs,
+        ...(signal !== undefined ? { signal } : {}),
+      });
+      return client;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
   }
 }
 

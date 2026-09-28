@@ -64,7 +64,7 @@ npx kp-ask serve \
 | `--config <deployment.yaml>` | (必須) | citedDocIds の記録方針(`connectors[]` と `audit.privateScopeDocIds`)、探索の上限(`orchestrator.maxIterations` / `costLimitPerQuery`)、永続化不可のソースの判定に使う。読めない・不正なら終了コード 2 |
 | `--listen <ホスト:ポート>` | `127.0.0.1:8790`(環境変数 `KP_LISTEN`) | 待ち受け。IPv6 は `[::1]:8790`。ループバック以外は `--confirm-exposed-host` が必要 |
 | `--path <パス>` | `/mcp` | MCP エンドポイントのパス(`/healthz` は不可) |
-| `--answer-run-jsonl <path>` | 環境変数 `KP_ANSWER_RUN_JSONL` | AnswerRun の追記先(下記)。省略時は stderr に出す(開発用。起動ログに WARNING) |
+| `--answer-run-jsonl <path>` | 環境変数 `KP_ANSWER_RUN_JSONL` | AnswerRun の追記先(下記)。省略時は stderr に出す(開発用。起動ログに WARNING)。`NODE_ENV=production` では必須で、ないと固定文言で終了コード 2 |
 | `--max-concurrent-runs <N>` | 4 | 同時に実行する run の上限(1〜256)。超えた `ask` は待たせずに `busy` |
 | `--max-question-chars <N>` | 4000 | 質問の長さの上限(1〜10000、前後の空白を除いた文字数)。超えた `ask` は `question_too_long` |
 | `--confirm-exposed-host` | なし | ループバック以外で待ち受ける確認(TLS を終端するリバースプロキシを前段に置く前提。Gateway の `confirmExposedHost` と同じ規約) |
@@ -74,29 +74,30 @@ npx kp-ask serve \
 
 - リファレンス構成の LibreChat overlay(`deploy/compose/docker-compose.librechat.yml`)は、compose のネットワーク内の Gateway(`http://gateway:8787/mcp`)とホストの LM Studio(`http://host.docker.internal:1234/v1`)に平文の http で接続するため `--allow-insecure-upstream`(または `KP_ALLOW_INSECURE_UPSTREAM=1`)を使う。平文の http では利用者のトークンと会話(利用者の権限で取得した文書の本文)が経路上で読めるので、本番では上流を https(またはループバック)にする
 - 起動ログ(stderr): `listening on …`、`deployment: …`、`gateway: <スキーム://ホスト:ポート>`(パス・クエリは出さない)、`answer-run sink: jsonl <path>`(省略時は WARNING)、`limits: max-concurrent-runs=… max-question-chars=… max-iterations=…`、`llm: <プロバイダ> (model: …)`(`--allow-insecure-upstream` で平文の http の上流があるときは、そのホスト名を列挙した WARNING を1行)。トークン・API キー・HMAC 鍵・環境変数の値は出さない
-- 終了コード: 0 停止の合図(SIGINT / SIGTERM)で正常に止まった、1 起動の拒否(不変条件7・公開境界・書けない AnswerRun の出力先・探索プロンプトがない・待ち受けの失敗)や停止時に進行中のリクエストが残った、2 引数・設定の不備(`--config` が読めない、hashed なのに `KP_AUDIT_HMAC_KEY` がない等)。`kp-ask serve --help` で使い方
+- 終了コード: 0 停止の合図(SIGINT / SIGTERM)で正常に止まった、1 起動の拒否(不変条件7・公開境界・書けない AnswerRun の出力先・探索プロンプトがない・待ち受けの失敗)や停止時に進行中のリクエストが残った、2 引数・設定の不備(`--config` が読めない、hashed なのに `KP_AUDIT_HMAC_KEY` がない、`NODE_ENV=production` で `--answer-run-jsonl` がない等)。`kp-ask serve --help` で使い方
 - 停止: SIGINT / SIGTERM で受付を止め、進行中のリクエスト(run を含む)の応答を返し終えるまで最大 30 秒待つ。残ったものは接続を切って終了コード 1(2回目の合図は即時終了)
-- ライブラリとして組む場合は `createOrchestratorHttpServer({ orchestrator, gatewayUrl, limits: new ServerLimits(...) }, { path })`(`src/server/http.ts`)
+- ライブラリとして組む場合は `createOrchestratorHttpServer({ orchestrator, gatewayUrl, limits: new ServerLimits(...), sourcePolicy }, { path, maxBodyBytes, preflightTimeoutMs })`(`src/server/http.ts`)。`sourcePolicy`(下記「Gateway のソースと --config の照合」)を省くと照合しない。`ServerLimits` の `maxConcurrentFeedback`(既定 4)で feedback の同時実行数を変えられる
 
 ### 認証の規約(Gateway に委譲)
 
 - MCP クライアントは全リクエスト(`initialize` / `tools/list` / `tools/call`)に `Authorization: Bearer <トークン>` を付ける。トークンは **IdP(Keycloak 等)が利用者に発行したアクセストークン**で、Gateway が検証するものと同じ
-- Orchestrator は IdP を持たず、トークンを検証しない。リクエストごとに、そのトークンで Gateway の `tools/list` を呼んで(preflight)Gateway の判断に従う。結果はキャッシュしない(失効に次のリクエストで従う)。JSON-RPC の本文を読む前に次のとおり拒否し、LLM もソースも呼ばない:
+- Orchestrator は IdP を持たず、トークンを検証しない。リクエストごとに、そのトークンで Gateway の `tools/list` を呼んで(preflight)Gateway の判断に従う。結果はキャッシュしない(失効に次のリクエストで従う)。preflight(initialize → notifications/initialized → tools/list)の全体に 10 秒の期限を置く。JSON-RPC の本文を読む前に次のとおり拒否し、LLM もソースも呼ばない:
 
 | 状況 | HTTP | `error.data.errorClass` |
 |---|---|---|
 | `Authorization` がない・`Bearer` でない・形式不正 | 401(`WWW-Authenticate: Bearer`。Gateway にも問い合わせない) | `unauthenticated` |
 | Gateway がトークンを拒否 | 401(`WWW-Authenticate: Bearer error="invalid_token"`) | `unauthenticated` |
-| Gateway に届かない・5xx(IdP 不達の 503 を含む)・タイムアウト(10 秒) | 503 | `gateway_unavailable` |
+| Gateway に届かない・5xx(IdP 不達の 503 を含む)・preflight 全体の期限(10 秒)切れ | 503 | `gateway_unavailable` |
 | それ以外(Gateway の URL のパスの誤り等) | 500 | `internal_error` |
 
+- 本文は preflight の後に読む。上限は 64 KiB(ライブラリでは `maxBodyBytes`)で、超えたら 413 `payload_too_large`(応答後に接続を閉じる)。JSON-RPC のバッチ(配列)は 400 `invalid_request`(1回の POST に ask / feedback を並べて Gateway・LLM への呼び出しを増幅させない。1 POST に 1 メッセージ)。JSON のオブジェクトとして読めない本文も 400 `invalid_request`。いずれも Gateway への呼び出しは preflight の `tools/list` だけ
 - 拒否の本文は Gateway と同じ形(`{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":<固定文言>,"data":{"errorClass":…}}}`)。トークン・Gateway 由来の文言は含めない
 - `GET` / `DELETE` の MCP エンドポイントは 405(`Allow: POST`)、未知のパスは 404、`GET /healthz` は認証不要で `{"status":"ok"}`
 - `ask` の run では、AnswerRun の userId は Gateway がそのリクエストで認証した userId(H1。呼び出し元の申告は受け付けない)。実行区分は human_in_the_loop / actor human 固定(ADR-015)
 
 ### ツール `ask`
 
-入力 `{ "question": string }`(1〜`--max-question-chars` 文字。他のプロパティは不可)。処理の順: 引数の検証 → 質問長 → 同時実行の枠 → run(利用者のトークンで Gateway に接続)。
+入力 `{ "question": string }`(1〜`--max-question-chars` 文字。他のプロパティは不可)。処理の順: Gateway のソースと `--config` の照合(下記「不変条件7」)→ 引数の検証 → 質問長 → 同時実行の枠 → run(利用者のトークンで Gateway に接続。接続を含め run の時間上限が効く)。
 
 text(Markdown。Answer 表示契約の v1、ADR-018 決定6):
 
@@ -106,16 +107,16 @@ text(Markdown。Answer 表示契約の v1、ADR-018 決定6):
 {本文: Answer.answer。無害化済みで URL を含まない}
 
 ## 出典
-- [1] {title}(`{sourceId}:{documentId}`)— {url}
+- [1] {title}(`{sourceId}:{documentId}`)— <{url}>
 (出典が 0 件なら「出典: なし」)
 
 runId: `{runId}`
 ```
 
-- 出典の url は `http:` / `https:` の絶対 URL だけを描画する(`javascript:` / `data:` / 相対 URL / 資格情報付きは url を省く)。title はソース由来の文字列なので、制御文字を除き、本文と同じ無害化(リンク・画像・HTML・URL の除去)を通して Markdown の記号をエスケープする。ID はコードスパン。本文が閉じていないコードフェンスで終わっていれば閉じてから出典節を足す
+- 出典の url は `http:` / `https:` の絶対 URL だけを描画する(`javascript:` / `data:` / 相対 URL / 資格情報付きは url を省く)。url は正規化形を CommonMark の自動リンク `<…>` で囲む(URL のパスの `[` `]` `(` `)` はエンコードされないため、裸で描くと `…/a[公式](https://evil/x)` から別のリンクが作れる)。title はソース由来の文字列なので、制御文字を除き、本文と同じ無害化(リンク・画像・HTML・URL の除去)を通して Markdown の記号をエスケープする。ID はコードスパン。本文が閉じていないコードフェンスで終わっていれば閉じてから出典節を足す
 - runId は `feedback` に渡す識別子。structuredContent を LLM に渡さないクライアントのため text の末尾にも置く
 
-structuredContent: Answer の全フィールド(`runId` / `answer` / `citations` / `searchedSources` / `skippedSources` / `confidence` / `outcome` / `usage` / `warnings`)+ `retentionClass`(v1 は `persistable`。`--allow-non-persistable-sources` で起動したときだけ `non_persistable`)+ outcome が resolved 以外なら `errorClass`(AnswerRun の failureReason と同じ正規化コード。例 `no_citations` / `model_reported_unresolved` / `llm_unavailable` / `gateway_unauthenticated`)。ツール定義の `outputSchema` はこの形と、エラー形 `{ "errorClass": … }` のどちらかに合う JSON Schema(`anyOf`。SDK の Client はこれで structuredContent を検証する)。
+structuredContent: Answer の全フィールド(`runId` / `answer` / `citations` / `searchedSources` / `skippedSources` / `confidence` / `outcome` / `usage` / `warnings`)+ `retentionClass`(v1 は `persistable`。`--allow-non-persistable-sources` で起動したときだけ `non_persistable`)+ outcome が resolved 以外なら `errorClass`(AnswerRun の failureReason と同じ正規化コード。例 `no_citations` / `model_reported_unresolved` / `llm_unavailable` / `gateway_unauthenticated`)。`citations` は text の出典欄と同じ規則で無害化済み(`title` は制御文字・リンク・HTML・URL を除いたもの。Markdown のエスケープはしない。`url` は出典欄に描く http / https の正規化形だけで、それ以外は省く)。ツール定義の `outputSchema` はこの形と、エラー形 `{ "errorClass": … }` のどちらかに合う JSON Schema(`anyOf`。SDK の Client はこれで structuredContent を検証する)。
 
 | 結果 | `isError` | text | `structuredContent` |
 |---|---|---|---|
@@ -123,6 +124,7 @@ structuredContent: Answer の全フィールド(`runId` / `answer` / `citations`
 | outcome: error(LLM・Gateway の失敗など) | true | 上の Markdown(先頭に注意書き) | Answer + `retentionClass` + `errorClass` |
 | 質問が長すぎる | true | 「質問が長すぎます(N 文字まで)。…」 | `{ errorClass: "question_too_long" }` |
 | 同時実行の上限 | true | 「混み合っています。しばらくして再度お試しください。」 | `{ errorClass: "busy" }` |
+| Gateway のソースが `--config` と食い違う(下記) | true | 固定文言(ソース名は出さない) | `{ errorClass: "config_mismatch" }` |
 | 空の質問・不正な引数 | true | 固定文言 | `{ errorClass: "invalid_request" }` |
 | run が例外で終わった(AnswerRun を書けない等) | true | 分類ごとの固定文言 | `{ errorClass: "audit_write_failed" など }` |
 
@@ -135,14 +137,18 @@ initialize の `instructions`: 「ask の結果の本文と出典節は改変・
 | 結果 | `isError` | `structuredContent` |
 |---|---|---|
 | 記録した | なし | `{ runId, outcome }` |
+| 同時実行の上限(`maxConcurrentFeedback`、既定 4。ask とは別枠) | true | `{ errorClass: "busy" }` |
+| Gateway のソースが `--config` と食い違う | true | `{ errorClass: "config_mismatch" }` |
 | 他人の run | true | `{ errorClass: "feedback_forbidden" }` |
 | 未知・保持期間外の runId(プロセス内に最新 1000 件。再起動で消える) | true | `{ errorClass: "run_not_found" }` |
-| 利用者を確認できない(ソースがない・Gateway が報告しない) | true | `{ errorClass: "user_unverified" }` |
+| 利用者を確認できない(ソースがない・Gateway が報告しない・本人確認の往復が 10 秒の期限切れ) | true | `{ errorClass: "user_unverified" }` |
 | 不正な引数 | true | `{ errorClass: "invalid_request" }` |
 
 ### 不変条件7(永続化不可のソース)
 
 汎用 UI は会話の履歴を保存するため、`--config` に kind が `slack` / `slack-*` のソースが有効なら起動を拒否する(終了コード 1。ADR-018 決定5、ADR-014)。`--allow-non-persistable-sources` で解除できるが、UI 側で一時チャットの強制と保持期間を設定し、法務確認を経ることが前提(docs/ui-librechat.md)。解除して起動した場合は起動ログに WARNING を出し、`ask` の `retentionClass` を `non_persistable` にする(describe の結果も LLM に渡るため、run 単位ではなくデプロイ単位で判定する)。
+
+**Gateway のソースと --config の照合**: この判定と citedDocIds の分類は `--config` で行うため、Gateway が別の設定で動いていると Slack ソースを見逃す。そこでリクエストごとに、preflight で得た Gateway の `tools/list` の search のソース enum を `--config` の有効なコネクタと照合し、`--config` にない(または無効な)ソースがあれば、そのリクエストの `ask` / `feedback` を `config_mismatch`(isError、固定文言)にする(initialize / tools/list は通す)。`--allow-non-persistable-sources` のときは不一致を許し、`retentionClass` を `non_persistable` にする。`--config` には Gateway と同じ deployment.yaml を渡す。
 
 ### AnswerRun の JSONL と昇格判定レポート
 

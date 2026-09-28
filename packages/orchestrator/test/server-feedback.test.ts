@@ -7,11 +7,19 @@
  * - alice の run に alice のトークン → 更新(JSONL に userFeedback 付きの行が追記される)
  * - bob のトークン → feedback_forbidden(JSONL は変わらない)
  * - 未知の runId → run_not_found、不正な引数 → invalid_request、利用者を確認できない → user_unverified
+ * - 本人確認の往復(Gateway の tools/list と describe)には期限がある。応答しない Gateway でも
+ *   期限で user_unverified を返し、同時実行の枠を返す(セキュリティレビュー m2 の枠を抱え続けない)
  * - エラーの文言は固定文言で、入力(runId)をエコーしない
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { ScriptedLlmClient } from "../src/index.js";
+import {
+  FEEDBACK_VERIFICATION_TIMEOUT_MS,
+  McpGatewayClient,
+  ScriptedLlmClient,
+  USER_UNVERIFIED_TEXT,
+  type GatewayClientFactory,
+} from "../src/index.js";
 import {
   ALICE_TOKEN,
   BOB_TOKEN,
@@ -154,6 +162,46 @@ describe("feedback: 本人だけが更新できる", () => {
     expect(result.isError).toBe(true);
     expect(result.structured).toEqual({ errorClass: "invalid_request" });
     expect(gateway.toolInvocations()).toEqual([]);
+  });
+
+  it("本人確認の describe に Gateway が応答しなければ、期限(verificationTimeoutMs)で user_unverified を返して枠を返す", async () => {
+    const gateway = await startGateway({
+      connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
+    });
+    cleanups.push(() => gateway.close());
+    // tools/list は実 Gateway、describe は応答しない(signal にも従わない)クライアント
+    const factory: GatewayClientFactory = (options) => {
+      const inner = new McpGatewayClient(options);
+      return {
+        listTools: (callOptions) => inner.listTools(callOptions),
+        callTool: (name, args, meta, callOptions) =>
+          name === "describe"
+            ? new Promise(() => undefined)
+            : inner.callTool(name, args, meta, callOptions),
+        close: () => inner.close(),
+      };
+    };
+    const server = await startOrchestratorServer({
+      gatewayUrl: gateway.url,
+      llm: new ScriptedLlmClient(searchThenSubmit()),
+      createGatewayClient: factory,
+      verificationTimeoutMs: 200,
+    });
+    cleanups.push(() => server.close());
+    const client = await server.connect(ALICE_TOKEN);
+
+    const started = Date.now();
+    const result = await call(client, "feedback", { runId: "dev-only-run", outcome: "resolved" });
+
+    expect(result).toEqual({
+      isError: true,
+      text: USER_UNVERIFIED_TEXT,
+      structured: { errorClass: "user_unverified" },
+    });
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(FEEDBACK_VERIFICATION_TIMEOUT_MS).toBe(10_000);
+    expect(server.limits.feedback.active).toBe(0);
+    expect(await server.answerRunLines()).toEqual([]);
   });
 
   it("Gateway に検索できるソースがなく利用者を確認できなければ user_unverified", async () => {

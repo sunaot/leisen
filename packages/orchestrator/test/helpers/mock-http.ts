@@ -98,3 +98,46 @@ export function parseJsonOrUndefined(text: string): unknown {
     return undefined;
   }
 }
+
+/** 応答しない MCP サーバー(startStalledMcpServer)。 */
+export interface StalledMcpServer extends MockHttpServer {
+  /** 受け取った JSON-RPC の method(受け取った順) */
+  readonly methods: readonly string[];
+}
+
+/**
+ * 応答しない MCP サーバー(Gateway の代わり。preflight・接続の期限の検証用)。
+ * respondToInitialize が true なら initialize にだけ応答し、以降(notifications/initialized・
+ * tools/list など)には応答しない。false なら何にも応答しない。close で接続ごと閉じる。
+ */
+export async function startStalledMcpServer(options: {
+  readonly respondToInitialize: boolean;
+}): Promise<StalledMcpServer> {
+  const methods: string[] = [];
+  const server = await startMockHttpServer((request) => {
+    const body = isRecord(request.body) ? request.body : {};
+    const method = typeof body["method"] === "string" ? body["method"] : "(unknown)";
+    methods.push(method);
+    if (options.respondToInitialize && method === "initialize") {
+      const params = body["params"];
+      const protocolVersion =
+        isRecord(params) && typeof params["protocolVersion"] === "string"
+          ? params["protocolVersion"]
+          : "2025-06-18";
+      return {
+        body: {
+          jsonrpc: "2.0",
+          id: body["id"],
+          result: {
+            protocolVersion,
+            capabilities: { tools: {} },
+            serverInfo: { name: "stalled-gateway", version: "0.0.0" },
+          },
+        },
+      };
+    }
+    // 応答しない(接続は close まで開いたまま)
+    return new Promise<MockHttpReply>(() => undefined);
+  });
+  return { ...server, methods };
+}

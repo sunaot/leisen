@@ -2,7 +2,9 @@
  * T-021 受け入れ条件1: Orchestrator の MCP サーバー(kp-ask serve の HTTP 層)の認証の前段。
  *
  * - Bearer なし・形式不正・無効な Bearer の initialize / tools/list / tools/call は 401
- *   (JSON-RPC のディスパッチ前、固定文言)。IdP 不達(Gateway の 503)と Gateway 不達は 503
+ *   (JSON-RPC のディスパッチ前、固定文言)。IdP 不達(Gateway の 503)と Gateway 不達は 503。
+ *   応答しない Gateway も preflight 全体(initialize → notifications/initialized → tools/list)
+ *   の期限で 503(セキュリティレビュー m1)
  * - 拒否したリクエストでは LLM(ScriptedLlmClient の要求数)もコネクタ(呼び出し記録)も
  *   呼ばれず、Gateway の監査(ToolInvocation)も増えない
  * - 有効な Bearer は Gateway の tools/list(preflight)を通ってからディスパッチされる。
@@ -17,7 +19,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { IdpError } from "@kp/gateway";
-import { ScriptedLlmClient } from "../src/index.js";
+import { PREFLIGHT_TIMEOUT_MS, ScriptedLlmClient } from "../src/index.js";
 import {
   ALICE_TOKEN,
   CorpusConnector,
@@ -33,6 +35,7 @@ import {
   startOrchestratorServer,
   type OrchestratorServerHarness,
 } from "./helpers/orchestrator-server.js";
+import { startStalledMcpServer } from "./helpers/mock-http.js";
 
 const INVALID_TOKEN = "dev-only-invalid-token";
 
@@ -178,6 +181,42 @@ describe("認証の前段: Gateway・IdP に届かない", () => {
       expect(body.error?.data?.errorClass).toBe("gateway_unavailable");
     }
     expectNothingCalled(context);
+  });
+
+  it.each([
+    ["initialize に応答しない", false],
+    ["initialize には応答し、notifications/initialized に応答しない", true],
+  ])("Gateway が %s なら preflight 全体の期限で 503(LLM は呼ばない)", async (_label, respondToInitialize) => {
+    const stalled = await startStalledMcpServer({ respondToInitialize });
+    cleanups.push(() => stalled.close());
+    const llm = new ScriptedLlmClient(searchThenSubmit());
+    const server = await startOrchestratorServer({
+      gatewayUrl: `${stalled.url}/mcp`,
+      llm,
+      preflightTimeoutMs: 200,
+    });
+    cleanups.push(() => server.close());
+
+    const started = Date.now();
+    const response = await rawPost(server.url, RAW_BODIES["tools/list"], `Bearer ${ALICE_TOKEN}`);
+    const { status, text, body } = await rejectionOf(response);
+
+    expect(status).toBe(503);
+    expect(body.error).toEqual({
+      code: -32000,
+      message: "the gateway is unavailable",
+      data: { errorClass: "gateway_unavailable" },
+    });
+    expect(text).not.toContain(ALICE_TOKEN);
+    // 既定は 10 秒。ここでは 200ms で打ち切られ、1リクエストの期限(同じ 200ms)の積み重ねを待たない
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(PREFLIGHT_TIMEOUT_MS).toBe(10_000);
+    expect(stalled.methods[0]).toBe("initialize");
+    if (respondToInitialize) {
+      expect(stalled.methods).toContain("notifications/initialized");
+      expect(stalled.methods).not.toContain("tools/list");
+    }
+    expect(llm.requests).toHaveLength(0);
   });
 
   it("Gateway の URL のパスを誤っている(Gateway が 404)なら 500 internal_error", async () => {

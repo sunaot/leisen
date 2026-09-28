@@ -13,6 +13,10 @@
  * 応答後に閉じる。利用者のトークンはそのリクエストのサーバーにだけ閉じ込める(Gateway への
  * 接続を作る factory のクロージャ)。トークンは結果・エラー・ログのどこにも載せない
  * (不変条件6)。
+ *
+ * ask の Gateway 接続(initialize → notifications/initialized)にも run の時間上限が効く:
+ * run は Gateway への全呼び出しに期限の signal を渡し、McpGatewayClient は接続そのものも
+ * その signal で打ち切る(セキュリティレビュー m1。gateway/mcp-client.ts)。
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -61,11 +65,21 @@ export interface OrchestratorMcpServerOptions {
    */
   readonly sessionToken: string;
   readonly limits: ServerLimits;
-  /** 既定 persistable(ADR-018 決定5) */
+  /**
+   * このリクエストの ask の retentionClass(既定 persistable。ADR-018 決定5。Gateway の
+   * ソースの照合で不一致を許したときは non_persistable。http.ts が決める)
+   */
   readonly retentionClass?: RetentionClass;
+  /**
+   * Gateway が公開するソースが --config と食い違う(S6、checkGatewaySources)。true なら
+   * ask / feedback を config_mismatch で拒否する
+   */
+  readonly configMismatch?: boolean;
   readonly createGatewayClient?: GatewayClientFactory;
   /** feedback の本人確認で Gateway に申告する runId の採番(テスト用) */
   readonly newVerificationRunId?: () => string;
+  /** feedback の本人確認の期限(ms、既定 FEEDBACK_VERIFICATION_TIMEOUT_MS) */
+  readonly verificationTimeoutMs?: number;
 }
 
 /** SDK 非依存の結果を MCP の CallToolResult に写す。 */
@@ -89,8 +103,12 @@ export function createOrchestratorMcpServer(options: OrchestratorMcpServerOption
     createGatewayClient: () => factory({ url: gatewayUrl, sessionToken }),
     limits: options.limits,
     retentionClass: options.retentionClass ?? "persistable",
+    configMismatch: options.configMismatch ?? false,
     ...(options.newVerificationRunId !== undefined
       ? { newVerificationRunId: options.newVerificationRunId }
+      : {}),
+    ...(options.verificationTimeoutMs !== undefined
+      ? { verificationTimeoutMs: options.verificationTimeoutMs }
       : {}),
   };
   const server = new Server(ORCHESTRATOR_SERVER_INFO, {

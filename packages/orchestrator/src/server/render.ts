@@ -6,7 +6,7 @@
  *   {本文(Answer.answer。無害化済みで URL を含まない)}
  *
  *   ## 出典
- *   - [1] {title または documentId}(`{sourceId}:{documentId}`)— {url}
+ *   - [1] {title または documentId}(`{sourceId}:{documentId}`)— <{url}>
  *   (出典が 0 件なら「出典: なし」)
  *
  *   runId: `{runId}`
@@ -15,8 +15,15 @@
  *   ここでは手を加えない(改変すると出典の検証と表示がずれる)
  * - 原典へのリンクは出典欄の url だけ。url は `http:` / `https:` の絶対 URL だけを描画し
  *   (javascript: / data: / 相対 URL 等は url を省く)、資格情報(user:pass@)付きは表示上の
- *   ホストと実際の宛先がずれる(`https://trusted@evil/`)ため省く。描画は URL の正規化形
- *   (空白・山括弧を含まない)
+ *   ホストと実際の宛先がずれる(`https://trusted@evil/`)ため省く。描画は URL の正規化形を
+ *   CommonMark の自動リンク `<…>` で囲む(セキュリティレビュー S1)。WHATWG URL はパスの
+ *   `[` `]` `(` `)` `!` をエンコードしないため、裸で描くと `…/a[公式](https://evil/x)` のような
+ *   URL から別のリンクが作れる。自動リンクの中ではリンク・画像・強調の構文が解釈されない。
+ *   自動リンクに入れられない文字(空白・制御文字・`<` `>`)は正規化形に残らないが、念のため
+ *   %エンコードする
+ * - structuredContent の citations も同じ規則で無害化する(m3。render は text と同じ関数を
+ *   使う): title は Markdown のエスケープを除いて出典欄と同じ無害化、url は出典欄に描く
+ *   正規化形だけ(描かない url は省く)
  * - title はソース由来の文字列(信頼しない入力)。制御文字・不可視の書式文字を除き、改行を
  *   空白にし、本文と同じ無害化(リンク・画像・HTML・URL の除去)を通してから Markdown の
  *   記号をエスケープする(出典欄の url 以外のリンク・画像を作らせない)。長さも切り詰める
@@ -125,8 +132,13 @@ export function closeOpenCodeFence(body: string): string {
   return open === undefined ? body : `${body}\n${open.char.repeat(open.length)}`;
 }
 
-/** ソース由来の title を出典欄のラベルにする(空になれば undefined)。 */
-export function citationTitleLabel(title: string | undefined): string | undefined {
+/**
+ * ソース由来の title を無害化した1行の文字列(Markdown のエスケープ前。空になれば undefined)。
+ * 制御文字・不可視の書式文字を除き、改行を空白にし、本文と同じ無害化(リンク・画像・HTML・
+ * URL の除去)を通して切り詰める。出典欄のラベル(citationTitleLabel)と structuredContent の
+ * citations[].title(structuredCitation)の共通部。
+ */
+export function citationTitleText(title: string | undefined): string | undefined {
   if (title === undefined) {
     return undefined;
   }
@@ -134,13 +146,30 @@ export function citationTitleLabel(title: string | undefined): string | undefine
   if (sanitized === UNSANITIZABLE_ANSWER_TEXT) {
     return undefined;
   }
-  const label = truncate(singleLine(sanitized), MAX_TITLE_CHARS);
-  return label === "" ? undefined : escapeMarkdownInline(label);
+  const text = truncate(singleLine(sanitized), MAX_TITLE_CHARS);
+  return text === "" ? undefined : text;
+}
+
+/** ソース由来の title を出典欄のラベルにする(空になれば undefined)。 */
+export function citationTitleLabel(title: string | undefined): string | undefined {
+  const text = citationTitleText(title);
+  return text === undefined ? undefined : escapeMarkdownInline(text);
+}
+
+/**
+ * 自動リンク `<…>` の中に置けない文字(ASCII の制御文字・空白・`<` `>`)。URL の正規化形には
+ * 残らない(WHATWG URL がエンコードする)が、念のため %エンコードする。
+ */
+const AUTOLINK_UNSAFE = /[\u0000-\u0020\u007f<>]/g;
+
+function percentEncodeChar(c: string): string {
+  return `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`;
 }
 
 /**
  * 出典欄に描いてよい url(http / https の絶対 URL、資格情報なし)の正規化形。
- * それ以外は undefined(url を省く)。
+ * それ以外は undefined(url を省く)。戻り値は自動リンク `<…>` にそのまま入れられる
+ * (空白・制御文字・`<` `>` を含まない)。structuredContent の citations[].url も同じ値。
  */
 export function displayableSourceUrl(raw: string | undefined): string | undefined {
   if (raw === undefined) {
@@ -158,18 +187,34 @@ export function displayableSourceUrl(raw: string | undefined): string | undefine
   if (url.username !== "" || url.password !== "") {
     return undefined;
   }
-  return url.href;
+  return url.href.replace(AUTOLINK_UNSAFE, percentEncodeChar);
 }
 
-/** 出典1件の行。 */
+/** 出典1件の行(url は CommonMark の自動リンク。S1)。 */
 export function renderCitationLine(citation: Citation, index: number): string {
   const sourceId = truncate(singleLine(citation.sourceId), MAX_ID_CHARS);
   const documentId = truncate(singleLine(citation.documentId), MAX_ID_CHARS);
   const label = citationTitleLabel(citation.title) ?? codeSpan(documentId);
   const url = displayableSourceUrl(citation.url);
   return `- [${index + 1}] ${label}(${codeSpan(`${sourceId}:${documentId}`)})${
-    url !== undefined ? `— ${url}` : ""
+    url !== undefined ? `— <${url}>` : ""
   }`;
+}
+
+/**
+ * structuredContent に載せる出典(m3)。出典欄と同じ規則で無害化する: title は
+ * citationTitleText(Markdown のエスケープはしない)、url は displayableSourceUrl の正規化形
+ * (描かない url は省く)。sourceId / documentId は識別子としてそのまま載せる。
+ */
+export function structuredCitation(citation: Citation): Citation {
+  const title = citationTitleText(citation.title);
+  const url = displayableSourceUrl(citation.url);
+  return {
+    documentId: citation.documentId,
+    sourceId: citation.sourceId,
+    ...(title !== undefined ? { title } : {}),
+    ...(url !== undefined ? { url } : {}),
+  };
 }
 
 /** 出典節(見出し + 各行。0 件なら「出典: なし」)。 */

@@ -5,6 +5,8 @@
  * - 結果の `_meta` から Gateway が認証した userId を読む(成功・失敗とも。H1)
  * - セッショントークンをエラー・例外メッセージ・シリアライズ結果に出さない(不変条件6)
  * - 接続先はループバック以外 https 必須、資格情報・クエリ・フラグメント付きは拒否(m3)
+ * - 接続(initialize → notifications/initialized)にも呼び出しの signal が効き、close は接続の
+ *   完了を待たない(応答しない Gateway で止まらない。セキュリティレビュー m1)
  */
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -26,6 +28,7 @@ import {
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
+import { startStalledMcpServer } from "./helpers/mock-http.js";
 
 const harnesses: GatewayHarness[] = [];
 const closers: (() => Promise<void>)[] = [];
@@ -150,6 +153,46 @@ describe("McpGatewayClient", () => {
     const refused = await rejectionOf(unreachable.listTools());
     expect(refused.errorClass).toBe("gateway_unavailable");
     expectNoToken(refused, ALICE_TOKEN);
+  });
+
+  it.each([
+    ["initialize に応答しない", false],
+    ["notifications/initialized に応答しない", true],
+  ])("Gateway が %s とき、接続も呼び出しの signal で打ち切る(1リクエストの期限を待たない)", async (_label, respondToInitialize) => {
+    const stalled = await startStalledMcpServer({ respondToInitialize });
+    closers.push(() => stalled.close());
+    // 1リクエストの期限は既定(60 秒)のまま
+    const client = new McpGatewayClient({ url: `${stalled.url}/mcp`, sessionToken: ALICE_TOKEN });
+    closers.push(() => client.close());
+
+    const started = Date.now();
+    const error = await rejectionOf(client.listTools({ signal: AbortSignal.timeout(100) }));
+
+    expect(error.errorClass).toBe("aborted");
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expectNoToken(error, ALICE_TOKEN);
+    expect(stalled.methods).not.toContain("tools/list");
+  });
+
+  it("接続の途中(initialize に応答しない Gateway)でも close は待たずに閉じ、進行中の呼び出しは失敗する", async () => {
+    const stalled = await startStalledMcpServer({ respondToInitialize: false });
+    closers.push(() => stalled.close());
+    const client = new McpGatewayClient({ url: `${stalled.url}/mcp`, sessionToken: ALICE_TOKEN });
+    const pending = rejectionOf(client.listTools());
+    for (let i = 0; i < 100 && stalled.methods.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(stalled.methods).toEqual(["initialize"]);
+
+    const started = Date.now();
+    await client.close();
+    const error = await pending;
+
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expectNoToken(error, ALICE_TOKEN);
+    // 閉じた後の呼び出しは接続し直さない
+    expect((await rejectionOf(client.listTools())).errorClass).toBe("gateway_protocol_error");
+    expect(stalled.methods).toEqual(["initialize"]);
   });
 
   it("誤ったパスは gateway_protocol_error", async () => {

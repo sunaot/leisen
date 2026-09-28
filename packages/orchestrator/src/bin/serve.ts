@@ -25,7 +25,12 @@
  *   (NODE_ENV=production では終了コード 2。有効時は平文 http の上流をホスト名で WARNING。
  *   bin/upstream-options.ts)
  * - AnswerRun は --answer-run-jsonl(環境変数 KP_ANSWER_RUN_JSONL)に追記する(決定4。Gateway の
- *   監査 JSONL とは別ファイル)。省略時は stderr に出す(開発用。起動ログに WARNING)
+ *   監査 JSONL とは別ファイル)。省略時は stderr に出す(開発用。起動ログに WARNING)。
+ *   NODE_ENV=production では省略できない(終了コード 2。セキュリティレビュー S5)
+ * - Gateway が公開するソースと --config の照合(S6): --config で有効なコネクタにないソースを
+ *   Gateway が公開していれば、そのリクエストの ask / feedback を config_mismatch で拒否する
+ *   (不変条件7 と citedDocIds の分類は --config で判定しているため)。
+ *   --allow-non-persistable-sources のときは許し、retentionClass を non_persistable にする
  * - 起動時に LLM・Gateway へは接続しない(設定の検証だけ)。探索プロンプトは読み込んでおく
  * - 起動ログ・エラーは stderr(stdout は使わない。help のみ stdout)。トークン・API キー・
  *   HMAC 鍵・環境変数の値は出さない(不変条件6)。Gateway の URL はホストだけを出す
@@ -79,6 +84,7 @@ import {
   INSECURE_UPSTREAM_USAGE_LINE,
   insecureUpstreamWarning,
   isInsecureGatewayUrl,
+  isProductionEnv,
   parseInsecureUpstreamOption,
 } from "./upstream-options.js";
 
@@ -99,7 +105,7 @@ export const SERVE_USAGE = [
   "  利用者の認証は Gateway に委譲します(Authorization: Bearer <IdP が利用者に発行したアクセストークン>)。",
   `  --listen の既定は ${DEFAULT_SERVE_LISTEN}(環境変数 KP_LISTEN)。ループバック以外は --confirm-exposed-host が必要です。`,
   `  --path の既定は ${DEFAULT_ORCHESTRATOR_HTTP_PATH}(死活確認は GET ${ORCHESTRATOR_HEALTH_PATH})。`,
-  "  --answer-run-jsonl の既定は環境変数 KP_ANSWER_RUN_JSONL。省略時は AnswerRun を stderr に出します(開発用)。",
+  "  --answer-run-jsonl の既定は環境変数 KP_ANSWER_RUN_JSONL。省略時は AnswerRun を stderr に出します(開発用。NODE_ENV=production では必須)。",
   `  --max-concurrent-runs の既定は ${DEFAULT_MAX_CONCURRENT_RUNS}(1〜${MAX_CONCURRENT_RUNS_LIMIT})、--max-question-chars の既定は ${DEFAULT_MAX_QUESTION_CHARS}(1〜${MAX_QUESTION_CHARS})。`,
   "  永続化不可のソース(Slack)が有効な --config では起動しません(--allow-non-persistable-sources で解除)。",
   "  --config の audit.privateScopeDocIds が hashed なら環境変数 KP_AUDIT_HMAC_KEY が必要です。",
@@ -112,6 +118,10 @@ export const SERVE_USAGE = [
 export const NON_PERSISTABLE_SOURCES_REFUSAL =
   "永続化不可のソース(Slack)が有効な構成では、履歴を保存する汎用 UI から使えません。" +
   "解除するには --allow-non-persistable-sources を付け、docs/ui-librechat.md の保持設定と法務確認(ADR-014)を行ってください。";
+
+/** NODE_ENV=production で AnswerRun の書き先がないときの文言(セキュリティレビュー S5)。 */
+export const ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION =
+  "NODE_ENV=production では AnswerRun の書き先が必須です。--answer-run-jsonl(または環境変数 KP_ANSWER_RUN_JSONL)を指定してください(stderr への出力は開発用です)。";
 
 /** ループバック以外での待ち受けの拒否の文言(ADR-018 決定7)。 */
 export const EXPOSED_HOST_REFUSAL =
@@ -262,12 +272,18 @@ function parseServeArgs(
   if (!llm.ok) {
     throw new ServeUsageError(llm.message);
   }
+  const answerRunJsonl =
+    nonEmpty(values["answer-run-jsonl"]) ?? nonEmpty(env["KP_ANSWER_RUN_JSONL"]);
+  if (answerRunJsonl === undefined && isProductionEnv(env)) {
+    // 本番で AnswerRun を永続化しない構成(stderr のデバッグ出力)にしない(S5)
+    throw new ServeUsageError(ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION);
+  }
   return {
     gateway,
     config,
     listen,
     path,
-    answerRunJsonl: nonEmpty(values["answer-run-jsonl"]) ?? nonEmpty(env["KP_ANSWER_RUN_JSONL"]),
+    answerRunJsonl,
     maxConcurrentRuns,
     maxQuestionChars,
     confirmExposedHost: values["confirm-exposed-host"] === true,
@@ -290,6 +306,18 @@ function errorCode(error: unknown): string {
 export function nonPersistableSourceIds(config: Pick<DeploymentConfig, "connectors">): string[] {
   return config.connectors
     .filter((connector) => connector.enabled && isSlackKind(connector.kind))
+    .map((connector) => connector.id);
+}
+
+/**
+ * --config で有効なコネクタの sourceId(Gateway が公開するソースとの照合に使う。S6)。
+ * Gateway の tools/list は有効なコネクタだけを公開するため、無効なものは含めない
+ * (--config で無効な Slack ソースを Gateway が公開していたら、不変条件7 の判定を
+ * 通っていないので不一致として扱う)。
+ */
+export function enabledSourceIds(config: Pick<DeploymentConfig, "connectors">): string[] {
+  return config.connectors
+    .filter((connector) => connector.enabled)
     .map((connector) => connector.id);
 }
 
@@ -495,6 +523,12 @@ export async function runServe(
       gatewayUrl: gatewayUrl.href,
       limits,
       retentionClass: nonPersistable.length > 0 ? "non_persistable" : "persistable",
+      // Gateway が --config にないソースを公開していれば ask / feedback を断る(S6)。
+      // 解除のフラグがあれば許し、そのリクエストの retentionClass を non_persistable にする
+      sourcePolicy: {
+        knownSourceIds: enabledSourceIds(config),
+        onUnknownSource: args.allowNonPersistableSources ? "non_persistable" : "reject",
+      },
       // --allow-insecure-upstream のときだけ、Gateway への接続(preflight・ask・feedback)に
       // 非ループバックの http を許す
       createGatewayClient: (options) =>

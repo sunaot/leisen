@@ -33,7 +33,11 @@ export type InsecureUpstreamOption =
   | { readonly ok: true; readonly enabled: boolean }
   | { readonly ok: false; readonly message: string };
 
-function isProduction(env: Env): boolean {
+/**
+ * NODE_ENV=production か(渡された環境に加えてプロセスの環境も見る。安全側に倒す)。
+ * kp-ask serve の --answer-run-jsonl 必須の判定(serve.ts)にも使う。
+ */
+export function isProductionEnv(env: Env): boolean {
   return env["NODE_ENV"] === "production" || process.env["NODE_ENV"] === "production";
 }
 
@@ -61,7 +65,7 @@ export function parseInsecureUpstreamOption(
       };
     }
   }
-  if (enabled && isProduction(env)) {
+  if (enabled && isProductionEnv(env)) {
     return { ok: false, message: INSECURE_UPSTREAM_IN_PRODUCTION_MESSAGE };
   }
   return { ok: true, enabled };

@@ -6,6 +6,9 @@
  * --allow-non-persistable-sources で起動する。
  * あわせて: 引数・設定の不備(終了コード 2)、公開境界(--confirm-exposed-host)、AnswerRun の
  * 書き先の検査、起動ログ(秘密情報を出さない)、CLI 経由の ask の e2e、停止時の待ち合わせ。
+ * セキュリティレビュー: NODE_ENV=production では --answer-run-jsonl が必須(S5)。Gateway が
+ * --config で有効でないソースを公開していれば ask は config_mismatch、--allow-non-persistable-sources
+ * なら non_persistable で通る(S6)。
  */
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,6 +23,7 @@ import {
 } from "../src/index.js";
 import { runCli, type CliDependencies } from "../src/bin/kp-ask.js";
 import {
+  ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION,
   EXPOSED_HOST_REFUSAL,
   NON_PERSISTABLE_SOURCES_REFUSAL,
   SERVE_USAGE,
@@ -169,6 +173,132 @@ describe("kp-ask serve: 不変条件7(永続化不可のソース)", () => {
     const d = deps();
     expect(await runCli(serveArgs(config), io, d)).toBe(0);
     expect(d.endpoints).toHaveLength(1);
+  });
+});
+
+describe("kp-ask serve: 本番では AnswerRun の書き先が必須(S5)", () => {
+  it("NODE_ENV=production で --answer-run-jsonl(KP_ANSWER_RUN_JSONL)がなければ終了コード 2(固定文言、待ち受けない)", async () => {
+    const config = await writeYaml(deploymentYaml());
+    const { out, err, io } = capture();
+    const d = deps({ env: { NODE_ENV: "production", KP_ANSWER_RUN_JSONL: "  " } });
+
+    const code = await runCli(serveArgs(config), io, d);
+
+    expect(code).toBe(2);
+    expect(err[0]).toBe(`kp-ask serve: ${ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION}`);
+    expect(ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION).toContain("AnswerRun の書き先が必須");
+    expect(err.join("\n")).toContain("usage: kp-ask serve");
+    expect(err.join("\n")).not.toContain("listening on");
+    expect(out).toEqual([]);
+    expect(d.endpoints).toEqual([]);
+  });
+
+  it("NODE_ENV=production でも --answer-run-jsonl または KP_ANSWER_RUN_JSONL があれば起動する", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
+    const config = await writeYaml(deploymentYaml(), dir);
+    const jsonl = join(dir, "answer-runs.jsonl");
+    for (const [extra, env] of [
+      [["--answer-run-jsonl", jsonl], { NODE_ENV: "production" }],
+      [[], { NODE_ENV: "production", KP_ANSWER_RUN_JSONL: jsonl }],
+    ] as const) {
+      const { err, io } = capture();
+      const d = deps({ env });
+      expect(await runCli(serveArgs(config, ...extra), io, d)).toBe(0);
+      expect(d.endpoints).toHaveLength(1);
+      expect(err).toContain(`kp-ask serve: answer-run sink: jsonl ${jsonl}`);
+      expect(err.join("\n")).not.toContain("WARNING: answer-run sink");
+    }
+  });
+
+  it.each([["development"], ["test"], [undefined]])(
+    "NODE_ENV=%s では従来どおり stderr に出して起動する(WARNING)",
+    async (nodeEnv) => {
+      const config = await writeYaml(deploymentYaml());
+      const { err, io } = capture();
+      const d = deps({ env: nodeEnv === undefined ? {} : { NODE_ENV: nodeEnv } });
+      expect(await runCli(serveArgs(config), io, d)).toBe(0);
+      expect(err.join("\n")).toContain(
+        "WARNING: answer-run sink: stderr (development only; AnswerRun records are not persisted)",
+      );
+    },
+  );
+});
+
+describe("kp-ask serve: Gateway のソースと --config の照合(S6)", () => {
+  /** 待ち受けたら ALICE のトークンで ask を1回呼び、結果(isError と structuredContent)を返す。 */
+  async function askOnce(argv: readonly string[]): Promise<{
+    readonly code: number;
+    readonly isError: boolean;
+    readonly structured: Record<string, unknown>;
+  }> {
+    let isError = false;
+    let structured: Record<string, unknown> = {};
+    const { io } = capture();
+    const d = deps({
+      onListening: async (endpoint) => {
+        const client = await connectMcpClient(endpoint.url, ALICE_TOKEN);
+        try {
+          const result = await client.callTool({
+            name: "ask",
+            arguments: { question: "経費精算の締め日は?" },
+          });
+          isError = result.isError === true;
+          structured = result.structuredContent as Record<string, unknown>;
+        } finally {
+          await client.close();
+        }
+      },
+    });
+    const code = await runCli(argv, io, d);
+    return { code, isError, structured };
+  }
+
+  it("--config にないソースを Gateway が公開していれば ask は config_mismatch。--allow-non-persistable-sources なら non_persistable で通る", async () => {
+    const gateway = await startGateway({
+      connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY]), new CorpusConnector("beta", [])],
+    });
+    cleanups.push(() => gateway.close());
+    // --config は alpha だけ(Gateway の beta を知らない)
+    const config = await writeYaml(deploymentYaml());
+    const base = ["serve", "--gateway", gateway.url, "--config", config, "--listen", "127.0.0.1:0"];
+
+    const refused = await askOnce(base);
+    expect(refused).toEqual({ code: 0, isError: true, structured: { errorClass: "config_mismatch" } });
+    expect(gateway.toolInvocations()).toEqual([]);
+
+    const allowed = await askOnce([...base, "--allow-non-persistable-sources"]);
+    expect(allowed.code).toBe(0);
+    expect(allowed.isError).toBe(false);
+    expect(allowed.structured).toMatchObject({ outcome: "resolved", retentionClass: "non_persistable" });
+  });
+
+  it("--config で無効(enabled: false)なソースを Gateway が公開していても不一致として断る", async () => {
+    const gateway = await startGateway({
+      connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY]), new CorpusConnector("beta", [])],
+    });
+    cleanups.push(() => gateway.close());
+    // 不変条件7 の判定は有効なコネクタだけを見るため、--config で無効なソースは照合でも既知にしない
+    const config = await writeYaml(deploymentYaml(["  - id: beta", "    enabled: false"]));
+
+    const result = await askOnce([
+      "serve", "--gateway", gateway.url, "--config", config, "--listen", "127.0.0.1:0",
+    ]);
+
+    expect(result).toEqual({ code: 0, isError: true, structured: { errorClass: "config_mismatch" } });
+  });
+
+  it("Gateway のソースが --config の有効なコネクタに収まっていれば通る(persistable)", async () => {
+    const gateway = await startGateway({ connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])] });
+    cleanups.push(() => gateway.close());
+    // --config 側に Gateway が公開していないソースがあってもよい
+    const config = await writeYaml(deploymentYaml(["  - id: beta"]));
+
+    const result = await askOnce([
+      "serve", "--gateway", gateway.url, "--config", config, "--listen", "127.0.0.1:0",
+    ]);
+
+    expect(result.isError).toBe(false);
+    expect(result.structured).toMatchObject({ outcome: "resolved", retentionClass: "persistable" });
   });
 });
 
