@@ -11,6 +11,7 @@
  * なら non_persistable で通る(S6)。
  */
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,10 +25,12 @@ import {
 import { runCli, type CliDependencies } from "../src/bin/kp-ask.js";
 import {
   ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION,
+  AUDIT_HMAC_KEY_REQUIRED_MESSAGE,
   EXPOSED_HOST_REFUSAL,
   NON_PERSISTABLE_SOURCES_REFUSAL,
   SERVE_USAGE,
   parseListen,
+  servePortInUseMessage,
   type ServeEndpoint,
 } from "../src/bin/serve.js";
 import {
@@ -577,6 +580,9 @@ describe("kp-ask serve: 引数と設定の不備", () => {
     const { err, io } = capture();
     expect(await runCli(serveArgs(config), io, deps())).toBe(2);
     expect(err.join("\n")).toContain("KP_AUDIT_HMAC_KEY");
+    // 鍵の生成方法を案内する(値は出さない。issue #38)
+    expect(err).toContain(`kp-ask serve: ${AUDIT_HMAC_KEY_REQUIRED_MESSAGE}`);
+    expect(AUDIT_HMAC_KEY_REQUIRED_MESSAGE).toContain("openssl rand -hex 32");
 
     const withKey = capture();
     expect(await runCli(serveArgs(config), withKey.io, deps({ env: { KP_AUDIT_HMAC_KEY: HMAC_KEY } }))).toBe(0);
@@ -602,6 +608,30 @@ describe("kp-ask serve: 引数と設定の不備", () => {
     ).toBe(1);
     expect(confirmed.err.join("\n")).not.toContain(EXPOSED_HOST_REFUSAL);
     expect(confirmed.err.join("\n")).toContain("cannot listen on 192.0.2.1:0");
+  });
+
+  it("待ち受けのポートが使用中なら、--listen での変え方を案内して終了コード 1(issue #38)", async () => {
+    const blocker = createServer();
+    blocker.listen(0, "127.0.0.1");
+    await new Promise((resolve) => blocker.once("listening", resolve));
+    const address = blocker.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+    cleanups.push(() => new Promise<void>((resolve) => blocker.close(() => resolve())));
+    const config = await writeYaml(deploymentYaml());
+    const { err, io } = capture();
+    const d = deps();
+
+    const code = await runCli(
+      ["serve", "--gateway", UNREACHABLE_GATEWAY, "--config", config, "--listen", `127.0.0.1:${port}`],
+      io,
+      d,
+    );
+
+    expect(code).toBe(1);
+    expect(err).toContain(`kp-ask serve: cannot listen on 127.0.0.1:${port}: EADDRINUSE`);
+    expect(err).toContain(`kp-ask serve: ${servePortInUseMessage(port)}`);
+    expect(servePortInUseMessage(port)).toContain("--listen");
+    expect(d.endpoints).toEqual([]);
   });
 
   it("--answer-run-jsonl が Gateway の監査ログと同じファイル・書けない場所なら終了コード 1", async () => {

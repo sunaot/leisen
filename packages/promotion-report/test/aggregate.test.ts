@@ -8,6 +8,7 @@ import {
 import {
   aggregatePromotionReport,
   dedupeAuditRecords,
+  dedupeAuditRecordsDetailed,
   generatePromotionReport,
   type PromotionReportInput,
 } from "../src/aggregate.js";
@@ -387,7 +388,52 @@ describe("aggregatePromotionReport(合成2層ログのゴールデンテスト)"
     expect(report.totalRuns).toBe(6);
     expect(report.resolvedRuns).toBe(3);
     expect(report.undecidedRuns).toBe(0);
-    expect(report.duplicateRecordCount).toBe(1);
+    // pending → resolved の書き直しは重複ではなく更新(issue #38)
+    expect(report.duplicateRecordCount).toBe(0);
+    expect(report.updatedRecordCount).toBe(1);
+  });
+
+  it("pending → 最終状態 → フィードバックは更新として数え(重複にしない)、集計は最終状態を使う(issue #38)", () => {
+    const startedAt = "2026-07-10T10:00:00Z";
+    const pending = answerRun("run-u", "u1", startedAt, "pending", [], digestQuery("q"));
+    const final = answerRun("run-u", "u1", startedAt, "unresolved", ["gdrive"], digestQuery("q"));
+    const feedback = { ...(final as AuditRecord & { recordType: "answer_run" }), userFeedback: "unresolved" as const };
+
+    const report = aggregatePromotionReport({
+      ...baseInput(),
+      records: [pending, pending, final, feedback, feedback],
+    });
+
+    expect(report.inputRecordCount).toBe(5);
+    expect(report.duplicateRecordCount).toBe(2); // 同じ内容の再送(pending と feedback の2回目)
+    expect(report.updatedRecordCount).toBe(2); // pending → 最終状態、最終状態 → フィードバック
+    expect(report.totalRuns).toBe(1);
+    expect(report.unresolvedRuns).toBe(1);
+    expect(report.undecidedRuns).toBe(0);
+  });
+
+  it("ファイルの順序が前後して pending が最終状態の後に来ても、最終状態で集計する", () => {
+    const startedAt = "2026-07-10T10:00:00Z";
+    const pending = answerRun("run-r", "u1", startedAt, "pending", [], digestQuery("q"));
+    const final = answerRun("run-r", "u1", startedAt, "resolved", ["gdrive"], digestQuery("q"));
+
+    const deduped = dedupeAuditRecordsDetailed([final, pending]);
+    expect(deduped.records).toEqual([final]);
+    expect(deduped).toMatchObject({ duplicates: 0, updates: 1 });
+
+    const report = aggregatePromotionReport({ ...baseInput(), records: [final, pending, pending] });
+    expect(report.resolvedRuns).toBe(1);
+    expect(report.undecidedRuns).toBe(0);
+    expect(report).toMatchObject({ duplicateRecordCount: 1, updatedRecordCount: 1 });
+  });
+
+  it("重複の判定はキーの順序に依らない(同じ内容を別の順序で書いた行も重複)", () => {
+    const record = fixtureRecords()[0] as AuditRecord;
+    const reordered = Object.fromEntries(Object.entries(record).reverse()) as AuditRecord;
+    expect(dedupeAuditRecordsDetailed([record, reordered])).toMatchObject({
+      duplicates: 1,
+      updates: 0,
+    });
   });
 
   it("post-filtering前候補件数に相当するフィールドを出力に含めない(ADR-011/012)", () => {

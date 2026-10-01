@@ -313,6 +313,9 @@ function toGatewayClientError(
         "the gateway rejected the session token (401)",
       );
     }
+    if (status === 403) {
+      return new GatewayClientError("gateway_forbidden", "the gateway refused the request (403)");
+    }
     if (
       status === 408 ||
       status === 429 ||

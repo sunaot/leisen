@@ -6,6 +6,8 @@
  * - ディレクトリがなければ失敗する(作らない)。失敗後の次の追記は改行から始める
  * - AnswerRun 以外・不正なレコードは書かない
  * - answerRunJsonlPathProblem: 書き込めない出力先を起動時に見つける(ファイルは作らない)
+ * - prepareAnswerRunJsonlSink: kp-ask serve と1問モード共通の書き先の検査(Gateway の監査
+ *   JSONL と同じファイルを拒否する。issue #38)
  */
 import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,9 +15,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseAuditRecord, type AuditRecord } from "@kp/gateway";
 import {
+  ANSWER_RUN_JSONL_SAME_AS_GATEWAY_AUDIT,
   AnswerRunJsonlSink,
   answerRunJsonlPathProblem,
+  gatewayAuditJsonlFiles,
   pendingAnswerRun,
+  prepareAnswerRunJsonlSink,
 } from "../src/index.js";
 
 async function tempDir(): Promise<string> {
@@ -132,6 +137,51 @@ describe("answerRunJsonlPathProblem", () => {
       await writeFile(readonly, "");
       await chmod(readonly, 0o400);
       expect(await answerRunJsonlPathProblem(readonly)).toMatch(/is not writable/);
+    }
+  });
+});
+
+describe("prepareAnswerRunJsonlSink(serve と1問モードの共通)", () => {
+  const gatewayAudit = {
+    audit: {
+      jsonl: { path: "audit/gateway.jsonl", rawQueryPath: "rawquery/raw.jsonl" },
+    },
+  } as unknown as Parameters<typeof gatewayAuditJsonlFiles>[0];
+
+  it("書ける出力先ならシンクを作る(ファイルはまだ作らない。相対パスは絶対パスにする)", async () => {
+    const dir = await tempDir();
+    const prepared = await prepareAnswerRunJsonlSink(join(dir, "answer-runs.jsonl"));
+    expect(prepared.ok).toBe(true);
+    if (prepared.ok) {
+      expect(prepared.sink).toBeInstanceOf(AnswerRunJsonlSink);
+      expect(prepared.file).toBe(join(dir, "answer-runs.jsonl"));
+    }
+    await expect(stat(join(dir, "answer-runs.jsonl"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("Gateway の監査 JSONL(path / rawQueryPath。deployment.yaml の所在ディレクトリ基準)と同じファイルは拒否する", async () => {
+    const dir = await tempDir();
+    const configPath = join(dir, "deployment.yaml");
+    expect(gatewayAuditJsonlFiles(gatewayAudit, dir)).toEqual([
+      join(dir, "audit", "gateway.jsonl"),
+      join(dir, "rawquery", "raw.jsonl"),
+    ]);
+    for (const file of ["audit/gateway.jsonl", "rawquery/raw.jsonl"]) {
+      const prepared = await prepareAnswerRunJsonlSink(join(dir, file), {
+        config: gatewayAudit,
+        configPath,
+      });
+      expect(prepared).toEqual({ ok: false, message: ANSWER_RUN_JSONL_SAME_AS_GATEWAY_AUDIT });
+    }
+  });
+
+  it("書けない出力先は理由(パスとエラーコード)を返す", async () => {
+    const dir = await tempDir();
+    const prepared = await prepareAnswerRunJsonlSink(join(dir, "no-such-dir", "a.jsonl"));
+    expect(prepared.ok).toBe(false);
+    if (!prepared.ok) {
+      expect(prepared.message).toContain("--answer-run-jsonl に書き込めません");
+      expect(prepared.message).toContain("ENOENT");
     }
   });
 });

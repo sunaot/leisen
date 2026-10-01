@@ -134,6 +134,16 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   各コンテナに必要な変数だけを渡す(gateway: `KP_KEYCLOAK_CLIENT_SECRET` / `KP_MOCK_TOKEN_DEV_DOCS`、
   keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`。LibreChat overlay の orchestrator: `KP_AUDIT_HMAC_KEY`(AnswerRun の
   citedDocIds の HMAC 鍵)と LLM の接続先・モデル名)。未設定なら compose が起動前に止まる
+- `KP_AUDIT_HMAC_KEY`(`audit.privateScopeDocIds: hashed` のデプロイ固有鍵。`kp-ask --config` と
+  `kp-ask serve` が要求する)は、導入ごとに1回だけ乱数で生成して秘密ストアに保管し、以後は同じ値を使い続ける
+  (変えると以前に記録した `hmac:…` と突き合わせられなくなる)。`.env.example` の値は評価用のダミーなので
+  置き換える。生成例:
+
+  ```bash
+  openssl rand -hex 32
+  # または Node だけで
+  node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
+  ```
 - LibreChat overlay の LibreChat 固有の秘密(OpenID のクライアント secret、セッション・保存時暗号化の鍵)は
   `deploy/compose/librechat/librechat.env`(git 管理外。雛形は `librechat.env.example`)から librechat
   コンテナにだけ渡す
@@ -150,7 +160,9 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
 - コンテナ内では `gateway.http.host: 0.0.0.0` で待ち受ける。コンテナ内のループバックで待ち受けると、
   ポート公開でホストから届かないため
 - `gateway.http.host` がループバック以外のとき、起動コードは `gateway.http.confirmExposedHost: true` を
-  要求する(なければ `http_host_exposed_requires_confirmation` で起動拒否。`kp-gateway validate` も同じ)。
+  要求する(なければ `http_host_exposed_requires_confirmation` で起動拒否。`kp-gateway validate` も同じ。
+  `kp-gateway serve --host <addr>` で待ち受けアドレスを上書きした場合も、上書き後のアドレスに同じ検査をかける。
+  確認は deployment.yaml でだけ行い、フラグでは解除できない)。
   **Gateway は TLS を終端せず、Host / Origin ヘッダの検証もしない**ため、ループバック以外で待ち受ける
   構成は「TLS 終端とそれらの防御を前段のリバースプロキシが担う」前提を明示的に受け入れる必要がある
   (T-003 レビュー minor-11)。リファレンス設定はこの前提で `true` にしている
@@ -271,7 +283,12 @@ server {
 - **at-least-once で、同じレコードが複数行に現れうる**(書き込みの成否が確定しない失敗でも再送するため)。
   読み手は冪等キー(`tool_invocation` は `requestId`、`answer_run` は `runId`、`audit_access` は
   `accessId`、`retention_purge` は `purgeId`)で重複を除く。昇格判定レポート(promotion-report)は
-  このキーで重複を除いて集計する
+  このキーで重複を除いて集計する。同じ `runId` の AnswerRun が pending → 最終状態 → フィードバックと
+  書き直される行は重複ではなく「更新」として別に数え、最終状態で集計する(レポートの `入力レコード数` の注記、
+  JSON の `duplicateRecordCount` / `updatedRecordCount`)
+- 開発用の `audit.sink: stdout` の出力(`{"kind":"audit", …}` の行)も、標準出力をファイルに保存すれば
+  そのまま promotion-report の `--audit` に渡せる(封筒の `kind` を外して JSONL と同じ検証をかける)。
+  保存するファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う(開発用)
 - 書き込み失敗時は fail-closed(ADR-011)。ローカルバッファ(1000 件)で一時的な失敗を吸収し、あふれると
   ツール呼び出しが失敗する。停止(SIGTERM)時は処理中のリクエストを最大 10 秒待ってからバッファを
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、

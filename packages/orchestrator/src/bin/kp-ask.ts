@@ -4,7 +4,8 @@
  *
  *   kp-ask --gateway http://127.0.0.1:8787/mcp [--token <セッショントークン>]
  *          [--model <モデルID>] [--max-iterations N] [--effort low|medium|high|xhigh|max]
- *          [--user-id <userId>] [--config <deployment.yaml>] [--json] "質問文"
+ *          [--user-id <userId>] [--config <deployment.yaml>] [--answer-run-jsonl <path>]
+ *          [--json] "質問文"
  *
  * - セッショントークンは --token か環境変数 KP_SESSION_TOKEN で渡す(--token は
  *   プロセス一覧に残るため環境変数を推奨)。トークンは表示・ログに出さない
@@ -13,13 +14,23 @@
  *   その旨を表示して終了コード 2
  * - LLM バックエンドは --llm で選ぶ(既定 anthropic。openai-compatible は LM Studio 等の
  *   OpenAI 互換エンドポイント。指定の解釈は bin/llm-options.ts、ADR-017 決定1)
- * - AnswerRun の監査レコードは stderr に JSON 1行で出す(開発用。ToolInvocation は
- *   Gateway 側の監査に記録される)
+ * - AnswerRun の監査レコードは既定で stderr に JSON 1行で出す(開発用。記録を黙って捨てない
+ *   ため)。--answer-run-jsonl <path> を付けるとそのファイルに追記し(kp-ask serve と同じ形式・
+ *   同じ規則: 追記のみ、新規作成は 0600、ディレクトリは作らない、Gateway の監査ログと同じファイルは
+ *   拒否)、stderr には出さない。この照合のため --answer-run-jsonl には --config が必須(serve と
+ *   同じ強さ。--config なしでは Gateway の監査ログかどうかを判定できない)。
+ *   環境変数 KP_ANSWER_RUN_JSONL は読まない(serve と同じファイルに2プロセスで書かないため)。
+ *   ToolInvocation は Gateway 側の監査に記録される
+ * - --json の出力契約(README「kp-ask の出力契約」): 回答できたとき・run が error で終わったときは
+ *   Answer、回答を返せなかったとき(引数・設定・資格情報の不備、実行時の例外)は失敗の表現
+ *   { outcome: "error", errorClass, message[, runId] } を stdout に JSON で1つ出す。終了コードは
+ *   --json の有無で変わらない
  * - AnswerRun の質問者は Gateway が認証した userId。--user-id(または環境変数 KP_USER_ID)は
  *   照合用の申告で、一致しなければ run は error(user_mismatch)。省略時は照合しない
  * - --config は deployment.yaml(citedDocIds の記録方針: connectors[] の kind / privateScopes
  *   と audit.privateScopeDocIds)。hashed なら環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵が
- *   要る。--config を省略すると citedDocIds を記録しない
+ *   要る(生成例: openssl rand -hex 32。導入ごとに1回だけ作って同じ値を使う)。--config を
+ *   省略すると citedDocIds を記録しない
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
@@ -30,12 +41,15 @@
  * 経由で読み込まれ、main() が呼ばれる(このファイルは自分がエントリのときだけ自動実行する)。
  */
 import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   AuditLogger,
   DeploymentConfigError,
   loadDeploymentConfig,
+  type AuditSink,
+  type DeploymentConfig,
 } from "@kp/gateway";
 import type { Answer } from "../answer.js";
 import {
@@ -67,13 +81,19 @@ import type {
   LlmTurn,
 } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
+import { prepareAnswerRunJsonlSink } from "../server/answer-run-jsonl.js";
 import {
   LLM_USAGE_LINES,
   backendHintFor,
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
-import { runServe, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import {
+  AUDIT_HMAC_KEY_REQUIRED_MESSAGE,
+  runServe,
+  waitForTerminationSignal,
+  type ServeEndpoint,
+} from "./serve.js";
 import {
   INSECURE_UPSTREAM_HINT,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -85,11 +105,15 @@ import {
 export const USAGE = [
   "usage: kp-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
   "              [--model <モデルID>] [--max-iterations <N>] [--effort low|medium|high|xhigh|max]",
-  "              [--user-id <userId>] [--config <deployment.yaml>] [--json] <質問文>",
+  "              [--user-id <userId>] [--config <deployment.yaml>] [--answer-run-jsonl <path>]",
+  "              [--json] <質問文>",
   "  セッショントークンは環境変数 KP_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(省略時は Gateway が認証した利用者を記録します)。",
-  "  --config の audit.privateScopeDocIds が hashed なら KP_AUDIT_HMAC_KEY が必要です。",
+  "  --config の audit.privateScopeDocIds が hashed なら KP_AUDIT_HMAC_KEY が必要です(生成例: openssl rand -hex 32)。",
+  "  AnswerRun(監査レコード)は既定で stderr に出します。--answer-run-jsonl を付けるとそのファイルに追記します(0600)。",
+  "  --answer-run-jsonl には --config が必要です(Gateway の監査ログと同じファイルでないことを照合するため)。",
+  "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
   "  MCP サーバーとして起動する: kp-ask serve --gateway <URL> --config <deployment.yaml>(詳細は kp-ask serve --help)",
@@ -138,6 +162,36 @@ export const defaultCliDependencies: CliDependencies = {
 
 class UsageError extends Error {}
 
+/**
+ * --json の失敗の表現(回答を返せなかったとき。README「kp-ask の出力契約」)。Answer の
+ * outcome: error に揃えて outcome を持ち、回答本文の代わりに message(利用者向けの説明。
+ * stderr に出す文言と同じ)、正規化コード errorClass(lower snake_case。kp-ask serve の
+ * structuredContent.errorClass と同じ規約)を持つ。run を始めた後の失敗(LLM の資格情報の
+ * 不備)では runId も持つ(AnswerRun と突き合わせられる)。トークン・API キーは含めない。
+ */
+export interface CliFailureOutput {
+  readonly outcome: "error";
+  readonly errorClass: string;
+  readonly message: string;
+  readonly runId?: string;
+}
+
+/**
+ * 引数に --json があるか(引数の解釈に失敗したときも失敗の JSON を出すため、厳密な解釈の
+ * 前に見る)。`--` より後ろは位置引数なので見ない。
+ */
+function wantsJson(argv: readonly string[]): boolean {
+  for (const arg of argv) {
+    if (arg === "--") {
+      return false;
+    }
+    if (arg === "--json") {
+      return true;
+    }
+  }
+  return false;
+}
+
 interface CliArgs {
   readonly gateway: string;
   readonly token: string;
@@ -145,6 +199,8 @@ interface CliArgs {
   /** 照合用の申告(省略時は Gateway が認証した userId をそのまま使う) */
   readonly userId: string | undefined;
   readonly config: string | undefined;
+  /** AnswerRun の追記先(省略時は stderr) */
+  readonly answerRunJsonl: string | undefined;
   readonly json: boolean;
   readonly settings: OrchestratorSettings;
   readonly llm: LlmBackendConfigInput;
@@ -203,12 +259,25 @@ function parseCliArgs(
     throw new UsageError(llm.message);
   }
 
+  const answerRunJsonl =
+    values["answer-run-jsonl"] !== undefined && values["answer-run-jsonl"].trim() !== ""
+      ? values["answer-run-jsonl"].trim()
+      : undefined;
+  if (answerRunJsonl !== undefined && values.config === undefined) {
+    // Gateway の監査ログ(audit.jsonl.path / rawQueryPath)と同じファイルでないことは --config が
+    // ないと照合できない(kp-ask serve は --config が必須なので常に照合される)
+    throw new UsageError(
+      "--answer-run-jsonl には --config が必要です(Gateway の監査ログと同じファイルでないことを照合するため)。",
+    );
+  }
+
   return {
     gateway,
     token,
     question,
     userId: values["user-id"] ?? env["KP_USER_ID"],
     config: values.config,
+    answerRunJsonl,
     json: values.json === true,
     settings: settings.data,
     llm: llm.config,
@@ -232,6 +301,7 @@ function parseArgsStrict(argv: readonly string[]) {
       "allow-insecure-upstream": { type: "boolean" },
       "user-id": { type: "string" },
       config: { type: "string" },
+      "answer-run-jsonl": { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -317,6 +387,31 @@ export async function runCli(
   if (argv[0] === "serve") {
     return runServe(argv.slice(1), io, deps);
   }
+  // 回答を返せない失敗: 説明を stderr に出し、--json なら失敗の表現を stdout に1つ出す
+  // (出力契約。終了コードは --json の有無で変えない)
+  const json = wantsJson(argv);
+  const emitFailure = (errorClass: string, message: string, runId?: string): void => {
+    if (json) {
+      const output: CliFailureOutput = {
+        outcome: "error",
+        errorClass,
+        message,
+        ...(runId !== undefined ? { runId } : {}),
+      };
+      io.stdout(JSON.stringify(output, null, 2));
+    }
+  };
+  const fail = (
+    exitCode: number,
+    errorClass: string,
+    message: string,
+    runId?: string,
+  ): number => {
+    io.stderr(message);
+    emitFailure(errorClass, message, runId);
+    return exitCode;
+  };
+
   let args: CliArgs;
   try {
     const parsed = parseCliArgs(argv, deps.env);
@@ -326,8 +421,10 @@ export async function runCli(
     }
     args = parsed;
   } catch (error) {
-    io.stderr(error instanceof UsageError ? error.message : "引数を解釈できませんでした。");
+    const message = error instanceof UsageError ? error.message : "引数を解釈できませんでした。";
+    io.stderr(message);
     io.stderr(USAGE);
+    emitFailure("invalid_arguments", message);
     return 2;
   }
 
@@ -350,52 +447,68 @@ export async function runCli(
     llm = new ObservingLlmClient(deps.createLlmClient(args.llm));
   } catch (error) {
     // GatewayClientError のメッセージは固定文言(トークン・URL の中身を含まない)
-    io.stderr(
-      error instanceof GatewayClientError
-        ? `Gateway の指定が不正です: ${error.message}${
+    return error instanceof GatewayClientError
+      ? fail(
+          2,
+          "invalid_arguments",
+          `Gateway の指定が不正です: ${error.message}${
             !args.allowInsecureUpstream && isInsecureGatewayUrl(args.gateway)
               ? ` ${INSECURE_UPSTREAM_HINT}`
               : ""
-          }`
-        : "クライアントを初期化できませんでした。",
-    );
-    return 2;
+          }`,
+        )
+      : fail(2, "invalid_configuration", "クライアントを初期化できませんでした。");
   }
 
+  let deployment: { readonly config: DeploymentConfig; readonly configPath: string } | undefined;
   let docIdAudit: CitedDocIdAudit = OMIT_ALL_DOC_IDS;
   if (args.config !== undefined) {
     try {
-      docIdAudit = docIdAuditFromDeployment(
-        loadDeploymentConfig(args.config),
-        deps.env["KP_AUDIT_HMAC_KEY"],
-      );
+      const config = loadDeploymentConfig(args.config);
+      docIdAudit = docIdAuditFromDeployment(config, deps.env["KP_AUDIT_HMAC_KEY"]);
+      deployment = { config, configPath: resolve(args.config) };
     } catch (error) {
+      await gateway.close();
       // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)
-      io.stderr(
+      return fail(
+        2,
+        "invalid_configuration",
         error instanceof DeploymentConfigError
           ? error.message
           : "--config の deployment.yaml を読めませんでした。",
       );
-      await gateway.close();
-      return 2;
     }
   }
+
+  // AnswerRun の書き先: 既定は stderr(開発用。黙って捨てない)。--answer-run-jsonl ならファイル
+  // (kp-ask serve と同じ検査とシンク。--config があれば Gateway の監査ログと同じファイルを拒否する)
+  let sink: AuditSink = new StderrDebugAuditSink((line) => io.stderr(line));
+  if (args.answerRunJsonl !== undefined) {
+    const prepared = await prepareAnswerRunJsonlSink(args.answerRunJsonl, deployment);
+    if (!prepared.ok) {
+      await gateway.close();
+      return fail(2, "invalid_configuration", prepared.message);
+    }
+    sink = prepared.sink;
+  }
+
   let orchestrator: Orchestrator;
   try {
     orchestrator = new Orchestrator({
       llm,
-      auditLogger: new AuditLogger(new StderrDebugAuditSink((line) => io.stderr(line))),
+      auditLogger: new AuditLogger(sink),
       docIdAudit,
       settings: args.settings,
     });
   } catch (error) {
-    io.stderr(
+    await gateway.close();
+    return fail(
+      2,
+      "invalid_configuration",
       error instanceof OrchestratorError && error.errorClass === "invalid_configuration"
-        ? "audit.privateScopeDocIds が hashed のため、環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵を設定してください。"
+        ? AUDIT_HMAC_KEY_REQUIRED_MESSAGE
         : "Orchestrator を初期化できませんでした。",
     );
-    await gateway.close();
-    return 2;
   }
   try {
     const answer = await orchestrator.run({
@@ -408,8 +521,8 @@ export async function runCli(
         ? credentialsMessageFor(args.llm.provider, llm.lastErrorClass)
         : undefined;
     if (credentials !== undefined) {
-      io.stderr(credentials);
-      return 2;
+      // LLM の資格情報の不備(終了コード 2)。回答の代わりに失敗の表現を出す(runId 付き)
+      return fail(2, llm.lastErrorClass ?? "llm_credentials_missing", credentials, answer.runId);
     }
     const hint =
       answer.outcome === "error" ? backendHintFor(args.llm.provider, llm.lastErrorClass) : undefined;
@@ -419,12 +532,9 @@ export async function runCli(
     io.stdout(args.json ? JSON.stringify(answer, null, 2) : renderAnswer(answer));
     return answer.outcome === "error" ? 1 : 0;
   } catch (error) {
-    io.stderr(
-      error instanceof OrchestratorError
-        ? `実行できませんでした(${error.errorClass}): ${error.message}`
-        : "実行できませんでした(内部エラー)。",
-    );
-    return 1;
+    return error instanceof OrchestratorError
+      ? fail(1, error.errorClass, `実行できませんでした(${error.errorClass}): ${error.message}`)
+      : fail(1, "internal_error", "実行できませんでした(内部エラー)。");
   } finally {
     await gateway.close();
   }

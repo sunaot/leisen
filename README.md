@@ -27,7 +27,9 @@ npx kp-gateway validate --config examples/deployment.dev.yaml   # 設定を検�
 npx kp-gateway serve --config examples/deployment.dev.yaml      # http://127.0.0.1:8787/mcp で待ち受け
 ```
 
-- 起動ログは標準エラー出力、監査レコード(`audit.sink: stdout`)は標準出力に1行1件のJSONで出る。Ctrl-C(SIGINT)/ SIGTERM で処理中のリクエストを待って停止する
+- 起動ログは標準エラー出力、監査レコード(`audit.sink: stdout`)は標準出力に1行1件のJSON(`{"kind":"audit", …}`)で出る。この標準出力はそのまま昇格判定レポート(`kp-promotion-report --audit`)に渡せる(保存するファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う。開発用)。Ctrl-C(SIGINT)/ SIGTERM で処理中のリクエストを待って停止する
+- `KP_MOCK_SESSIONS` を設定し忘れると、モック IdP のセッション表が空になり全リクエストが 401(`a valid bearer session token is required`)になる。`validate` / `serve` はこのとき `WARNING: mock IdP: no sessions configured …` を標準エラー出力に出し(起動は止めない)、`serve` は最初に 401 で拒否したときにもサーバーログに1行残す(トークンの値は出さない)
+- 待ち受けのポート・アドレスは `--port <n>` / `--host <addr>` で deployment.yaml の `gateway.http.port` / `host` より優先して変えられる(`validate` にも付けられる)。ループバック以外の `--host` には deployment.yaml の `gateway.http.confirmExposedHost: true` が必要(フラグでは解除できない。docs/install.md §6)。ポートが使用中なら `ポート N は使用中です。--port <番号> か deployment.yaml の gateway.http.port で別のポートを指定してください` と出して exit 1
 - `--config` を省略すると環境変数 `KP_DEPLOYMENT_CONFIG` を使う。使い方は `npx kp-gateway help`(`npx kp-gateway --help` の `--help` は npm 自身が解釈する)
 - ビルド成果物を直接実行してもよい: `node packages/gateway/dist/bin/kp-gateway.js serve --config examples/deployment.dev.yaml`
 - 設定内の相対パス(例: `settings.corpusFile`)は設定ファイルの所在ディレクトリ基準で解決する(起動時のカレントディレクトリに依存しない)

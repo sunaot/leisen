@@ -36,12 +36,13 @@
  *   HMAC 鍵・環境変数の値は出さない(不変条件6)。Gateway の URL はホストだけを出す
  * - SIGINT / SIGTERM で受付を止め、進行中のリクエスト(run を含む)を最大 30 秒待って終了する
  *
- * 終了コード: 0 正常終了(停止の合図で止まった)、1 起動の拒否・実行時エラー(待ち受け失敗、
- * 停止時に進行中のリクエストが残った等)、2 引数・設定の不備
+ * 終了コード: 0 正常終了(停止の合図で止まった)、1 起動の拒否・実行時エラー(待ち受け失敗。
+ * ポートが使用中なら --listen での変え方を案内する。停止時に進行中のリクエストが残った等)、
+ * 2 引数・設定の不備
  */
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   AuditLogger,
@@ -64,7 +65,7 @@ import { parseGatewayUrl, parseInsecureGatewayUrl } from "../gateway/mcp-client.
 import type { LlmClient } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
 import { loadExplorePrompt } from "../prompt.js";
-import { AnswerRunJsonlSink, answerRunJsonlPathProblem } from "../server/answer-run-jsonl.js";
+import { prepareAnswerRunJsonlSink } from "../server/answer-run-jsonl.js";
 import {
   createOrchestratorRequestListener,
   DEFAULT_ORCHESTRATOR_HTTP_PATH,
@@ -122,6 +123,20 @@ export const NON_PERSISTABLE_SOURCES_REFUSAL =
 /** NODE_ENV=production で AnswerRun の書き先がないときの文言(セキュリティレビュー S5)。 */
 export const ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION =
   "NODE_ENV=production では AnswerRun の書き先が必須です。--answer-run-jsonl(または環境変数 KP_ANSWER_RUN_JSONL)を指定してください(stderr への出力は開発用です)。";
+
+/**
+ * audit.privateScopeDocIds が hashed なのに KP_AUDIT_HMAC_KEY がないときの文言(kp-ask の1問モードと
+ * 共通)。鍵の値は出さない。生成方法を添える(issue #38。鍵は導入ごとに1回だけ作って保管し、同じ値を
+ * 使い続ける。変えると以前の hmac 値と突き合わせられなくなる)。
+ */
+export const AUDIT_HMAC_KEY_REQUIRED_MESSAGE =
+  "audit.privateScopeDocIds が hashed のため、環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵を設定してください" +
+  "(鍵は導入ごとに1回だけ生成して保管し、毎回同じ値を使います。生成例: openssl rand -hex 32)。";
+
+/** 待ち受けのポートが使用中(EADDRINUSE)のときの案内。 */
+export function servePortInUseMessage(port: number): string {
+  return `ポート ${port} は使用中です。--listen <ホスト:ポート>(または環境変数 KP_LISTEN)で別のポートを指定してください。`;
+}
 
 /** ループバック以外での待ち受けの拒否の文言(ADR-018 決定7)。 */
 export const EXPOSED_HOST_REFUSAL =
@@ -321,18 +336,6 @@ export function enabledSourceIds(config: Pick<DeploymentConfig, "connectors">): 
     .map((connector) => connector.id);
 }
 
-/** Gateway の監査 JSONL の出力先(AnswerRun を同じファイルに書かないための照合用)。 */
-function gatewayAuditFiles(config: DeploymentConfig, configDir: string): string[] {
-  const jsonl = config.audit.jsonl;
-  if (jsonl === undefined) {
-    return [];
-  }
-  return [
-    resolve(configDir, jsonl.path),
-    ...(jsonl.rawQueryPath !== undefined ? [resolve(configDir, jsonl.rawQueryPath)] : []),
-  ];
-}
-
 /** deployment.yaml の orchestrator セクション(maxIterations / costLimitPerQuery)を探索の設定にする。 */
 function settingsFromDeployment(config: DeploymentConfig): OrchestratorSettingsInput {
   const { maxIterations, costLimitPerQuery } = config.orchestrator;
@@ -460,20 +463,14 @@ export async function runServe(
   let sink: AuditSink;
   let sinkDescription: string | undefined;
   if (args.answerRunJsonl !== undefined) {
-    const file = resolve(args.answerRunJsonl);
-    if (gatewayAuditFiles(config, dirname(configPath)).includes(file)) {
-      io.stderr(
-        `${PREFIX}: --answer-run-jsonl には Gateway の監査ログ(audit.jsonl.path / rawQueryPath)とは別のファイルを指定してください(1ファイルに書き込むのは1プロセスに限る)。`,
-      );
+    // 書き先の検査は1問モード(kp-ask --answer-run-jsonl)と共通
+    const prepared = await prepareAnswerRunJsonlSink(args.answerRunJsonl, { config, configPath });
+    if (!prepared.ok) {
+      io.stderr(`${PREFIX}: ${prepared.message}`);
       return 1;
     }
-    const problem = await answerRunJsonlPathProblem(file);
-    if (problem !== undefined) {
-      io.stderr(`${PREFIX}: --answer-run-jsonl に書き込めません: ${problem}`);
-      return 1;
-    }
-    sink = new AnswerRunJsonlSink(file);
-    sinkDescription = `jsonl ${file}`;
+    sink = prepared.sink;
+    sinkDescription = `jsonl ${prepared.file}`;
   } else {
     sink = new StderrDebugAuditSink((line) => io.stderr(line));
   }
@@ -506,7 +503,7 @@ export async function runServe(
   } catch (error) {
     io.stderr(
       error instanceof OrchestratorError && error.errorClass === "invalid_configuration"
-        ? `${PREFIX}: audit.privateScopeDocIds が hashed のため、環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵を設定してください。`
+        ? `${PREFIX}: ${AUDIT_HMAC_KEY_REQUIRED_MESSAGE}`
         : `${PREFIX}: Orchestrator を初期化できませんでした。`,
     );
     return 2;
@@ -548,6 +545,9 @@ export async function runServe(
     await listen(server, args.listen.port, host);
   } catch (error) {
     io.stderr(`${PREFIX}: cannot listen on ${hostForUrl(host)}:${args.listen.port}: ${errorCode(error)}`);
+    if (errorCode(error) === "EADDRINUSE") {
+      io.stderr(`${PREFIX}: ${servePortInUseMessage(args.listen.port)}`);
+    }
     return 1;
   }
   server.on("error", (error) => {

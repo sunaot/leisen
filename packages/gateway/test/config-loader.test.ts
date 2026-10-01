@@ -203,3 +203,37 @@ audit:
     });
   });
 });
+
+describe("YAML の構文エラー(issue #38 セキュリティレビュー S1)", () => {
+  const textOf = (caught: unknown): string => {
+    expect(caught).toBeInstanceOf(DeploymentConfigError);
+    const error = caught as DeploymentConfigError & { issues?: unknown };
+    return `${error.message} ${JSON.stringify(error.issues ?? null)}`;
+  };
+
+  it("エラーコードと位置だけを示し、該当行の内容(誤って書かれた秘密の値など)を含めない", () => {
+    const yaml = "schemaVersion: 1\nidp:\n  clientSecret: dev-only-NOT-A-REAL-SECRET: x\n";
+    let caught: unknown;
+    try {
+      parseDeploymentConfig(yaml);
+    } catch (error) {
+      caught = error;
+    }
+    const text = textOf(caught);
+    expect(text).toMatch(/invalid YAML \(BLOCK_AS_IMPLICIT_KEY at line 3, column \d+\)/);
+    expect(text).not.toContain("dev-only-NOT-A-REAL-SECRET");
+    expect(text).not.toContain("clientSecret");
+  });
+
+  it("アンカー名などファイル由来のトークンも含めない", () => {
+    let caught: unknown;
+    try {
+      parseDeploymentConfig("x: *dev-only-anchor\n");
+    } catch (error) {
+      caught = error;
+    }
+    const text = textOf(caught);
+    expect(text).toContain("invalid YAML");
+    expect(text).not.toContain("dev-only-anchor");
+  });
+});

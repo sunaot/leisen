@@ -28,6 +28,11 @@ export type IdpAdapterConfig =
 export interface CreateIdpAdapterDeps {
   readonly providers: readonly CredentialProvider[];
   readonly cache?: CredentialCacheOptions;
+  /**
+   * 稼働中の警告の出力先(秘密情報を渡さない。現状はモックのセッション表が空のときの
+   * 拒否だけを通知する。issue #38)
+   */
+  readonly warn?: (message: string) => void;
 }
 
 export function createIdpAdapter(
@@ -42,6 +47,7 @@ export function createIdpAdapter(
       return new MockIdpAdapter(deps.providers, {
         ...(config.sessions !== undefined ? { sessions: config.sessions } : {}),
         ...(deps.cache !== undefined ? { cache: deps.cache } : {}),
+        ...(deps.warn !== undefined ? { warn: deps.warn } : {}),
       });
     case "keycloak": {
       const { kind: _kind, ...keycloakConfig } = config;

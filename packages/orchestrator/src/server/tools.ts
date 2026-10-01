@@ -42,6 +42,7 @@ import {
   LlmError,
   OrchestratorError,
 } from "../errors.js";
+import { failureTextFor } from "../failure-text.js";
 import { buildGatewayMeta } from "../gateway/meta.js";
 import type { GatewayClient } from "../gateway/types.js";
 import type { Orchestrator, UserFeedback } from "../orchestrator.js";
@@ -291,7 +292,10 @@ export function questionTooLongText(maxQuestionChars: number): string {
   return `質問が長すぎます(${maxQuestionChars} 文字まで)。短くして再度お試しください。`;
 }
 
-/** ask が例外で終わったときの文言(分類ごと。既定は ASK_FAILURE_DEFAULT_TEXT)。 */
+/**
+ * ask が例外で終わったときの文言(分類ごと)。表にない分類は failure-text の分類ごとの文言に
+ * 倒す(issue #38: 設定・接続先の誤りと一時的な障害を区別する)。
+ */
 const ASK_FAILURE_TEXTS: Readonly<Record<string, string>> = {
   audit_write_failed:
     "回答の記録(監査ログ)に失敗したため、回答を返せません。時間をおいて再度お試しください。解決しない場合は管理者に連絡してください。",
@@ -300,9 +304,6 @@ const ASK_FAILURE_TEXTS: Readonly<Record<string, string>> = {
   gateway_unavailable: "Gateway に接続できませんでした。時間をおいて再度お試しください。",
   gateway_timeout: "Gateway の応答がありませんでした。時間をおいて再度お試しください。",
 };
-const ASK_FAILURE_DEFAULT_TEXT =
-  "回答を生成できませんでした。時間をおいて再度お試しください。";
-
 /** feedback の失敗の文言(分類ごと。既定は FEEDBACK_FAILURE_DEFAULT_TEXT)。 */
 const FEEDBACK_FAILURE_TEXTS: Readonly<Record<string, string>> = {
   run_not_found:
@@ -426,7 +427,7 @@ async function runAsk(context: ToolContext, args: unknown): Promise<ToolOutcome>
     return askOutcomeFromAnswer(answer, failureReason, context.retentionClass);
   } catch (error) {
     const errorClass = errorClassOf(error);
-    return toolError(errorClass, ASK_FAILURE_TEXTS[errorClass] ?? ASK_FAILURE_DEFAULT_TEXT);
+    return toolError(errorClass, ASK_FAILURE_TEXTS[errorClass] ?? failureTextFor(errorClass));
   } finally {
     release();
     await gateway?.close().catch(() => undefined);

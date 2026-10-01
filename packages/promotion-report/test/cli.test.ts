@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseAuditRecord } from "@kp/gateway";
-import { isMainModule, runCli } from "../src/cli.js";
+import { HELP, isMainModule, runCli } from "../src/cli.js";
+import { AUDIT_INPUT_FORMAT_HINT } from "../src/input.js";
 import {
   fixtureRawQueries,
   fixtureRecords,
@@ -276,8 +277,9 @@ describe("--audit の複数指定(Gateway の JSONL と Orchestrator の AnswerR
     });
     expect(comparable(both.body)).toEqual(comparable(combined.body));
     expect(comparable(reversed.body)).toEqual(comparable(combined.body));
-    // AnswerRun の pending 行は同じ runId の後の行で置き換わる(重複として数える)
-    expect(both.body["duplicateRecordCount"]).toBe(5);
+    // AnswerRun の pending 行は同じ runId の後の行で置き換わる(重複ではなく更新として数える。issue #38)
+    expect(both.body["duplicateRecordCount"]).toBe(0);
+    expect(both.body["updatedRecordCount"]).toBe(5);
     expect(both.body["inputRecordCount"]).toBe(
       (combined.body["inputRecordCount"] as number) + 5,
     );
@@ -328,6 +330,153 @@ describe("--audit の複数指定(Gateway の JSONL と Orchestrator の AnswerR
     ).toBe(2);
     expect(err.join("\n")).toContain("--audit is required");
     expect(err.join("\n")).toContain("[--audit <more.jsonl> ...]");
+  });
+});
+
+describe("使い方・入力の不備の表示(issue #38)", () => {
+  async function run(argv: string[]): Promise<{ code: number; out: string[]; err: string[] }> {
+    const { out, err, io } = capture();
+    const code = await runCli(argv, io);
+    return { code, out, err };
+  }
+
+  function args(files: { audit: string; sources: string; metaOut: string }, ...extra: string[]): string[] {
+    return [
+      "--audit", files.audit,
+      "--sources", files.sources,
+      "--accessor", "auditor-1",
+      "--meta-audit-out", files.metaOut,
+      ...extra,
+    ];
+  }
+
+  it.each([["--help"], ["-h"], ["--audit", "a.jsonl", "--help"]])(
+    "%j は使い方を stdout に出して終了コード 0(メタ監査も書かない)",
+    async (...argv) => {
+      const result = await run(argv);
+      expect(result.code).toBe(0);
+      expect(result.out).toEqual([HELP]);
+      expect(result.err).toEqual([]);
+      expect(HELP).toContain("usage: kp-promotion-report");
+      expect(HELP).toContain("--raw-queries");
+      expect(HELP).toContain("audit.sink: stdout");
+    },
+  );
+
+  it.each([
+    [
+      [],
+      ["sources.json(SRC): (ルート): オブジェクトにしてください(実際: 配列)。形式: { \"<sourceId>\": { \"nativeSearch\": \"full|degraded|none\", \"slack\": true|false } }"],
+    ],
+    [
+      { gdrive: {} },
+      ["sources.json(SRC): gdrive.nativeSearch: full / degraded / none のいずれかにしてください(未指定)"],
+    ],
+    [
+      { gdrive: { nativeSearch: "partial" }, wiki: { nativeSearch: "full", slack: "no" } },
+      [
+        "sources.json(SRC): gdrive.nativeSearch: full / degraded / none のいずれかにしてください",
+        "sources.json(SRC): wiki.slack: 真偽値(true / false)にしてください(実際: 文字列)",
+      ],
+    ],
+    [
+      { gdrive: { nativeSearch: "full", native_search: "full" } },
+      ["sources.json(SRC): gdrive: 未知のキー native_search があります(指定できるのは nativeSearch と slack)"],
+    ],
+    [
+      { gdrive: 3 },
+      ["sources.json(SRC): gdrive: オブジェクトにしてください(実際: 数値)。形式: { \"nativeSearch\": \"full|degraded|none\", \"slack\": true|false }"],
+    ],
+  ])("sources.json %j の不備は「sources.json(<パス>): <場所>: <説明>」で1件1行(終了コード 1)", async (sources, expected) => {
+    const dir = await mkdtemp(join(tmpdir(), "t014-"));
+    const files = await writeFixtureFiles(dir);
+    await writeFile(files.sources, JSON.stringify(sources));
+
+    const result = await run(args(files));
+
+    expect(result.code).toBe(1);
+    expect(result.err).toEqual(expected.map((line) => line.replace("SRC", files.sources)));
+    expect(result.err.join("\n")).not.toContain('"code"');
+    await expect(readFile(files.metaOut, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("sources.json が JSON でない・ない場合もファイル名付きで出す", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t014-"));
+    const files = await writeFixtureFiles(dir);
+    await writeFile(files.sources, "{ gdrive: ");
+    expect((await run(args(files))).err).toEqual([`sources.json(${files.sources}): JSON として読めません`]);
+
+    const missing = join(dir, "missing.json");
+    const result = await run(args({ ...files, sources: missing }));
+    expect(result.code).toBe(1);
+    expect(result.err).toEqual([`sources.json(${missing}): 読めません(ENOENT)`]);
+  });
+
+  it("audit.sink: stdout の行({\"kind\":\"audit\", …})も読み、JSONL と同じ集計になる", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t014-"));
+    const files = await writeFixtureFiles(dir);
+    const stdoutCapture = join(dir, "gateway-stdout.log");
+    await writeFile(
+      stdoutCapture,
+      fixtureRecords().map((r) => JSON.stringify({ kind: "audit", ...r })).join("\n") + "\n",
+    );
+
+    const plain = await run(args(files, "--format", "json"));
+    const enveloped = await run(args({ ...files, audit: stdoutCapture }, "--format", "json"));
+
+    expect(enveloped.code).toBe(0);
+    const body = (out: string[]) => {
+      const { generatedAt: _generatedAt, ...rest } = JSON.parse(out.join("\n")) as Record<string, unknown>;
+      return rest;
+    };
+    expect(body(enveloped.out)).toEqual(body(plain.out));
+    expect(body(enveloped.out)["totalRuns"]).toBe(6);
+  });
+
+  it.each([
+    ["kind が audit 以外の行", JSON.stringify({ kind: "log", message: "listening" }), '"kind" が "audit" 以外'],
+    ["recordType のない JSON", JSON.stringify({ level: "info" }), "recordType がない"],
+    ["JSON でない行(起動ログなど)", "kp-gateway: listening on …", "JSON として読めません"],
+  ])("%s は行番号と渡すべき形式の案内を出して拒否する", async (_label, line, reason) => {
+    const dir = await mkdtemp(join(tmpdir(), "t014-"));
+    const files = await writeFixtureFiles(dir);
+    const first = JSON.stringify({ kind: "audit", ...fixtureRecords()[0] });
+    await writeFile(files.audit, `${first}\n${line}\n`);
+
+    const result = await run(args(files));
+
+    expect(result.code).toBe(1);
+    expect(result.err).toHaveLength(1);
+    expect(result.err[0]).toMatch(/audit\.jsonl:2: /);
+    expect(result.err[0]).toContain(reason);
+    expect(result.err[0]).toContain(AUDIT_INPUT_FORMAT_HINT);
+  });
+
+  it("封筒を外したレコードも JSONL と同じ検証にかける(禁止フィールド・型にないキーは拒否。zod の生の JSON は出さない)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t014-"));
+    const files = await writeFixtureFiles(dir);
+    const record = fixtureRecords()[0] as Record<string, unknown>;
+    await writeFile(
+      files.audit,
+      [
+        JSON.stringify({ kind: "audit", ...record, extraField: 1 }),
+      ].join("\n") + "\n",
+    );
+    const unknownKey = await run(args(files));
+    expect(unknownKey.code).toBe(1);
+    expect(unknownKey.err).toEqual([
+      `${files.audit}:1: レコードが不正です: (ルート): 未知のキー extraField があります`,
+    ]);
+
+    await writeFile(files.audit, JSON.stringify({ kind: "audit", ...record, candidateCount: 3 }) + "\n");
+    const forbidden = await run(args(files));
+    expect(forbidden.err.join("\n")).toMatch(/audit\.jsonl:1: .*candidateCount/);
+
+    await writeFile(files.audit, JSON.stringify({ recordType: "answer_runs" }) + "\n");
+    const unknownType = await run(args(files));
+    expect(unknownType.err).toEqual([
+      `${files.audit}:1: レコードが不正です: recordType: answer_run / tool_invocation / audit_access / retention_purge のいずれかにしてください`,
+    ]);
   });
 });
 

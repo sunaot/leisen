@@ -1,10 +1,15 @@
 /**
  * kp-gateway CLI(起動コード)。エントリは bin/kp-gateway.ts。
  *
- *   kp-gateway serve    --config <deployment.yaml>   Gatewayを起動する
- *   kp-gateway validate --config <deployment.yaml>   設定を検証する(listen しない)
+ *   kp-gateway serve    --config <deployment.yaml> [--port <n>] [--host <addr>]   Gatewayを起動する
+ *   kp-gateway validate --config <deployment.yaml> [--port <n>] [--host <addr>]   設定を検証する(listen しない)
  *
  * - --config を省略すると環境変数 KP_DEPLOYMENT_CONFIG を使う
+ * - --port / --host は deployment.yaml の gateway.http.port / host より優先する(issue #38)。
+ *   上書き後の値で公開境界の検査(validateGatewayHttpExposure)を行うため、ループバック以外の
+ *   --host には deployment.yaml の gateway.http.confirmExposedHost: true が要る(フラグでは解除できない)
+ * - 待ち受けのポートが使用中(EADDRINUSE)なら、変更の方法を日本語で案内して終了コード 1
+ * - 起動時の警告(モック IdP のセッション表が空など)は validate / serve の両方で stderr に出す
  * - 終了コード: 0 正常 / 1 設定不備・起動失敗・停止時の監査flush失敗 / 2 使い方の誤り
  * - 出力: 起動ログとエラーは標準エラー出力(標準出力は audit.sink: stdout の監査
  *   レコードが使う)。validate の結果は標準出力
@@ -26,7 +31,7 @@ import { DeploymentConfigError } from "../config/validate.js";
 import { IdpError } from "../idp/types.js";
 import { GatewayError } from "../proxy/types.js";
 
-export const CLI_USAGE = `usage: kp-gateway <command> [--config <deployment.yaml>]
+export const CLI_USAGE = `usage: kp-gateway <command> [--config <deployment.yaml>] [--port <n>] [--host <addr>]
 
 commands:
   serve      start the gateway (MCP Streamable HTTP) until SIGINT / SIGTERM
@@ -35,14 +40,32 @@ commands:
 
 options:
   -c, --config <path>  deployment.yaml (default: $KP_DEPLOYMENT_CONFIG)
+      --port <n>       listen on this port instead of gateway.http.port (1-65535)
+      --host <addr>    listen on this address instead of gateway.http.host; a non-loopback
+                       address still requires gateway.http.confirmExposedHost: true
   -h, --help           show this help
 
 exit codes: 0 ok, 1 configuration or runtime error, 2 usage error`;
 
+/** deployment.yaml の gateway.http を上書きする待ち受けの指定(--host / --port)。 */
+export interface ListenOverrides {
+  readonly host?: string;
+  readonly port?: number;
+}
+
 export type CliCommand =
   | { readonly kind: "help" }
-  | { readonly kind: "serve" | "validate"; readonly configPath: string }
+  | ({ readonly kind: "serve" | "validate"; readonly configPath: string } & ListenOverrides)
   | { readonly kind: "usage_error"; readonly message: string };
+
+/** --port の値(1〜65535 の整数。gateway.http.port のスキーマと同じ範囲)。 */
+function parsePort(value: string): number | undefined {
+  if (!/^\d{1,5}$/.test(value)) {
+    return undefined;
+  }
+  const port = Number(value);
+  return port >= 1 && port <= 65_535 ? port : undefined;
+}
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -57,6 +80,8 @@ export function parseCliArgs(
       args: [...argv],
       options: {
         config: { type: "string", short: "c" },
+        port: { type: "string" },
+        host: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: true,
@@ -88,7 +113,48 @@ export function parseCliArgs(
       message: "--config <path> is required (or set KP_DEPLOYMENT_CONFIG)",
     };
   }
-  return { kind: command, configPath };
+  let port: number | undefined;
+  if (parsed.values.port !== undefined) {
+    port = parsePort(parsed.values.port);
+    if (port === undefined) {
+      return { kind: "usage_error", message: "--port must be an integer between 1 and 65535" };
+    }
+  }
+  const host = parsed.values.host;
+  if (host !== undefined && !/^\S+$/.test(host)) {
+    return { kind: "usage_error", message: "--host must be a host name or an IP address" };
+  }
+  return {
+    kind: command,
+    configPath,
+    ...(host !== undefined ? { host } : {}),
+    ...(port !== undefined ? { port } : {}),
+  };
+}
+
+/**
+ * --host / --port を deployment.yaml の gateway.http に上書きした設定を返す。公開境界の検査
+ * (assembleGateway の validateGatewayHttpExposure)は上書き後の host に対して行われる
+ * (confirmExposedHost は deployment.yaml の値のまま。フラグで検査を迂回させない)。
+ */
+export function withListenOverrides(
+  config: DeploymentConfig,
+  overrides: ListenOverrides,
+): DeploymentConfig {
+  if (overrides.host === undefined && overrides.port === undefined) {
+    return config;
+  }
+  return {
+    ...config,
+    gateway: {
+      ...config.gateway,
+      http: {
+        ...config.gateway.http,
+        ...(overrides.host !== undefined ? { host: overrides.host } : {}),
+        ...(overrides.port !== undefined ? { port: overrides.port } : {}),
+      },
+    },
+  };
 }
 
 export interface CliIo {
@@ -193,8 +259,16 @@ function warnDevOnly(io: CliIo, config: DeploymentConfig): void {
   }
 }
 
+/** 起動時の警告(assembleGateway の warnings。秘密情報なし)を stderr に出す。 */
+function warnAssembly(io: CliIo, assembled: AssembledGateway): void {
+  for (const warning of assembled.warnings) {
+    io.stderr(`kp-gateway: WARNING: ${warning}`);
+  }
+}
+
 async function loadAndAssemble(
   configPath: string,
+  overrides: ListenOverrides,
   deps: CliDeps,
 ): Promise<
   | { readonly config: DeploymentConfig; readonly assembled: AssembledGateway }
@@ -203,7 +277,7 @@ async function loadAndAssemble(
   const absolute = resolve(configPath);
   let config: DeploymentConfig;
   try {
-    config = loadDeploymentConfig(absolute);
+    config = withListenOverrides(loadDeploymentConfig(absolute), overrides);
   } catch (error) {
     reportError(deps, `cannot load ${absolute}`, error);
     return undefined;
@@ -213,6 +287,8 @@ async function loadAndAssemble(
       config,
       env: deps.env ?? process.env,
       configDir: dirname(absolute),
+      // 稼働中の警告(モック IdP のセッション表が空のままの拒否など)はサーバーログへ
+      warn: (message) => deps.stderr(`kp-gateway: WARNING: ${message}`),
     });
     return { config, assembled };
   } catch (error) {
@@ -221,8 +297,12 @@ async function loadAndAssemble(
   }
 }
 
-async function validateCommand(configPath: string, deps: CliDeps): Promise<number> {
-  const loaded = await loadAndAssemble(configPath, deps);
+async function validateCommand(
+  configPath: string,
+  overrides: ListenOverrides,
+  deps: CliDeps,
+): Promise<number> {
+  const loaded = await loadAndAssemble(configPath, overrides, deps);
   if (loaded === undefined) {
     return 1;
   }
@@ -238,6 +318,7 @@ async function validateCommand(configPath: string, deps: CliDeps): Promise<numbe
     deps.stdout(`  ${line}`);
   }
   warnDevOnly(deps, config);
+  warnAssembly(deps, assembled);
   return 0;
 }
 
@@ -257,8 +338,20 @@ function listen(server: HttpServer, port: number, host: string): Promise<void> {
   });
 }
 
-async function serveCommand(configPath: string, deps: CliDeps): Promise<number> {
-  const loaded = await loadAndAssemble(configPath, deps);
+/** EADDRINUSE のときの案内(待ち受けのポートの変え方)。 */
+export function portInUseMessage(port: number): string {
+  return (
+    `kp-gateway: ポート ${port} は使用中です。--port <番号> か deployment.yaml の ` +
+    "gateway.http.port で別のポートを指定してください"
+  );
+}
+
+async function serveCommand(
+  configPath: string,
+  overrides: ListenOverrides,
+  deps: CliDeps,
+): Promise<number> {
+  const loaded = await loadAndAssemble(configPath, overrides, deps);
   if (loaded === undefined) {
     return 1;
   }
@@ -268,6 +361,9 @@ async function serveCommand(configPath: string, deps: CliDeps): Promise<number> 
     await listen(assembled.httpServer, port, host);
   } catch (error) {
     deps.stderr(`kp-gateway: cannot listen on ${host}:${port}: ${describeError(error)}`);
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "EADDRINUSE") {
+      deps.stderr(portInUseMessage(port));
+    }
     await assembled.close().catch(() => undefined);
     return 1;
   }
@@ -283,6 +379,7 @@ async function serveCommand(configPath: string, deps: CliDeps): Promise<number> 
     deps.stderr(`kp-gateway: ${line}`);
   }
   warnDevOnly(deps, config);
+  warnAssembly(deps, assembled);
 
   const reason = await (deps.waitForShutdown ?? waitForTerminationSignal)();
   deps.stderr(`kp-gateway: ${reason} received, shutting down`);
@@ -311,8 +408,8 @@ export async function runCli(
       deps.stderr(CLI_USAGE);
       return 2;
     case "validate":
-      return validateCommand(command.configPath, deps);
+      return validateCommand(command.configPath, command, deps);
     case "serve":
-      return serveCommand(command.configPath, deps);
+      return serveCommand(command.configPath, command, deps);
   }
 }

@@ -42,8 +42,14 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
 
    - `--audit` は複数回指定できる。Gateway の監査ログ(ToolInvocation)と、Orchestrator を
      MCP サーバーとして動かす構成(ADR-018)で別ファイルに書かれる AnswerRun
-     (`answer-runs.jsonl`)を両方渡す。kp-ask を単発で使う構成では AnswerRun は stderr にしか
-     出ないため、集計に載せるにはファイルへ取り込むこと
+     (`answer-runs.jsonl`)を両方渡す。kp-ask を単発で使う場合は `--answer-run-jsonl <path>` で
+     AnswerRun をファイルに追記しておく(省略時は stderr に `{"kind":"audit", …}` の行で出るので、
+     その行だけをファイルに取り込んでもよい)。開発用の `audit.sink: stdout` の標準出力も同じ形で読める。
+     stderr や標準出力を保存したファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う
+   - 使い方は `kp-promotion-report --help`。入力の不備はファイル名・行番号(sources.json は
+     `sources.json(<パス>): <場所>: <説明>`)で示す。監査レコードでない行は、渡すべき形式の案内付きで拒否する
+   - 冒頭の「入力レコード数」には、除いた重複(同じ内容の再送)と、後の状態にまとめた更新
+     (AnswerRun の pending → 最終状態 → フィードバック。重複ではない)を分けて添える
    - `sources.json` は sourceId → `{ nativeSearch, slack }` の分類メタ。コネクタ実装の
      ConnectorCapabilities と一致させる
    - 監査ログの閲覧はメタ監査の対象(ADR-013 §3)。`--meta-audit-out` に出力される

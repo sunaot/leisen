@@ -113,15 +113,29 @@ export function renderJudgmentGuide(): string {
   ].join("\n");
 }
 
+/**
+ * 入力レコード数の行。重複(同じ内容の再送)と更新(AnswerRun の pending → 最終状態 →
+ * フィードバック)を分けて添える(更新は重複ではない。issue #38)。
+ */
+function renderInputCount(report: PromotionReport): string {
+  const notes: string[] = [];
+  if (report.duplicateRecordCount > 0) {
+    notes.push(`重複 ${report.duplicateRecordCount} 件を除いて集計`);
+  }
+  if (report.updatedRecordCount > 0) {
+    notes.push(
+      `同じ記録の更新 ${report.updatedRecordCount} 件(AnswerRun の pending → 最終状態など)は後の状態で集計`,
+    );
+  }
+  return `入力レコード数: ${report.inputRecordCount}${notes.length > 0 ? `(${notes.join("。")})` : ""}`;
+}
+
 export function renderPromotionReportText(report: PromotionReport): string {
   const lines: string[] = [
     "# 昇格判定レポート(T-014)",
     "",
     `生成時刻: ${report.generatedAt}`,
-    `入力レコード数: ${report.inputRecordCount}` +
-      (report.duplicateRecordCount > 0
-        ? `(重複 ${report.duplicateRecordCount} 件を除いて集計)`
-        : ""),
+    renderInputCount(report),
     `run数: ${report.totalRuns}(resolved=${report.resolvedRuns} unresolved=${report.unresolvedRuns} 未確定=${report.undecidedRuns})`,
     "",
     ...renderUserMismatchWarnings(report.userMismatchWarnings),

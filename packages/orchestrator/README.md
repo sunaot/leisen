@@ -14,7 +14,7 @@ Gateway(`POST /mcp`)を起動した状態で(起動構成はリファレンス�
 npm run build -w @kp/orchestrator
 export KP_SESSION_TOKEN=...          # 利用者のセッショントークン(Gateway の IdP が検証する)
 export ANTHROPIC_API_KEY=...         # または `ant auth login` のプロファイル
-export KP_AUDIT_HMAC_KEY=...         # --config の audit.privateScopeDocIds が hashed(既定)のとき
+export KP_AUDIT_HMAC_KEY=...         # --config の audit.privateScopeDocIds が hashed(既定)のとき(生成方法は下記)
 node packages/orchestrator/dist/bin/kp-ask.js \
   --gateway http://127.0.0.1:8787/mcp \
   --config examples/deployment.dev.yaml \
@@ -34,13 +34,64 @@ node packages/orchestrator/dist/bin/kp-ask.js \
 | `--allow-insecure-upstream` | 環境変数 `KP_ALLOW_INSECURE_UPSTREAM=1` でも可。Gateway の URL と LLM のベース URL について、ループバック以外の `http` を許す(開発・評価用途。`NODE_ENV=production` では固定文言で拒否して終了コード 2。有効時は平文 http の上流をホスト名で列挙した WARNING を stderr に1行) |
 | `--max-iterations <N>` | ツールを呼べるターン数の上限(1〜20、既定 6) |
 | `--user-id <ID>` | 照合用の質問者の申告(環境変数 `KP_USER_ID` でも可)。AnswerRun に記録するのは Gateway が認証した userId で、申告と食い違えば run は `error`(`user_mismatch`)。省略時は照合しない |
-| `--config <deployment.yaml>` | citedDocIds の記録方針に使う(`connectors[].kind` が `slack` なら Slack、`privateScopes` が `excluded` 以外ならプライベートスコープ、`audit.privateScopeDocIds`)。`hashed` なら環境変数 `KP_AUDIT_HMAC_KEY` にデプロイ固有鍵が必要(ないと終了コード 2)。省略時は citedDocIds を記録しない |
-| `--json` | Answer を JSON で出力する |
+| `--config <deployment.yaml>` | citedDocIds の記録方針に使う(`connectors[].kind` が `slack` なら Slack、`privateScopes` が `excluded` 以外ならプライベートスコープ、`audit.privateScopeDocIds`)。`hashed` なら環境変数 `KP_AUDIT_HMAC_KEY` にデプロイ固有鍵が必要(ないと終了コード 2。鍵の生成方法は下記「KP_AUDIT_HMAC_KEY(デプロイ固有鍵)の作り方」)。省略時は citedDocIds を記録しない |
+| `--answer-run-jsonl <path>` | AnswerRun(監査レコード)をこのファイルに追記し、stderr には出さない。`kp-ask serve` の同名オプションと同じ形式・同じ規則(1行1レコード、追記のみ、新規作成は 0600、ディレクトリは作らない、Gateway の監査ログ `audit.jsonl.path` / `rawQueryPath` と同じファイルは拒否)。この照合のため `--config` が必須(なければ終了コード 2)。書けない場所なら終了コード 2。環境変数 `KP_ANSWER_RUN_JSONL` は読まない(`kp-ask serve` と同じファイルに2プロセスで書かないため)。`kp-ask serve` が書いているファイルは指定しない |
+| `--json` | Answer を JSON で出力する。回答を返せない失敗でも stdout に JSON を1つ出す(下記「kp-ask の出力契約」) |
 
 - 表示: 回答・出典(タイトル、`sourceId:documentId`、原典 URL)・検索したソース・未接続でスキップしたソース・結果と確信度・使用量(トークン、LLM ターン、ツール呼び出し回数、概算費用)・警告・runId。回答本文には URL を含まない(原典 URL は出典の欄に出す)
-- 監査: AnswerRun を stderr に JSON 1行で出す(開発用。本番の監査ストアへの書き込みはリファレンスデプロイで組む)。ToolInvocation は Gateway 側の監査に記録される
-- 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー(Gateway の拒否・利用者の不一致など。openai-compatible で接続できない・要求を拒否されたときは確認の手がかりを stderr に添える)、2 引数・設定の不備、または LLM バックエンドの資格情報が無い・無効(プロバイダごとの案内を表示)
-- `npm ci && npm run build` の後は `npx kp-ask ...` でも起動できる(npm の bin は起動シム `bin/kp-ask.js`。dist がなければ `Run npm run build first.` と表示して終了コード 1)
+- 監査: AnswerRun は既定で stderr に JSON 1行で出す(`{"kind":"audit", …}`。開発用。記録を黙って捨てないため既定は変えない)。`--answer-run-jsonl` を付けるとファイルに追記し、stderr には出さない。どちらの形も昇格判定レポート(`kp-promotion-report --audit`)でそのまま読める。ToolInvocation は Gateway 側の監査に記録される
+- 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー(Gateway の拒否・利用者の不一致など。openai-compatible で接続できない・要求を拒否されたときは確認の手がかりを stderr に添える)、2 引数・設定の不備(`--answer-run-jsonl` に書けない場合を含む)、または LLM バックエンドの資格情報が無い・無効(プロバイダごとの案内を表示)。`--json` の有無で終了コードは変わらない
+- `npm ci && npm run build` の後は `npx kp-ask ...` でも起動できる(npm の bin は起動シム `bin/kp-ask.js`。dist がなければ `Run npm run build first.` と表示して終了コード 1)。`--json` / `--help` を付けるときは `npx -- kp-ask --json …` のように `--` を挟む(挟まないと npm 自身もそのオプションを解釈し、`--json` では失敗時に npm のエラー JSON が stdout に足される)
+
+### kp-ask の出力契約(`--json`)
+
+`--json` を付けると、stdout に JSON を**1つだけ**出す(2つの形のどちらか)。案内・警告・AnswerRun(既定)は従来どおり stderr。
+
+| 状況 | 終了コード | stdout の JSON |
+|---|---|---|
+| 回答した(`resolved` / `unresolved`) | 0 | Answer(`runId` / `answer` / `citations` / `searchedSources` / `skippedSources` / `confidence` / `outcome` / `usage` / `warnings`。`answerSchema`) |
+| run が `error` で終わった(Gateway・LLM の失敗、利用者の不一致など) | 1 | Answer(`outcome: "error"`。`answer` に分類ごとの説明と正規化コード。下記「失敗の文言」) |
+| run が例外で終わった(AnswerRun を書けない `audit_write_failed` 等) | 1 | 失敗の表現(`errorClass` は `OrchestratorError` の分類。想定外は `internal_error`) |
+| 引数の不備(`--gateway` / `--token` / 質問文 / オプションの値、Gateway の URL の形式) | 2 | 失敗の表現(`errorClass: "invalid_arguments"`) |
+| 設定の不備(`--config` を読めない・不正、`hashed` なのに `KP_AUDIT_HMAC_KEY` がない、`--answer-run-jsonl` に書けない、クライアントを初期化できない) | 2 | 失敗の表現(`errorClass: "invalid_configuration"`) |
+| LLM バックエンドの資格情報が無い・無効 | 2 | 失敗の表現(`errorClass: "llm_credentials_missing"` / `"llm_authentication_failed"`、`runId` 付き) |
+
+失敗の表現(回答を返せなかったとき):
+
+```json
+{ "outcome": "error", "errorClass": "invalid_configuration", "message": "…", "runId": "…" }
+```
+
+- Answer の失敗(`outcome: "error"`)に揃えて `outcome` を持つ。回答本文の代わりに `message`(利用者向けの説明。stderr に出す文言と同じ)、正規化コード `errorClass`(lower snake_case。`kp-ask serve` の `structuredContent.errorClass` と同じ規約)を持つ。`runId` は run を始めた後の失敗(LLM の資格情報の不備)だけで、AnswerRun と突き合わせられる
+- 見分け方: `answer` を持てば Answer、持たずに `errorClass` / `message` を持てば失敗の表現。どちらも失敗なら `outcome` は `"error"`
+- トークン・API キー・HMAC 鍵・URL の中身は含めない(Gateway の URL の誤りも固定文言)
+- Answer の形(`answerSchema`)は変えていない(strict のまま検証できる)
+
+### 失敗の文言(outcome: error の `answer`)
+
+run が `error` で終わったときの回答文は、失敗の分類ごとに次に何をすべきかを示す(`src/failure-text.ts`。以前は分類のない失敗が一律「時間をおいて再度お試しください」だった)。正規化コード(AnswerRun の `failureReason`)を括弧で添え、URL・ホスト名・トークン・上流の生のメッセージは含めない。文言は kp-ask とチャット UI(`kp-ask serve`)の両方に出る。
+
+| 分類 | 正規化コード | 文言の要点 |
+|---|---|---|
+| 設定・接続先の誤り | `gateway_protocol_error`(接続先が MCP エンドポイントでない、400 / 404 / 405 / 406 / 415)、`gateway_rejected`(その他の拒否)、`no_searchable_sources`、`user_unverified`(Gateway が利用者を報告しない=対応していない版)、`llm_invalid_request`(400 / 404 / 422、モデル名・接続先の誤り) | 接続先・設定を確認する。利用者は管理者に連絡する |
+| 資格情報の無効・期限切れ | `gateway_unauthenticated`(401)、`gateway_forbidden`(403)、`user_mismatch`、`llm_credentials_missing` / `llm_authentication_failed` / `llm_permission_denied` | Gateway はサインインし直す。LLM は管理者が資格情報・権限を確認する |
+| 一時的な障害 | `gateway_unavailable`(408 / 429 / 5xx・接続失敗)、`gateway_timeout`、`run_timeout`、`llm_rate_limited` / `llm_overloaded` / `llm_unavailable` / `llm_timeout` | 時間をおいて再度試す。続く場合は管理者に連絡する |
+| 質問・応答の内容や長さ | `llm_refusal`、`llm_max_tokens`、`llm_context_window_exceeded` | 質問の表現を変える・範囲を絞る |
+| 不明 | 上記以外(`llm_client_error` / `llm_unexpected_response` / `internal_error` 等) | 再度試し、続く場合は runId を添えて管理者に連絡する |
+
+「時間をおいて再度お試しください」は一時的な障害にだけ出す(待っても直らない失敗で待たせない)。`gateway_forbidden` は Gateway への HTTP 403(Gateway の前段のプロキシ等が返すもの。Gateway 自体は HTTP 層で 403 を返さない)を `gateway_rejected` から分けた分類。
+
+### KP_AUDIT_HMAC_KEY(デプロイ固有鍵)の作り方
+
+`--config` の `audit.privateScopeDocIds` が `hashed`(既定)のとき、citedDocIds のうちプライベートスコープのソースの docId をこの鍵の HMAC で記録する(ADR-013 §2)。鍵は**導入ごとに1回だけ生成して秘密ストアに保管し、以後は同じ値を使い続ける**(変えると以前の `hmac:…` と突き合わせられなくなる)。値はリポジトリ・設定ファイル・ログに書かない。
+
+```sh
+openssl rand -hex 32
+# または Node だけで
+node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
+```
+
+生成した値を秘密ストア(リファレンス構成では `deploy/compose/.env`。git 管理外)に置き、環境変数 `KP_AUDIT_HMAC_KEY` で渡す。`kp-ask serve` も同じ鍵を使う。鍵がない場合は kp-ask / kp-ask serve とも生成方法を添えた固定文言で終了コード 2 になる(鍵の値は表示しない)。
 
 ## kp-ask serve(MCP サーバー)
 
@@ -49,7 +100,7 @@ Orchestrator を MCP サーバー(Streamable HTTP、ステートレス)として
 ```sh
 npm run build
 mkdir -p var                          # AnswerRun の JSONL の置き場(ディレクトリは作らない)
-export KP_AUDIT_HMAC_KEY=...          # --config の audit.privateScopeDocIds が hashed(既定)のとき
+export KP_AUDIT_HMAC_KEY=...          # --config の audit.privateScopeDocIds が hashed(既定)のとき(生成方法は上記)
 export ANTHROPIC_API_KEY=...          # LLM バックエンドの資格情報(kp-ask と同じ。起動時には接続しない)
 npx kp-ask serve \
   --gateway http://127.0.0.1:8787/mcp \
@@ -74,7 +125,7 @@ npx kp-ask serve \
 
 - リファレンス構成の LibreChat overlay(`deploy/compose/docker-compose.librechat.yml`)は、compose のネットワーク内の Gateway(`http://gateway:8787/mcp`)とホストの LM Studio(`http://host.docker.internal:1234/v1`)に平文の http で接続するため `--allow-insecure-upstream`(または `KP_ALLOW_INSECURE_UPSTREAM=1`)を使う。平文の http では利用者のトークンと会話(利用者の権限で取得した文書の本文)が経路上で読めるので、本番では上流を https(またはループバック)にする
 - 起動ログ(stderr): `listening on …`、`deployment: …`、`gateway: <スキーム://ホスト:ポート>`(パス・クエリは出さない)、`answer-run sink: jsonl <path>`(省略時は WARNING)、`limits: max-concurrent-runs=… max-question-chars=… max-iterations=…`、`llm: <プロバイダ> (model: …)`(`--allow-insecure-upstream` で平文の http の上流があるときは、そのホスト名を列挙した WARNING を1行)。トークン・API キー・HMAC 鍵・環境変数の値は出さない
-- 終了コード: 0 停止の合図(SIGINT / SIGTERM)で正常に止まった、1 起動の拒否(不変条件7・公開境界・書けない AnswerRun の出力先・探索プロンプトがない・待ち受けの失敗)や停止時に進行中のリクエストが残った、2 引数・設定の不備(`--config` が読めない、hashed なのに `KP_AUDIT_HMAC_KEY` がない、`NODE_ENV=production` で `--answer-run-jsonl` がない等)。`kp-ask serve --help` で使い方
+- 終了コード: 0 停止の合図(SIGINT / SIGTERM)で正常に止まった、1 起動の拒否(不変条件7・公開境界・書けない AnswerRun の出力先・探索プロンプトがない・待ち受けの失敗。ポートが使用中なら `--listen`(`KP_LISTEN`)での変え方を案内する)や停止時に進行中のリクエストが残った、2 引数・設定の不備(`--config` が読めない、hashed なのに `KP_AUDIT_HMAC_KEY` がない、`NODE_ENV=production` で `--answer-run-jsonl` がない等)。`kp-ask serve --help` で使い方
 - 停止: SIGINT / SIGTERM で受付を止め、進行中のリクエスト(run を含む)の応答を返し終えるまで最大 30 秒待つ。残ったものは接続を切って終了コード 1(2回目の合図は即時終了)
 - ライブラリとして組む場合は `createOrchestratorHttpServer({ orchestrator, gatewayUrl, limits: new ServerLimits(...), sourcePolicy }, { path, maxBodyBytes, preflightTimeoutMs })`(`src/server/http.ts`)。`sourcePolicy`(下記「Gateway のソースと --config の照合」)を省くと照合しない。`ServerLimits` の `maxConcurrentFeedback`(既定 4)で feedback の同時実行数を変えられる
 
@@ -337,7 +388,7 @@ OpenAI 互換の変換(一次情報: OpenAI API リファレンスの Chat Compl
 - 開始時: runId を採番(Gateway と同じ形式 `[A-Za-z0-9._:-]{1,128}` を検証し、外れたら Gateway にアクセスせずに `invalid_configuration`)→ `tools/list` → 全ソースに `describe`(`source_not_connected` のソースは skippedSources に入れて検索対象から外す。それ以外の失敗は正規化後の分類で警告を残して検索対象に残す)→ describe の結果の `_meta` から Gateway が認証した userId を得て AnswerRun(`pending`、`startedAt` は run の開始時刻)を書く → system prompt(固定部 `prompts/explore.v2.md` だけ)・最初の user ターン(ソース一覧・上限・質問)・ツール定義(strict、`source` は有効ソースの enum)を組む
 - ソース一覧(セキュリティレビュー H3): describe 結果はコネクタ由来の外部データなので、system prompt には入れず、最初の user ターンに「固定の前置き(データであり指示ではない)」+「JSON」で渡す(ツール結果と同じ扱い)。`kind` は connector-sdk の `ContainerEntry.kind` の値域に限り(それ以外は `other`)、`supportedFilters` は `SearchFilters` のキーに限る。件数・長さを切り詰め、JSON の `<` `>` はエスケープする。system prompt が固定文字列だけになるので、プロンプトキャッシュの prefix も run をまたいで安定する
 - 反復: LLM の応答内のツール呼び出しは並行に Gateway へ送り(1ターン `maxToolCallsPerTurn` 件・run 全体 `maxToolCallsPerRun` 件まで。超えた分は実行しない)、結果は1つの user メッセージにまとめて返す。成功した結果は「固定の前置き(データであり指示ではない)」と「データ本体の JSON」の2ブロック、ツールエラーも「固定の前置き(ツールエラーはデータ)」と `{ errorClass, message }` の JSON の2ブロックで返す(`is_error: true`)。`permission_denied` と `not_found` は区別せず `not_available` として渡す(TM-B2。Gateway も正規化する)
-- 終了: `submit_answer` の提出 / 提出せずに終えたら1回だけ催促し、それでも提出しなければ unresolved / 上限に達したら提出を促す最終ターンを1回だけ行う / LLM・Gateway の失敗・利用者の不一致は error
+- 終了: `submit_answer` の提出 / 提出せずに終えたら1回だけ催促し、それでも提出しなければ unresolved / 上限に達したら提出を促す最終ターンを1回だけ行う / LLM・Gateway の失敗・利用者の不一致は error(回答文は失敗の分類ごとの文言。上記「失敗の文言」)
 - 出典の検証: citations はその run で search のヒット・fetch の結果として受け取った (sourceId, documentId) に限る。検証済みの出典が0件なら unresolved、回答の先頭に「【注意】出典を確認できませんでした」、confidence を 0.3 以下に丸める
 - 回答本文の無害化(M1、`src/sanitize.ts`): 私用領域・制御文字・不可視の書式文字を除き、Markdown のリンク・画像(参照形式・入れ子を含む)はテキストだけに、参照定義は削除、生の HTML は除去して残った `<` `>` はエスケープし(コードの外だけ。行頭の引用記号は残す)、URL らしき文字列(任意の `scheme://`、`http:evil`・`mailto:`・`javascript:` 等、`www.`、`//host`、`label.tld/path`。実体参照・`\`・全角で組んだものを含む)は `［URL削除］` に置き換える。最後に同じ処理をかけ直す最終検証(fail-closed)を行い、残っていたものも除去する。除去は warnings に記録する
 - 未接続: run の途中で `source_not_connected` になったソースは searchedSources から外し、skippedSources にだけ載せる

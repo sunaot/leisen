@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createIdpAdapter,
   IdpError,
+  MOCK_IDP_NO_SESSIONS_REJECTED,
   MockCredentialProvider,
   MockIdpAdapter,
   mockTokenEnvVar,
@@ -109,6 +111,49 @@ describe("MockIdpAdapter", () => {
     expect(spy).toHaveBeenCalledTimes(3); // aliceのみ再取得
   });
 
+  it("セッション表が空なら、最初の拒否で1回だけ warn を呼ぶ(トークンを含めない。issue #38)", async () => {
+    const warn = vi.fn();
+    const adapter = new MockIdpAdapter([], { sessions: {}, warn });
+    expect(adapter.sessionCount).toBe(0);
+
+    for (const token of ["dev-only-unknown-1", "dev-only-unknown-2", "dev-only-unknown-3"]) {
+      const error = await adapter.authenticate(token).catch((e: unknown) => e);
+      expect((error as IdpError).errorClass).toBe("unauthenticated");
+    }
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(MOCK_IDP_NO_SESSIONS_REJECTED);
+    expect(MOCK_IDP_NO_SESSIONS_REJECTED).toContain("mock IdP: no sessions configured");
+    expect(MOCK_IDP_NO_SESSIONS_REJECTED).toContain("KP_MOCK_SESSIONS");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("dev-only-unknown");
+  });
+
+  it("セッション表があれば、未知のトークンを拒否しても warn を呼ばない", async () => {
+    const warn = vi.fn();
+    const adapter = new MockIdpAdapter([], { sessions: SESSIONS, warn });
+    await expect(adapter.authenticate("dev-only-unknown")).rejects.toBeInstanceOf(IdpError);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("factory(createIdpAdapter)経由でも warn が渡る", async () => {
+    const warn = vi.fn();
+    const adapter = createIdpAdapter({ kind: "mock", sessions: {} }, { providers: [], warn });
+    await expect(adapter.authenticate("dev-only-unknown")).rejects.toBeInstanceOf(IdpError);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "プロトタイプのプロパティ名のトークン(%s)は unauthenticated(対応表の自身のキーだけを引く)",
+    async (token) => {
+      for (const sessions of [SESSIONS, parseMockSessions("t1=carol")]) {
+        const adapter = new MockIdpAdapter([], { sessions });
+        const error = await adapter.authenticate(token).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(IdpError);
+        expect((error as IdpError).errorClass).toBe("unauthenticated");
+      }
+    },
+  );
+
   it("NODE_ENV=productionでは構築を拒否する(本番無効化)", () => {
     vi.stubEnv("NODE_ENV", "production");
     expect(() => new MockIdpAdapter([], { sessions: SESSIONS })).toThrow(
@@ -178,6 +223,14 @@ describe("parseMockSessions", () => {
     });
     expect(parseMockSessions(undefined)).toEqual({});
     expect(parseMockSessions("")).toEqual({});
+  });
+
+  it("プロトタイプのプロパティ名もトークンとして登録できる(自身のキーとして持つ)", async () => {
+    const sessions = parseMockSessions("constructor=carol");
+    expect(Object.keys(sessions)).toEqual(["constructor"]);
+    const adapter = new MockIdpAdapter([], { sessions });
+    expect((await adapter.authenticate("constructor")).userId).toBe("carol");
+    await expect(adapter.authenticate("toString")).rejects.toBeInstanceOf(IdpError);
   });
 
   it("形式不正は misconfigured で、値(トークン)をエコーしない", () => {

@@ -23,6 +23,8 @@
  *   NODE_ENV だけは安全側に倒すためプロセスの環境(process.env)を見る
  * - 秘密情報(トークン・clientSecret・環境変数の値)と設定オブジェクト全体を
  *   ログ・エラーに出さない(不変条件6)
+ * - 起動は拒否しないが動かない可能性が高い構成は warnings に入れる(モック IdP のセッション表
+ *   KP_MOCK_SESSIONS が空など。issue #38)。稼働中の警告は options.warn に渡す
  */
 import type { Server as HttpServer } from "node:http";
 import { resolve } from "node:path";
@@ -42,6 +44,7 @@ import {
 import { createIdpAdapter } from "../idp/factory.js";
 import {
   assertNotProduction,
+  MOCK_IDP_NO_SESSIONS_WARNING,
   MockCredentialProvider,
   parseMockSessions,
 } from "../idp/mock.js";
@@ -84,6 +87,12 @@ export interface AssembleGatewayOptions {
   readonly connectorFactories?: Readonly<Record<string, ConnectorFactory>>;
   /** プラグインの読み込み(既定は動的 import) */
   readonly loadModule?: ModuleLoader;
+  /**
+   * 稼働中の警告の出力先(秘密情報を含まない1行。kp-gateway serve はサーバーログ=stderr に
+   * つなぐ)。現状はモック IdP がセッション表の空のまま拒否したときの通知だけ(issue #38)。
+   * 省略時は出さない
+   */
+  readonly warn?: (message: string) => void;
 }
 
 export interface AssembledGateway {
@@ -94,6 +103,11 @@ export interface AssembledGateway {
   readonly httpServer: HttpServer;
   /** 起動ログ用の監査シンクの説明(秘密情報なし) */
   readonly auditSinkDescription: string;
+  /**
+   * 起動時の警告(起動は拒否しないが、そのままでは動かない可能性が高い構成。秘密情報なし)。
+   * 例: モック IdP のセッション表(KP_MOCK_SESSIONS)が空。kp-gateway validate / serve が表示する
+   */
+  readonly warnings: readonly string[];
   /** HTTPサーバーを閉じ(処理中のリクエストは完了を待つ)、監査バッファを flush する */
   close(): Promise<void>;
 }
@@ -176,6 +190,7 @@ export async function assembleGateway(
   const loadModule = options.loadModule ?? defaultModuleLoader;
   // ループバック以外で待ち受ける構成は明示確認が必要(T-012、T-003 レビュー minor-11)
   const issues: ConfigIssue[] = [...validateGatewayHttpExposure(config)];
+  const warnings: string[] = [];
 
   const idpRejected =
     config.idp.adapter.kind === "mock" &&
@@ -258,12 +273,19 @@ export async function assembleGateway(
   if (!idpRejected) {
     try {
       const resolved = resolveIdpAdapterConfig(config.idp.adapter, env);
-      idpAdapter = createIdpAdapter(
-        resolved.kind === "mock"
-          ? { ...resolved, sessions: parseMockSessions(env["KP_MOCK_SESSIONS"]) }
-          : resolved,
-        { providers },
-      );
+      if (resolved.kind === "mock") {
+        const sessions = parseMockSessions(env["KP_MOCK_SESSIONS"]);
+        if (Object.keys(sessions).length === 0) {
+          // 開発用の IdP なので拒否はしないが、設定漏れに気づけるようにする(issue #38)
+          warnings.push(MOCK_IDP_NO_SESSIONS_WARNING);
+        }
+        idpAdapter = createIdpAdapter(
+          { ...resolved, sessions },
+          { providers, ...(options.warn !== undefined ? { warn: options.warn } : {}) },
+        );
+      } else {
+        idpAdapter = createIdpAdapter(resolved, { providers });
+      }
     } catch (error) {
       if (error instanceof IdpError) {
         issues.push({
@@ -309,6 +331,7 @@ export async function assembleGateway(
     rawQueryStore: audit.rawQueryStore,
     httpServer,
     auditSinkDescription: audit.description,
+    warnings,
     close: () =>
       (closing ??= (async () => {
         await stopHttpServer(httpServer);

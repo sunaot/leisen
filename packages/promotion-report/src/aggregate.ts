@@ -6,9 +6,12 @@
  * SQL版のサンプルは docs/audit-queries.md。将来の管理画面化を見据え、
  * この集計は表示(render.ts / cli.ts)から分離した純粋関数にする。
  *
- * 入力の重複: 監査 JSONL は at-least-once で同じレコードが複数行に現れうるため、
- * 冪等キー(requestId / runId / accessId / purgeId)で重複を除いてから集計する
- * (dedupeAuditRecords)。
+ * 入力の重複と更新: 監査 JSONL は at-least-once で同じレコードが複数行に現れうるため、
+ * 冪等キー(requestId / runId / accessId / purgeId)で1件にまとめてから集計する
+ * (dedupeAuditRecords)。同じキーで内容も同じ行は「重複」(再送)、内容が変わった行は
+ * 「更新」(AnswerRun の pending → 最終状態 → フィードバック。issue #38)として別に数え、
+ * 後のレコードを採る。ただし AnswerRun の pending は確定済み(pending 以外)の状態を置き換えない
+ * (--audit のファイルの順序が前後しても、集計は最終状態を使う)。
  *
  * AnswerRun と ToolInvocation の結合は (runId, userId)(docs/audit-queries.md §0)。
  * runId は呼び出し元の申告で Gateway は認証しないため、runId だけで結合すると、別の
@@ -114,10 +117,16 @@ export interface PromotionReport {
   /** 入力レコード数(重複行を含む、読んだまま) */
   inputRecordCount: number;
   /**
-   * 冪等キーの重複として集計から除いたレコード数(at-least-once の再送による
-   * JSONL の重複行。同じキーは後のレコードを採る)
+   * 重複として集計から除いたレコード数(同じ冪等キーで内容も同じ行。at-least-once の再送による
+   * JSONL の重複行)
    */
   duplicateRecordCount: number;
+  /**
+   * 更新として後のレコードに置き換えたレコード数(同じ冪等キーで内容が変わった行。AnswerRun の
+   * pending → 最終状態 → フィードバック)。重複ではない。inputRecordCount = 集計した件数 +
+   * duplicateRecordCount + updatedRecordCount
+   */
+  updatedRecordCount: number;
   totalRuns: number;
   resolvedRuns: number;
   unresolvedRuns: number;
@@ -199,18 +208,86 @@ function joinInvocationsToRuns(
   return { counted, mismatchedByRunId };
 }
 
+/** キーの順序に依らない JSON(重複=同じ内容の判定用)。 */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested !== null && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : nested,
+  );
+}
+
+/**
+ * 同じキーの後のレコードで置き換えるか。後のレコードを採る(InMemoryAuditStore と同じ)が、
+ * AnswerRun の pending は確定済み(pending 以外)の状態を置き換えない(ファイルの順序が前後しても
+ * 最終状態で集計する)。
+ */
+function supersedes(next: AuditRecord, current: AuditRecord): boolean {
+  return !(
+    next.recordType === "answer_run" &&
+    current.recordType === "answer_run" &&
+    next.finalOutcome === "pending" &&
+    current.finalOutcome !== "pending"
+  );
+}
+
+/** dedupeAuditRecordsDetailed の結果。 */
+export interface DedupedAuditRecords {
+  /** 冪等キーごとに1件(順序は最初の出現順) */
+  records: AuditRecord[];
+  /** 同じキーで内容も同じ行(at-least-once の再送)の数 */
+  duplicates: number;
+  /** 同じキーで内容が変わった行(AnswerRun の pending → 最終状態 → フィードバック)の数 */
+  updates: number;
+}
+
 /**
  * 冪等キー(gateway の auditRecordIdempotencyKey: requestId / runId / accessId /
- * purgeId)で重複を除く。監査 JSONL は at-least-once で、書き込みの成否が確定しない
- * 失敗の再送により同じレコードが複数行に現れうる(gateway の audit/jsonl.ts)。
- * 同じキーは後のレコードを採る(InMemoryAuditStore と同じ)。順序は最初の出現順。
+ * purgeId)で1件にまとめ、重複(同じ内容の再送)と更新(内容が変わった後の行)を分けて数える。
+ * 監査 JSONL は at-least-once で、書き込みの成否が確定しない失敗の再送により同じレコードが
+ * 複数行に現れうる(gateway の audit/jsonl.ts)。AnswerRun は同じ runId で pending → 最終状態
+ * → フィードバックの行が並ぶ(orchestrator の AnswerRunJsonlSink)。
  */
-export function dedupeAuditRecords(records: readonly AuditRecord[]): AuditRecord[] {
+export function dedupeAuditRecordsDetailed(records: readonly AuditRecord[]): DedupedAuditRecords {
   const byKey = new Map<string, AuditRecord>();
+  // 見た内容は2回以上現れたキーについてだけ覚える(大半のキーは1回しか現れない)
+  const contentsByKey = new Map<string, Set<string>>();
+  let duplicates = 0;
+  let updates = 0;
   for (const record of records) {
-    byKey.set(auditRecordIdempotencyKey(record), record);
+    const key = auditRecordIdempotencyKey(record);
+    const current = byKey.get(key);
+    if (current === undefined) {
+      byKey.set(key, record);
+      continue;
+    }
+    let contents = contentsByKey.get(key);
+    if (contents === undefined) {
+      // 最初の重なり: それまでに見たのは current(最初の行)だけ
+      contents = new Set([canonicalJson(current)]);
+      contentsByKey.set(key, contents);
+    }
+    const content = canonicalJson(record);
+    if (contents.has(content)) {
+      duplicates += 1;
+    } else {
+      contents.add(content);
+      updates += 1;
+    }
+    if (supersedes(record, current)) {
+      byKey.set(key, record);
+    }
   }
-  return [...byKey.values()];
+  return { records: [...byKey.values()], duplicates, updates };
+}
+
+/** 冪等キーで1件にまとめたレコード(dedupeAuditRecordsDetailed の records)。 */
+export function dedupeAuditRecords(records: readonly AuditRecord[]): AuditRecord[] {
+  return dedupeAuditRecordsDetailed(records).records;
 }
 
 /**
@@ -236,8 +313,9 @@ export function aggregatePromotionReport(
     throw new Error("accessorUserId is required (meta audit, ADR-013 §3)");
   }
 
-  // at-least-once の重複行を除いてから数える(二重計上しない)
-  const records = dedupeAuditRecords(input.records);
+  // at-least-once の重複行を除き、更新(pending → 最終状態など)は後の状態にまとめてから数える
+  // (二重計上しない)
+  const { records, duplicates, updates } = dedupeAuditRecordsDetailed(input.records);
 
   // メタ監査(audit_access / retention_purge)レコードは集計対象のrunデータではない
   const answerRuns = records.filter(
@@ -380,7 +458,8 @@ export function aggregatePromotionReport(
   return {
     generatedAt: timestamp,
     inputRecordCount: input.records.length,
-    duplicateRecordCount: input.records.length - records.length,
+    duplicateRecordCount: duplicates,
+    updatedRecordCount: updates,
     totalRuns: answerRuns.length,
     resolvedRuns: decidedRuns.length - unresolvedTotal,
     unresolvedRuns: unresolvedTotal,

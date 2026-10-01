@@ -28,7 +28,7 @@ import {
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
-import { startStalledMcpServer } from "./helpers/mock-http.js";
+import { startMockHttpServer, startStalledMcpServer } from "./helpers/mock-http.js";
 
 const harnesses: GatewayHarness[] = [];
 const closers: (() => Promise<void>)[] = [];
@@ -203,6 +203,30 @@ describe("McpGatewayClient", () => {
     });
     closers.push(() => client.close());
     expect((await rejectionOf(client.listTools())).errorClass).toBe("gateway_protocol_error");
+  });
+
+  it.each([
+    [403, "gateway_forbidden"],
+    [401, "unauthenticated"],
+    [404, "gateway_protocol_error"],
+    [415, "gateway_protocol_error"],
+    [409, "gateway_rejected"],
+    [429, "gateway_unavailable"],
+    [503, "gateway_unavailable"],
+  ] as const)("HTTP %s は %s(応答本文を例外に載せない。issue #38)", async (status, errorClass) => {
+    const server = await startMockHttpServer(() => ({
+      status,
+      body: { jsonrpc: "2.0", id: null, error: { code: -32000, message: "dev-only upstream detail" } },
+    }));
+    closers.push(() => server.close());
+    const client = new McpGatewayClient({ url: `${server.url}/mcp`, sessionToken: ALICE_TOKEN });
+    closers.push(() => client.close());
+
+    const error = await rejectionOf(client.listTools());
+
+    expect(error.errorClass).toBe(errorClass);
+    expect(error.message).not.toContain("dev-only upstream detail");
+    expectNoToken(error, ALICE_TOKEN);
   });
 
   it("URL・トークンの形を構築時に検証する(URL に資格情報を載せない)", () => {

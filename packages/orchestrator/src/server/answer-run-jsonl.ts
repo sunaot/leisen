@@ -20,11 +20,19 @@
  *
  * 運用上の制約: 1ファイルに書き込むのは1プロセスに限る。保持期限による削除(ADR-013 §3)は
  * Gateway の監査 JSONL と同じくファイルのローテーションと世代削除で行う(本モジュールの範囲外)。
+ *
+ * 書き先の検査とシンクの生成(prepareAnswerRunJsonlSink)は kp-ask serve と kp-ask の1問モードの
+ * 共通(どちらも --answer-run-jsonl。issue #38)。
  */
 import { constants } from "node:fs";
 import { access, appendFile, stat } from "node:fs/promises";
-import { dirname } from "node:path";
-import { validateRecord, type AuditRecord, type AuditSink } from "@kp/gateway";
+import { dirname, resolve } from "node:path";
+import {
+  validateRecord,
+  type AuditRecord,
+  type AuditSink,
+  type DeploymentConfig,
+} from "@kp/gateway";
 
 /** 新規作成するファイルのモード(所有者のみ読み書き)。 */
 const FILE_MODE = 0o600;
@@ -97,4 +105,55 @@ export async function answerRunJsonlPathProblem(file: string): Promise<string | 
     }
   }
   return undefined;
+}
+
+/** Gateway の監査 JSONL の出力先(AnswerRun を同じファイルに書かないための照合用)。 */
+export function gatewayAuditJsonlFiles(
+  config: Pick<DeploymentConfig, "audit">,
+  configDir: string,
+): string[] {
+  const jsonl = config.audit.jsonl;
+  if (jsonl === undefined) {
+    return [];
+  }
+  return [
+    resolve(configDir, jsonl.path),
+    ...(jsonl.rawQueryPath !== undefined ? [resolve(configDir, jsonl.rawQueryPath)] : []),
+  ];
+}
+
+/** --answer-run-jsonl に Gateway の監査ログと同じファイルを指定したときの文言。 */
+export const ANSWER_RUN_JSONL_SAME_AS_GATEWAY_AUDIT =
+  "--answer-run-jsonl には Gateway の監査ログ(audit.jsonl.path / rawQueryPath)とは別のファイルを指定してください(1ファイルに書き込むのは1プロセスに限る)。";
+
+export type AnswerRunJsonlPreparation =
+  | { readonly ok: true; readonly sink: AnswerRunJsonlSink; readonly file: string }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * --answer-run-jsonl の書き先を検査してシンクを作る(kp-ask serve と1問モードの共通)。
+ * deployment(--config)があれば Gateway の監査 JSONL と同じファイルを拒否する。ファイルも
+ * ディレクトリも作らない(書き込みは最初の AnswerRun のとき。新規作成は 0600)。
+ * 失敗の文言は固定文言とパス・エラーコードだけ(秘密情報を含まない)。
+ */
+export async function prepareAnswerRunJsonlSink(
+  path: string,
+  deployment?: {
+    readonly config: Pick<DeploymentConfig, "audit">;
+    /** deployment.yaml のパス(audit.jsonl.* の相対パスの基準) */
+    readonly configPath: string;
+  },
+): Promise<AnswerRunJsonlPreparation> {
+  const file = resolve(path);
+  if (
+    deployment !== undefined &&
+    gatewayAuditJsonlFiles(deployment.config, dirname(resolve(deployment.configPath))).includes(file)
+  ) {
+    return { ok: false, message: ANSWER_RUN_JSONL_SAME_AS_GATEWAY_AUDIT };
+  }
+  const problem = await answerRunJsonlPathProblem(file);
+  if (problem !== undefined) {
+    return { ok: false, message: `--answer-run-jsonl に書き込めません: ${problem}` };
+  }
+  return { ok: true, sink: new AnswerRunJsonlSink(file), file };
 }

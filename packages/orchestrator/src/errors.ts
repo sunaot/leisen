@@ -73,6 +73,11 @@ export class LlmError extends Error {
 export type GatewayClientErrorClass =
   /** HTTP 401: セッショントークンが無効・失効 */
   | "unauthenticated"
+  /**
+   * HTTP 403: 要求が拒否された(Gateway の前段のリバースプロキシ・認可プロキシ等。Gateway 自体は
+   * HTTP 層で 403 を返さない)。利用者の資格情報・権限の問題として扱う(issue #38)
+   */
+  | "gateway_forbidden"
   /** 接続不能・5xx・429 など、Gateway に到達できない/応答できない */
   | "gateway_unavailable"
   /** MCP リクエストのタイムアウト */

@@ -11,6 +11,7 @@
  * (h) NODE_ENV=production で開発用構成を拒否(assertNotProduction 経由)
  * (i) audit.sink の未知の値を拒否
  * (j) gateway.http.host が非ループバックなら confirmExposedHost: true を要求(T-012)
+ * (k) モック IdP のセッション表(KP_MOCK_SESSIONS)が空なら警告する(起動は拒否しない。issue #38)
  * 秘密情報の実値は使わない(不変条件6)。
  */
 import { once } from "node:events";
@@ -32,6 +33,8 @@ import {
   DeploymentConfigError,
   digestQuery,
   loadDeploymentConfig,
+  MOCK_IDP_NO_SESSIONS_REJECTED,
+  MOCK_IDP_NO_SESSIONS_WARNING,
   parseAuditRecord,
   parseDeploymentConfig,
   type AssembleGatewayOptions,
@@ -319,6 +322,65 @@ audit:
     expect(created[0]?.calls).toHaveLength(0);
     await assembled.close();
     await expect(stat(join(dir, "audit.jsonl"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("(k) モック IdP のセッション表が空(KP_MOCK_SESSIONS 未設定、issue #38)", () => {
+  async function postToolsList(url: URL, token: string | undefined): Promise<number> {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...(token !== undefined ? { authorization: `Bearer ${token}` } : {}),
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    await response.arrayBuffer();
+    return response.status;
+  }
+
+  it("起動は拒否せず warnings に入れる(セッションがあれば警告しない)", async () => {
+    const empty = await assemble({ config: config(""), env: {} });
+    expect(empty.warnings).toEqual([MOCK_IDP_NO_SESSIONS_WARNING]);
+    expect(MOCK_IDP_NO_SESSIONS_WARNING).toContain("KP_MOCK_SESSIONS");
+
+    const blank = await assemble({ config: config(""), env: { KP_MOCK_SESSIONS: "" } });
+    expect(blank.warnings).toEqual([MOCK_IDP_NO_SESSIONS_WARNING]);
+
+    const configured = await assemble({
+      config: config(""),
+      env: { KP_MOCK_SESSIONS: "dev-only-session=alice" },
+    });
+    expect(configured.warnings).toEqual([]);
+  });
+
+  it("稼働中は、Bearer トークンを 401 で拒否したときに最初の1回だけ warn を呼ぶ(トークンを含めない)", async () => {
+    const warn = vi.fn();
+    const assembled = await assemble({ config: config(""), env: {}, warn });
+    const url = await listen(assembled);
+
+    // Authorization のないリクエストは IdP に届かない(HTTP 層で 401)ので警告しない
+    expect(await postToolsList(url, undefined)).toBe(401);
+    expect(warn).not.toHaveBeenCalled();
+
+    expect(await postToolsList(url, "dev-only-unknown-1")).toBe(401);
+    expect(await postToolsList(url, "dev-only-unknown-2")).toBe(401);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(MOCK_IDP_NO_SESSIONS_REJECTED);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("dev-only-unknown");
+  });
+
+  it("セッションがある構成では未知のトークンを拒否しても warn を呼ばない", async () => {
+    const warn = vi.fn();
+    const assembled = await assemble({
+      config: config(""),
+      env: { KP_MOCK_SESSIONS: "dev-only-session=alice" },
+      warn,
+    });
+    const url = await listen(assembled);
+    expect(await postToolsList(url, "dev-only-unknown")).toBe(401);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

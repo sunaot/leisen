@@ -31,7 +31,7 @@
  *   その時点の情報で submit_answer を促す最終ターンを1回だけ行う。ツール呼び出しの
  *   件数の上限(maxToolCallsPerTurn / maxToolCallsPerRun)を超えた分は実行せず、
  *   is_error の tool_result で返す
- * - LLM・Gateway の失敗: error
+ * - LLM・Gateway の失敗: error(回答文は失敗の分類ごとの文言。failure-text.ts)
  *
  * 出典の検証(受け入れ条件2): citations は run 内で search ヒット / fetch 結果として
  * 受け取った文書に限る。検証済みの出典が0件なら unresolved にし、回答の先頭に
@@ -59,6 +59,7 @@ import {
   type CitedDocIdAudit,
 } from "./audit.js";
 import { EvidenceLedger, verifyCitations } from "./citations.js";
+import { failureTextFor } from "./failure-text.js";
 import {
   MAX_QUESTION_CHARS,
   orchestratorSettingsSchema,
@@ -114,14 +115,6 @@ const NO_SOURCES_TEXT = "検索できるソースがないため、検索して�
 const TIMEOUT_BEFORE_SEARCH_TEXT =
   "探索の時間上限に達したため、検索を始められませんでした。";
 
-/** 失敗の分類ごとの回答文(既定は FAILURE_TEXT_DEFAULT)。 */
-const FAILURE_TEXTS: Readonly<Record<string, string>> = {
-  user_mismatch:
-    "利用者を確認できなかったため、回答していません(user_mismatch)。",
-  gateway_unauthenticated:
-    "Gateway が利用者の認証を拒否したため、回答していません(gateway_unauthenticated)。サインインし直してから再度お試しください。",
-};
-
 /**
  * 文書単位で「使えない」ことを表す分類。permission_denied と not_found は区別せず
  * 同じ分類・固定文言で LLM に渡す(存在推定を増幅しない、TM-B2。Gateway も
@@ -142,6 +135,7 @@ const MAX_TOOL_ERROR_MESSAGE_CHARS = 500;
 
 const TRANSPORT_ERROR_MESSAGES: Readonly<Record<GatewayClientErrorClass, string>> = {
   unauthenticated: "Gateway が利用者の認証を拒否しました。",
+  gateway_forbidden: "Gateway への要求が拒否されました。",
   gateway_unavailable: "Gateway に接続できませんでした。",
   gateway_timeout: "Gateway の応答がタイムアウトしました。",
   gateway_protocol_error: "Gateway の応答を解釈できませんでした。",
@@ -1274,12 +1268,14 @@ function notExecuted(toolUseId: string, limit: LimitReason): Anthropic.ToolResul
   });
 }
 
+/**
+ * outcome: error の結果。回答文は失敗の分類(設定・接続先の誤り / 資格情報 / 一時的な障害 /
+ * 内容 / 不明)ごとに、次に何をすべきかを示す(failure-text.ts。issue #38)。
+ */
 function failure(errorClass: string): RunOutcome {
   return {
     outcome: "error",
-    answerText:
-      FAILURE_TEXTS[errorClass] ??
-      `回答を生成できませんでした(${errorClass})。時間をおいて再度お試しください。`,
+    answerText: failureTextFor(errorClass),
     citations: [],
     confidence: 0,
     failureReason: errorClass,

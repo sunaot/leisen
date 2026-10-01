@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { AuditRecord } from "@kp/gateway";
 import { aggregatePromotionReport } from "../src/aggregate.js";
 import {
   renderJudgmentGuide,
@@ -135,6 +136,38 @@ describe("renderPromotionReportText", () => {
     );
     expect(text).toContain(
       `入力レコード数: ${records.length + 3}(重複 3 件を除いて集計)`,
+    );
+  });
+
+  it("pending → 最終状態の更新は重複と別に添える(更新を重複と表示しない。issue #38)", () => {
+    const records = fixtureRecords();
+    const pendingRun4 = records.find(
+      (r) => r.recordType === "answer_run" && r.runId === "run-4",
+    ) as AuditRecord & { recordType: "answer_run" };
+    const resolvedRun4: AuditRecord = {
+      ...pendingRun4,
+      finalOutcome: "resolved",
+      endedAt: "2026-07-11T12:00:30Z",
+    };
+    const render = (input: AuditRecord[]) =>
+      renderPromotionReportText(
+        aggregatePromotionReport({
+          records: input,
+          sources: fixtureSources(),
+          accessorUserId: "auditor-1",
+          now: FIXED_NOW,
+        }),
+      );
+
+    const updated = render([...records, resolvedRun4]);
+    expect(updated).toContain(
+      `入力レコード数: ${records.length + 1}(同じ記録の更新 1 件(AnswerRun の pending → 最終状態など)は後の状態で集計)`,
+    );
+    expect(updated).not.toMatch(/入力レコード数: [^\n]*重複/);
+
+    const both = render([...records, resolvedRun4, resolvedRun4]);
+    expect(both).toContain(
+      `入力レコード数: ${records.length + 2}(重複 1 件を除いて集計。同じ記録の更新 1 件(AnswerRun の pending → 最終状態など)は後の状態で集計)`,
     );
   });
 

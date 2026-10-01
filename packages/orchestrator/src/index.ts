@@ -3,6 +3,7 @@
  *
  * モジュール構成:
  * - orchestrator.ts   探索ループ(runId / iteration の採番、上限、出典検証、AnswerRun)
+ * - failure-text.ts   outcome: error の回答文(失敗の分類ごとに次の行動を示す)
  * - answer.ts         回答スキーマ(zod)と submit_answer ツール
  * - citations.ts      証拠台帳(run 内で受け取った文書)と出典の検証
  * - sanitize.ts       回答本文の無害化(URL・リンク・画像・生の HTML を残さない)
@@ -28,6 +29,7 @@ export * from "./citations.js";
 export * from "./config.js";
 export * from "./cost.js";
 export * from "./errors.js";
+export * from "./failure-text.js";
 export * from "./orchestrator.js";
 export * from "./prompt.js";
 export * from "./sanitize.js";

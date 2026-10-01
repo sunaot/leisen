@@ -14,7 +14,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CLI_USAGE, parseCliArgs, runCli, type CliDeps } from "../src/cli/run.js";
+import {
+  CLI_USAGE,
+  parseCliArgs,
+  portInUseMessage,
+  runCli,
+  type CliDeps,
+} from "../src/cli/run.js";
+import { MOCK_IDP_NO_SESSIONS_REJECTED, MOCK_IDP_NO_SESSIONS_WARNING } from "../src/idp/index.js";
 
 const PACKAGE_DIR = fileURLToPath(new URL("../", import.meta.url));
 const EXAMPLES_DIR = fileURLToPath(new URL("../../../examples/", import.meta.url));
@@ -66,6 +73,12 @@ describe("parseCliArgs", () => {
     [["-h"], { kind: "help" }],
     [["help"], { kind: "help" }],
     [["serve", "--help"], { kind: "help" }],
+    [["serve", "-c", "a.yaml", "--port", "9000"], { kind: "serve", configPath: "a.yaml", port: 9000 }],
+    [["serve", "-c", "a.yaml", "--host", "::1"], { kind: "serve", configPath: "a.yaml", host: "::1" }],
+    [
+      ["validate", "-c", "a.yaml", "--host=localhost", "--port=65535"],
+      { kind: "validate", configPath: "a.yaml", host: "localhost", port: 65535 },
+    ],
   ])("%j → %j", (argv, expected) => {
     expect(parseCliArgs(argv, {})).toEqual(expected);
   });
@@ -88,7 +101,13 @@ describe("parseCliArgs", () => {
     [["serve", "--config", ""], "--config <path> is required"],
     [["start", "--config", "a.yaml"], "unknown command: start"],
     [["serve", "extra", "--config", "a.yaml"], "unexpected argument: extra"],
-    [["serve", "--port", "1"], "--port"],
+    [["serve", "--config", "a.yaml", "--port", "0"], "--port must be an integer between 1 and 65535"],
+    [["serve", "--config", "a.yaml", "--port", "65536"], "--port must be an integer between 1 and 65535"],
+    [["serve", "--config", "a.yaml", "--port", "80.5"], "--port must be an integer between 1 and 65535"],
+    [["serve", "--config", "a.yaml", "--port", "http"], "--port must be an integer between 1 and 65535"],
+    [["serve", "--config", "a.yaml", "--host", ""], "--host must be a host name or an IP address"],
+    [["serve", "--config", "a.yaml", "--host", "a b"], "--host must be a host name or an IP address"],
+    [["serve", "--config", "a.yaml", "--port"], "--port"],
     [["serve", "--config"], "--config"],
   ])("使い方の誤り: %j", (argv, message) => {
     const result = parseCliArgs(argv, {});
@@ -180,6 +199,36 @@ audit:
     expect(io.err).toEqual(["kp-gateway: cannot load /nonexistent/kp.yaml: ENOENT"]);
   });
 
+  it("validate: KP_MOCK_SESSIONS が未設定でも 0 だが、モック IdP のセッション表が空だと WARNING を出す(issue #38)", async () => {
+    const io = captureIo({ env: { KP_MOCK_TOKEN_DEV_DOCS: "dev-only-cli-token" } });
+    expect(await runCli(["validate", "--config", DEV_CONFIG], io)).toBe(0);
+    expect(io.out[0]).toBe(`kp-gateway validate: OK (${DEV_CONFIG})`);
+    expect(io.err).toContain(`kp-gateway: WARNING: ${MOCK_IDP_NO_SESSIONS_WARNING}`);
+    expectNoSecrets([...io.out, ...io.err].join("\n"));
+
+    // セッションを設定すれば出ない
+    const configured = captureIo();
+    expect(await runCli(["validate", "--config", DEV_CONFIG], configured)).toBe(0);
+    expect(configured.err.join("\n")).not.toContain("no sessions configured");
+  });
+
+  it("validate: --port / --host は deployment.yaml の gateway.http より優先する", async () => {
+    const io = captureIo();
+    expect(
+      await runCli(["validate", "--config", DEV_CONFIG, "--port", "9911", "--host", "::1"], io),
+    ).toBe(0);
+    expect(io.out).toContain("  endpoint: http://[::1]:9911/mcp");
+  });
+
+  it("validate: ループバック以外の --host は confirmExposedHost なしでは拒否する(フラグで公開境界の検査を迂回しない)", async () => {
+    const io = captureIo();
+    expect(await runCli(["validate", "--config", DEV_CONFIG, "--host", "0.0.0.0"], io)).toBe(1);
+    expect(io.out).toEqual([]);
+    expect(io.err.join("\n")).toContain(
+      "[http_host_exposed_requires_confirmation] gateway.http.host",
+    );
+  });
+
   it("validate: NODE_ENV=production では開発用構成を拒否して 1", async () => {
     vi.stubEnv("NODE_ENV", "production");
     try {
@@ -200,6 +249,31 @@ async function freePort(): Promise<number> {
   const port = typeof address === "object" && address !== null ? address.port : 0;
   await new Promise((resolve) => server.close(resolve));
   return port;
+}
+
+async function postToolsList(origin: string, token: string): Promise<number> {
+  const response = await fetch(`${origin}/mcp`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+  await response.arrayBuffer();
+  return response.status;
+}
+
+async function waitForHealth(origin: string): Promise<Response | undefined> {
+  let health: Response | undefined;
+  for (let i = 0; i < 50 && health === undefined; i += 1) {
+    health = await fetch(`${origin}/healthz`).catch(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return undefined;
+    });
+  }
+  return health;
 }
 
 async function devConfigOnPort(port: number): Promise<string> {
@@ -283,7 +357,7 @@ describe("runCli serve", () => {
     await expect(fetch(`${origin}/healthz`)).rejects.toThrow();
   });
 
-  it("待ち受けできなければ理由(エラーコード)を出して 1", async () => {
+  it("ポートが使用中なら理由(エラーコード)と変更の方法を出して 1", async () => {
     const blocker = createServer();
     blocker.listen(0, "127.0.0.1");
     await new Promise((resolve) => blocker.once("listening", resolve));
@@ -294,10 +368,66 @@ describe("runCli serve", () => {
         waitForShutdown: () => Promise.reject(new Error("must not wait when listen fails")),
       });
       expect(await runCli(["serve", "--config", await devConfigOnPort(port)], io)).toBe(1);
-      expect(io.err).toEqual([`kp-gateway: cannot listen on 127.0.0.1:${port}: EADDRINUSE`]);
+      expect(io.err).toEqual([
+        `kp-gateway: cannot listen on 127.0.0.1:${port}: EADDRINUSE`,
+        portInUseMessage(port),
+      ]);
+      expect(portInUseMessage(port)).toBe(
+        `kp-gateway: ポート ${port} は使用中です。--port <番号> か deployment.yaml の gateway.http.port で別のポートを指定してください`,
+      );
     } finally {
       await new Promise((resolve) => blocker.close(resolve));
     }
+  });
+
+  it("--port で deployment.yaml のポートを上書きして待ち受ける(使用中のポートを避けられる)", async () => {
+    const blocker = createServer();
+    blocker.listen(0, "127.0.0.1");
+    await new Promise((resolve) => blocker.once("listening", resolve));
+    const address = blocker.address();
+    const blocked = typeof address === "object" && address !== null ? address.port : 0;
+    try {
+      const port = await freePort();
+      let stop: (reason: string) => void = () => undefined;
+      const io = captureIo({
+        waitForShutdown: () => new Promise<string>((resolve) => (stop = resolve)),
+      });
+      const running = runCli(
+        ["serve", "--config", await devConfigOnPort(blocked), "--port", String(port)],
+        io,
+      );
+      const origin = `http://127.0.0.1:${port}`;
+      expect((await waitForHealth(origin))?.status).toBe(200);
+      stop("SIGTERM");
+      expect(await running).toBe(0);
+      expect(io.err[0]).toBe(
+        `kp-gateway: listening on ${origin}/mcp (health check: ${origin}/healthz)`,
+      );
+    } finally {
+      await new Promise((resolve) => blocker.close(resolve));
+    }
+  });
+
+  it("KP_MOCK_SESSIONS が未設定なら起動時に WARNING を出し、401 で拒否したときに1回だけサーバーログに残す(issue #38)", async () => {
+    const port = await freePort();
+    let stop: (reason: string) => void = () => undefined;
+    const io = captureIo({
+      env: { KP_MOCK_TOKEN_DEV_DOCS: "dev-only-cli-token" },
+      waitForShutdown: () => new Promise<string>((resolve) => (stop = resolve)),
+    });
+    const running = runCli(["serve", "--config", await devConfigOnPort(port)], io);
+    const origin = `http://127.0.0.1:${port}`;
+    expect((await waitForHealth(origin))?.status).toBe(200);
+    expect(io.err).toContain(`kp-gateway: WARNING: ${MOCK_IDP_NO_SESSIONS_WARNING}`);
+
+    expect(await postToolsList(origin, "dev-only-session")).toBe(401);
+    expect(await postToolsList(origin, "dev-only-session")).toBe(401);
+    stop("SIGTERM");
+    expect(await running).toBe(0);
+    expect(
+      io.err.filter((line) => line === `kp-gateway: WARNING: ${MOCK_IDP_NO_SESSIONS_REJECTED}`),
+    ).toHaveLength(1);
+    expectNoSecrets(io.err.join("\n"));
   });
 });
 
