@@ -221,7 +221,8 @@ export function toolDefinitions(
     },
     {
       name: "list",
-      description: "ソース内の区画(フォルダ、チャンネル等)を列挙する",
+      description:
+        "ソース内の区画(フォルダ、チャンネル等)を列挙する。containerId を指定するとその下の区画を返す。文書は返さない(区画内の文書は search の filters.container で探す)",
       inputSchema: {
         type: "object",
         properties: { source, containerId: { type: "string" }, cursor },

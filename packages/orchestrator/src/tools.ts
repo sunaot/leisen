@@ -24,10 +24,10 @@ export function isGatewayToolName(name: string): name is GatewayToolName {
 /** いつ呼ぶかの指針(Gateway の説明文に足す。探索方針の本体は system prompt)。 */
 const USAGE_HINTS: Readonly<Record<GatewayToolName, string>> = {
   search:
-    "質問に関係しそうな文書を探すときに使う。ヒットが薄ければ類義語・言い換え・英日変換・フィルタを変えて再検索する。",
+    "質問に関係しそうな文書を探すときに使う。query には文書に出てきそうな名詞を 1〜2 語だけ入れる(多くのソースは語をすべて含む文書だけを返す)。0 件なら語を減らし、類義語・言い換え・英日変換は別の search で試す。区画内を探すときは filters.container を使う。",
   fetch:
     "有望なヒットの本文を読むときに使う。documentId と source は search の結果の値をそのまま使う。",
-  list: "検索で見つけにくいとき、区画(フォルダ・リポジトリ等)を辿るのに使う。",
+  list: "区画(フォルダ・リポジトリ等)の一覧を得るときに使う。文書は返さない(空の結果は文書がないことを意味しない)。区画内の文書は search の filters.container で探す。",
   describe:
     "ソースの説明を得る。各ソースの説明は最初のメッセージのソース一覧に載っているので通常は呼ばなくてよい。",
 };

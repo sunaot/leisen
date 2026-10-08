@@ -1,7 +1,7 @@
 /**
  * system prompt と制御メッセージ(T-007、ADR-017 決定4)。
  *
- * - 固定部は `prompts/explore.v2.md` でバージョン管理する。ESM のため
+ * - 固定部は `prompts/explore.v3.md` でバージョン管理する。ESM のため
  *   `import.meta.url` 基準で読む(src/ と dist/ のどちらから読んでも
  *   パッケージ直下の prompts/ を指す)
  * - **system prompt は固定部だけ**(キャッシュのブレークポイント付き)。run ごとに
@@ -22,11 +22,16 @@ import { z } from "zod";
 import type { SkippedSource } from "./answer.js";
 
 /**
- * 固定部の版。v2(2026-09-27、セキュリティレビュー M1 / H3): ソース一覧を system から
- * 最初の user ターンへ移し、回答本文に URL を書かない方針にした(v1 は評価結果なしのまま
- * 置き換えた)。
+ * 固定部の版。
+ * - v2(2026-09-27、セキュリティレビュー M1 / H3): ソース一覧を system から最初の user
+ *   ターンへ移し、回答本文に URL を書かない方針にした(v1 は評価結果なしのまま置き換えた)
+ * - v3(2026-10-08、実モデルでの初回実走の結果): 検索語を名詞 1〜2 語にし、言い換えを
+ *   1 つの query に並べない(多くのソースは語の AND)、0 件なら語を減らす。list は区画だけを
+ *   返し文書は返さないこと、区画内は search の filters.container で探すことを明記した。
+ *   見つからなかったことを「存在しない」と断定しない。v2 との比較は評価レポート
+ *   (docs/eval/)
  */
-export const EXPLORE_PROMPT_VERSION = "explore.v2";
+export const EXPLORE_PROMPT_VERSION = "explore.v3";
 
 const PROMPT_URL = new URL(
   `../prompts/${EXPLORE_PROMPT_VERSION}.md`,
@@ -35,7 +40,7 @@ const PROMPT_URL = new URL(
 
 let cachedPrompt: Promise<string> | undefined;
 
-/** 固定部(prompts/explore.v2.md)を読む。プロセス内でキャッシュする。 */
+/** 固定部(prompts/explore.v3.md)を読む。プロセス内でキャッシュする。 */
 export function loadExplorePrompt(): Promise<string> {
   cachedPrompt ??= readFile(PROMPT_URL, "utf8")
     .then((text) => text.trimEnd())

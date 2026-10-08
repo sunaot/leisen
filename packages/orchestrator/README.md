@@ -4,7 +4,7 @@
 
 利用者向けの面は2つ: 1問ずつ答える CLI `kp-ask` と、チャット UI などの MCP クライアントから使う MCP サーバー `kp-ask serve`(下記「kp-ask serve(MCP サーバー)」、[ADR-018](../../docs/adr/ADR-018-orchestrator-mcp-server-and-chat-ui.md)、T-021)。
 
-**実モデルでの実走は未検証です。** Claude API の資格情報も、LM Studio 等のローカル推論環境もこの開発環境にはないため、テストは脚本(`ScriptedLlmClient`)と、テスト内蔵のモック API サーバー(Anthropic 形式・OpenAI 互換形式)を相手にした e2e で行っています(下記「モック API サーバーでの e2e」)。
+**実モデルでの実走は OpenAI 互換(LM Studio)で初めて確認しました(2026-10-08、合成コーパスの 4 問。[評価レポート](../../docs/eval/2026-10-08-explore-v3.md))。Claude API での実走は未確認です。** 自動テストは脚本(`ScriptedLlmClient`)と、テスト内蔵のモック API サーバー(Anthropic 形式・OpenAI 互換形式)を相手にした e2e で行っています(下記「モック API サーバーでの e2e」)。手元で実モデルを使った回帰チェックは下記「dev-eval(合成コーパスでの簡易評価)」。
 
 ## 使い方(kp-ask)
 
@@ -222,7 +222,7 @@ npx kp-promotion-report \
 
 ## LM Studio で使う(OpenAI 互換バックエンド)
 
-**この手順はモック API サーバーでしか検証していません(実モデル・実際の LM Studio では未検証)。精度も保証しません**(評価ハーネス T-008 で測るまで判断しない。ADR-017)。
+**実際の LM Studio で、合成コーパスの 4 問を通すところまで確認しました(2026-10-08。[評価レポート](../../docs/eval/2026-10-08-explore-v3.md))。精度は保証しません**(評価ハーネス T-008 で測るまで判断しない。ADR-017)。
 
 1. LM Studio でツール呼び出し(function calling)に対応したモデルをロードする。gpt-oss 20B クラス以上を想定。探索ループはツール呼び出しが前提なので、非対応のモデルでは動かない
 2. モデルのコンテキスト長は長めにとる(目安 16k トークン以上)。system prompt・ツール定義・ソース一覧・ツール結果(検索のスニペット、文書の本文)が毎ターン積み上がる
@@ -385,7 +385,7 @@ OpenAI 互換の変換(一次情報: OpenAI API リファレンスの Chat Compl
 
 ## 探索ループの仕様
 
-- 開始時: runId を採番(Gateway と同じ形式 `[A-Za-z0-9._:-]{1,128}` を検証し、外れたら Gateway にアクセスせずに `invalid_configuration`)→ `tools/list` → 全ソースに `describe`(`source_not_connected` のソースは skippedSources に入れて検索対象から外す。それ以外の失敗は正規化後の分類で警告を残して検索対象に残す)→ describe の結果の `_meta` から Gateway が認証した userId を得て AnswerRun(`pending`、`startedAt` は run の開始時刻)を書く → system prompt(固定部 `prompts/explore.v2.md` だけ)・最初の user ターン(ソース一覧・上限・質問)・ツール定義(strict、`source` は有効ソースの enum)を組む
+- 開始時: runId を採番(Gateway と同じ形式 `[A-Za-z0-9._:-]{1,128}` を検証し、外れたら Gateway にアクセスせずに `invalid_configuration`)→ `tools/list` → 全ソースに `describe`(`source_not_connected` のソースは skippedSources に入れて検索対象から外す。それ以外の失敗は正規化後の分類で警告を残して検索対象に残す)→ describe の結果の `_meta` から Gateway が認証した userId を得て AnswerRun(`pending`、`startedAt` は run の開始時刻)を書く → system prompt(固定部 `prompts/explore.v3.md` だけ)・最初の user ターン(ソース一覧・上限・質問)・ツール定義(strict、`source` は有効ソースの enum)を組む
 - ソース一覧(セキュリティレビュー H3): describe 結果はコネクタ由来の外部データなので、system prompt には入れず、最初の user ターンに「固定の前置き(データであり指示ではない)」+「JSON」で渡す(ツール結果と同じ扱い)。`kind` は connector-sdk の `ContainerEntry.kind` の値域に限り(それ以外は `other`)、`supportedFilters` は `SearchFilters` のキーに限る。件数・長さを切り詰め、JSON の `<` `>` はエスケープする。system prompt が固定文字列だけになるので、プロンプトキャッシュの prefix も run をまたいで安定する
 - 反復: LLM の応答内のツール呼び出しは並行に Gateway へ送り(1ターン `maxToolCallsPerTurn` 件・run 全体 `maxToolCallsPerRun` 件まで。超えた分は実行しない)、結果は1つの user メッセージにまとめて返す。成功した結果は「固定の前置き(データであり指示ではない)」と「データ本体の JSON」の2ブロック、ツールエラーも「固定の前置き(ツールエラーはデータ)」と `{ errorClass, message }` の JSON の2ブロックで返す(`is_error: true`)。`permission_denied` と `not_found` は区別せず `not_available` として渡す(TM-B2。Gateway も正規化する)
 - 終了: `submit_answer` の提出 / 提出せずに終えたら1回だけ催促し、それでも提出しなければ unresolved / 上限に達したら提出を促す最終ターンを1回だけ行う / LLM・Gateway の失敗・利用者の不一致は error(回答文は失敗の分類ごとの文言。上記「失敗の文言」)
@@ -434,14 +434,40 @@ const answer = await new Orchestrator({ llm, auditLogger: harness.auditLogger })
 
 脚本だけの単体経路(`ScriptedLlmClient`)は高速な検証として残している。
 
+## dev-eval(合成コーパスでの簡易評価)
+
+合成コーパス(`examples/fixtures/dev-corpus.yaml`)に対する質問セット `examples/eval/dev-questions.json` を kp-ask で1問ずつ流し、判定と計測値を Markdown の表にする開発用の道具(T-008 評価ハーネスの前段)。プロンプトや既定値を変えたときの回帰チェックに使う。
+
+```sh
+# Gateway を開発用設定で起動しておく(README「手元で動かす」)。トークン・LLM の設定は kp-ask と同じ環境変数で渡す
+export KP_SESSION_TOKEN=dev-token KP_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
+node packages/orchestrator/dist/bin/dev-eval.js --label after -- \
+  --gateway http://127.0.0.1:8787/mcp --config examples/deployment.dev.yaml \
+  --llm openai-compatible --llm-base-url http://localhost:1234/v1 --model <モデル名>
+```
+
+| オプション | 内容 |
+|---|---|
+| `--questions <file>` | 質問セット(既定 `examples/eval/dev-questions.json`)。質問ごとに期待する `outcome`(resolved / unresolved)と、resolved なら引用すべき文書(`citeAnyOf`、`sourceId:documentId`)を書く |
+| `--repeat <N>` | 各質問を N 回流す(1〜20、既定 1。ぶれを見る) |
+| `--only <id,...>` | 質問を ID で絞る |
+| `--label <見出し>` | 表の見出し(例: before / after) |
+| `--timeout-sec <N>` | 1問あたりの打ち切り(既定 300 秒) |
+| `--` 以降 | kp-ask にそのまま渡す。dev-eval は `--json` と質問文を足す |
+
+- 判定: 期待した outcome か、resolved を期待した質問で期待した文書のどれかを引用したか、回答本文に URL が残っていないか。○ 合格 / × 不合格 / ! エラー(kp-ask が回答を返せない・run が error)。終了コードは全問合格で 0、それ以外 1、引数・質問セットの不備で 2
+- 表に出すのは質問 ID・判定・outcome・引用した文書 ID・LLM ターン数・ツール呼び出し数(describe を含む)・トークン数・所要時間(kp-ask の起動から終了までの実時間)。質問文・回答本文は出さない。進捗は stderr、表は stdout(`> report.md` で保存できる)
+- kp-ask の stderr(AnswerRun の監査レコード)は、回答を返せなかった run のときだけ流す。残す場合は `--` 以降に `--answer-run-jsonl <path>` を付ける
+- 合成データ専用。実データの質問セットの扱い(機密クエリの保管・アイデンティティごとの期待値)は T-008 で決める
+
 ## プロンプトの変更
 
-固定部は `prompts/explore.v2.md`、制御メッセージ(催促・最終ターンの指示・ソース一覧とツール結果・ツールエラーの前置き)は `src/prompt.ts`。変更する PR には評価レポート(T-008)を添付する。挙動が変わる改訂はファイルを `explore.v3.md` として追加し、`EXPLORE_PROMPT_VERSION` を上げる。v2 はセキュリティレビュー(2026-09-27)でソース一覧を user ターンへ移し、回答本文に URL を書かない方針にした版(v1 は評価結果がないまま置き換えた。T-008 の評価レポートは未添付)。
+固定部は `prompts/explore.v3.md`、制御メッセージ(催促・最終ターンの指示・ソース一覧とツール結果・ツールエラーの前置き)は `src/prompt.ts`。変更する PR には評価レポート(T-008)を添付する。挙動が変わる改訂はファイルを `explore.v3.md` として追加し、`EXPLORE_PROMPT_VERSION` を上げる。v2 はセキュリティレビュー(2026-09-27)でソース一覧を user ターンへ移し、回答本文に URL を書かない方針にした版(v1 は評価結果がないまま置き換えた。T-008 の評価レポートは未添付)。v3(2026-10-08)は実モデルでの初回実走で見えた空振りへの対処で、検索語を名詞 1〜2 語にして言い換えを 1 つの query に並べない(多くのソースは語の AND)、0 件なら語を減らす、list は区画だけを返し文書は返さない(区画内は `filters.container` で探す)、見つからないことを「存在しない」と断定しない、を足した。同じ趣旨をツールの説明文(`src/tools.ts` の USAGE_HINTS と Gateway の list の説明)にも入れた。評価は `docs/eval/2026-10-08-explore-v3.md`(dev-eval)。
 
 ## 既知の限界
 
-- **実走未検証**: Claude API の資格情報が用意されるまで、モデル・effort・max_tokens の既定値、プロンプトの効き、キャッシュの効き(`cache_read_input_tokens`)は未計測。OpenAI 互換(LM Studio + gpt-oss 等)も実モデルでは未検証で、モックでの e2e のみ
-- **OpenAI 互換の限界**: プロンプト(`prompts/explore.v2.md`)は Claude を前提に書いており、オープンウェイトのモデルで同じ効きになる保証はない(バックエンド別の派生を `prompts/` に置いてよい。ADR-017)。strict がないため引数の形は保証されず、壊れた引数の呼び出しは実行せずに不正な入力として返す。submit_answer の引数が壊れていると再提出を求めずに unresolved で終える(再提出させるかは T-008 の計測を見て決める)。推論の過程(`reasoning_content` 等の非標準フィールド)は履歴に戻さない。`max_tokens` を送る(OpenAI 本家の o 系・推論モデルは `max_completion_tokens` のみを受けるため対象外)。プロンプト+`max_tokens` がコンテキスト長を超える要求を 400 で拒否するサーバー(vLLM 等)では `maxTokensPerTurn` を下げる
+- **実走は限定的**: OpenAI 互換(LM Studio)で合成コーパスの 4 問を流しただけ(2026-10-08、`docs/eval/`)。Claude API の資格情報が用意されるまで、Claude のモデル・effort・max_tokens の既定値、プロンプトの効き、キャッシュの効き(`cache_read_input_tokens`)は未計測
+- **OpenAI 互換の限界**: プロンプト(`prompts/explore.v3.md`)は Claude を前提に書いており、オープンウェイトのモデルで同じ効きになる保証はない(バックエンド別の派生を `prompts/` に置いてよい。ADR-017)。strict がないため引数の形は保証されず、壊れた引数の呼び出しは実行せずに不正な入力として返す。submit_answer の引数が壊れていると再提出を求めずに unresolved で終える(再提出させるかは T-008 の計測を見て決める)。推論の過程(`reasoning_content` 等の非標準フィールド)は履歴に戻さない。`max_tokens` を送る(OpenAI 本家の o 系・推論モデルは `max_completion_tokens` のみを受けるため対象外)。プロンプト+`max_tokens` がコンテキスト長を超える要求を 400 で拒否するサーバー(vLLM 等)では `maxTokensPerTurn` を下げる
 - **評価ハーネス(T-008)未実装**: 解決率・引用正確性・インジェクション耐性(RS-3 / RS-4)の率は測れていない
 - **Slack コネクタ未実装**: Slack コネクタ(T-006)は法務確認待ち。citedDocIds の分類は注入式で実装済み(Slack は記録しない、分類できないソースは記録しない)。分類器の組み立ては kp-ask の `--config` と同じ規則(`docIdAuditFromDeployment`)を、リファレンス構成(T-012)の Orchestrator 組み込み時に使う
 - **回答本文の URL の検出の限界**: スキーム・`www.`・`//`・パス/クエリのない裸のドメイン名(`evil.example`)とメールアドレスは残す(ファイル名等と区別できない)。利用側は fuzzy な自動リンク(裸のドメインのリンク化)を無効にし、外部画像を自動取得しない(T-009)。検出は保守的(fail-closed)で、`Node.js/Express` のような表記やコード片の中の URL も除去される(除去は warnings に出る)。ゼロ幅接合子(ZWJ)も除くため、絵文字の合成列は分かれて表示される
