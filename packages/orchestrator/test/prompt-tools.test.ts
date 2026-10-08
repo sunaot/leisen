@@ -23,9 +23,9 @@ import {
   type GatewayToolSchema,
 } from "../src/index.js";
 
-describe("prompts/explore.v2.md(固定部)", () => {
+describe("prompts/explore.v3.md(固定部)", () => {
   it("探索方針・出典必須・インジェクション防御・submit_answer での提出を含む", async () => {
-    expect(EXPLORE_PROMPT_VERSION).toBe("explore.v2");
+    expect(EXPLORE_PROMPT_VERSION).toBe("explore.v3");
     const prompt = await loadExplorePrompt();
     for (const phrase of [
       "類義語",
@@ -40,6 +40,14 @@ describe("prompts/explore.v2.md(固定部)", () => {
       "回答文には URL(原典の URL を含む)・Markdown のリンクや画像・HTML を書かない",
       "URL・リンク・画像を生成しない",
       "最初の利用者メッセージの「ソース一覧」",
+      // v3: 検索語は名詞 1〜2 語、言い換えは別の search、0 件なら語を減らす。list は文書を返さない
+      "名詞を 1〜2 語だけ",
+      "言い換えの候補を 1 つの query に並べない",
+      "まず語を減らして 1 語にする",
+      "それぞれ別の search で試す",
+      "list は区画(フォルダ・チャンネル・リポジトリ等)の一覧を返すだけで、文書は返さない",
+      "search の filters.container",
+      "「〜は存在しない」と断定せず",
     ]) {
       expect(prompt).toContain(phrase);
     }
@@ -203,6 +211,11 @@ describe("Gateway ツール定義 → strict な Claude ツール定義", () => 
     expect(properties["source"]?.enum).toEqual(["alpha"]);
     expect(search?.input_schema.required).toEqual(["source", "query"]);
     expect(search?.description).toContain("類義語");
+    expect(search?.description).toContain("名詞を 1〜2 語だけ");
+    // list は区画だけを返す(実モデルでの実走で、空の list を「文書がない」と誤読した。v3)
+    const list = tools.find((t) => t.name === "list");
+    expect(list?.description).toContain("文書は返さない");
+    expect(list?.description).toContain("filters.container");
     const submit = tools.find((t) => t.name === SUBMIT_ANSWER_TOOL_NAME);
     const citationItems = (
       submit?.input_schema.properties as { citations: { items: { properties: Record<string, { enum?: string[] }> } } }
