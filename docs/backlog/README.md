@@ -22,6 +22,7 @@
 | T-019 | GitHubコネクタ | T-003 | GitHub App承認 |
 | T-020 | wikiコネクタ | T-003, T-000a | 対象wikiのOAuth承認 |
 | T-007 | Orchestrator探索戦略v1 | T-003 | Claude APIキー |
+| T-022 | dev-eval の質問セット拡充と再現性の計測(探索プロンプト v3 の汎化確認) | T-007 | 実走は LLM(オーナーの手元の LM Studio)。質問の書き手の判断 |
 | T-008 | 評価ハーネス+評価セットv0 | T-007 | クエリサンプル+テストアイデンティティ |
 | T-009 | チャットUI(最小) | T-007 | なし |
 | T-021 | 利用者向けの面: Orchestrator の MCP サーバー化 + LibreChat 接続(ADR-018) | T-007, T-012 | なし(実走は LLM バックエンド) |
