@@ -74,7 +74,7 @@ afterEach(async () => {
 
 function referenceConfig(): DeploymentConfig {
   return loadDeploymentConfig(REFERENCE_CONFIG, {
-    capabilities: { "dev-docs": { nativeSearch: "full", ingest: false } },
+    capabilities: { "dev-docs": { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" } },
   });
 }
 

@@ -28,7 +28,8 @@ connectors:
       maxRequestsPerMinute: 300
     # DM・プライベート領域は既定で検索対象外(ADR-013 §1)。
     # included へ変更する場合は confirmPrivateScopesIncluded: true と
-    # 利用規程の整備(docs/usage-policy-template.md)が必須
+    # 利用規程の整備(docs/usage-policy-template.md)が必須。
+    # consent は同意状態の設計(#42)まで起動時に拒否する(ADR-016 追補2 決定6)
     privateScopes: excluded
     searchLayer:
       # 全導入は検索層OFFで開始し、昇格判定レポート(T-014)の証拠に

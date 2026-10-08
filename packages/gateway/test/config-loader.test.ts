@@ -24,7 +24,7 @@ const DEV_EXAMPLE_PATH = fileURLToPath(
 describe("examples/deployment.dev.yaml(手元で動かす開発用設定)", () => {
   it("スキーマ・静的検証を通り、開発用の部品だけで構成されている", () => {
     const config = loadDeploymentConfig(DEV_EXAMPLE_PATH, {
-      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false } },
+      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" } },
     });
     expect(config.deployment.name).toBe("dev-local");
     expect(config.idp.adapter).toEqual({ kind: "mock" });
@@ -45,8 +45,8 @@ describe("examples/deployment.yaml", () => {
   it("同梱サンプルがスキーマ・静的検証を通る", () => {
     const config = loadDeploymentConfig(EXAMPLE_PATH, {
       capabilities: {
-        gdrive: { nativeSearch: "full", ingest: false },
-        slack: { nativeSearch: "degraded", ingest: false },
+        gdrive: { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" },
+        slack: { nativeSearch: "degraded", ingest: false, privateScopeHandling: "classified" },
       },
     });
     expect(config.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);

@@ -187,6 +187,10 @@ export interface CodeFixture {
   path: string;
   ref?: string;
   fragments?: string[];
+  /** repository.owner.type(省略時は付けない) */
+  ownerType?: "User" | "Organization";
+  /** repository.private(既定 true) */
+  isPrivate?: boolean;
 }
 
 function encodePath(path: string): string {
@@ -206,8 +210,8 @@ export function codeItem(f: CodeFixture): Record<string, unknown> {
     repository: {
       full_name: `${owner}/${repo}`,
       name: repo,
-      owner: { login: owner },
-      private: true,
+      owner: { login: owner, ...(f.ownerType !== undefined ? { type: f.ownerType } : {}) },
+      private: f.isPrivate ?? true,
     },
     score: 1,
     ...(f.fragments

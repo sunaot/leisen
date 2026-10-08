@@ -97,10 +97,10 @@ KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/
 
 ## 構成
 
-- `packages/connector-sdk` — コネクタ共通IF
+- `packages/connector-sdk` — コネクタ共通IF(v0.4。ADR-016 追補2: 結果ごとのプライベート領域の分類 `scope`、能力 `privateScopeHandling`、factory への方針 `policy`)
 - `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP。HTTPトランスポートは配線済みで `kp-gateway serve` で起動する)と起動コード(`kp-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
-- `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち
+- `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded、privateScopeHandling: classified。GitHub App は組織にだけインストールする前提)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち
 - `packages/orchestrator` — Orchestrator 探索戦略 v1(T-007)と `kp-ask` CLI(`kp-ask serve` で MCP サーバーとして公開する。T-021、ADR-018)。LLM バックエンドは設定で選ぶ(Anthropic Messages API / OpenAI 互換。LM Studio・llama.cpp 等のローカルモデルは `--llm openai-compatible`)。使い方・LM Studio 手順・出典検証の契約は `packages/orchestrator/README.md`。設計は ADR-017(Proposed)
 - `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `examples/deployment.dev.yaml` — 手元で動かすための開発用設定(上記「手元で動かす」)

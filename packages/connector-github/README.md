@@ -1,8 +1,8 @@
 # @kp/connector-github — GitHub コネクタ(T-019)
 
-connector-sdk v0.3(ADR-016)の `Connector`(`search` / `fetch` / `list` / `describe`)を GitHub REST API で実装したコネクタ。**全呼び出しを利用者本人の user access token で行い**、認可は GitHub に委譲する(CLAUDE.md 不変条件1、ADR-010、`docs/auth-matrix.md` §4)。
+connector-sdk v0.4(ADR-016、追補2)の `Connector`(`search` / `fetch` / `list` / `describe`)を GitHub REST API で実装したコネクタ。**全呼び出しを利用者本人の user access token で行い**、認可は GitHub に委譲する(CLAUDE.md 不変条件1、ADR-010、`docs/auth-matrix.md` §4)。
 
-- `capabilities`: `{ nativeSearch: "degraded", ingest: false }`。コード専用索引(シンボル・AST)はコア外(ADR-008 §5)
+- `capabilities`: `{ nativeSearch: "degraded", ingest: false, privateScopeHandling: "classified" }`(プライベート領域の扱いは下の「プライベート領域」)。コード専用索引(シンボル・AST)はコア外(ADR-008 §5)
 - 外部依存なし(`@kp/connector-sdk` のみ)。HTTP は注入可能な `fetch`(既定はグローバル `fetch`。注入する実装の前提は「リダイレクトの扱い」を参照)
 - 公開 API は factory(`createGitHubConnector`、Gateway のプラグイン契約の `createConnector`)と型(`GitHubConnector` / `GitHubConnectorOptions` / `GitHubConnectorFactoryInit` / `FetchLike` / `RateLimitOptions`)のみ。API クライアント・残quota追跡・documentId の符号化は内部実装で公開しない(Gateway を経由せずに GitHub を呼ぶ部品を配らない、不変条件2)
 - **実アカウントでの手動疎通は未実施**(GitHub App の組織承認待ち。T-019 の人手の前提)。現状の検証はフェイク GitHub API(注入 fetch)によるユニットテストのみ
@@ -17,6 +17,7 @@ auth-matrix §4 の結論に従う。
 | 使わないもの | GitHub App の installation access token、サービスアカウント、共有 PAT。app 自身として動作し本人の権限判定にならないため**採用不可**(auth-matrix §4)。コネクタにこれらへのフォールバックはない。多層防御として、installation token(`ghs_`)・refresh token(`ghr_`)の接頭辞を持つトークンは API を呼ぶ前に `invalid_request` で拒否する(資格情報プロバイダの取り違えの検知。メッセージにトークンを含めない) |
 | 資格情報の形式 | `AuthContext.credential.kind === "oauth_bearer"`。`delegated_identity` は `invalid_request` で拒否する |
 | 実効範囲 | GitHub App の user token は「app の権限・インストール範囲」∩「本人の権限」。app を組織にインストールし(対象リポジトリは全て推奨)、本人が認可する |
+| インストール先 | **GitHub App は組織にだけインストールする(個人アカウントにはインストールしない)**。個人アカウントの非公開リポジトリは ADR-013 の「個人スコープ」に当たりうるが、本コネクタは issue / PR の検索結果と fetch では所有者の種別を判定できない(下の「プライベート領域」)。組織にだけインストールすれば、user token の実効範囲(インストール範囲 ∩ 本人の権限)に個人の非公開リポジトリは入らない。導入チェックリストの項目(ADR-016 追補2 決定7) |
 | GitHub App の権限(read) | Metadata、Issues、Pull requests、Contents。検索 API と `/user/orgs` は追加権限不要(結果は本人と app がアクセスできる範囲に絞られる) |
 | 組織側の設定 | OAuth App アクセス制限(新規 org は既定 ON・オーナー承認制)の承認。**SAML SSO 有効の org では本人がトークンを SSO 認可すること**(未認可の org のリソースは `permission_denied`、検索結果からは黙って除外される) |
 | 失効(TM-C4) | **SCIM(理想は Enterprise Managed Users)連携を導入前提とする**。SAML 単独ではオフボーディング後も認可済みトークンが org へのアクセスを保ち続ける(GitHub 公式明記)。導入チェックリスト(T-012)の項目 |
@@ -31,7 +32,7 @@ auth-matrix §4 の結論に従う。
 
 ## deployment.yaml での使い方(Gateway のプラグイン)
 
-Gateway の起動コードは `connectors[].kind: github` をプラグインモジュール `@kp/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
+Gateway の起動コードは `connectors[].kind: github` をプラグインモジュール `@kp/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir, policy })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
 
 ```yaml
 connectors:
@@ -120,6 +121,23 @@ const github = createGitHubConnector({
 - `list("owner/repo")`: repo の配下は列挙しない(`invalid_request`。検索は `filters.container` で絞る)
 - `describe()`: 表示名、要約(degraded であること・コード検索の制約を開示)、本人の所属 org(`topContainers`)、`supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"]`。describe / list も本人トークンで呼ぶため、権限外の区画名は返らない(TM-B3)
 
+### プライベート領域(ADR-016 追補2、ADR-013 §1)
+
+`privateScopeHandling: "classified"`: ソース側(GitHub API への要求)では除外せず、全結果(`SearchHit` / `FetchResult` / `ContainerEntry`)に `scope` を付け、`privateScopes: excluded`(既定)での除外は Gateway に任せる。`createConnector` は `policy` を受け取るが、方針で動作を変えない。GitHub には DM に当たる領域がない。
+
+| 結果 | `scope` | 判定の根拠 |
+|---|---|---|
+| 組織のリポジトリ(public / private / internal)の issue・PR・ファイル | `shared` | 組織が管理する業務の領域。閲覧範囲の限定は GitHub の認可が担う(private リポジトリを「プライベートチャンネル」とみなさない。ADR-016 追補2 確認事項6) |
+| コード検索のヒットで、`repository.owner.type` が `User` かつ公開と確認できない(`private: false` / `visibility: "public"` でない) | `private` | 個人アカウントの非公開リポジトリ = 個人スコープ。判定に迷うもの(`private` の欠落)も private |
+| コード検索のヒットで、個人アカウントの公開リポジトリ | `shared` | 公開されている |
+| issue / PR の検索結果 | `shared`(応答が `repository.owner.type` を含む場合だけ上の規則で判定) | 検索 API の issue / PR は通常、所有者の種別を含まない(`repository_url` だけ) |
+| fetch(issue / PR / ファイル) | `shared` | `issues.get` / `repos.getContent` の応答は所有者の種別を含まない |
+| list / describe の組織(`kind: "other"`) | `shared` | 組織 |
+| list の repo(`kind: "repository"`) | 所有者が `User` で公開と確認できなければ `private`、それ以外は `shared` | `/user/repos` / `/orgs/{org}/repos` の応答の `owner.type` / `private` / `visibility` |
+| 所有者の種別が分からないもの全般 | `shared` | 前提「app は組織にだけインストールする」により個人の非公開リポジトリは結果に現れない |
+
+**判定できるか確かめた結果(移行タスク):** 所有者が個人アカウントかを結果のメタデータから判定できるのは、コード検索のヒット(`repository` が minimal-repository で `owner.type` と `private` を含む)と list の repo(repository オブジェクト)だけである。issue / PR の検索結果は `repository_url` しか持たず、fetch の応答も所有者の種別を含まないため、追加の API 呼び出し(`GET /repos/{owner}/{repo}` 等)なしには判定できない。追加の呼び出しは search 1回あたりの要求数とレート制限(コード検索 10 req/min 等)を増やすため行わず、これらは前提(組織にだけインストール)のもとで `shared` とする。開発用 PAT(`mock_env`)の経路では本人の個人リポジトリの issue / PR・fetch が `shared` として返りうる(コード検索と list は private に分類され、Gateway が落とす)。契約テストは `test/private-scope.test.ts`。
+
 ### documentId 形式
 
 コネクタスコープの不透明な文字列(ADR-007)。検索結果の値をそのまま `fetch` に渡す。
@@ -180,6 +198,7 @@ Gateway は LLM・利用者向けの応答で `permission_denied` と `not_found
 - 一部の検索が失敗した場合の degraded な結果には、その旨を示すフィールドがない(SDK の `SearchResult` に該当フィールドがないため。IF 変更は ADR が必要)
 - fetch は 1MB を超えるファイルを扱わない。PR のレビューコメント・差分は取得しない
 - GitHub 検索は1クエリにつき 1000 件まで
+- プライベート領域の分類は所有者の種別が分かる結果(コード検索・list の repo)に限る。issue / PR・fetch は「app を組織にだけインストールする」前提で `shared`(上の「プライベート領域」)
 
 ## テスト
 

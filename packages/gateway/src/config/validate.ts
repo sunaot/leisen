@@ -7,7 +7,10 @@
  * ソースAPIへの照会は行わない。
  */
 import { BlockList, isIP } from "node:net";
-import type { ConnectorCapabilities } from "@kp/connector-sdk";
+import {
+  privateScopeHandlingOf,
+  type ConnectorCapabilities,
+} from "@kp/connector-sdk";
 import { AUDIT_SINK_JSONL, type DeploymentConfig } from "./schema.js";
 
 /**
@@ -24,6 +27,13 @@ export type ConfigIssueCode =
   | "index_required_source_needs_search_layer"
   | "fail_open_requires_confirmation"
   | "private_scopes_included_requires_confirmation"
+  /** privateScopes: consent は同意状態の設計(#42)まで受け付けない(ADR-016 追補2 決定6) */
+  | "private_scopes_consent_not_supported"
+  /**
+   * 有効なコネクタの方針が excluded なのに、能力 privateScopeHandling が unsupported
+   * (宣言なしの v0.3 プラグインを含む)。除外を強制できない(ADR-016 追補2 決定3)
+   */
+  | "private_scopes_unenforceable"
   | "agent_execution_not_allowed_in_phase1"
   | "secret_env_missing"
   /** audit.sink: jsonl に audit.jsonl.path がない(静的検証) */
@@ -124,6 +134,21 @@ export function validateDeploymentConfig(
       });
     }
 
+    // privateScopes: consent の暫定拒否(ADR-016 追補2 決定6)。included の確認フラグと
+    // 同じく無効化済みのコネクタでも宣言時点で拒否する。スキーマの列挙値は残し、
+    // 解放は同意状態の持ち方の設計(#42)後にこの検証の緩和として行う
+    if (connector.privateScopes === "consent") {
+      issues.push({
+        code: "private_scopes_consent_not_supported",
+        path: `${base}.privateScopes`,
+        message:
+          `"consent" is not supported yet: per-user consent state is not designed (issue #42), ` +
+          `so the policy would not reach the connector and private scopes would not be excluded ` +
+          `(ADR-013 §1, ADR-016 addendum 2). Use "excluded" (default), or "included" with ` +
+          `confirmPrivateScopesIncluded: true`,
+      });
+    }
+
     // backend欠落もprivateScopes同様「宣言時拒否」とする(enabled: falseでも
     // 拒否)。無効化中に仕込まれた不完全な宣言が、有効化した瞬間に危険設定と
     // して発現することを防ぐ
@@ -154,6 +179,25 @@ export function validateDeploymentConfig(
         message: `connector "${connector.id}" is not registered in this deployment`,
       });
       return;
+    }
+
+    // 方針 excluded は、能力 privateScopeHandling が enforced / classified のコネクタで
+    // だけ起動できる(ADR-016 追補2 決定3)。unsupported(宣言なしの v0.3 プラグインを
+    // 含む)は結果に scope を付けないため、Gateway は全結果を private とみなして全件を
+    // 落とすことになり、ソース側の除外も期待できない。included(確認フラグ付き)は
+    // どの能力でも通す
+    if (
+      connector.privateScopes === "excluded" &&
+      privateScopeHandlingOf(capabilities) === "unsupported"
+    ) {
+      issues.push({
+        code: "private_scopes_unenforceable",
+        path: `${base}.privateScopes`,
+        message:
+          `connector "${connector.id}" declares privateScopeHandling "unsupported" (or none, as in ` +
+          `connector-sdk v0.3), so "excluded" cannot be enforced. Use a connector that declares ` +
+          `"enforced" or "classified" (connector-sdk v0.4, ADR-016 addendum 2)`,
+      });
     }
 
     // 検索層はingest実装コネクタのみ有効化できる(ADR-007)。ingestなしでの

@@ -60,7 +60,7 @@ async function passwordGrant(username: keyof typeof USERS): Promise<string> {
  */
 class MockConnector implements Connector {
   readonly sourceId = SOURCE_ID;
-  readonly capabilities = { nativeSearch: "full", ingest: false } as const;
+  readonly capabilities = { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" } as const;
 
   async search(auth: AuthContext, query: string): Promise<SearchResult> {
     if (auth.credential.kind !== "oauth_bearer") {
@@ -77,6 +77,7 @@ class MockConnector implements Connector {
           snippet: "mock snippet",
           url: "https://example.test/doc-1",
           meta: { servedForUser: auth.userId },
+          scope: "shared",
         },
       ],
     };
@@ -88,6 +89,7 @@ class MockConnector implements Connector {
       title: "doc",
       content: `content for ${auth.userId}`,
       url: "https://example.test/doc-1",
+      scope: "shared" as const,
     };
   }
 

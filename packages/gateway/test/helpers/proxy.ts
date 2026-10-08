@@ -51,6 +51,7 @@ export class MockConnector implements Connector {
   readonly capabilities: ConnectorCapabilities = {
     nativeSearch: "full",
     ingest: false,
+    privateScopeHandling: "classified",
   };
   readonly calls: RecordedCall[] = [];
   lastSearch:
@@ -95,6 +96,7 @@ export class MockConnector implements Connector {
           title: `${this.sourceId} doc 1`,
           snippet: this.options.snippet ?? `snippet from ${this.sourceId}`,
           url: `https://example.test/${this.sourceId}/doc-1`,
+          scope: "shared",
         },
       ],
     };
@@ -111,6 +113,7 @@ export class MockConnector implements Connector {
       title: `${this.sourceId} ${documentId}`,
       content: `content of ${documentId} from ${this.sourceId}`,
       url: `https://example.test/${this.sourceId}/${documentId}`,
+      scope: "shared",
     };
   }
 
@@ -121,7 +124,7 @@ export class MockConnector implements Connector {
   ): Promise<ListResult> {
     await this.simulate("list", auth);
     const entries: ContainerEntry[] = [
-      { id: `${this.sourceId}-root`, name: "root", kind: "folder" },
+      { id: `${this.sourceId}-root`, name: "root", kind: "folder", scope: "shared" },
     ];
     return { entries };
   }

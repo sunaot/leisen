@@ -161,12 +161,12 @@ function mockFactory(created: MockConnector[] = []): ConnectorFactory {
 function pluginConnector(sourceId: string) {
   return {
     sourceId,
-    capabilities: { nativeSearch: "full", ingest: false },
+    capabilities: { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" },
     async search() {
       return { hits: [] };
     },
     async fetch(_auth: unknown, documentId: string) {
-      return { documentId, title: "t", content: "c", url: "u" };
+      return { documentId, title: "t", content: "c", url: "u", scope: "shared" };
     },
     async list() {
       return { entries: [] };
@@ -625,7 +625,13 @@ describe("(e)(g) コネクタ実装の解決", () => {
       }),
     });
     expect(inits).toEqual([
-      { sourceId: "wiki", settings: { baseUrl: "https://wiki.example.test" }, configDir: "/etc/kp" },
+      {
+        sourceId: "wiki",
+        settings: { baseUrl: "https://wiki.example.test" },
+        configDir: "/etc/kp",
+        // 方針(ADR-016 追補2 決定1)。privateScopes の既定は excluded
+        policy: { privateScopes: "excluded" },
+      },
     ]);
     expect(assembled.gateway.enabledSourceIds()).toEqual(["wiki"]);
   });
@@ -743,11 +749,11 @@ describe("(e)(g) コネクタ実装の解決", () => {
       `export function createConnector({ sourceId, settings }) {
   return {
     sourceId,
-    capabilities: { nativeSearch: "full", ingest: false },
+    capabilities: { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" },
     async search(_auth, query) {
-      return { hits: [{ documentId: "d1", title: settings.title + ":" + query, snippet: "", url: "u" }] };
+      return { hits: [{ documentId: "d1", title: settings.title + ":" + query, snippet: "", url: "u", scope: "shared" }] };
     },
-    async fetch(_auth, documentId) { return { documentId, title: "t", content: "c", url: "u" }; },
+    async fetch(_auth, documentId) { return { documentId, title: "t", content: "c", url: "u", scope: "shared" }; },
     async list() { return { entries: [] }; },
     async describe() {
       return { sourceId, displayName: sourceId, summary: "echo", topContainers: [], supportedFilters: [] };
@@ -797,7 +803,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
         "not-a-connector": () => ({}) as never,
         "wrong-source": () => pluginConnector("someone-else") as never,
         "bad-capabilities": ({ sourceId }) =>
-          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "None", ingest: false } }) as never,
+          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "None", ingest: false, privateScopeHandling: "classified" } }) as never,
       },
     });
     expect(error.issues.map((i) => [i.code, i.path])).toEqual([
@@ -904,6 +910,7 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
       sourceId: "dev-docs",
       settings: { corpusFile: "fixtures/dev-corpus.yaml" },
       configDir: EXAMPLES_DIR.replace(/\/$/, ""),
+      policy: { privateScopes: "excluded" },
     });
   });
 });
@@ -1007,10 +1014,56 @@ audit:
 `),
       connectorFactories: {
         files: ({ sourceId }) =>
-          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "none", ingest: true } }) as never,
+          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "none", ingest: true, privateScopeHandling: "classified" } }) as never,
       },
     });
     expect(codes(error)).toEqual(["index_required_source_needs_search_layer"]);
+  });
+
+  it("privateScopeHandling を宣言しない(v0.3 の)プラグインは excluded(既定)で起動を拒否する(ADR-016 追補2 決定3)", async () => {
+    const v03 = ({ sourceId }: { sourceId: string }) =>
+      ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "full", ingest: false } }) as never;
+    const error = await rejection({
+      config: config(`connectors:
+  - id: legacy
+    kind: legacy
+    auth:
+      provider: mock_env
+`),
+      connectorFactories: { legacy: v03 },
+    });
+    expect(codes(error)).toEqual(["private_scopes_unenforceable"]);
+
+    // included(確認フラグ付き)なら同じプラグインでも起動できる
+    const assembled = await assemble({
+      config: config(`connectors:
+  - id: legacy
+    kind: legacy
+    privateScopes: included
+    confirmPrivateScopesIncluded: true
+    auth:
+      provider: mock_env
+`),
+      connectorFactories: { legacy: v03 },
+    });
+    expect(assembled.gateway.enabledSourceIds()).toEqual(["legacy"]);
+  });
+
+  it("privateScopes: consent は設定の読み込み(validate / serve の前段)で拒否する(#42 まで。ADR-016 追補2 決定6)", () => {
+    let error: unknown;
+    try {
+      config(`connectors:
+  - id: dev-docs
+    kind: dev-fixture
+    privateScopes: consent
+    auth:
+      provider: mock_env
+`);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(DeploymentConfigError);
+    expect(codes(error as DeploymentConfigError)).toEqual(["private_scopes_consent_not_supported"]);
   });
 });
 

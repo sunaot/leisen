@@ -449,7 +449,13 @@ export class Orchestrator {
           outcome: answer.outcome,
           confidence: answer.confidence,
           searchedSources: answer.searchedSources,
-          citations: answer.citations,
+          // 監査の docId 分類には台帳の結果ごとの領域を添える(ADR-016 追補2 決定5)。
+          // scope は Answer の citations には載せない
+          citations: answer.citations.map((citation) => ({
+            sourceId: citation.sourceId,
+            documentId: citation.documentId,
+            scope: state.ledger.scopeOf(citation.sourceId, citation.documentId),
+          })),
           failureReason: result.failureReason,
         },
         this.#docIdAudit,

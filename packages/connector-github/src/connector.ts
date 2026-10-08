@@ -1,5 +1,5 @@
 /**
- * GitHub コネクタ(T-019)。connector-sdk v0.3 の Connector を GitHub REST API
+ * GitHub コネクタ(T-019)。connector-sdk v0.4 の Connector を GitHub REST API
  * (Search / Issues / Contents / Orgs / Repos)で実装する。
  *
  * - 認可は GitHub に委譲する。全呼び出しを利用者本人の user access token で行い、
@@ -14,6 +14,14 @@
  *   コア外)
  * - SearchResult に総件数を載せない。GitHub の total_count は読み捨てる(ADR-012)
  * - 検索・fetch 結果をキャッシュしない(ユーザー間共有の経路を作らない、不変条件4)
+ * - プライベート領域(ADR-016 追補2 決定7): privateScopeHandling は "classified"。
+ *   ソース側では除外せず、結果に scope を付けて除外は Gateway に任せる。GitHub には DM に
+ *   当たる領域がなく、組織のリポジトリ(private / internal を含む)は shared とする。
+ *   GitHub App を組織にだけインストールする前提(README の前提表)で、個人アカウントの
+ *   非公開リポジトリは検索に現れない。ただし結果のメタデータから「所有者が個人アカウント
+ *   (owner.type が User)で公開と確認できない」と判定できるもの(コード検索のヒット、
+ *   list の repo)は private にする(開発用 PAT の経路への備え)。issue / PR の検索結果と
+ *   fetch の応答は所有者の種別を含まないため shared(README「プライベート領域」)
  */
 import {
   ConnectorError,
@@ -22,6 +30,7 @@ import {
   type Connector,
   type ConnectorCapabilities,
   type ContainerEntry,
+  type DocumentScope,
   type FetchResult,
   type ListResult,
   type SearchFilters,
@@ -135,6 +144,7 @@ export class GitHubConnector implements Connector {
   readonly capabilities: ConnectorCapabilities = {
     nativeSearch: "degraded",
     ingest: false,
+    privateScopeHandling: "classified",
   };
   private readonly api: GitHubApiClient;
   private readonly displayName: string;
@@ -396,6 +406,8 @@ export class GitHubConnector implements Connector {
         ...(state !== undefined ? { state } : {}),
         ...(author !== undefined ? { author } : {}),
       },
+      // 検索 API の issue / PR は通常 repository(所有者の種別)を含まない。含む場合だけ判定する
+      scope: scopeOfRepository(record.repository),
     };
   }
 
@@ -433,6 +445,7 @@ export class GitHubConnector implements Connector {
         path,
         ...(gitRef !== "" ? { ref: gitRef } : {}),
       },
+      scope: scopeOfRepository(record.repository),
     };
   }
 
@@ -472,6 +485,9 @@ export class GitHubConnector implements Connector {
       content: page.content,
       url: document.url,
       ...(page.hasNext ? { nextPageCursor: encodePageCursor(pageIndex + 1) } : {}),
+      // issues.get / repos.getContent の応答は所有者の種別を含まないため判定できない。
+      // GitHub App を組織にだけインストールする前提で shared(README「プライベート領域」)
+      scope: "shared",
     };
   }
 
@@ -672,7 +688,8 @@ export class GitHubConnector implements Connector {
     for (const item of response.data) {
       const login = asString(asRecord(item)?.login);
       if (login !== undefined && isValidOwner(login)) {
-        entries.push({ id: login, name: login, kind: "other" });
+        // 組織は業務の領域(shared)
+        entries.push({ id: login, name: login, kind: "other", scope: "shared" });
       }
     }
     return { entries, hasNextPage: response.hasNextPage };
@@ -697,7 +714,12 @@ export class GitHubConnector implements Connector {
     for (const item of response.data) {
       const fullName = asString(asRecord(item)?.full_name);
       if (fullName !== undefined && parseRepoFullName(fullName) !== undefined) {
-        entries.push({ id: fullName, name: fullName, kind: "repository" });
+        entries.push({
+          id: fullName,
+          name: fullName,
+          kind: "repository",
+          scope: scopeOfRepository(item),
+        });
       }
     }
     return { entries, hasNextPage: response.hasNextPage };
@@ -945,6 +967,23 @@ function optionalFact(label: string, value: string | undefined): string[] {
 }
 
 // ---- 実行時の形状検査(外部APIの応答を型アサーションだけで信用しない) ----
+
+/**
+ * リポジトリの領域(ADR-016 追補2 決定7、README「プライベート領域」)。
+ * - 所有者が個人アカウント(owner.type === "User")で、公開(private: false または
+ *   visibility: "public")と確認できないもの → private(個人スコープ。迷うものは private)
+ * - それ以外(組織の所有、公開の個人リポジトリ、所有者の種別が分からないもの)→ shared。
+ *   種別が分からないものを shared にするのは、GitHub App を組織にだけインストールする
+ *   前提(README の前提表)で個人の非公開リポジトリが結果に現れないため
+ */
+export function scopeOfRepository(repository: unknown): DocumentScope {
+  const record = asRecord(repository);
+  if (asString(asRecord(record?.owner)?.type) !== "User") {
+    return "shared";
+  }
+  const isPublic = record?.private === false || record?.visibility === "public";
+  return isPublic ? "shared" : "private";
+}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)

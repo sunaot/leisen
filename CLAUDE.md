@@ -16,7 +16,7 @@
 
 ## リポジトリ構成
 
-- `packages/connector-sdk` — コネクタ共通IF・型定義(v0.3、ADR-016)。全コネクタはここに依存する
+- `packages/connector-sdk` — コネクタ共通IF・型定義(v0.4、ADR-016 追補2)。全コネクタはここに依存する
 - `packages/gateway` — MCP Gateway(認証、IdP Adapter、監査ログ、ルーティング)
 - `packages/connector-*` — 各データソースのMCPサーバー(今後追加)
 - `docs/adr/` — アーキテクチャ決定記録。設計変更時は必ず追記。ADR-009は欠番(削除済み番号の再利用を避ける)

@@ -377,9 +377,22 @@ server {
 - [ ] **Google Workspace: 管理者によるアプリの事前承認(ドメインインストール)。** Restricted scope の
   検証免除の条件を導入形態ごとに確認する(auth-matrix §2・§12.3)
 - [ ] **Kerberos(ファイル共有、T-017)を使う場合はチケット寿命の短縮を検討する**(失効反映のラグ)
-- [ ] **privateScopes の方針を決める**(既定 `excluded`)。`consent` / `included` を採る場合は利用規程
+- [ ] **GitHub: GitHub App は組織にだけインストールする**(個人アカウントにはインストールしない)。
+  GitHub コネクタは issue / PR・fetch の結果から所有者が個人アカウントかを判定できないため、個人の非公開
+  リポジトリを検索範囲に入れない前提を構成で守る(packages/connector-github/README.md「プライベート領域」、
+  ADR-016 追補2 決定7)
+- [ ] **privateScopes の方針を決める**(既定 `excluded`)。`included` を採る場合は利用規程
   ([docs/usage-policy-template.md](usage-policy-template.md))の整備と労使協議・就業規則との整合確認を行い、
-  `included` は確認フラグを付ける(ADR-013 §1、TM-E4)
+  確認フラグ(`confirmPrivateScopesIncluded: true`)を付ける(ADR-013 §1、TM-E4)。
+  - `consent`(本人オプトイン)は**現在は指定できない**。同意状態の持ち方(#42)が未設計で、方針が
+    コネクタに届かず除外も確認フラグも効かないため、`kp-gateway validate` / `serve` と `kp-ask` /
+    `kp-ask serve` は無効化済みのコネクタでも `private_scopes_consent_not_supported` で起動を拒否する
+    (ADR-016 追補2 決定6)
+  - `excluded` は、コネクタが能力 `privateScopeHandling` に `enforced` か `classified` を宣言している
+    場合だけ起動できる。宣言のないコネクタ(connector-sdk v0.3 のプラグイン)・`unsupported` のコネクタは
+    `private_scopes_unenforceable` で起動を拒否する。`excluded` のソースでは、Gateway が DM・プライベート
+    チャンネル・個人スコープに分類された結果を検索・一覧から落とし、fetch を `private_scope_excluded` で
+    拒否する(ADR-016 追補2 決定3・4、TM-E8)
 - [ ] 監査閲覧担当の指名と閲覧目的の規程化、メタ監査の運用(ADR-013 §3)
 - [ ] `audit.failureMode` は `fail-closed` のまま運用する(`fail-open` はセキュリティポリシーへの明文化と
   確認フラグが必要。ADR-011)
