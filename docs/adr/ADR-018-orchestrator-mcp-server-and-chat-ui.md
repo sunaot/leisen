@@ -1,6 +1,6 @@
 # ADR-018: 利用者向けの面 — Orchestrator の MCP サーバー化と汎用チャット UI(LibreChat)との接続(T-021)
 
-Status: Proposed(オーナー決定 2026-09-28: 接続方式 A + LibreChat を第一候補。正式レビューは PR #14)/ Date: 2026-09-28
+Status: Accepted(オーナー決定 2026-10-08、issue #21: Orchestrator を ask / feedback の API として提供し、サポートする利用面は LibreChat と MCP クライアント。接続方式 A + LibreChat の方針は 2026-09-28 決定)/ Date: 2026-09-28(Accepted: 2026-10-08)
 
 ## 文脈
 5 観点レビュー(2026-09-27、PR #14)で「利用者が問い合わせる面(UI/API)がない」が程度「高」のリスクになった。product-design §4.1 は「チャット UI および API から自然言語で問い合わせる」ことを Phase 1 の約束としているが、現状の利用面は CLI(`kp-ask`)だけで、T-009(チャット UI 最小)は未着手である。
@@ -60,3 +60,12 @@ LibreChat の関係する機能(公式ドキュメント、2026-09-28 時点で�
 2. 決定 5(Slack 有効時は起動拒否、解除は明示フラグ + 法務確認)。Slack の導入形態の法務確認(ADR-014)と合わせて判断してほしい
 3. 決定 8 の直接転送(LibreChat が「信頼できる MCP サーバーのみ」とする方式)を、自前サービスである Orchestrator に対して認めるか。認めない場合は事前登録の OAuth クライアント方式(LibreChat の `oauth` 設定 + Gateway の RFC 9728 メタデータ)に切り替える
 4. LibreChat の履歴保持: 一時チャット強制と `temporaryChatRetention` の既定値(v1 の overlay は `retentionMode: all`、`generalChatRetention` を `chatHistory.retentionDays` と同じ 90 日相当に設定)
+
+## 追記(2026-10-08): オーナー決定(issue #21)
+
+issue #21 のコメント(2026-10-08)で次が決まり、本 ADR を Accepted とする。
+
+- **Orchestrator を `ask` / `feedback` の API として提供する**(決定 1〜2、10)。
+- **サポートする利用面は LibreChat と MCP クライアントの 2 つ**(決定 8・11 と決定 9)。docs/ui-librechat.md の「LibreChat の場合」「MCP クライアントの場合」が対応する。「それ以外の場合」(OpenAI 互換のチャットモデルとして公開する、UI の自己申告 ID を信頼する、独自の REST API を設ける等)は提供しない。必要になれば別 ADR とする。
+- 「人間に確認してほしい点」1〜4 への個別の回答はなく、v1 の実装(決定 4・5・8・11 の記述どおり)で進める。異議があれば issue #21 にコメントする。
+- 未決のまま残る点(本 ADR の範囲外として扱う): MCP クライアントから Gateway へ直接接続する経路の扱い(開発・検証用途に限るか、azp の許可リストで制限するか。issue #21 の判断点、#16・#24)、T-009(自前のチャット UI)を取り下げるか縮小するか。
