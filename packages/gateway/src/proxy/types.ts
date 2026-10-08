@@ -1,11 +1,13 @@
 /**
  * Gatewayプロキシの型定義(T-003)。
  *
- * - MCP自体はエンドユーザーIDを運ばないため、Gatewayはセッション確立時に
- *   本人を確定し(IdpAdapter.authenticate)、以降の全ツール呼び出しを
- *   GatewaySession に束縛する(ADR-001 追補)。
- * - 実行区分(ADR-015)はセッション確立時にOrchestrator側が申告し、
- *   Gatewayが呼び出しごとに deployment.yaml の agentExecution と照合する。
+ * - MCP自体はエンドユーザーIDを運ばないため、Gatewayは**リクエストごとに**
+ *   Bearerセッショントークンを検証して本人を確定し(IdpAdapter.authenticate)、
+ *   そのリクエストのツール呼び出しをリクエスト単位の GatewaySession に束縛する
+ *   (ADR-001 追補3 決定1)。接続・サーバーインスタンスにユーザー状態を
+ *   持たせない(決定2)。旧設計の「1接続=1セッション」(追補2)は撤回済み。
+ * - 実行区分・actor(ADR-015)はOrchestratorがリクエストごとに `_meta` で申告し
+ *   (meta.ts)、Gatewayが呼び出しごとに deployment.yaml の agentExecution と照合する。
  */
 import type {
   FetchResult,
@@ -22,8 +24,9 @@ import type { Identity } from "../idp/types.js";
 export type ExecutionClass = "human_in_the_loop" | "scheduled" | "autonomous";
 
 /**
- * セッション確立時にクライアント(Orchestrator)が申告する属性。
- * 省略時は「人間の対話セッション」(human_in_the_loop / human actor)。
+ * リクエストごとにクライアント(Orchestrator)が申告する属性。MCP経由では
+ * `_meta` の `io.github.sunaot.leisen/executionClass` / `.../actor` で申告する
+ * (meta.ts)。省略時は「人間の対話セッション」(human_in_the_loop / human actor)。
  */
 export interface SessionDeclaration {
   executionClass?: ExecutionClass;
@@ -32,22 +35,31 @@ export interface SessionDeclaration {
 }
 
 /**
- * 認証済みセッション。全ツール呼び出しはこのセッション経由でのみ行える。
+ * リクエスト単位の認証済みセッション(ADR-001 追補3 決定1)。1回のMCP
+ * リクエストの処理中だけ存在し、Gatewayはこれを保持・再利用しない
+ * (接続やサーバーインスタンスに束縛しない。セッションIDも持たない)。
+ * 全ツール呼び出しはこのセッション経由でのみ行える。
  * identity.session.subjectToken は秘密情報(不変条件6): このオブジェクトを
  * シリアライズする経路は必ず redactIdentity() を通す。
  */
 export interface GatewaySession {
-  readonly sessionId: string;
   readonly identity: Identity;
   readonly executionClass: ExecutionClass;
   readonly actor: Actor;
 }
 
-/** ツール呼び出しの監査コンテキスト。Orchestrator(T-007)が申告する。 */
+/**
+ * ツール呼び出しの監査コンテキスト。採番主体はOrchestrator(T-007)で、
+ * `_meta` で申告する(ADR-011 追記 2026-09-17)。Gatewayは呼び出しをまたぐ
+ * 採番状態を持たない。
+ */
 export interface CallContext {
-  /** 親のAnswerRun。省略時はセッション既定のrunIdを使う */
+  /** 親のAnswerRun。未申告なら呼び出し単位の新規runId(単発run) */
   runId?: string;
-  /** 探索ループ内の反復連番(0始まり)。省略時はセッション内で自動採番 */
+  /**
+   * 探索ループ内の反復連番(0始まり)。runId と組でのみ意味を持つ:
+   * runId 申告時に省略すれば 0、runId 未申告(単発run)なら常に 0
+   */
   iteration?: number;
 }
 
@@ -82,6 +94,9 @@ export type GatewayToolResult =
  *   IdP層(IdpErrorClass)から透過
  * - auth_expired / permission_denied / rate_limited / not_found /
  *   source_unavailable / invalid_request: コネクタ(ConnectorErrorClass)から透過
+ * - not_available: LLM/利用者向け正規化(TM-B2、tools.ts normalizeToolError)のみで
+ *   生成される。permission_denied と not_found を区別せずに返すための分類で、
+ *   監査レコードの errorClass には元の分類(permission_denied / not_found)が残る
  */
 export type GatewayErrorClass =
   // Gateway自身が生成する分類
@@ -102,7 +117,18 @@ export type GatewayErrorClass =
   | "rate_limited"
   | "not_found"
   | "source_unavailable"
-  | "invalid_request";
+  | "invalid_request"
+  // LLM/利用者向け正規化(TM-B2)のみで生成される。監査レコードの errorClass には
+  // 元の分類(permission_denied / not_found)が残る(gateway.ts は正規化前に記録する)
+  | "not_available";
+
+/**
+ * GatewayがJSON-RPCエラーとして拒否を返すときのコード(HTTP層の拒否、
+ * ツール一覧の拒否)。JSON-RPCの実装定義サーバーエラー範囲(仕様2026-07-28版
+ * でも -32000〜-32019 は実装定義)で、SDKのHTTP層拒否と同じ値。分類は
+ * data.errorClass(GatewayErrorClass)で返す。
+ */
+export const GATEWAY_REJECTION_ERROR_CODE = -32000;
 
 export class GatewayError extends Error {
   constructor(

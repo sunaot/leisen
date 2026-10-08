@@ -1,0 +1,24 @@
+# keycloak-tls(docker-compose.librechat.yml)の設定。評価用の TLS 終端(T-021)。
+#
+# LibreChat の OpenID クライアント(openid-client v6)は、発行者と各エンドポイント(認可・
+# トークン・JWKS・userinfo・ログアウト)に https を要求する。開発モードの Keycloak(http)の
+# 前段で TLS を終端し、https://keycloak.localhost:8443 として見せる。証明書は Caddy の
+# 内部 CA(ローカル CA)が発行する。ルート証明書は keycloak-tls.sh が LibreChat 用に書き出す。
+#
+# 評価専用。実運用の IdP は導入先の TLS 構成で公開する(この CA をブラウザ・OS に常用で
+# 信頼させない)。
+{
+	# ローカル CA のルート証明書をコンテナの信頼ストアへ入れない
+	skip_install_trust
+	# 80 番での HTTP → HTTPS のリダイレクトを待ち受けない
+	auto_https disable_redirects
+	# 管理 API は使わない(設定は起動時に読むだけ)
+	admin off
+}
+
+keycloak.localhost:8443 {
+	tls internal
+	# Host ヘッダ(keycloak.localhost:8443)はそのまま渡す。Keycloak は KC_HOSTNAME で
+	# 発行者・各エンドポイントの URL を固定しているため、転送元のヘッダは信頼しない
+	reverse_proxy keycloak:8080
+}

@@ -10,6 +10,7 @@
  * - retention.ts 保持期間の設定注入と期限超過削除+削除実行の記録
  * - sink.ts      永続sink(retry・local buffer・at-least-once・flush)と
  *                stdoutデバッグsinkの分離、AuditLogger
+ * - jsonl.ts     JSONLファイルの監査ストア・rawQueryテーブル(audit.sink: jsonl)
  *
  * 不変条件:
  * - 全ツール呼び出しにつき ToolInvocation を正確に1レコード。Gateway以外から書かない
@@ -25,3 +26,4 @@ export * from "./docid.js";
 export * from "./rawquery.js";
 export * from "./retention.js";
 export * from "./sink.js";
+export * from "./jsonl.js";

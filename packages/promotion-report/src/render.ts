@@ -8,7 +8,9 @@
 import type {
   FailedQuery,
   PromotionReport,
+  SearchCountBucket,
   SourceStat,
+  UserMismatchWarning,
 } from "./aggregate.js";
 import type { PromotionEligibility } from "./sources.js";
 
@@ -33,6 +35,40 @@ function renderSourceRow(s: SourceStat): string {
     `calls=${s.invocations}`,
     `[${ELIGIBILITY_LABEL[s.eligibility]}]`,
   ].join("  ");
+}
+
+/**
+ * 再検索回数(run 内の search 呼び出し件数)の区分名。
+ * 0回 = 検索なし、1回 = 1発、2回以上 = 再検索。
+ */
+function searchCountLabel(searchCount: number): string {
+  if (searchCount === 0) return "検索なし";
+  if (searchCount === 1) return "1発";
+  return "再検索";
+}
+
+function renderSearchCountBucket(b: SearchCountBucket): string {
+  return `  ${b.searchCount}回(${searchCountLabel(b.searchCount)}): runs=${b.runs} unresolved=${b.unresolvedRuns}`;
+}
+
+/**
+ * (runId, userId) 結合の不一致の警告。件数と runId だけを出す(userId・文書ID・クエリは
+ * 出さない)。不一致がなければ節ごと出さない。
+ */
+function renderUserMismatchWarnings(
+  warnings: readonly UserMismatchWarning[],
+): string[] {
+  if (warnings.length === 0) return [];
+  const total = warnings.reduce((sum, w) => sum + w.invocations, 0);
+  return [
+    "## 警告: userId が AnswerRun と一致しない ToolInvocation(集計から除外)",
+    "",
+    `  runId は同じだが userId が AnswerRun と異なる ToolInvocation を ${total} 件(${warnings.length} run)、`,
+    "  ソース別未解決率・再検索回数分布の集計から除外しました。実装の不具合か runId の申告の",
+    "  偽装が考えられます。docs/audit-queries.md §0 のクエリで原因を調べてください。",
+    ...warnings.map((w) => `  run=${w.runId}  除外=${w.invocations}件`),
+    "",
+  ];
 }
 
 function renderFailedQuery(f: FailedQuery): string {
@@ -62,7 +98,7 @@ export function renderJudgmentGuide(): string {
     "  2. 失敗原因が「文書は存在するのにネイティブ検索で到達できない」であることを",
     "     サンプリング調査で確認済み → 下の失敗クエリ原文を使って手動調査する",
     "  3. 反復回数を増やしても解決率が改善しない(探索戦略の調整では吸収不能)",
-    "     → 再検索回数分布で、反復が多くても unresolved が減らないことを見る",
+    "     → 再検索回数分布で、再検索(search 2回以上)の run でも unresolved が減らないことを見る",
     "",
     "注意:",
     "- **Slackは昇格判定の対象外**(ADR-014: RTS API/API Termsにより中央インデックス化が",
@@ -77,14 +113,32 @@ export function renderJudgmentGuide(): string {
   ].join("\n");
 }
 
+/**
+ * 入力レコード数の行。重複(同じ内容の再送)と更新(AnswerRun の pending → 最終状態 →
+ * フィードバック)を分けて添える(更新は重複ではない。issue #38)。
+ */
+function renderInputCount(report: PromotionReport): string {
+  const notes: string[] = [];
+  if (report.duplicateRecordCount > 0) {
+    notes.push(`重複 ${report.duplicateRecordCount} 件を除いて集計`);
+  }
+  if (report.updatedRecordCount > 0) {
+    notes.push(
+      `同じ記録の更新 ${report.updatedRecordCount} 件(AnswerRun の pending → 最終状態など)は後の状態で集計`,
+    );
+  }
+  return `入力レコード数: ${report.inputRecordCount}${notes.length > 0 ? `(${notes.join("。")})` : ""}`;
+}
+
 export function renderPromotionReportText(report: PromotionReport): string {
   const lines: string[] = [
     "# 昇格判定レポート(T-014)",
     "",
     `生成時刻: ${report.generatedAt}`,
-    `入力レコード数: ${report.inputRecordCount}`,
+    renderInputCount(report),
     `run数: ${report.totalRuns}(resolved=${report.resolvedRuns} unresolved=${report.unresolvedRuns} 未確定=${report.undecidedRuns})`,
     "",
+    ...renderUserMismatchWarnings(report.userMismatchWarnings),
     "## ソース別未解決率(AnswerRun単位)",
     "",
   ];
@@ -94,16 +148,18 @@ export function renderPromotionReportText(report: PromotionReport): string {
     lines.push(...report.sourceStats.map(renderSourceRow));
   }
 
-  lines.push("", "## 再検索回数分布(runIdで束ねたsearch呼び出し)", "");
-  if (report.iterationDistribution.length === 0) {
-    lines.push("  (search呼び出しの記録がありません)");
+  lines.push(
+    "",
+    "## 再検索回数分布(run内のsearch呼び出し件数: 0回=検索なし、1回=1発、2回以上=再検索)",
+    "",
+    "  結果確定済み(resolved/unresolved)のrunごとに search の呼び出しを数える(重複行を除き、",
+    "  (runId, userId) で束ねたもの)。describe / fetch / list の呼び出しは数えない",
+    "",
+  );
+  if (report.searchCountDistribution.length === 0) {
+    lines.push("  (結果確定済みのrunがありません)");
   } else {
-    lines.push(
-      ...report.iterationDistribution.map(
-        (b) =>
-          `  ${b.searchIterations}回: runs=${b.runs} unresolved=${b.unresolvedRuns}`,
-      ),
-    );
+    lines.push(...report.searchCountDistribution.map(renderSearchCountBucket));
   }
 
   lines.push("", "## 失敗クエリ(未解決run、新しい順)", "");

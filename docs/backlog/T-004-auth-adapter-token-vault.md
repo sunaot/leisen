@@ -14,6 +14,10 @@
 - **Token Vault実装**: リフレッシュトークンの暗号化保管(KMS連携)、ローテーション、失効。IdPのdeprovisioningイベント(SCIM等)からの各SaaSトークンrevoke
 - 初回同意フロー用のエンドポイント(T-007/T-009の接続促し導線が使う)
 - 失効・スコープ不足時のエラー分類をGatewayに伝播
+- `Credential.expiresAt`(connector-sdk)が 0 以下の場合の意味(「失効時刻不明」)を Token Vault の表現と合わせて確定し、ADR-016 追補に記す。現状は SDK 未定義で、connector-github は暫定で「判定せず GitHub の 401 に委ねる」(`packages/connector-github/src/api.ts` の TODO。NaN / ±Infinity は失効扱い)
+
+## 人間への確認事項(T-003 セキュリティレビュー 2026-09-27 からの申し送り)
+- **H2**: `IdpAdapter.authenticate`(HTTP配線によりMCPリクエストごとに呼ばれる)の結果キャッシュを導入する場合、キャッシュキーはセッショントークンのハッシュ(トークン値そのものを保持しない)、TTL は「IdP 側の失効がGatewayに反映されるまでの遅延上限」として本タスクで定める。現状はキャッシュなし・毎リクエスト検証(T-003 注記)
 
 ## 受け入れ条件
 - [ ] サンドボックスに対する結合テスト手順がREADME化され、手動実行結果がPRに添付されている

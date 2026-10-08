@@ -12,8 +12,8 @@
 | # | 工程 | 概要 | 主な参照 |
 |---|---|---|---|
 | 1 | アセスメント | 対象ソースの棚卸し、認可実現性の確認(auth-matrix)、privateScopes方針の決定 | docs/auth-matrix.md、ADR-013、docs/usage-policy-template.md |
-| 2 | PoC | 限定ユーザー・限定ソースで deployment.yaml を構成し評価セットで検証 | T-008、T-012(リファレンスデプロイ) |
-| 3 | 全社展開 | IdP連携・全対象ソース接続・利用規程の発効・カナリア文書の常設 | T-012、T-013、threat-model §カナリア |
+| 2 | PoC | 限定ユーザー・限定ソースで deployment.yaml を構成し評価セットで検証 | T-008、T-012(リファレンスデプロイ、docs/install.md) |
+| 3 | 全社展開 | IdP連携・全対象ソース接続・利用規程の発効・カナリア文書の常設 | T-012(docs/install.md の導入チェックリスト)、T-013、threat-model §カナリア |
 | 4 | **検索層有効化判定** | 監査ログの実測に基づき、ソース単位で検索層の有効化(昇格)を判断 | **本書 §有効化判定(T-014)** |
 | 5 | ナレッジレイヤー | Phase 3(マップ生成)。v1.0スコープ外 | ADR-008 |
 
@@ -33,12 +33,23 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
    ```
    kp-promotion-report \
      --audit audit-records.jsonl \
+     --audit answer-runs.jsonl \
      --sources sources.json \
      --raw-queries raw-queries.jsonl \
      --accessor <監査閲覧担当のuserId> \
      --meta-audit-out meta-audit.jsonl
    ```
 
+   - `--audit` は複数回指定できる。Gateway の監査ログ(ToolInvocation)と、Orchestrator を
+     MCP サーバーとして動かす構成(ADR-018)で別ファイルに書かれる AnswerRun
+     (`answer-runs.jsonl`)を両方渡す。kp-ask を単発で使う場合は `--answer-run-jsonl <path>` で
+     AnswerRun をファイルに追記しておく(省略時は stderr に `{"kind":"audit", …}` の行で出るので、
+     その行だけをファイルに取り込んでもよい)。開発用の `audit.sink: stdout` の標準出力も同じ形で読める。
+     stderr や標準出力を保存したファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う
+   - 使い方は `kp-promotion-report --help`。入力の不備はファイル名・行番号(sources.json は
+     `sources.json(<パス>): <場所>: <説明>`)で示す。監査レコードでない行は、渡すべき形式の案内付きで拒否する
+   - 冒頭の「入力レコード数」には、除いた重複(同じ内容の再送)と、後の状態にまとめた更新
+     (AnswerRun の pending → 最終状態 → フィードバック。重複ではない)を分けて添える
    - `sources.json` は sourceId → `{ nativeSearch, slack }` の分類メタ。コネクタ実装の
      ConnectorCapabilities と一致させる
    - 監査ログの閲覧はメタ監査の対象(ADR-013 §3)。`--meta-audit-out` に出力される
@@ -52,6 +63,11 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
    判定ガイド(product-design.md 5.1 の昇格基準)に照らして評価する。
    失敗原因のサンプリング調査(「文書は存在するのにネイティブ検索で到達できない」の
    確認)は人手で行う
+   - 再検索回数は run 内の search 呼び出しの件数(0回=検索なし、1回=1発、2回以上=再検索)。
+     describe / fetch / list は数えない(docs/audit-queries.md §2)
+   - レポート冒頭に「警告」(userId が AnswerRun と一致しない ToolInvocation)が出た場合、
+     その呼び出しは集計から除外されている。判定の前に docs/audit-queries.md §0 のクエリで
+     原因(実装の不具合・runId の申告の偽装)を調べる
 3. 昇格を決めたソースについて deployment.yaml の `connectors[].searchLayer.enabled` を
    true にし、Ingest開始・初期インデックス構築・post-filtering稼働の標準手順
    (T-012/T-016以降で確定)を実施する

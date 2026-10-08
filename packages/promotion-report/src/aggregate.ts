@@ -2,9 +2,29 @@
  * 昇格判定レポートの集計(T-014、ADR-006「有効化は証拠駆動」)。
  *
  * 2層監査ログ(ADR-011)から、ソース別未解決率(AnswerRun単位)・
- * 再検索回数分布(runIdで束ねたToolInvocation)・失敗クエリを集計する。
+ * 再検索回数分布(run 内の search 呼び出し件数)・失敗クエリを集計する。
  * SQL版のサンプルは docs/audit-queries.md。将来の管理画面化を見据え、
  * この集計は表示(render.ts / cli.ts)から分離した純粋関数にする。
+ *
+ * 入力の重複と更新: 監査 JSONL は at-least-once で同じレコードが複数行に現れうるため、
+ * 冪等キー(requestId / runId / accessId / purgeId)で1件にまとめてから集計する
+ * (dedupeAuditRecords)。同じキーで内容も同じ行は「重複」(再送)、内容が変わった行は
+ * 「更新」(AnswerRun の pending → 最終状態 → フィードバック。issue #38)として別に数え、
+ * 後のレコードを採る。ただし AnswerRun の pending は確定済み(pending 以外)の状態を置き換えない
+ * (--audit のファイルの順序が前後しても、集計は最終状態を使う)。
+ *
+ * AnswerRun と ToolInvocation の結合は (runId, userId)(docs/audit-queries.md §0)。
+ * runId は呼び出し元の申告で Gateway は認証しないため、runId だけで結合すると、別の
+ * 利用者が同じ runId を申告した呼び出しを他人の run に混ぜうる。同じ runId の AnswerRun が
+ * あるのに userId が一致しない ToolInvocation は、どの run の呼び出しか確定できないので
+ * 集計(ソース別・再検索回数)から除外し、run ごとの件数だけを警告(userMismatchWarnings)に
+ * 出す。警告に userId・文書ID・クエリは出さない。AnswerRun のない runId の ToolInvocation
+ * (runId 未申告の単発呼び出し等)は不一致ではなく、ソース別の呼び出し数にだけ数える。
+ *
+ * iteration(ADR-011 追記、ADR-017 決定2)は run 内のツール呼び出しの通番(0 始まり。
+ * describe / search / fetch / list をすべて含み、並列呼び出しも個別に採番)であり、run 内の
+ * 順序付けにだけ意味がある。回数の集計には使わない(max(iteration)+1 は describe や fetch の
+ * 呼び出しまで数えてしまう。ADR-017 確認事項4)。
  *
  * 扱わないもの:
  * - **post-filtering前の候補件数**: フィールド自体が監査スキーマに存在しない
@@ -18,12 +38,13 @@
  * 呼び出し側は必ずそれを監査ストアに書き込むこと。
  */
 import { randomUUID } from "node:crypto";
-import type {
-  AnswerRunRecord,
-  AuditAccessRecord,
-  AuditRecord,
-  RawQueryRecord,
-  ToolInvocationRecord,
+import {
+  auditRecordIdempotencyKey,
+  type AnswerRunRecord,
+  type AuditAccessRecord,
+  type AuditRecord,
+  type RawQueryRecord,
+  type ToolInvocationRecord,
 } from "@kp/gateway";
 import {
   classifySource,
@@ -34,22 +55,46 @@ import {
 export interface SourceStat {
   sourceId: string;
   eligibility: PromotionEligibility;
-  /** このソースへのツール呼び出しがあった、結果確定済み(resolved/unresolved)run数 */
+  /**
+   * このソースを探索した(describe 以外 — search / fetch / list — の呼び出しがあった)、
+   * 結果確定済み(resolved/unresolved)run数。describe は数えない: T-007 の Orchestrator は
+   * run の冒頭で全ソースに describe を呼ぶため、数えると全ソースが全 run に現れる
+   */
   runs: number;
   unresolvedRuns: number;
   /** unresolvedRuns / runs。runs=0 なら null */
   unresolvedRate: number | null;
   /** 全未解決runに占める、このソースを検索していたrunの割合(5.1「ソース起因の割合」の近似) */
   shareOfUnresolved: number | null;
-  /** ツール呼び出し総数(結果確定済みrun以外も含む) */
+  /**
+   * ツール呼び出し総数(describe を含む。結果確定済みrun以外・AnswerRun のない単発呼び出しも
+   * 含む。userId が AnswerRun と一致せず除外したものは含まない)
+   */
   invocations: number;
 }
 
-export interface IterationBucket {
-  /** searchツールの反復回数(max(iteration)+1) */
-  searchIterations: number;
+/**
+ * 再検索回数分布の1区分。再検索回数 = run 内の search の ToolInvocation の件数
+ * (重複行を除き、(runId, userId) で束ねたもの)。0回 = 検索なし、1回 = 1発、
+ * 2回以上 = 再検索。describe / fetch / list の呼び出しは数えない。
+ */
+export interface SearchCountBucket {
+  /** run 内の search 呼び出し件数 */
+  searchCount: number;
   runs: number;
   unresolvedRuns: number;
+}
+
+/**
+ * (runId, userId) 結合の不一致の警告(docs/audit-queries.md §0)。同じ runId の AnswerRun が
+ * あるのに userId が一致しない ToolInvocation を集計から除外した件数。原因(実装の不具合・
+ * runId の申告の偽装)の調査は §0 のクエリで行う。内容は runId と件数のみ(userId・
+ * 文書ID・クエリは出さない)。
+ */
+export interface UserMismatchWarning {
+  runId: string;
+  /** 集計から除外した ToolInvocation の件数(重複行を除いた後) */
+  invocations: number;
 }
 
 export interface FailedQuery {
@@ -69,7 +114,19 @@ export interface FailedQuery {
 export interface PromotionReport {
   /** ISO 8601(レポート生成時刻) */
   generatedAt: string;
+  /** 入力レコード数(重複行を含む、読んだまま) */
   inputRecordCount: number;
+  /**
+   * 重複として集計から除いたレコード数(同じ冪等キーで内容も同じ行。at-least-once の再送による
+   * JSONL の重複行)
+   */
+  duplicateRecordCount: number;
+  /**
+   * 更新として後のレコードに置き換えたレコード数(同じ冪等キーで内容が変わった行。AnswerRun の
+   * pending → 最終状態 → フィードバック)。重複ではない。inputRecordCount = 集計した件数 +
+   * duplicateRecordCount + updatedRecordCount
+   */
+  updatedRecordCount: number;
   totalRuns: number;
   resolvedRuns: number;
   unresolvedRuns: number;
@@ -77,9 +134,18 @@ export interface PromotionReport {
   undecidedRuns: number;
   /** shareOfUnresolved 降順(判定対象外・未分類は後方) */
   sourceStats: SourceStat[];
-  iterationDistribution: IterationBucket[];
+  /**
+   * 再検索回数分布(searchCount 昇順)。結果確定済みrunを1件ずつ、いずれかの区分に入れる
+   * (search のないrunは 0回。区分の runs の合計 = resolvedRuns + unresolvedRuns)
+   */
+  searchCountDistribution: SearchCountBucket[];
   /** 未解決run(startedAt降順) */
   failedQueries: FailedQuery[];
+  /**
+   * 警告: runId は同じだが userId が AnswerRun と一致しない ToolInvocation(runId 昇順)。
+   * これらは sourceStats / searchCountDistribution の集計から除外してある
+   */
+  userMismatchWarnings: UserMismatchWarning[];
   /**
    * 本集計の実行を表すメタ監査レコード(ADR-013 §3)。呼び出し側が
    * 監査ストアへ書き込む義務を負う。rawQueryを参照した場合は
@@ -110,6 +176,120 @@ function isDecided(run: AnswerRun): boolean {
   return run.finalOutcome === "resolved" || run.finalOutcome === "unresolved";
 }
 
+/** 集計に使う ToolInvocation と、(runId, userId) で束ねた AnswerRun。 */
+interface CountedInvocation {
+  invocation: ToolInvocation;
+  /** 同じ runId・同じ userId の AnswerRun。AnswerRun のない runId(単発呼び出し等)は undefined */
+  run: AnswerRun | undefined;
+}
+
+/**
+ * ToolInvocation を AnswerRun に (runId, userId) で結合する(docs/audit-queries.md §0)。
+ * 同じ runId の AnswerRun があるのに userId が異なるものは counted に入れず、runId ごとの
+ * 件数だけを mismatchedByRunId に数える。
+ */
+function joinInvocationsToRuns(
+  invocations: readonly ToolInvocation[],
+  runById: ReadonlyMap<string, AnswerRun>,
+): { counted: CountedInvocation[]; mismatchedByRunId: Map<string, number> } {
+  const counted: CountedInvocation[] = [];
+  const mismatchedByRunId = new Map<string, number>();
+  for (const invocation of invocations) {
+    const run = runById.get(invocation.runId);
+    if (run !== undefined && run.userId !== invocation.userId) {
+      mismatchedByRunId.set(
+        invocation.runId,
+        (mismatchedByRunId.get(invocation.runId) ?? 0) + 1,
+      );
+      continue;
+    }
+    counted.push({ invocation, run });
+  }
+  return { counted, mismatchedByRunId };
+}
+
+/** キーの順序に依らない JSON(重複=同じ内容の判定用)。 */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested !== null && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : nested,
+  );
+}
+
+/**
+ * 同じキーの後のレコードで置き換えるか。後のレコードを採る(InMemoryAuditStore と同じ)が、
+ * AnswerRun の pending は確定済み(pending 以外)の状態を置き換えない(ファイルの順序が前後しても
+ * 最終状態で集計する)。
+ */
+function supersedes(next: AuditRecord, current: AuditRecord): boolean {
+  return !(
+    next.recordType === "answer_run" &&
+    current.recordType === "answer_run" &&
+    next.finalOutcome === "pending" &&
+    current.finalOutcome !== "pending"
+  );
+}
+
+/** dedupeAuditRecordsDetailed の結果。 */
+export interface DedupedAuditRecords {
+  /** 冪等キーごとに1件(順序は最初の出現順) */
+  records: AuditRecord[];
+  /** 同じキーで内容も同じ行(at-least-once の再送)の数 */
+  duplicates: number;
+  /** 同じキーで内容が変わった行(AnswerRun の pending → 最終状態 → フィードバック)の数 */
+  updates: number;
+}
+
+/**
+ * 冪等キー(gateway の auditRecordIdempotencyKey: requestId / runId / accessId /
+ * purgeId)で1件にまとめ、重複(同じ内容の再送)と更新(内容が変わった後の行)を分けて数える。
+ * 監査 JSONL は at-least-once で、書き込みの成否が確定しない失敗の再送により同じレコードが
+ * 複数行に現れうる(gateway の audit/jsonl.ts)。AnswerRun は同じ runId で pending → 最終状態
+ * → フィードバックの行が並ぶ(orchestrator の AnswerRunJsonlSink)。
+ */
+export function dedupeAuditRecordsDetailed(records: readonly AuditRecord[]): DedupedAuditRecords {
+  const byKey = new Map<string, AuditRecord>();
+  // 見た内容は2回以上現れたキーについてだけ覚える(大半のキーは1回しか現れない)
+  const contentsByKey = new Map<string, Set<string>>();
+  let duplicates = 0;
+  let updates = 0;
+  for (const record of records) {
+    const key = auditRecordIdempotencyKey(record);
+    const current = byKey.get(key);
+    if (current === undefined) {
+      byKey.set(key, record);
+      continue;
+    }
+    let contents = contentsByKey.get(key);
+    if (contents === undefined) {
+      // 最初の重なり: それまでに見たのは current(最初の行)だけ
+      contents = new Set([canonicalJson(current)]);
+      contentsByKey.set(key, contents);
+    }
+    const content = canonicalJson(record);
+    if (contents.has(content)) {
+      duplicates += 1;
+    } else {
+      contents.add(content);
+      updates += 1;
+    }
+    if (supersedes(record, current)) {
+      byKey.set(key, record);
+    }
+  }
+  return { records: [...byKey.values()], duplicates, updates };
+}
+
+/** 冪等キーで1件にまとめたレコード(dedupeAuditRecordsDetailed の records)。 */
+export function dedupeAuditRecords(records: readonly AuditRecord[]): AuditRecord[] {
+  return dedupeAuditRecordsDetailed(records).records;
+}
+
 /**
  * パッケージ外向けの入口。メタ監査の書き込み(ADR-013 §3)を型で強制する:
  * writeMetaAudit が成功するまでレポートを返さない(fail-closed、不変条件2)。
@@ -133,36 +313,46 @@ export function aggregatePromotionReport(
     throw new Error("accessorUserId is required (meta audit, ADR-013 §3)");
   }
 
+  // at-least-once の重複行を除き、更新(pending → 最終状態など)は後の状態にまとめてから数える
+  // (二重計上しない)
+  const { records, duplicates, updates } = dedupeAuditRecordsDetailed(input.records);
+
   // メタ監査(audit_access / retention_purge)レコードは集計対象のrunデータではない
-  const answerRuns = input.records.filter(
+  const answerRuns = records.filter(
     (r): r is AnswerRun => r.recordType === "answer_run",
   );
-  const invocations = input.records.filter(
+  const invocations = records.filter(
     (r): r is ToolInvocation => r.recordType === "tool_invocation",
   );
 
+  // 重複除去後は runId ごとに AnswerRun が1件(同じ runId は後のレコード)
   const runById = new Map(answerRuns.map((r) => [r.runId, r]));
   const decidedRuns = answerRuns.filter(isDecided);
   const unresolvedTotal = decidedRuns.filter(
     (r) => r.finalOutcome === "unresolved",
   ).length;
 
+  // --- AnswerRun と ToolInvocation の結合((runId, userId)、docs/audit-queries.md §0) ---
+  const { counted, mismatchedByRunId } = joinInvocationsToRuns(invocations, runById);
+
   // --- ソース別未解決率(docs/audit-queries.md §1 と同じ結合) ---
   const bySource = new Map<
     string,
     { runIds: Set<string>; unresolvedRunIds: Set<string>; invocations: number }
   >();
-  for (const ti of invocations) {
+  for (const { invocation: ti, run } of counted) {
     let stat = bySource.get(ti.sourceId);
     if (!stat) {
       stat = { runIds: new Set(), unresolvedRunIds: new Set(), invocations: 0 };
       bySource.set(ti.sourceId, stat);
     }
     stat.invocations += 1;
-    const run = runById.get(ti.runId);
+    // describe はソースの説明の取得で、そのソースを探索したことにならない
+    // (Orchestrator は run の冒頭で全ソースに describe を呼ぶ)。run の所属には数えない
+    if (ti.tool === "describe") continue;
     if (run && isDecided(run)) {
-      stat.runIds.add(ti.runId);
-      if (run.finalOutcome === "unresolved") stat.unresolvedRunIds.add(ti.runId);
+      stat.runIds.add(run.runId);
+      if (run.finalOutcome === "unresolved") stat.unresolvedRunIds.add(run.runId);
     }
   }
 
@@ -195,30 +385,34 @@ export function aggregatePromotionReport(
     );
 
   // --- 再検索回数分布(docs/audit-queries.md §2) ---
-  const searchIterationsByRun = new Map<string, number>();
-  for (const ti of invocations) {
-    if (ti.tool !== "search") continue;
-    const run = runById.get(ti.runId);
-    if (!run || !isDecided(run)) continue;
-    const prev = searchIterationsByRun.get(ti.runId) ?? -1;
-    searchIterationsByRun.set(ti.runId, Math.max(prev, ti.iteration));
+  // 再検索回数 = 結果確定済みrun内の search の ToolInvocation の件数。重複行は
+  // dedupeAuditRecords で除去済み(tool_invocation の冪等キーは requestId)で、
+  // (runId, userId) で束ねたものだけを数える。0回 = 検索なし、1回 = 1発、
+  // 2回以上 = 再検索。iteration は describe / fetch / list も採番する通番のため使わない。
+  const searchCountByRunId = new Map<string, number>();
+  for (const { invocation: ti, run } of counted) {
+    if (ti.tool !== "search" || !run || !isDecided(run)) continue;
+    searchCountByRunId.set(run.runId, (searchCountByRunId.get(run.runId) ?? 0) + 1);
   }
-  const buckets = new Map<number, IterationBucket>();
-  for (const [runId, maxIteration] of searchIterationsByRun) {
-    const searchIterations = maxIteration + 1;
-    let bucket = buckets.get(searchIterations);
+  const buckets = new Map<number, SearchCountBucket>();
+  for (const run of decidedRuns) {
+    const searchCount = searchCountByRunId.get(run.runId) ?? 0;
+    let bucket = buckets.get(searchCount);
     if (!bucket) {
-      bucket = { searchIterations, runs: 0, unresolvedRuns: 0 };
-      buckets.set(searchIterations, bucket);
+      bucket = { searchCount, runs: 0, unresolvedRuns: 0 };
+      buckets.set(searchCount, bucket);
     }
     bucket.runs += 1;
-    if (runById.get(runId)?.finalOutcome === "unresolved") {
-      bucket.unresolvedRuns += 1;
-    }
+    if (run.finalOutcome === "unresolved") bucket.unresolvedRuns += 1;
   }
-  const iterationDistribution = [...buckets.values()].sort(
-    (a, b) => a.searchIterations - b.searchIterations,
+  const searchCountDistribution = [...buckets.values()].sort(
+    (a, b) => a.searchCount - b.searchCount,
   );
+
+  // --- (runId, userId) の不一致の警告(runId と件数のみ) ---
+  const userMismatchWarnings: UserMismatchWarning[] = [...mismatchedByRunId]
+    .map(([runId, count]) => ({ runId, invocations: count }))
+    .sort((a, b) => (a.runId < b.runId ? -1 : a.runId > b.runId ? 1 : 0));
 
   // --- 失敗クエリの原文表示(docs/audit-queries.md §3、LEFT JOIN相当) ---
   // digestのみでは判定材料にならないため原文を引くが、保持期間切れで
@@ -226,7 +420,7 @@ export function aggregatePromotionReport(
   const rawByKey = new Map<string, string>();
   for (const rq of input.rawQueries ?? []) {
     // 同一digestが複数ユーザーに存在しうるため userId も結合キーに含める
-    rawByKey.set(`${rq.queryDigest} ${rq.userId}`, rq.rawQuery);
+    rawByKey.set(`${rq.queryDigest}\u0000${rq.userId}`, rq.rawQuery);
   }
   const failedQueries: FailedQuery[] = answerRuns
     .filter((r) => r.finalOutcome === "unresolved")
@@ -236,7 +430,7 @@ export function aggregatePromotionReport(
       let status: FailedQuery["status"] = "no_digest";
       if (run.finalQueryDigest) {
         rawQuery =
-          rawByKey.get(`${run.finalQueryDigest} ${run.userId}`) ?? null;
+          rawByKey.get(`${run.finalQueryDigest}\u0000${run.userId}`) ?? null;
         status = rawQuery !== null ? "available" : "expired_or_missing";
       }
       return {
@@ -264,13 +458,16 @@ export function aggregatePromotionReport(
   return {
     generatedAt: timestamp,
     inputRecordCount: input.records.length,
+    duplicateRecordCount: duplicates,
+    updatedRecordCount: updates,
     totalRuns: answerRuns.length,
     resolvedRuns: decidedRuns.length - unresolvedTotal,
     unresolvedRuns: unresolvedTotal,
     undecidedRuns: answerRuns.length - decidedRuns.length,
     sourceStats,
-    iterationDistribution,
+    searchCountDistribution,
     failedQueries,
+    userMismatchWarnings,
     metaAuditRecords,
   };
 }

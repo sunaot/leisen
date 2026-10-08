@@ -11,7 +11,7 @@ Gateway 本体は `IdpAdapter` IF(`authenticate` / `getCredential` /
 ## 全体像
 
 ```
-クライアント ──(Bearerセッショントークン)──▶ Gateway
+クライアント ──(毎リクエストのBearerセッショントークン)──▶ Gateway
     Gateway ──▶ IdpAdapter.authenticate(token) ──▶ Identity { userId, session }
     Gateway ──▶ IdpAdapter.getCredential(identity, sourceId)
                    │  CredentialCache(userId×sourceId、TTL、single-flight)
@@ -19,6 +19,11 @@ Gateway 本体は `IdpAdapter` IF(`authenticate` / `getCredential` /
                           └─▶ Credential(oauth_bearer | delegated_identity)
     Gateway ──▶ Connector.search(AuthContext, ...)
 ```
+
+`authenticate` はMCPのHTTPリクエストごとに、JSON-RPCをディスパッチする前に
+呼ばれる(ADR-001 追補3 決定1。接続やセッションに本人を束縛しない)。
+失敗の分類はそのままHTTP応答に写る: `unauthenticated` → 401、
+`idp_unavailable` → 503、`misconfigured` 等 → 500(`proxy/http.ts`)。
 
 ## 認可方式の吸収(ADR-010 / auth-matrix.md §12.1)
 
@@ -47,11 +52,15 @@ IdPトークン(subject token)を交換に使うため、userId文字列だけ�
    (プロバイダ委譲・キャッシュは基底クラスが担う)
 2. 検証失敗は `IdpError("unauthenticated")`、IdP到達不能は
    `IdpError("idp_unavailable")` で区別する(fail-closed。到達不能を
-   unauthenticated に潰すと利用者へ誤った再ログイン誘導をする)
-3. HTTP呼び出しはfetch注入・タイムアウト設定可能にする(開発ルール:
+   unauthenticated に潰すと利用者へ誤った再ログイン誘導をする。HTTP層では
+   401 と 503 に分かれる)
+3. `authenticate` はリクエストごとに呼ばれるため、検証のコスト(IdPへの往復)は
+   毎リクエストのレイテンシに乗る。検証結果をキャッシュする場合はTTLが失効
+   反映の遅延上限になる(採否はT-004で判断)
+4. HTTP呼び出しはfetch注入・タイムアウト設定可能にする(開発ルール:
    外部APIは薄いラッパー越し)
-4. `factory.ts` の `IdpAdapterConfig` にkindを追加する
-5. 参照実装: `keycloak.ts`(イントロスペクション方式。採用理由は
+5. `factory.ts` の `IdpAdapterConfig` にkindを追加する
+6. 参照実装: `keycloak.ts`(イントロスペクション方式。採用理由は
    ファイル先頭コメント)
 
 ## 新しいソース(CredentialProvider)を追加する

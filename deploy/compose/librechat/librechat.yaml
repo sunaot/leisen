@@ -1,0 +1,106 @@
+# LibreChat の設定(deploy/compose の LibreChat overlay、T-021、ADR-018 決定8)。
+#
+# docker-compose.librechat.yml が librechat コンテナの /app/librechat.yaml に読み取り専用で
+# マウントする。LibreChat v0.8.7(設定の version 1.3.13)の librechat.example.yaml の構造に
+# 合わせ、この構成で使う項目だけを書く。LibreChat は起動時にこのファイルを検証し、不正なら
+# 終了する(docker compose logs librechat で確認する)。
+#
+# 秘密情報は書かない(不変条件6)。${VAR} は LibreChat が実行時に環境変数から展開する
+# (librechat/librechat.env と compose の environment)。
+#
+# UI 側の LLM が呼べる外部のツールは Orchestrator(MCP サーバー leisen)だけにする
+# (docs/ui-librechat.md「セキュリティ上の注意」、threat-model TM-I2 / TM-I3):
+#   - interface.mcpServers.create: false  利用者が MCP サーバーを追加できない
+#   - mcpSettings.allowedDomains          MCP の接続先を Orchestrator の origin だけにする
+#   - endpoints.agents.capabilities       エージェントの Actions・Web 検索・コード実行を外す
+# LibreChat の版を上げるときは、これらの項目の意味と既定値を新しい版のソースで確かめ直す。
+version: 1.3.13
+cache: true
+
+interface:
+  # 会話履歴の保持期間(ADR-013 §4。deployment.yaml の chatHistory.retentionDays: 90)。
+  # v0.8.7 の retentionMode: all は、一時チャットに限らずすべての会話・メッセージに
+  # temporaryChatRetention(時間)の期限を付ける(期限は保存・更新のたびに付け直す)。
+  # 90 日 = 2160 時間。一時チャットだけを短くする generalChatRetention は v0.8.8 以降の
+  # 項目で、v0.8.7 では無視される(docs/ui-librechat.md「履歴の保持」)
+  retentionMode: all
+  temporaryChatRetention: 2160
+  # MCP サーバーの権限。use(下の leisen を使う)だけを許し、利用者による MCP サーバーの
+  # 追加・共有を止める。v0.8.7 はここに書いた値を起動のたびに USER・ADMIN の両ロールへ
+  # 適用する(書かないとロールの既定値: USER は追加不可、ADMIN は追加・共有可)。利用者が
+  # 追加したサーバーは UI 側の LLM のツールになり、会話の内容(本人の権限で得た回答)を
+  # 運用者が関知しない送り先へ渡せてしまう
+  mcpServers:
+    use: true
+    create: false
+    share: false
+    public: false
+
+mcpSettings:
+  # MCP の接続先の許可リスト。v0.8.7 は設定すると、YAML・利用者定義のどちらの MCP サーバーも
+  # ここに一致する接続先(スキーム・ホスト・ポートを照合)にしか接続しない。未設定だと私設 IP・
+  # localhost 等を SSRF として拒否するだけで、公開ホストへはすべて接続できる。
+  # allowedAddresses(私設 IP 宛ての SSRF 防御の例外)は、allowedDomains を設定すると MCP の
+  # 判定で参照されないため書かない(接続先の制限にもならない)。
+  # 値は下の leisen の url の origin(docker-compose.librechat.yml の orchestrator の --listen)
+  allowedDomains:
+    - 'http://orchestrator:8790'
+
+mcpServers:
+  leisen:
+    type: streamable-http
+    url: 'http://orchestrator:8790/mcp'
+    # 表示名(英数字と空白だけ。LibreChat の制約)
+    title: 'Leisen'
+    description: '社内ナレッジ検索。利用者本人の権限で検索し、出典付きで回答します'
+    headers:
+      # OpenID でログインした利用者本人のアクセストークンをそのまま転送する(ADR-018 決定8。
+      # OPENID_REUSE_TOKENS=true が前提)。Orchestrator はトークンを保存せず、Gateway に
+      # 渡して有効性の判断を委ねる。v0.8.7 はこのプレースホルダを運用者が定義した(この
+      # ファイルの)サーバーでだけ展開する。第三者の MCP サーバーには書かない
+      Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}'
+    # OAuth の自動検出をしない(認可は本人トークンの直接転送で行う)
+    requiresOAuth: false
+    # 起動時には接続しない(利用者のトークンは利用者のリクエストにしかない)
+    startup: false
+    # ask は探索ループ(LLM と Gateway の往復)を回すため長めにとる(ミリ秒)
+    timeout: 300000
+    # Orchestrator が initialize で返す instructions(出典を改変せずに提示する等)を
+    # UI 側の LLM に渡す
+    serverInstructions: true
+
+endpoints:
+  agents:
+    # エージェント(MCP サーバーを選んだ通常の会話も内部ではエージェントとして動く)が使える
+    # 機能。v0.8.7 の既定の一覧から、会話の内容を外部のサービスへ送る機能を外す:
+    #   actions       利用者が OpenAPI で定義した任意の外部 API の呼び出し
+    #   web_search    検索・スクレイピングの外部サービス(利用者が自分のキーや URL を入れて使える)
+    #   execute_code  コード実行の外部サービス(同上)
+    # 一覧にない機能はサーバー側で実行されず、UI にも出ない。tools は MCP のツール(leisen)に
+    # 必要。版を上げたときに増えた機能はここに足すまで無効になる(見直してから足す)
+    capabilities:
+      - deferred_tools
+      - file_search
+      - artifacts
+      - subagents
+      - context
+      - skills
+      - tools
+      - chain
+      - ocr
+  custom:
+    # UI 側の LLM(チャットの相手。ask / feedback を呼ぶ)。LM Studio の OpenAI 互換 API
+    - name: 'LM Studio'
+      # LM Studio は API キーを見ない。空でない値が要るため librechat.env のダミーを使う
+      apiKey: '${LIBRECHAT_LLM_API_KEY}'
+      # 既定 http://host.docker.internal:1234/v1(docker-compose.librechat.yml)
+      baseURL: '${KP_LLM_BASE_URL}'
+      models:
+        # LM Studio の /v1/models から取得する。取得できないときはこの既定値を表示する
+        # (.env.example の KP_LLM_MODEL と同じ名前)
+        default:
+          - 'openai/gpt-oss-20b'
+        fetch: true
+      # 会話タイトルの生成に LLM を使わない(評価の負荷を増やさない)
+      titleConvo: false
+      modelDisplayLabel: 'LM Studio'

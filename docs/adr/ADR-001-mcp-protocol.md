@@ -49,3 +49,42 @@ Status: Accepted(2026-09-27 人間レビュー完了・承認。決定4のprefix
 ### SDK更新の進め方
 
 `@modelcontextprotocol/sdk` は1.30.0(2026-07-28版対応)へ更新するが、本追補の承認後に別PRで行う。更新PRの検証項目: (a) 旧版クライアントとのネゴシエーションとStreamable HTTPセッションヘッダの実挙動、(b) `resultType` の自動付与、(c) `CacheableResult`(`ttlMs`/`cacheScope`)の返却経路、(d) ネゴシエートされたプロトコルバージョンを固定値と突き合わせる回帰テストの追加(SDK更新時に必ずレビューが走るようにする)。
+
+### SDK更新の検証結果(2026-09-27)
+
+本節は上記「SDK更新の進め方」の検証結果の記録であり、決定1〜7は変更しない。
+
+`@modelcontextprotocol/sdk` を 1.29.0 から **1.30.1**(2026-09-23、npm の latest)に更新し、`packages/gateway/package.json` で exact 指定にピン留めした。caret を廃止したのは、lock の再生成や `npm update` で黙って上がるのを防ぎ、下記の回帰テストと併せて意図的な更新を強制するため(`docs/mcp-spec-2026-07-28-review.md` §C-2)。
+
+**前提の訂正: `@modelcontextprotocol/sdk` 1.30.x は仕様2026-07-28版を実装していない。** 1.30.0(2026-07-27)は保守リリース(Zod validation 修正、Content-Type 検証の改善、Streamable HTTP の SSE keep-alive 修正、依存と CI の更新)である。1.30.1 の配布物でも `LATEST_PROTOCOL_VERSION` は `2025-11-25`、`SUPPORTED_PROTOCOL_VERSIONS` は `2025-11-25` / `2025-06-18` / `2025-03-26` / `2024-11-05` / `2024-10-07` のまま。`server/discover`・`Mcp-Method`・`Mcp-Name`・`resultType`・`ttlMs`・`cacheScope`・`subscriptions/listen` は実装されておらず、`Mcp-Session-Id` の処理は残っている。「SDK更新の進め方」にある「1.30.0(2026-07-28版対応)」は誤りだった。
+
+review が「リリース即日対応」とした公式 TypeScript SDK の対応版は、v2 系の分割パッケージ(`@modelcontextprotocol/server` / `@modelcontextprotocol/client` / `@modelcontextprotocol/core`)とみられる。同じ `modelcontextprotocol/typescript-sdk` リポジトリから、2.0.0 が 2026-07-27、2.1.0 が 2026-09-23 に公開されている。2.1.0 の配布物には、2026-07-28 版の要素(`server/discover`、`Mcp-Method` / `Mcp-Name`、`resultType`、`ttlMs` / `cacheScope`、`subscriptions/listen`)が 2025 年版の旧フローと並んで含まれる。これは配布物の検索で確認しただけで、挙動は検証していない。
+
+検証項目の結果(SDK 1.30.1、回帰テスト `packages/gateway/test/sdk-protocol.test.ts`):
+
+- **(a) 旧版クライアントとのネゴシエーション、Streamable HTTP のセッションヘッダ**
+  - SDK の Client は `initialize` で常に `2025-11-25` を要求し、その版でネゴシエートされる
+  - 旧版(`2025-06-18` / `2025-03-26` / `2024-11-05` / `2024-10-07`)を要求するクライアントには、要求された版で応答する。未知の版(`2026-07-28` を含む)を要求されると `2025-11-25` で応答する
+  - `StreamableHTTPServerTransport` のステートレスモード(`sessionIdGenerator` 未指定)は、`initialize` を含むどの応答にも `mcp-session-id` を付けない。クライアントも送らない
+  - `initialize` 以降の要求は、ネゴシエート済みの版を `mcp-protocol-version` ヘッダで運ぶ。ヘッダのない要求(2025-03-26 以前のクライアント)も受理される。SUPPORTED 外の版(`2026-07-28`)を名乗るヘッダは HTTP 400 で拒否される
+- **(b) `resultType` の自動付与**: 行われない。結果スキーマにもこのフィールドはない
+- **(c) `CacheableResult`(`ttlMs` / `cacheScope`)の返却経路**: SDK には型も自動付与もない。結果スキーマはルーズなので、ハンドラが返した追加フィールドは型検証されずにそのまま通る。現時点の経路はこれだけである
+- **(d) 回帰テスト**: ネゴシエートされた版を固定値 `2025-11-25` と突き合わせ、`SUPPORTED_PROTOCOL_VERSIONS` も定数と突き合わせる。SDK の版が変わると失敗し、更新PRのレビューを強制する。SDK を改変して `2026-07-28` を名乗らせると6件失敗することを確認した
+
+**扱い(決定6に沿う):** 後方互換と版の選択は SDK のネゴシエーションに委ね(決定6)、Gateway 独自に 2026-07-28 版を話す層は作らない。したがって次のとおり扱う。
+
+- 決定1〜3、決定4、決定5のうち `tools/list` のユーザー非依存、決定6、決定7は、現行 SDK(2025-11-25 版)のステートレスモードで実装する
+- 仕様2026-07-28版に固有の項目(`Mcp-Method` / `Mcp-Name` ヘッダの検証、`server/discover`、`resultType`、決定5後半の `ttlMs` / `cacheScope`)は、**対応 SDK を採用するまで保留する**。2025-11-25 版でネゴシエートしている間は、ハンドラで手付けしない
+- v1 系(`@modelcontextprotocol/sdk`)が 2026-07-28 版に対応すれば、回帰テストが失敗して検知する。ただし対応が v2 系でしか提供されない場合、v1 系の回帰テストは反応しない。v2 系への移行は依存パッケージと API の変更を伴う(追補2 の SDK 採用の見直しになる)ため、別途判断する
+
+HTTP配線PRへの申し送り(SDK 1.30.1 の実挙動):
+
+- ステートレスな transport はリクエスト間で再利用できない(2回目は HTTP 500)。`Server` も同時に1つの transport にしか接続できない。決定2の意図(インスタンスにユーザー状態を持たせない)は変わらないが、実装は「ユーザー状態を持たないサーバー生成処理を共有し、`Server` と transport はリクエストごとに組み立てる」形になる
+- GET(スタンドアロン SSE)には 405 を返してよい。SDK の Client は 405 を「GET ストリームなし」として扱う
+- SDK の HTTP トランスポートの型定義は、本リポジトリの `exactOptionalPropertyTypes` と噛み合わない(1.29.0 から同じ)。`{ sessionIdGenerator: undefined }` は型エラーになり、transport をそのままでは `Transport` IF の引数に渡せない。プロパティの省略(実行時は同一)と、理由コメント付きの `as Transport` で回避できる
+- 1.30.x で transport のオプションに `keepAliveMs`(SSE keep-alive、既定 15000ms)と `maxRequestBodySize`(既定 4MiB、超過は 413)が加わった。既定値のままにするかは配線PRで判断する
+- T-005 / T-006 で Gateway が MCP クライアントになる場合も、SDK の Client は `2025-11-25` を要求する。接続先 MCP サーバーの対応版は、review §D のとおり着手時に確認する
+
+**人間への確認依頼:** 追補3 承認時の前提(1.30.0 が 2026-07-28 版に対応)が変わったので、再確認を求める。確認したいのは、上記の扱い(v1 系の現行 SDK で配線し、新仕様固有の項目は保留)で進めるか、v2 系への移行を先に検討するかである。
+
+**追記(2026-09-27、スパイク結果):** v2 系(2.1.0)への移行スパイク `docs/spikes/mcp-sdk-v2-migration-spike.md` を実施した。要点: v2 の `createMcpHandler` は既定(`legacy: 'stateless'`)で v1 系クライアント(1.29 / 1.30、2025-11-25 版の initialize フロー)もそのまま受ける、`server/discover` / `resultType` / `ttlMs` / `cacheScope` / `Mcp-Method` / `Mcp-Name` は SDK が自動で満たす、`mcp.ts` の移植差分は小さい(SDK 起因は約20行)、v1 系の保守は v2 公開(2026-07-27)から少なくとも6か月保証。HTTP 配線(T-003)は v1 で完了済みで SDK 依存部は隔離してあるため、確認したいのは「**v2 移行 PR をいつ行うか**」(追補2 の SDK 採用の見直しを伴う。移行時は 2.1.0 を exact 指定し、定数突き合わせではなく実通信で固定する回帰テストに置き換える)。

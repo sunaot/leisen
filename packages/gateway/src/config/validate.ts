@@ -6,10 +6,15 @@
  * 検証は設定値と ConnectorCapabilities(コード側の静的宣言)のみを見る。
  * ソースAPIへの照会は行わない。
  */
+import { BlockList, isIP } from "node:net";
 import type { ConnectorCapabilities } from "@kp/connector-sdk";
-import type { DeploymentConfig } from "./schema.js";
+import { AUDIT_SINK_JSONL, type DeploymentConfig } from "./schema.js";
 
-/** 検証エラーの機械可読コード。テストと運用ドキュメントが参照する。 */
+/**
+ * 検証エラーの機械可読コード。テストと運用ドキュメントが参照する。
+ * 静的検証(本モジュール)・ローダー(loader.ts)に加え、起動コード
+ * (bootstrap/)がコネクタ実体・資格情報・監査シンクの解決時に出すコードを含む。
+ */
 export type ConfigIssueCode =
   | "schema_violation"
   | "duplicate_connector_id"
@@ -20,7 +25,33 @@ export type ConfigIssueCode =
   | "fail_open_requires_confirmation"
   | "private_scopes_included_requires_confirmation"
   | "agent_execution_not_allowed_in_phase1"
-  | "secret_env_missing";
+  | "secret_env_missing"
+  /** audit.sink: jsonl に audit.jsonl.path がない(静的検証) */
+  | "audit_sink_options_missing"
+  // --- 以下は起動コード(bootstrap/)が出す ---
+  /** audit.sink が起動コードの解決できない値(stdout / jsonl 以外) */
+  | "unknown_audit_sink"
+  /** 監査シンクの出力先が使えない(書き込めない、rawQueryPath が監査ログと同じ等) */
+  | "audit_sink_options_invalid"
+  /** コネクタ kind の実装が見つからない(プログラム登録・組み込み・プラグインのいずれにもない) */
+  | "unknown_connector_kind"
+  /** プラグインは読み込めたが factory を公開していない、または不正なコネクタを返した */
+  | "connector_plugin_invalid"
+  /** コネクタ固有設定(settings)を factory が拒否した */
+  | "connector_settings_invalid"
+  /** コネクタの factory がそれ以外の理由で失敗した */
+  | "connector_factory_failed"
+  /** 有効なコネクタに auth.provider がない(本人資格情報の取得方式が未指定) */
+  | "connector_auth_provider_missing"
+  /** IdP Adapter を構築できない(開発用モックのセッション定義の不備等) */
+  | "idp_adapter_misconfigured"
+  /** 開発専用の部品(mock IdP / mock_env / dev-fixture)を NODE_ENV=production で使おうとした */
+  | "dev_only_in_production"
+  /**
+   * gateway.http.host がループバック以外なのに gateway.http.confirmExposedHost: true が
+   * ない(validateGatewayHttpExposure。起動コードが待ち受けの前に検査する。T-012)
+   */
+  | "http_host_exposed_requires_confirmation";
 
 export interface ConfigIssue {
   code: ConfigIssueCode;
@@ -108,6 +139,13 @@ export function validateDeploymentConfig(
       return;
     }
 
+    // 実体の登録とcapability連動の検証は有効なコネクタにのみ要求する(無効化
+    // されたコネクタは経路が存在しないため危険設定になりえず、起動コードは
+    // 実体を構築しない)
+    if (!connector.enabled) {
+      return;
+    }
+
     const capabilities = options.capabilities[connector.id];
     if (capabilities === undefined) {
       issues.push({
@@ -115,12 +153,6 @@ export function validateDeploymentConfig(
         path: `${base}.id`,
         message: `connector "${connector.id}" is not registered in this deployment`,
       });
-      return;
-    }
-
-    // capability連動の検証は有効なコネクタにのみ適用する(無効化された
-    // コネクタは経路が存在しないため危険設定になりえない)
-    if (!connector.enabled) {
       return;
     }
 
@@ -165,6 +197,15 @@ export function validateDeploymentConfig(
     });
   }
 
+  // audit.sink: jsonl は出力先の指定が必須(起動コードが JsonlAuditStore に解決する)
+  if (config.audit.sink === AUDIT_SINK_JSONL && config.audit.jsonl === undefined) {
+    issues.push({
+      code: "audit_sink_options_missing",
+      path: "audit.jsonl.path",
+      message: `audit.sink "${AUDIT_SINK_JSONL}" requires audit.jsonl.path (the JSONL file to append audit records to)`,
+    });
+  }
+
   // Phase 1では human-in-the-loop のみ許可(ADR-015)。解放は区分設定の
   // semanticsと本人同意の実装後に、このガードの緩和として行う
   for (const cls of ["scheduled", "autonomous"] as const) {
@@ -178,6 +219,59 @@ export function validateDeploymentConfig(
   }
 
   return issues;
+}
+
+/** IPv6 のループバック(::1)と IPv4 射影アドレスの 127.0.0.0/8。 */
+const IPV6_LOOPBACK = new BlockList();
+IPV6_LOOPBACK.addAddress("::1", "ipv6");
+IPV6_LOOPBACK.addSubnet("::ffff:127.0.0.0", 104, "ipv6");
+
+/**
+ * 待ち受けアドレスがループバックか(127.0.0.0/8、::1、IPv4 射影の 127.0.0.0/8、
+ * localhost)。名前解決はしない: localhost 以外のホスト名・省略形の IPv4(127.1 等)は
+ * 非ループバックとして扱う(確認を要求する安全側に倒す)。
+ */
+export function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  if (normalized === "localhost") {
+    return true;
+  }
+  switch (isIP(normalized)) {
+    case 4:
+      return normalized.split(".")[0] === "127";
+    case 6:
+      return IPV6_LOOPBACK.check(normalized, "ipv6");
+    default:
+      return false;
+  }
+}
+
+/**
+ * ループバック以外で待ち受ける構成の確認(T-003 レビュー minor-11、T-012)。
+ * Gateway は TLS を終端せず、Origin / Host ヘッダの検証(DNS rebinding 対策)も
+ * しない。0.0.0.0 等で待ち受けると、Bearer セッショントークンと検索結果が平文で
+ * ネットワークに出うるため、TLS 終端のリバースプロキシを前段に置く前提を
+ * gateway.http.confirmExposedHost: true で明示させる。
+ *
+ * 待ち受けの有無に関わる検査のため、静的検証(validateDeploymentConfig)ではなく
+ * 起動コード(bootstrap/assemble.ts の assembleGateway。kp-gateway serve / validate)が
+ * 適用する(待ち受けないツール用途の設定解析は妨げない)。
+ */
+export function validateGatewayHttpExposure(config: DeploymentConfig): ConfigIssue[] {
+  const { host, confirmExposedHost } = config.gateway.http;
+  if (isLoopbackHost(host) || confirmExposedHost === true) {
+    return [];
+  }
+  return [
+    {
+      code: "http_host_exposed_requires_confirmation",
+      path: "gateway.http.host",
+      message:
+        `"${host}" listens beyond loopback, but the gateway neither terminates TLS nor ` +
+        `validates Origin/Host headers. Put a TLS-terminating reverse proxy in front and set ` +
+        `gateway.http.confirmExposedHost: true (docs/install.md)`,
+    },
+  ];
 }
 
 /** 起動パス用: 不備が1件でもあれば DeploymentConfigError を投げる。 */

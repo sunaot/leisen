@@ -15,10 +15,11 @@
 export {
   generatePromotionReport,
   type FailedQuery,
-  type IterationBucket,
   type PromotionReport,
   type PromotionReportInput,
+  type SearchCountBucket,
   type SourceStat,
+  type UserMismatchWarning,
 } from "./aggregate.js";
 export * from "./render.js";
 export * from "./sources.js";

@@ -161,7 +161,7 @@ export class InMemoryAuditStore implements AuditStoreWriter {
 
   async writeBatch(records: readonly AuditRecord[]): Promise<void> {
     for (const record of records) {
-      this.byKey.set(idempotencyKey(record), record);
+      this.byKey.set(auditRecordIdempotencyKey(record), record);
     }
   }
 
@@ -185,7 +185,14 @@ export class InMemoryAuditStore implements AuditStoreWriter {
   }
 }
 
-function idempotencyKey(record: AuditRecord): string {
+/**
+ * 監査レコードの冪等キー(レコード種別ごと: tool_invocation は requestId、answer_run は
+ * runId、audit_access は accessId、retention_purge は purgeId)。at-least-once の再送で
+ * 同じレコードが複数回書かれうるため(BufferedAuditSink、JSONL の重複行)、読み手・
+ * 受け手はこのキーで重複を除く。同じキーのレコードは後から書かれたものを採る
+ * (InMemoryAuditStore、promotion-report の集計)。
+ */
+export function auditRecordIdempotencyKey(record: AuditRecord): string {
   switch (record.recordType) {
     case "answer_run":
       return `answer_run:${record.runId}`;

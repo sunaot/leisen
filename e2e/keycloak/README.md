@@ -35,6 +35,12 @@ skip され、通常の `npm test` は Docker なしで通る。CI では `keycl
 - クライアント `gateway`: イントロスペクション用 confidential クライアント
 - クライアント `e2e-cli`: テストがパスワードグラントでユーザートークンを
   得るための public クライアント(direct access grants 有効。開発専用)
+- クライアント `librechat`: リファレンスデプロイの LibreChat overlay(T-021、ADR-018)が
+  OpenID ログインに使う confidential クライアント(標準フローのみ、PKCE の S256 を必須)。
+  リダイレクト先はコールバック `http://localhost:3080/oauth/openid/callback`、ログアウト後の
+  戻り先は `http://localhost:3080/login` の完全一致だけ(ワイルドカードを使わない。LibreChat の
+  `DOMAIN_SERVER` / `DOMAIN_CLIENT` / `OPENID_CALLBACK_URL` を変えたらここも合わせる)。
+  アクセストークンに Gateway を audience として加えるマッパー付き
 - ユーザー `alice` / `bob`
 
 パスワード・シークレットはすべてローカル専用のダミー値(`dev-only-` 接頭辞)。

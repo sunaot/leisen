@@ -6,7 +6,7 @@
  * 集約し、起動を止める(ADR-005: 危険設定は起動時拒否)。
  */
 import { readFileSync } from "node:fs";
-import YAML from "yaml";
+import YAML, { YAMLParseError } from "yaml";
 import type { IdpAdapterConfig } from "../idp/factory.js";
 import type { RetentionConfig } from "../audit/retention.js";
 import { applyMigrations, type MigrateOptions } from "./migrate.js";
@@ -35,14 +35,14 @@ export function parseDeploymentConfig(
 ): DeploymentConfig {
   let raw: unknown;
   try {
-    raw = YAML.parse(yamlText);
+    // prettyErrors: false — 既定の整形は該当行の抜粋(コードフレーム)をメッセージに含める
+    raw = YAML.parse(yamlText, { prettyErrors: false });
   } catch (error) {
+    // YAML のエラー文は該当行の抜粋やファイル中のトークン(アンカー名・タグ名等)を含みうるため
+    // 載せない。誤って書かれた秘密の値が stderr や kp-ask --json の stdout に出る経路を作らない
+    // (不変条件6)。位置はエラーコードと行・列だけで示す
     throw new DeploymentConfigError([
-      {
-        code: "schema_violation",
-        path: "(file)",
-        message: `invalid YAML: ${error instanceof Error ? error.message : String(error)}`,
-      },
+      { code: "schema_violation", path: "(file)", message: describeYamlParseError(error, yamlText) },
     ]);
   }
 
@@ -62,6 +62,23 @@ export function parseDeploymentConfig(
 
   assertValidDeploymentConfig(parsed.data, options);
   return parsed.data;
+}
+
+/**
+ * YAML の構文エラーを、ファイルの内容を含めずにエラーコードと位置(行・列)だけで表す。
+ * `error.message` は使わない(該当行の抜粋・アンカー名・タグ名などファイル由来の文字列を含みうる)。
+ */
+function describeYamlParseError(error: unknown, yamlText: string): string {
+  if (!(error instanceof YAMLParseError)) return "invalid YAML";
+  const code: string = typeof error.code === "string" && error.code.length > 0 ? error.code : "PARSE_ERROR";
+  const offset = Array.isArray(error.pos) ? error.pos[0] : undefined;
+  if (typeof offset !== "number" || !Number.isFinite(offset) || offset < 0) {
+    return `invalid YAML (${code})`;
+  }
+  const head = yamlText.slice(0, offset);
+  const line = (head.match(/\n/g)?.length ?? 0) + 1;
+  const column = offset - (head.lastIndexOf("\n") + 1) + 1;
+  return `invalid YAML (${code} at line ${line}, column ${column})`;
 }
 
 /** deployment.yaml をファイルから読み込む。 */

@@ -6,8 +6,10 @@ import type { ConnectorCapabilities } from "@kp/connector-sdk";
 import { describe, expect, it } from "vitest";
 import {
   DeploymentConfigError,
+  isLoopbackHost,
   MAX_AUTHZ_CACHE_TTL_SEC,
   parseDeploymentConfig,
+  validateGatewayHttpExposure,
   type ConfigIssueCode,
 } from "../src/index.js";
 
@@ -109,6 +111,55 @@ describe("危険設定: 検索層とConnectorCapabilitiesの連動(ADR-007)", ()
   - id: notion
 `);
     expect(() => parseDeploymentConfig(yaml)).not.toThrow();
+  });
+
+  it("無効化済みコネクタは実体の登録を要求しない(起動コードは構築しない)", () => {
+    const yaml = baseYaml(`
+  - id: gdrive
+  - id: notion
+    enabled: false
+`);
+    expect(issueCodes(yaml)).toEqual([]);
+  });
+});
+
+describe("audit.sink: jsonl の出力先(起動コードの監査シンク)", () => {
+  it("audit.jsonl.path がなければ拒否する", () => {
+    const yaml = baseYaml(
+      `
+  - id: gdrive
+`,
+      `audit:
+  sink: jsonl
+`,
+    );
+    expect(issueCodes(yaml)).toEqual(["audit_sink_options_missing"]);
+  });
+
+  it("audit.jsonl.path があれば通る", () => {
+    const yaml = baseYaml(
+      `
+  - id: gdrive
+`,
+      `audit:
+  sink: jsonl
+  jsonl:
+    path: var/audit.jsonl
+`,
+    );
+    expect(issueCodes(yaml)).toEqual([]);
+  });
+
+  it("stdout 以外の未知の sink は静的検証では拒否しない(起動コードが unknown_audit_sink で拒否する)", () => {
+    const yaml = baseYaml(
+      `
+  - id: gdrive
+`,
+      `audit:
+  sink: syslog
+`,
+    );
+    expect(issueCodes(yaml)).toEqual([]);
   });
 });
 
@@ -253,5 +304,73 @@ describe("危険設定: コネクタid重複", () => {
   - id: gdrive
 `);
     expect(issueCodes(yaml)).toContain("duplicate_connector_id");
+  });
+});
+
+describe("危険設定: gateway.http.host の非ループバック待ち受け(T-012、T-003 レビュー minor-11)", () => {
+  function httpConfig(http: string) {
+    return parseDeploymentConfig(
+      baseYaml("  - id: gdrive\n", `gateway:\n  http:\n${http}`),
+    );
+  }
+
+  it.each([
+    "127.0.0.1",
+    "127.10.20.30",
+    "::1",
+    "0:0:0:0:0:0:0:1",
+    "::ffff:127.0.0.1",
+    "localhost",
+    "LocalHost",
+  ])("ループバック %s は確認フラグなしで通る", (host) => {
+    expect(isLoopbackHost(host)).toBe(true);
+    expect(validateGatewayHttpExposure(httpConfig(`    host: "${host}"\n`))).toEqual([]);
+  });
+
+  it.each([
+    "0.0.0.0",
+    "::",
+    "192.168.1.10",
+    "::ffff:10.0.0.1",
+    "gateway.example.test",
+    // 省略形の IPv4 やホスト名は名前解決しない(非ループバック扱い=確認を要求する側に倒す)
+    "127.1",
+  ])("非ループバック %s は確認フラグなしを拒否する", (host) => {
+    expect(isLoopbackHost(host)).toBe(false);
+    const issues = validateGatewayHttpExposure(httpConfig(`    host: "${host}"\n`));
+    expect(issues.map((i) => i.code)).toEqual(["http_host_exposed_requires_confirmation"]);
+    expect(issues[0]?.path).toBe("gateway.http.host");
+    expect(issues[0]?.message).toContain("TLS");
+  });
+
+  it("confirmExposedHost: true なら非ループバックでも通る", () => {
+    const config = httpConfig("    host: 0.0.0.0\n    confirmExposedHost: true\n");
+    expect(config.gateway.http.confirmExposedHost).toBe(true);
+    expect(validateGatewayHttpExposure(config)).toEqual([]);
+  });
+
+  it("confirmExposedHost: false は省略と同じ(拒否する)", () => {
+    const config = httpConfig("    host: 0.0.0.0\n    confirmExposedHost: false\n");
+    expect(validateGatewayHttpExposure(config).map((i) => i.code)).toEqual([
+      "http_host_exposed_requires_confirmation",
+    ]);
+  });
+
+  it("既定(host 省略 = 127.0.0.1)は確認不要で、解析結果に確認フラグを補わない", () => {
+    const config = parseDeploymentConfig(baseYaml("  - id: gdrive\n"));
+    expect(config.gateway.http.confirmExposedHost).toBeUndefined();
+    expect(validateGatewayHttpExposure(config)).toEqual([]);
+  });
+
+  it("静的検証(設定の解析)では拒否しない: 待ち受ける起動コードが拒否する", () => {
+    expect(
+      issueCodes(baseYaml("  - id: gdrive\n", "gateway:\n  http:\n    host: 0.0.0.0\n")),
+    ).toEqual([]);
+  });
+
+  it("confirmExposedHost の型不正はスキーマで拒否する", () => {
+    expect(() => httpConfig('    host: 0.0.0.0\n    confirmExposedHost: "yes"\n')).toThrow(
+      DeploymentConfigError,
+    );
   });
 });

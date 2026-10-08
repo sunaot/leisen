@@ -3,4 +3,11 @@ dist/
 *.log
 .env
 .env.*
+# 秘密を含まない雛形(ダミー値のみ)は管理する
+!deploy/compose/.env.example
+# LibreChat overlay の秘密(雛形の librechat.env.example だけを管理する)
+deploy/compose/librechat/librechat.env
 coverage/
+
+# Claude Code subagent worktrees (harness-managed, never commit)
+.claude/worktrees/

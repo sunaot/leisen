@@ -17,6 +17,29 @@ import {
 const EXAMPLE_PATH = fileURLToPath(
   new URL("../../../examples/deployment.yaml", import.meta.url),
 );
+const DEV_EXAMPLE_PATH = fileURLToPath(
+  new URL("../../../examples/deployment.dev.yaml", import.meta.url),
+);
+
+describe("examples/deployment.dev.yaml(手元で動かす開発用設定)", () => {
+  it("スキーマ・静的検証を通り、開発用の部品だけで構成されている", () => {
+    const config = loadDeploymentConfig(DEV_EXAMPLE_PATH, {
+      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false } },
+    });
+    expect(config.deployment.name).toBe("dev-local");
+    expect(config.idp.adapter).toEqual({ kind: "mock" });
+    expect(config.gateway.http).toEqual({ host: "127.0.0.1", port: 8787, path: "/mcp" });
+    expect(config.connectors).toEqual([
+      expect.objectContaining({
+        id: "dev-docs",
+        kind: "dev-fixture",
+        auth: { provider: "mock_env" },
+        settings: { corpusFile: "fixtures/dev-corpus.yaml" },
+      }),
+    ]);
+    expect(config.audit.sink).toBe("stdout");
+  });
+});
 
 describe("examples/deployment.yaml", () => {
   it("同梱サンプルがスキーマ・静的検証を通る", () => {
@@ -178,5 +201,39 @@ audit:
       rawQueryRetentionDays: 7,
       telemetryRetentionDays: 3,
     });
+  });
+});
+
+describe("YAML の構文エラー(issue #38 セキュリティレビュー S1)", () => {
+  const textOf = (caught: unknown): string => {
+    expect(caught).toBeInstanceOf(DeploymentConfigError);
+    const error = caught as DeploymentConfigError & { issues?: unknown };
+    return `${error.message} ${JSON.stringify(error.issues ?? null)}`;
+  };
+
+  it("エラーコードと位置だけを示し、該当行の内容(誤って書かれた秘密の値など)を含めない", () => {
+    const yaml = "schemaVersion: 1\nidp:\n  clientSecret: dev-only-NOT-A-REAL-SECRET: x\n";
+    let caught: unknown;
+    try {
+      parseDeploymentConfig(yaml);
+    } catch (error) {
+      caught = error;
+    }
+    const text = textOf(caught);
+    expect(text).toMatch(/invalid YAML \(BLOCK_AS_IMPLICIT_KEY at line 3, column \d+\)/);
+    expect(text).not.toContain("dev-only-NOT-A-REAL-SECRET");
+    expect(text).not.toContain("clientSecret");
+  });
+
+  it("アンカー名などファイル由来のトークンも含めない", () => {
+    let caught: unknown;
+    try {
+      parseDeploymentConfig("x: *dev-only-anchor\n");
+    } catch (error) {
+      caught = error;
+    }
+    const text = textOf(caught);
+    expect(text).toContain("invalid YAML");
+    expect(text).not.toContain("dev-only-anchor");
   });
 });
