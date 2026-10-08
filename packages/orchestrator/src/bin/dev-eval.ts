@@ -69,16 +69,21 @@ export function spawnKpAsk(kpAskPath: string): KpAskRunner {
       child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
         stderr += chunk;
       });
+      let killTimer: NodeJS.Timeout | undefined;
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill("SIGTERM");
+        // SIGTERM で止まらなければ強制終了する
+        killTimer = setTimeout(() => child.kill("SIGKILL"), 10_000);
       }, timeoutMs);
       child.on("error", (error) => {
         clearTimeout(timer);
+        clearTimeout(killTimer);
         reject(error);
       });
       child.on("close", (exitCode) => {
         clearTimeout(timer);
+        clearTimeout(killTimer);
         resolvePromise({ exitCode, stdout, stderr, timedOut });
       });
     });

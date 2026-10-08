@@ -457,8 +457,8 @@ node packages/orchestrator/dist/bin/dev-eval.js --label after -- \
 
 - 判定: 期待した outcome か、resolved を期待した質問で期待した文書のどれかを引用したか、回答本文に URL が残っていないか。○ 合格 / × 不合格 / ! エラー(kp-ask が回答を返せない・run が error)。終了コードは全問合格で 0、それ以外 1、引数・質問セットの不備で 2
 - 表に出すのは質問 ID・判定・outcome・引用した文書 ID・LLM ターン数・ツール呼び出し数(describe を含む)・トークン数・所要時間(kp-ask の起動から終了までの実時間)。質問文・回答本文は出さない。進捗は stderr、表は stdout(`> report.md` で保存できる)
-- kp-ask の stderr(AnswerRun の監査レコード)は、回答を返せなかった run のときだけ流す。残す場合は `--` 以降に `--answer-run-jsonl <path>` を付ける
-- 合成データ専用。実データの質問セットの扱い(機密クエリの保管・アイデンティティごとの期待値)は T-008 で決める
+- kp-ask の stderr(AnswerRun の監査レコードと失敗時の案内)は、回答を返せなかった run のときだけ流す。AnswerRun を残す場合は `--` 以降に `--answer-run-jsonl <path>` を付ける
+- 合成データ専用。表には引用した文書 ID(`sourceId:documentId`)をそのまま出し、AnswerRun の citedDocIds の分類(Slack・分類できないソースは記録しない)を通らないため、Slack を含むデプロイや実データには向けない(不変条件7)。実データの質問セットの扱い(機密クエリの保管・アイデンティティごとの期待値・文書 ID の分類)は T-008 で決める
 
 ## プロンプトの変更
 
