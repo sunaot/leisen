@@ -7,22 +7,53 @@
  * - 対象は合成データ(examples/fixtures/dev-corpus.yaml)だけを想定する。質問文・回答本文は
  *   表に出さない(表に出すのは質問 ID・結果・引用した文書 ID・計測値)。実データの質問セットの
  *   扱いは T-008 で決める
- * - 判定: 期待した outcome か、resolved を期待した質問は期待した文書のどれかを引用したか、
- *   回答本文に URL が残っていないか(sanitize の契約。プロンプトで URL を求める質問を含める)
+ * - 判定: 期待した outcome か、resolved を期待した質問は期待した文書のどれかを引用したか
+ *   (citeAnyOf)・すべてを引用したか(citeAllOf。複数文書にまたがる質問)、回答本文に URL が
+ *   残っていないか(sanitize の契約。プロンプトで URL を求める質問を含める)
+ * - 集計: 全体・質問の種類(category)ごと・質問ごと(--repeat のときの n 回中 k 回)
  */
 import { z } from "zod";
 import { answerSchema, type Answer } from "./answer.js";
 
-export const devEvalQuestionSchema = z.strictObject({
-  /** 表に出す識別子(英数字・-・_) */
-  id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u),
-  question: z.string().min(1).max(2000),
-  expect: z.strictObject({
-    outcome: z.enum(["resolved", "unresolved"]),
-    /** resolved を期待する場合に、少なくとも1つを引用すべき文書(`sourceId:documentId`) */
-    citeAnyOf: z.array(z.string().min(3)).min(1).optional(),
-  }),
-});
+/** 質問の種類(T-022)。種類ごとに合格数を集計する */
+export const DEV_EVAL_CATEGORIES = [
+  "baseline",
+  "uncovered-doc",
+  "paraphrase",
+  "english",
+  "multi-doc",
+  "absent",
+] as const;
+export type DevEvalCategory = (typeof DEV_EVAL_CATEGORIES)[number];
+
+export const devEvalQuestionSchema = z
+  .strictObject({
+    /** 表に出す識別子(英数字・-・_) */
+    id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u),
+    /** 質問の種類(省略時は種類別の集計で「(なし)」) */
+    category: z.enum(DEV_EVAL_CATEGORIES).optional(),
+    question: z.string().min(1).max(2000),
+    expect: z.strictObject({
+      outcome: z.enum(["resolved", "unresolved"]),
+      /** resolved を期待する場合に、少なくとも1つを引用すべき文書(`sourceId:documentId`) */
+      citeAnyOf: z.array(z.string().min(3)).min(1).optional(),
+      /** resolved を期待する場合に、すべてを引用すべき文書(複数文書にまたがる質問) */
+      citeAllOf: z.array(z.string().min(3)).min(1).optional(),
+    }),
+  })
+  .superRefine((question, ctx) => {
+    const { expect } = question;
+    if (
+      expect.outcome === "unresolved" &&
+      (expect.citeAnyOf !== undefined || expect.citeAllOf !== undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "citeAnyOf / citeAllOf は outcome が resolved の質問にだけ書ける",
+        path: ["expect"],
+      });
+    }
+  });
 export type DevEvalQuestion = z.infer<typeof devEvalQuestionSchema>;
 
 export const devEvalQuestionSetSchema = z
@@ -69,6 +100,7 @@ export type DevEvalVerdict = "pass" | "fail" | "error";
 
 export interface DevEvalResult {
   readonly id: string;
+  readonly category?: DevEvalCategory;
   readonly attempt: number;
   readonly verdict: DevEvalVerdict;
   /** 不合格・エラーの理由(固定文言と ID だけ。回答本文は含めない) */
@@ -98,7 +130,12 @@ function parseStdout(stdout: string): unknown {
 
 /** kp-ask 1 回分の結果を判定する。 */
 export function judgeRun(run: DevEvalRawRun): DevEvalResult {
-  const base = { id: run.question.id, attempt: run.attempt, elapsedMs: run.elapsedMs };
+  const base = {
+    id: run.question.id,
+    ...(run.question.category === undefined ? {} : { category: run.question.category }),
+    attempt: run.attempt,
+    elapsedMs: run.elapsedMs,
+  };
   if (run.timedOut) {
     return {
       ...base,
@@ -158,6 +195,13 @@ export function judgeRun(run: DevEvalRawRun): DevEvalResult {
       reasons.push(`期待した文書を引用していない(期待 ${expect.citeAnyOf.join(" / ")})`);
     }
   }
+  if (expect.outcome === "resolved" && expect.citeAllOf !== undefined) {
+    const cited = new Set(citedDocIds);
+    const missing = expect.citeAllOf.filter((id) => !cited.has(id));
+    if (missing.length > 0) {
+      reasons.push(`期待した文書の一部を引用していない(不足 ${missing.join(", ")})`);
+    }
+  }
   if (URL_PATTERN.test(data.answer)) {
     reasons.push("回答本文に URL が残っている");
   }
@@ -175,6 +219,13 @@ function median(values: readonly number[]): number | undefined {
     : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
 }
 
+/** 合格数の内訳(種類ごと・質問ごと) */
+export interface DevEvalTally {
+  readonly key: string;
+  readonly pass: number;
+  readonly total: number;
+}
+
 export interface DevEvalSummary {
   readonly total: number;
   readonly pass: number;
@@ -184,6 +235,34 @@ export interface DevEvalSummary {
   readonly meanLlmTurns?: number;
   readonly meanToolCalls?: number;
   readonly hitLimit: number;
+  /** 種類ごとの合格数(DEV_EVAL_CATEGORIES の順、種類なしは末尾の「(なし)」) */
+  readonly byCategory: readonly DevEvalTally[];
+  /** 質問ごとの合格数(初出順。--repeat のときに n 回中 k 回を見る) */
+  readonly byQuestion: readonly DevEvalTally[];
+}
+
+const NO_CATEGORY = "(なし)";
+
+function tally(
+  results: readonly DevEvalResult[],
+  keyOf: (result: DevEvalResult) => string,
+  order: readonly string[] = [],
+): DevEvalTally[] {
+  const counts = new Map<string, { pass: number; total: number }>();
+  for (const key of order) {
+    if (results.some((r) => keyOf(r) === key)) {
+      counts.set(key, { pass: 0, total: 0 });
+    }
+  }
+  for (const result of results) {
+    const key = keyOf(result);
+    const entry = counts.get(key) ?? { pass: 0, total: 0 };
+    counts.set(key, {
+      pass: entry.pass + (result.verdict === "pass" ? 1 : 0),
+      total: entry.total + 1,
+    });
+  }
+  return [...counts].map(([key, { pass, total }]) => ({ key, pass, total }));
 }
 
 export function summarize(results: readonly DevEvalResult[]): DevEvalSummary {
@@ -204,6 +283,8 @@ export function summarize(results: readonly DevEvalResult[]): DevEvalSummary {
     ...(meanLlmTurns === undefined ? {} : { meanLlmTurns }),
     ...(meanToolCalls === undefined ? {} : { meanToolCalls }),
     hitLimit: results.filter((r) => r.hitLimit).length,
+    byCategory: tally(results, (r) => r.category ?? NO_CATEGORY, [...DEV_EVAL_CATEGORIES, NO_CATEGORY]),
+    byQuestion: tally(results, (r) => r.id),
   };
 }
 
@@ -248,14 +329,31 @@ export function formatReport(
   if (parts.length > 0) {
     lines.push(`- ${parts.join("、")}`);
   }
+  if (summary.byCategory.some((t) => t.key !== NO_CATEGORY)) {
+    lines.push("");
+    lines.push("| 種類 | 合格 |");
+    lines.push("|---|---|");
+    for (const t of summary.byCategory) {
+      lines.push(`| ${cell(t.key)} | ${t.pass} / ${t.total} |`);
+    }
+  }
+  if (summary.byQuestion.some((t) => t.total > 1)) {
+    lines.push("");
+    lines.push("| 質問 | 合格回数 |");
+    lines.push("|---|---|");
+    for (const t of summary.byQuestion) {
+      lines.push(`| ${cell(t.key)} | ${t.pass} / ${t.total} |`);
+    }
+  }
   lines.push("");
-  lines.push("| 質問 | 回 | 判定 | outcome | 引用 | LLM ターン | ツール呼び出し | 入力 / 出力トークン | 秒 | 理由 |");
-  lines.push("|---|---|---|---|---|---|---|---|---|---|");
+  lines.push("| 質問 | 種類 | 回 | 判定 | outcome | 引用 | LLM ターン | ツール呼び出し | 入力 / 出力トークン | 秒 | 理由 |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const r of results) {
     lines.push(
       [
         "",
         cell(r.id),
+        r.category ?? "—",
         String(r.attempt),
         VERDICT_MARK[r.verdict],
         r.outcome,

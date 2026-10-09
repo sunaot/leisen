@@ -147,7 +147,7 @@ describe("summarize / formatReport", () => {
   ];
 
   it("合否と計測値を集計する", () => {
-    expect(summarize(results)).toEqual({
+    expect(summarize(results)).toMatchObject({
       total: 2,
       pass: 1,
       fail: 1,
@@ -164,14 +164,103 @@ describe("summarize / formatReport", () => {
     expect(report).toContain("## dev-eval: after");
     expect(report).toContain("- プロンプト: explore.v3");
     expect(report).toContain("合格 1 / 2");
-    expect(report).toContain("| expense | 1 | ○ | resolved | dev-docs:expense-rules | 3 | 3 | 100 / 20 | 1.0 |  |");
-    expect(report).toContain("| absent | 1 | × | resolved |");
+    expect(report).toContain("| expense | — | 1 | ○ | resolved | dev-docs:expense-rules | 3 | 3 | 100 / 20 | 1.0 |  |");
+    expect(report).toContain("| absent | — | 1 | × | resolved |");
+    // 種類のない質問だけ・各 1 回なら、種類別・質問ごとの表は出さない
+    expect(report).not.toContain("| 種類 | 合格 |");
+    expect(report).not.toContain("| 質問 | 合格回数 |");
     expect(report).not.toContain(resolvedQuestion.question);
     expect(report).not.toContain("翌月10日です");
   });
 });
 
+describe("citeAllOf(複数文書にまたがる質問)", () => {
+  const multiDoc: DevEvalQuestion = {
+    id: "multi",
+    category: "multi-doc",
+    question: "入社初日にやることと、VPN の接続手順は?",
+    expect: { outcome: "resolved", citeAllOf: ["dev-docs:onboarding-guide", "dev-docs:vpn-setup"] },
+  };
+
+  it("期待した文書をすべて引用していれば合格", () => {
+    const result = judgeRun(
+      raw(
+        multiDoc,
+        JSON.stringify(
+          answer({
+            citations: [
+              { sourceId: "dev-docs", documentId: "vpn-setup" },
+              { sourceId: "dev-docs", documentId: "onboarding-guide" },
+            ],
+          }),
+        ),
+      ),
+    );
+    expect(result.verdict).toBe("pass");
+    expect(result.category).toBe("multi-doc");
+  });
+
+  it("一部しか引用していなければ不足した文書を理由にして不合格", () => {
+    const result = judgeRun(
+      raw(
+        multiDoc,
+        JSON.stringify(answer({ citations: [{ sourceId: "dev-docs", documentId: "vpn-setup" }] })),
+      ),
+    );
+    expect(result.verdict).toBe("fail");
+    expect(result.reasons).toEqual(["期待した文書の一部を引用していない(不足 dev-docs:onboarding-guide)"]);
+  });
+});
+
+describe("種類別・質問ごとの集計(--repeat)", () => {
+  const paraphrase: DevEvalQuestion = { ...resolvedQuestion, id: "para", category: "paraphrase" };
+  const absent: DevEvalQuestion = { ...absentQuestion, category: "absent" };
+  const results = [
+    judgeRun(raw(paraphrase, JSON.stringify(answer()), { attempt: 1 })),
+    judgeRun(raw(absent, JSON.stringify(answer({ outcome: "unresolved", citations: [] })), { attempt: 1 })),
+    judgeRun(raw(paraphrase, JSON.stringify(answer({ outcome: "unresolved", citations: [] })), { attempt: 2 })),
+    judgeRun(raw(absent, JSON.stringify(answer({ outcome: "unresolved", citations: [] })), { attempt: 2 })),
+  ];
+
+  it("種類は定義順、質問は初出順で合格数を数える", () => {
+    const summary = summarize(results);
+    expect(summary.byCategory).toEqual([
+      { key: "paraphrase", pass: 1, total: 2 },
+      { key: "absent", pass: 2, total: 2 },
+    ]);
+    expect(summary.byQuestion).toEqual([
+      { key: "para", pass: 1, total: 2 },
+      { key: "absent", pass: 2, total: 2 },
+    ]);
+  });
+
+  it("表に種類別と質問ごとの合格回数を出す", () => {
+    const report = formatReport(results, { promptVersion: "explore.v3" });
+    expect(report).toContain("| 種類 | 合格 |");
+    expect(report).toContain("| paraphrase | 1 / 2 |");
+    expect(report).toContain("| 質問 | 合格回数 |");
+    expect(report).toContain("| para | 1 / 2 |");
+    expect(report).toContain("| para | paraphrase | 2 | × | unresolved |");
+  });
+});
+
 describe("devEvalQuestionSetSchema", () => {
+  it("unresolved を期待する質問に引用の期待を書けない", () => {
+    const parsed = devEvalQuestionSetSchema.safeParse({
+      version: 1,
+      questions: [{ ...absentQuestion, expect: { outcome: "unresolved", citeAllOf: ["dev-docs:x"] } }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("未知の種類を拒否する", () => {
+    const parsed = devEvalQuestionSetSchema.safeParse({
+      version: 1,
+      questions: [{ ...resolvedQuestion, category: "unknown" }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("同じ ID の質問を拒否する", () => {
     const parsed = devEvalQuestionSetSchema.safeParse({
       version: 1,
