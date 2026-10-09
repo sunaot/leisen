@@ -24,6 +24,7 @@
  */
 import { CredentialResolvingIdpAdapter } from "./adapter.js";
 import type { CredentialCacheOptions } from "./cache.js";
+import { assertNotProduction } from "./mock.js";
 import {
   IdpError,
   type CredentialProvider,
@@ -61,6 +62,13 @@ export interface KeycloakIdpAdapterConfig {
    * トークン・sub・応答全体は渡さない(不変条件6)
    */
   readonly diagnose?: (message: string) => void;
+  /**
+   * diagnose の抑制間隔(ms)。検証項目ごとに最初の 1 件は即時、以降はこの間隔に 1 件
+   * (抑制した件数を添える)。401 の洪水でサーバーログが線形に増えないようにする。既定 60000
+   */
+  readonly diagnoseIntervalMs?: number;
+  /** テスト用の時計(既定 Date.now) */
+  readonly clock?: () => number;
 }
 
 /** RFC 7662 のイントロスペクション応答のうち、このアダプタが読むクレーム。 */
@@ -104,6 +112,7 @@ export interface IntrospectionCheck {
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_DIAGNOSE_INTERVAL_MS = 60_000;
 
 /** 末尾のスラッシュを落とす(issuer の既定値と introspectUrl を同じ基準で組み立てる)。 */
 function trimTrailingSlash(url: string): string {
@@ -121,6 +130,13 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
   private readonly fetchImpl: typeof fetch;
   /** 受け入れる iss(既定は `${baseUrl}/realms/${realm}`) */
   private readonly allowedIssuers: readonly string[];
+  private readonly diagnoseIntervalMs: number;
+  private readonly clock: () => number;
+  /** 検証項目ごとの直近の診断出力時刻と、その後に抑制した件数 */
+  private readonly diagnoseState = new Map<
+    IntrospectionCheckName,
+    { lastAt: number; suppressed: number }
+  >();
 
   constructor(
     private readonly config: KeycloakIdpAdapterConfig,
@@ -131,6 +147,13 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     if (config.allowedClients.length === 0) {
       throw new IdpError("misconfigured", "keycloak allowedClients must not be empty");
     }
+    // 二重の防御: 起動コード(bootstrap/assemble.ts)が先に dev_only_in_production で拒否するが、
+    // factory を直接使う経路でも本番では "*" を受け付けない
+    if (acceptsAnyClient(config.allowedClients)) {
+      assertNotProduction('keycloak allowedClients "*" (azp check disabled)');
+    }
+    this.diagnoseIntervalMs = config.diagnoseIntervalMs ?? DEFAULT_DIAGNOSE_INTERVAL_MS;
+    this.clock = config.clock ?? Date.now;
     const realmUrl = `${trimTrailingSlash(config.baseUrl)}/realms/${encodeURIComponent(
       config.realm,
     )}`;
@@ -152,8 +175,11 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
    * skipped。azp は allowedClients に "*" があれば skipped。
    */
   checkIntrospection(body: IntrospectionResponse): IntrospectionCheck[] {
-    if (!body.active || !body.sub) {
-      const detail = !body.active ? "token is not active" : "sub is missing";
+    // active は boolean の true だけを有効とみなす(文字列 "false" 等の真値を通さない。fail-closed)
+    const active = body.active === true;
+    const hasSub = typeof body.sub === "string" && body.sub !== "";
+    if (!active || !hasSub) {
+      const detail = !active ? "token is not active" : "sub is missing";
       return [
         { name: "active", status: "fail", detail },
         { name: "iss", status: "skipped", detail: "token is not active" },
@@ -239,7 +265,7 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     if (failed !== undefined) {
       // 理由はサーバーログ向けにクレーム名だけで残し、利用者には固定文言(HTTP 層が 401 の
       // 固定文言に写す)。トークン・sub・応答全体は出さない
-      this.config.diagnose?.(`keycloak introspection rejected a session token: ${failed.detail}`);
+      this.diagnoseRejection(failed);
       throw new IdpError(
         "unauthenticated",
         "session token was rejected by keycloak introspection checks",
@@ -256,6 +282,31 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
         ...(body.exp !== undefined ? { expiresAt: body.exp * 1000 } : {}),
       },
     };
+  }
+
+  /**
+   * 拒否理由をサーバーログ向けに出す。検証項目ごとに最初の 1 件は即時、以降は
+   * diagnoseIntervalMs に 1 件(その間に抑制した件数を添える)。
+   */
+  private diagnoseRejection(failed: IntrospectionCheck): void {
+    const diagnose = this.config.diagnose;
+    if (diagnose === undefined) {
+      return;
+    }
+    const now = this.clock();
+    const state = this.diagnoseState.get(failed.name);
+    if (state !== undefined && now - state.lastAt < this.diagnoseIntervalMs) {
+      state.suppressed += 1;
+      return;
+    }
+    const suppressed = state?.suppressed ?? 0;
+    this.diagnoseState.set(failed.name, { lastAt: now, suppressed: 0 });
+    diagnose(
+      `keycloak introspection rejected a session token: ${failed.detail}` +
+        (suppressed > 0
+          ? ` (${suppressed} more rejection(s) on "${failed.name}" suppressed in the last ${this.diagnoseIntervalMs}ms)`
+          : ""),
+    );
   }
 
   /**
@@ -295,7 +346,11 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     }
     let body: IntrospectionResponse;
     try {
-      body = (await response.json()) as IntrospectionResponse;
+      const parsed: unknown = await response.json();
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("not an object");
+      }
+      body = parsed as IntrospectionResponse;
     } catch {
       // 200でも本文が空/非JSONならIdP側の異常として分類する(fail-closed)
       throw new IdpError(

@@ -152,14 +152,14 @@ idp:
   it("環境変数から秘密情報を解決する", () => {
     const config = parseDeploymentConfig(KEYCLOAK_YAML);
     const adapter = resolveIdpAdapterConfig(config.idp.adapter, {
-      TEST_KC_SECRET: "s3cret",
+      TEST_KC_SECRET: "dev-only-s3cret",
     });
     expect(adapter).toEqual({
       kind: "keycloak",
       baseUrl: "http://localhost:8080",
       realm: "acme",
       clientId: "kp-gateway",
-      clientSecret: "s3cret",
+      clientSecret: "dev-only-s3cret",
       allowedClients: ["chat-ui"],
       requireAudience: false,
     });
@@ -177,7 +177,7 @@ idp:
     allowedIssuers: [https://idp.example.test/realms/acme]
 `,
     );
-    const adapter = resolveIdpAdapterConfig(config.idp.adapter, { TEST_KC_SECRET: "s3cret" });
+    const adapter = resolveIdpAdapterConfig(config.idp.adapter, { TEST_KC_SECRET: "dev-only-s3cret" });
     expect(adapter).toMatchObject({
       allowedClients: ["chat-ui"],
       requireAudience: true,

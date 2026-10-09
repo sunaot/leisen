@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   IdpError,
   KeycloakIdpAdapter,
@@ -241,6 +241,92 @@ describe("KeycloakIdpAdapter: iss / typ / azp / aud の検証(issue #16)", () =>
     await expect(adapter.authenticate(TOKEN)).resolves.toMatchObject({ userId: "user-uuid-1" });
     const { diagnosed } = await rejectedWith({ ...VALID_BODY, azp: "anything", typ: "Refresh" }, any);
     expect(diagnosed[0]).toContain("typ");
+  });
+
+  it.each([
+    "http://keycloak.test:8080/realms/kp-evil",
+    "http://keycloak.test:8080/realms/kpx",
+    "HTTP://KEYCLOAK.TEST:8080/realms/kp",
+    "http://keycloak.test:8080/realms/kp/",
+  ])("iss の似せ値 %s は受け付けない(前方一致・大文字小文字の緩和をしない。末尾スラッシュだけ同一視)", async (iss) => {
+    if (iss.endsWith("/")) {
+      const adapter = adapterWith(() => jsonResponse({ ...VALID_BODY, iss }));
+      await expect(adapter.authenticate(TOKEN)).resolves.toMatchObject({ userId: "user-uuid-1" });
+      return;
+    }
+    const { diagnosed } = await rejectedWith({ ...VALID_BODY, iss });
+    expect(diagnosed[0]).toContain("iss mismatch");
+  });
+
+  it('allowedIssuers の "*" はワイルドカードではなく、どの iss にも一致しない', async () => {
+    const { diagnosed } = await rejectedWith(VALID_BODY, { allowedIssuers: ["*"] });
+    expect(diagnosed[0]).toContain("iss mismatch");
+  });
+
+  it('allowedClients に "*" があっても requireAudience の aud 検証は行う', async () => {
+    const { aud: _aud, ...noAud } = VALID_BODY;
+    const { diagnosed } = await rejectedWith(noAud, {
+      allowedClients: ["*"],
+      requireAudience: true,
+    });
+    expect(diagnosed[0]).toContain("aud is missing");
+  });
+
+  it.each([" * ", "**", "＊"])('"*" の変種 %s はワイルドカードにならず、通常のクライアント ID として扱う', async (entry) => {
+    const { diagnosed } = await rejectedWith({ ...VALID_BODY, azp: "anything" }, { allowedClients: [entry] });
+    expect(diagnosed[0]).toContain("azp");
+  });
+
+  it('allowedClients "*" は NODE_ENV=production では構築時に拒否する(二重の防御)', () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() =>
+        adapterWith(() => jsonResponse(VALID_BODY), { allowedClients: ["*"] }),
+      ).toThrow(/disabled in production/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("active が boolean の true 以外(文字列 'false' 等)は不活性として扱う(fail-closed)", async () => {
+    const { diagnosed } = await rejectedWith({ ...VALID_BODY, active: "false" });
+    expect(diagnosed[0]).toContain("token is not active");
+  });
+
+  it("応答が JSON の null や配列なら idp_unavailable(内部エラーにしない)", async () => {
+    for (const body of [null, []]) {
+      const adapter = adapterWith(() => jsonResponse(body));
+      const error = await adapter.authenticate(TOKEN).catch((e) => e);
+      expect(error).toBeInstanceOf(IdpError);
+      expect((error as IdpError).errorClass).toBe("idp_unavailable");
+    }
+  });
+
+  it("diagnose は検証項目ごとに最初の 1 件は即時、以降は間隔内で抑制し、次の出力に抑制件数を添える", async () => {
+    let now = 1_000_000;
+    const diagnosed: string[] = [];
+    const adapter = adapterWith(() => jsonResponse({ ...VALID_BODY, typ: "Refresh" }), {
+      diagnose: (message) => diagnosed.push(message),
+      diagnoseIntervalMs: 1000,
+      clock: () => now,
+    });
+    for (let i = 0; i < 4; i += 1) {
+      await adapter.authenticate(TOKEN).catch(() => undefined);
+    }
+    expect(diagnosed).toHaveLength(1);
+    // 別の検証項目(azp)は独立に数える
+    const otherAdapterBody = { ...VALID_BODY, azp: "nope" };
+    const adapter2 = adapterWith(() => jsonResponse(otherAdapterBody), {
+      diagnose: (message) => diagnosed.push(message),
+      diagnoseIntervalMs: 1000,
+      clock: () => now,
+    });
+    await adapter2.authenticate(TOKEN).catch(() => undefined);
+    expect(diagnosed).toHaveLength(2);
+    now += 1000;
+    await adapter.authenticate(TOKEN).catch(() => undefined);
+    expect(diagnosed).toHaveLength(3);
+    expect(diagnosed[2]).toContain('3 more rejection(s) on "typ" suppressed');
   });
 
   it("allowedClients が空なら構築時に misconfigured", () => {

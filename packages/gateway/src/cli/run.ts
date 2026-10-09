@@ -471,6 +471,7 @@ async function authCheckCommand(
   try {
     const resolved = resolveIdpAdapterConfig(config.idp.adapter, env);
     if (resolved.kind !== "keycloak") {
+      deps.stderr("kp-gateway: auth-check applies to idp.adapter.kind: keycloak only");
       return 2;
     }
     const { kind: _kind, ...keycloakConfig } = resolved;
@@ -489,7 +490,10 @@ async function authCheckCommand(
   try {
     const body = await adapter.introspect(token);
     checks = adapter.checkIntrospection(body);
-    userId = body.sub;
+    // sub は active の検証を通ったときだけ表示する(通らない応答の値は信用しない)
+    if (checks.some((check) => check.name === "active" && check.status === "pass")) {
+      userId = body.sub;
+    }
   } catch (error) {
     deps.stderr(`kp-gateway: auth-check: ${describeError(error)}`);
     return 1;

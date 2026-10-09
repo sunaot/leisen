@@ -265,7 +265,12 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
      * IdP の公開 URL(トークンの iss)がイントロスペクションに使う baseUrl と異なる構成
      * (コンテナ間はサービス名、利用者はホスト名で呼ぶ等)でだけ書く
      */
-    allowedIssuers: z.array(z.string().min(1)).min(1).optional(),
+    allowedIssuers: z
+      .array(
+        z.url({ error: 'allowedIssuers entries must be absolute URLs ("*" is not a wildcard here)' }),
+      )
+      .min(1)
+      .optional(),
     /**
      * baseUrl が平文 http: でループバック以外を指すときの明示確認フラグ(issue #17)。
      * 省略時は false と同じ扱い(解析結果にはキーを補わない)。イントロスペクションの
