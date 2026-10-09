@@ -13,4 +13,7 @@ GCPプロジェクトでOAuth同意画面とクライアントが承認済みで
 - [ ] 全API呼び出しが呼び出しユーザーのトークンで行われる(サービスアカウント不使用)
 - [ ] レート制限(429)時の指数バックオフがテストされている
 - [ ] describeが共有ドライブ一覧と主要フォルダ構造を返す
+- [ ] **プライベート領域(ADR-016 追補2、connector-sdk v0.4)**: 何を `scope: "private"` とするか(個人スコープ=マイドライブ全体か、本人だけが見られる文書か。auth-matrix §2)の**対応表と判定の根拠**を README に書き、人間のレビューを受ける。判定に迷うものは private
+- [ ] **能力の宣言**: `capabilities.privateScopeHandling` を宣言する(`enforced` を目指す: `corpora` 等でクエリで除ける分はソース側で除き、除外の根拠と分類の根拠をできるだけ別にする)。`policy.privateScopes`(factory の `ConnectorFactoryInit.policy`)に従う
+- [ ] **契約テスト**: search / fetch / list / describe の全結果に `scope` が付くこと、対応表どおりの分類、`excluded` で private がソース側で除かれること(`enforced` の場合)をテストで固定する
 - [ ] 記録: 実アカウントでの手動疎通結果をPRに添付

@@ -63,7 +63,7 @@ export interface CallContext {
   iteration?: number;
 }
 
-/** コネクタツールごとの引数(connector-sdk v0.3のIFに対応)。 */
+/** コネクタツールごとの引数(connector-sdk v0.4のIFに対応)。 */
 export type GatewayToolCall =
   | {
       tool: "search";
@@ -97,6 +97,9 @@ export type GatewayToolResult =
  * - not_available: LLM/利用者向け正規化(TM-B2、tools.ts normalizeToolError)のみで
  *   生成される。permission_denied と not_found を区別せずに返すための分類で、
  *   監査レコードの errorClass には元の分類(permission_denied / not_found)が残る
+ * - private_scope_excluded: 方針(privateScopes: excluded)によるプライベート領域の
+ *   拒否(ADR-016 追補2 決定4)。Gateway の強制(fetch)またはコネクタ(enforced)が
+ *   生成する。LLM・利用者には固定文言(PRIVATE_SCOPE_EXCLUDED_MESSAGE)だけを返す
  */
 export type GatewayErrorClass =
   // Gateway自身が生成する分類
@@ -118,6 +121,8 @@ export type GatewayErrorClass =
   | "not_found"
   | "source_unavailable"
   | "invalid_request"
+  // 方針の強制(ADR-016 追補2 決定4)。Gateway の射影またはコネクタ(enforced)から
+  | "private_scope_excluded"
   // LLM/利用者向け正規化(TM-B2)のみで生成される。監査レコードの errorClass には
   // 元の分類(permission_denied / not_found)が残る(gateway.ts は正規化前に記録する)
   | "not_available";
@@ -129,6 +134,13 @@ export type GatewayErrorClass =
  * data.errorClass(GatewayErrorClass)で返す。
  */
 export const GATEWAY_REJECTION_ERROR_CODE = -32000;
+
+/**
+ * private_scope_excluded の固定文言(ADR-016 追補2 決定4)。コネクタ由来の文言
+ * (会話の種別・チャンネル名等を含みうる)は LLM・利用者に返さない。
+ */
+export const PRIVATE_SCOPE_EXCLUDED_MESSAGE =
+  "the requested document is in a private scope (DMs, private channels, personal space) that this deployment excludes from search";
 
 export class GatewayError extends Error {
   constructor(

@@ -512,6 +512,7 @@ describe("listTools / runToolCall (SDK-independent tool surface)", () => {
           title: "alpha doc 1",
           snippet: "snippet from alpha",
           url: "https://example.test/alpha/doc-1",
+          scope: "shared",
         },
       ],
     });
@@ -683,6 +684,7 @@ describe("result projection to connector-sdk fields (minor-1, 不変条件3 / TM
             meta: { type: "issue", candidateTotal: 42, nested: { preFilter: 7 } },
             score: 0.93,
             rawCandidates: ["unauthorized-candidate-title"],
+            scope: "shared",
           },
         ],
         nextCursor: "c2",
@@ -697,10 +699,11 @@ describe("result projection to connector-sdk fields (minor-1, 不変条件3 / TM
         nextPageCursor: "p2",
         totalPages: 99,
         debug: { preFilter: 1 },
+        scope: "shared",
       },
       list: {
         entries: [
-          { id: "c1", name: "n1", kind: "folder", childCount: 3, hiddenChildren: 5 },
+          { id: "c1", name: "n1", kind: "folder", childCount: 3, hiddenChildren: 5, scope: "shared" },
         ],
         nextCursor: "l2",
         totalCount: 10,
@@ -709,7 +712,7 @@ describe("result projection to connector-sdk fields (minor-1, 不変条件3 / TM
         sourceId: "alpha",
         displayName: "Alpha",
         summary: "summary",
-        topContainers: [{ id: "c1", name: "n1", kind: "space", aclSnapshot: ["x"] }],
+        topContainers: [{ id: "c1", name: "n1", kind: "space", aclSnapshot: ["x"], scope: "shared" }],
         supportedFilters: ["updatedAfter", "unsupportedFilter"],
         debug: { preFilter: 2 },
       },
@@ -736,6 +739,7 @@ describe("result projection to connector-sdk fields (minor-1, 不変条件3 / TM
           anchor: { kind: "section", value: "h1", label: "H1" },
           updatedAt: "2026-09-01T00:00:00Z",
           meta: { type: "issue" },
+          scope: "shared",
         },
       ],
       nextCursor: "c2",
@@ -746,16 +750,17 @@ describe("result projection to connector-sdk fields (minor-1, 不変条件3 / TM
       content: "body",
       url: "https://example.test/d1",
       nextPageCursor: "p2",
+      scope: "shared",
     });
     expect(listed.result).toEqual({
-      entries: [{ id: "c1", name: "n1", kind: "folder", childCount: 3 }],
+      entries: [{ id: "c1", name: "n1", kind: "folder", childCount: 3, scope: "shared" }],
       nextCursor: "l2",
     });
     expect(described.result).toEqual({
       sourceId: "alpha",
       displayName: "Alpha",
       summary: "summary",
-      topContainers: [{ id: "c1", name: "n1", kind: "space" }],
+      topContainers: [{ id: "c1", name: "n1", kind: "space", scope: "shared" }],
       supportedFilters: ["updatedAfter"],
     });
     for (const outcome of [search, fetched, listed, described]) {

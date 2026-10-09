@@ -118,6 +118,7 @@ describe("検索の統合", () => {
         state: "open",
         author: "octo-dev",
       },
+      scope: "shared",
     });
     expect(pr?.meta?.type).toBe("pull_request");
     expect(pr?.url).toBe("https://github.com/acme/app/pull/21");
@@ -133,6 +134,7 @@ describe("検索の統合", () => {
         path: "src/auth/login.ts",
         ref: COMMIT_SHA,
       },
+      scope: "shared",
     });
   });
 

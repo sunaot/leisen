@@ -5,8 +5,8 @@
 #   export KP_MOCK_TOKEN_DEV_DOCS=dev-only-token     # dev-docs に渡す本人資格情報(モック)
 #   npx kp-gateway serve --config examples/deployment.dev.yaml
 #
-# - idp.adapter.kind: mock / auth.provider: mock_env / kind: dev-fixture は
-#   いずれも開発専用で、NODE_ENV=production では起動時に拒否される
+# - idp.adapter.kind: mock / auth.provider: mock_env / kind: dev-fixture /
+#   audit.sink: stdout はいずれも開発専用で、NODE_ENV=production では起動時に拒否される
 # - 秘密情報はこのファイルに書かない(不変条件6)。モックのトークンも環境変数で渡す
 # - 設定内の相対パスは、このファイルの所在ディレクトリを基準に解決する
 #   (起動時のカレントディレクトリには依存しない)
@@ -40,7 +40,9 @@ connectors:
       corpusFile: fixtures/dev-corpus.yaml
 
 audit:
-  # 監査レコードを標準出力へ JSON で出す(起動ログは標準エラー出力)。開発用
+  # 監査レコードを標準出力へ JSON で出す(起動ログは標準エラー出力)。開発用。
+  # at-least-once を保証せず運用ログと混ざるため、NODE_ENV=production では
+  # dev_only_in_production で起動を拒否される(issue #17、ADR-011 追記)
   sink: stdout
   # JSONL ファイルへ追記する場合(昇格判定レポート promotion-report の入力になる):
   # sink: jsonl

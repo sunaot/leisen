@@ -2,7 +2,7 @@
  * list / describe と構築時設定のテスト(T-019)。
  * - list: 本人の所属 org → 本人がアクセスできる repo、org 指定時はその org の repo。ページング
  * - describe: 表示名・要約(degraded の開示)・本人の org 一覧・対応フィルタ
- * - capabilities: nativeSearch "degraded"、ingest false
+ * - capabilities: nativeSearch "degraded"、ingest false、privateScopeHandling "classified"
  */
 import { describe, expect, it } from "vitest";
 import { ConnectorError, type Connector } from "@kp/connector-sdk";
@@ -44,10 +44,10 @@ describe("list", () => {
 
     const first = await connector.list(ALICE);
     expect(first.entries).toEqual([
-      { id: "acme", name: "acme", kind: "other" },
-      { id: "acme-labs", name: "acme-labs", kind: "other" },
-      { id: "acme/app", name: "acme/app", kind: "repository" },
-      { id: "alice/dotfiles", name: "alice/dotfiles", kind: "repository" },
+      { id: "acme", name: "acme", kind: "other", scope: "shared" },
+      { id: "acme-labs", name: "acme-labs", kind: "other", scope: "shared" },
+      { id: "acme/app", name: "acme/app", kind: "repository", scope: "shared" },
+      { id: "alice/dotfiles", name: "alice/dotfiles", kind: "repository", scope: "shared" },
     ]);
     expect(first.nextCursor).toBeDefined();
     const repoRequest = github.requestsTo(/^\/user\/repos$/)[0]!;
@@ -56,7 +56,7 @@ describe("list", () => {
 
     const second = await connector.list(ALICE, undefined, first.nextCursor);
     expect(second.entries).toEqual([
-      { id: "acme-labs/prototype", name: "acme-labs/prototype", kind: "repository" },
+      { id: "acme-labs/prototype", name: "acme-labs/prototype", kind: "repository", scope: "shared" },
     ]);
     expect(second.nextCursor).toBeUndefined();
     expect(github.requestsTo(/^\/user\/orgs$/)).toHaveLength(1);
@@ -89,9 +89,13 @@ describe("list", () => {
         : jsonResponse([{ full_name: "acme/infra" }]),
     );
     const first = await connector.list(ALICE, "acme");
-    expect(first.entries).toEqual([{ id: "acme/app", name: "acme/app", kind: "repository" }]);
+    expect(first.entries).toEqual([
+      { id: "acme/app", name: "acme/app", kind: "repository", scope: "shared" },
+    ]);
     const second = await connector.list(ALICE, "acme", first.nextCursor);
-    expect(second.entries).toEqual([{ id: "acme/infra", name: "acme/infra", kind: "repository" }]);
+    expect(second.entries).toEqual([
+      { id: "acme/infra", name: "acme/infra", kind: "repository", scope: "shared" },
+    ]);
     expect(second.nextCursor).toBeUndefined();
   });
 
@@ -137,8 +141,8 @@ describe("describe", () => {
     expect(description.sourceId).toBe("github");
     expect(description.displayName).toBe("GitHub");
     expect(description.topContainers).toEqual([
-      { id: "acme", name: "acme", kind: "other" },
-      { id: "acme-labs", name: "acme-labs", kind: "other" },
+      { id: "acme", name: "acme", kind: "other", scope: "shared" },
+      { id: "acme-labs", name: "acme-labs", kind: "other", scope: "shared" },
     ]);
     expect(description.supportedFilters).toEqual([
       "updatedAfter",
@@ -172,11 +176,15 @@ describe("構築と能力", () => {
     expect(Object.keys(publicApi).sort()).toEqual(["createConnector", "createGitHubConnector"]);
   });
 
-  it("Connector 契約を満たし、capabilities は degraded / ingest なし", () => {
+  it("Connector 契約を満たし、capabilities は degraded / ingest なし / プライベート領域は classified", () => {
     const connector: Connector = createGitHubConnector();
     expect(connector).toBeInstanceOf(GitHubConnector);
     expect(connector.sourceId).toBe(DEFAULT_GITHUB_SOURCE_ID);
-    expect(connector.capabilities).toEqual({ nativeSearch: "degraded", ingest: false });
+    expect(connector.capabilities).toEqual({
+      nativeSearch: "degraded",
+      ingest: false,
+      privateScopeHandling: "classified",
+    });
   });
 
   it("baseUrl を差し替えられる(GitHub Enterprise Server の /api/v3)", async () => {

@@ -13,9 +13,11 @@
  * - 有効なコネクタには本人資格情報の取得方式(auth.provider)を必須とする
  *   (connector_auth_provider_missing)。サービスアカウント等への暗黙の代替はない
  *   (不変条件1)
- * - 開発専用の部品(mock IdP / mock_env / dev-fixture)は NODE_ENV=production で
- *   拒否する(dev_only_in_production)。判定は既存の assertNotProduction を経由し、
- *   各部品のコンストラクタの検査は二重の防御として残る
+ * - 開発専用の部品(mock IdP / mock_env / dev-fixture、監査シンク stdout、Keycloak の
+ *   allowedClients: ["*"])は NODE_ENV=production で拒否する(dev_only_in_production)。判定は既存の
+ *   assertNotProduction を経由し、各部品のコンストラクタの検査(stdout シンクは
+ *   resolveAuditSink の検査)は二重の防御として残る(stdout シンクは at-least-once を
+ *   保証せず運用ログと混ざるため本番の監査にならない。issue #17、ADR-011 追記)
  * - gateway.http.host がループバック以外なら gateway.http.confirmExposedHost: true を
  *   要求する(http_host_exposed_requires_confirmation。TLS 終端・Origin 検証を
  *   前段に委ねる前提の明示、T-012)
@@ -32,9 +34,10 @@ import type { Connector } from "@kp/connector-sdk";
 import type { RawQueryStore } from "../audit/rawquery.js";
 import { AuditLogger } from "../audit/sink.js";
 import { resolveIdpAdapterConfig } from "../config/loader.js";
-import type {
-  ConnectorAuthConfig,
-  DeploymentConfig,
+import {
+  AUDIT_SINK_STDOUT,
+  type ConnectorAuthConfig,
+  type DeploymentConfig,
 } from "../config/schema.js";
 import {
   DeploymentConfigError,
@@ -42,6 +45,7 @@ import {
   type ConfigIssue,
 } from "../config/validate.js";
 import { createIdpAdapter } from "../idp/factory.js";
+import { acceptsAnyClient, KEYCLOAK_ANY_CLIENT_WARNING } from "../idp/keycloak.js";
 import {
   assertNotProduction,
   MOCK_IDP_NO_SESSIONS_WARNING,
@@ -89,8 +93,8 @@ export interface AssembleGatewayOptions {
   readonly loadModule?: ModuleLoader;
   /**
    * 稼働中の警告の出力先(秘密情報を含まない1行。kp-gateway serve はサーバーログ=stderr に
-   * つなぐ)。現状はモック IdP がセッション表の空のまま拒否したときの通知だけ(issue #38)。
-   * 省略時は出さない
+   * つなぐ)。モック IdP がセッション表の空のまま拒否したときの通知(issue #38)と、Keycloak の
+   * 検証で拒否した理由(クレーム名だけ。issue #16)。省略時は出さない
    */
   readonly warn?: (message: string) => void;
 }
@@ -192,9 +196,26 @@ export async function assembleGateway(
   const issues: ConfigIssue[] = [...validateGatewayHttpExposure(config)];
   const warnings: string[] = [];
 
-  const idpRejected =
+  let idpRejected =
     config.idp.adapter.kind === "mock" &&
     rejectDevOnlyInProduction(issues, "idp.adapter.kind", "idp adapter kind 'mock'");
+  // Keycloak の azp 検証を外す "*" は開発専用(issue #16)。受け入れたときは WARNING に残す
+  if (
+    config.idp.adapter.kind === "keycloak" &&
+    acceptsAnyClient(config.idp.adapter.allowedClients)
+  ) {
+    if (
+      rejectDevOnlyInProduction(
+        issues,
+        "idp.adapter.allowedClients",
+        "allowedClients '*' (azp check disabled)",
+      )
+    ) {
+      idpRejected = true;
+    } else {
+      warnings.push(KEYCLOAK_ANY_CLIENT_WARNING);
+    }
+  }
 
   // --- コネクタ実体と本人資格情報のプロバイダ(有効なコネクタのみ) ---
   const connectors: Connector[] = [];
@@ -284,7 +305,11 @@ export async function assembleGateway(
           { providers, ...(options.warn !== undefined ? { warn: options.warn } : {}) },
         );
       } else {
-        idpAdapter = createIdpAdapter(resolved, { providers });
+        // 検証で拒否した理由(クレーム名だけ)もサーバーログへ(issue #16)
+        idpAdapter = createIdpAdapter(resolved, {
+          providers,
+          ...(options.warn !== undefined ? { warn: options.warn } : {}),
+        });
       }
     } catch (error) {
       if (error instanceof IdpError) {
@@ -300,11 +325,16 @@ export async function assembleGateway(
   }
 
   // --- 監査シンク ---
+  const auditRejected =
+    config.audit.sink === AUDIT_SINK_STDOUT &&
+    rejectDevOnlyInProduction(issues, "audit.sink", "audit sink 'stdout'");
   let audit: ResolvedAuditSink | undefined;
-  try {
-    audit = await resolveAuditSink(config.audit, configDir);
-  } catch (error) {
-    collect(issues, error);
+  if (!auditRejected) {
+    try {
+      audit = await resolveAuditSink(config.audit, configDir);
+    } catch (error) {
+      collect(issues, error);
+    }
   }
 
   if (issues.length > 0 || idpAdapter === undefined || audit === undefined) {

@@ -1,6 +1,6 @@
 # 脅威モデル(T-000c)
 
-Status: Accepted(セキュリティレビュー完了: 2026-07-09、T-000cゲート解除) / Date: 2026-07-07 / 最終改訂: 2026-09-28(§8 改訂履歴)
+Status: Accepted(セキュリティレビュー完了: 2026-07-09、T-000cゲート解除) / Date: 2026-07-07 / 最終改訂: 2026-10-08(§8 改訂履歴)
 
 本書は実装前ゲート T-000c の成果物である。STRIDE を分類枠組みとして、本基盤の攻撃面を列挙し、
 各脅威に対策・検出手段・対応タスクIDを紐づける。T-008(評価ハーネス)のレッドチームシードと
@@ -8,7 +8,7 @@ T-013(セキュリティスイート)の入力を兼ねる。
 
 - 対象範囲: Phase 1(フェデレーテッド検索)+ Phase 2 で追加される検索層の設計上の境界(ADR-012)。
   Phase 3(マップ生成)は着手時に本書を改訂する
-- 前提: シングルテナント(1デプロイ=1社、ADR-005)。コネクタIFは v0.3(ADR-016)
+- 前提: シングルテナント(1デプロイ=1社、ADR-005)。コネクタIFは v0.4(ADR-016、追補2)
 - 正とする関連文書: ADR-010(認可方式)、ADR-011(監査2層)、ADR-012(未認可候補境界)、
   ADR-013(プライバシー)、ADR-014(Slack)、ADR-015(エージェント委譲)
 
@@ -137,6 +137,7 @@ v2 リスク表で影響「高」。**危険設定は起動時に拒否する**(
 | TM-E5 | `agentExecution` で scheduled/autonomous を Phase 1 のまま解放 | E | Phase 1 は設定に関わらず Gateway が既定拒否(ADR-015)。解放には同意実装の存在を前提条件とする | T-003/T-007 拒否テスト | T-003, T-007, T-010 |
 | TM-E6 | audit.sink の未接続・書き込み先喪失に気づかない(監査の静かな欠落) | R | fail-closed 既定により欠落は即時に可視化される(ツール呼び出しが失敗する)。sink 死活のヘルスチェックをリファレンスデプロイに含める | ヘルスチェック監視 | T-001, T-012 |
 | TM-E7 | Slackコネクタで永続化を伴う機能(キャッシュ・カタログ入力等)を有効化(ADR-014違反) | I | Slack由来データの永続化不可を設定スキーマ/コネクタ実装の両方で構造的に拒否 | T-006 の非永続化テスト、guard hook(補助) | T-006, T-010 |
+| TM-E8 | 既定の `privateScopes: excluded` がコネクタで実装されない(方針がコネクタに届かず、DM・プライベートチャンネル・個人スコープが検索対象になる。その docId が平文で監査に残る。ADR-013 §1・§2 違反) | I | コネクタ IF v0.4(ADR-016 追補2): 方針を factory に渡し(`ConnectorFactoryInit.policy`)、全結果に `scope` を付け、能力 `privateScopeHandling` を宣言させる。`excluded` + `unsupported`(宣言なしの v0.3 を含む)は起動時拒否(`private_scopes_unenforceable`)。Gateway が射影で `scope` を読み(欠落・未知は private)、`excluded` では search / list / describe の private を落とし、fetch を `private_scope_excluded` で拒否する(落とした件数は監査・ログに出さない)。Orchestrator は citedDocIds を「結果の scope が shared でない ∨ ソースの方針が excluded でない」で hashed / omitted にする。`consent` は #42 まで起動時拒否(`private_scopes_consent_not_supported`)。残余: コネクタの分類の誤りとソース側の除外の失敗が同時に起きると漏れる(両者の根拠を分ける)。GitHub の issue / PR・fetch は所有者の種別を判定できず、「app を組織にだけインストールする」前提に依存する(fetch 時に `GET /repos/{owner}/{repo}` で判定する案は見送り。前提のまま受容: オーナー確認 2026-10-09、issue #19)。`classified` のコネクタでは Gateway が落とした後も `nextCursor` はそのまま返るため(issue #45 で追跡)、ページの件数が limit より少ないのに続きがある形から、本人のプライベート領域に一致があることを LLM・利用者が推定しうる(本人の文書に限る推定。将来は shared が limit 件たまるまで続きを取りに行くことを検討)。分離テレメトリ(落とした事実の記録)は未実装で、`enforced` のコネクタの契約違反も検知できない | Gateway の強制テスト(方針を無視する試験用コネクタ)、起動拒否テスト、docId 分類テスト、各コネクタの scope 対応表の契約テスト | T-005, T-006, T-010, T-019 |
 
 ### 4-F. 監査ログ自体への攻撃
 
@@ -270,4 +271,6 @@ T-008 のレッドチームシードは本書から導出する。評価セッ�
 | 2026-09-27 | T-007 セキュリティレビューの反映: TM-D2(回答本文から URL を全除去、原典リンクは citations[].url のみ。検出手段にテスト名)、TM-C6(AnswerRun の主体を Gateway の認証済み userId に束縛)、TM-C7(骨格照合 — NFKC 正規化後の照合 — と残余を明記)、TM-D3(ツール呼び出し件数の上限)、TM-D4(describe 結果を user ターンのデータへ) |
 | 2026-09-28 | T-021(ADR-018)の反映: §4-I を新設(TM-I1〜I2: Orchestrator サービスの面)。RS-4 に汎用 UI 経由の残余(裸のドメイン名の自動リンク)を追記 |
 | 2026-09-28 | T-021 セキュリティレビューの反映: TM-I2 を訂正(LibreChat の MCP の接続先は `allowedAddresses` ではなく `interface.mcpServers.create: false` と `mcpSettings.allowedDomains` で限る)。TM-I3(UI 側の LLM への間接インジェクション)と TM-I4(Orchestrator から Gateway の監査ログを分離)を新設 |
+| 2026-10-08 | ADR-016 追補2(コネクタ IF v0.4、issue #19)の実装に伴い TM-E8(既定の `excluded` がコネクタで実装されない)を新設 |
 | 2026-10-09 | ADR-019(Gateway の run API、段階 1: 署名付き runId)の反映: TB2 の記述に「Orchestrator から届くものはすべて申告」と「監査ストアに書くのは Gateway だけ」を追記。TM-I4 に実装後の扱いを追記。TM-I5(run API の悪用)を新設。同日のセキュリティレビューを反映し、TM-I5 に (f)〜(j)(本人による直接の申告、sourceId の偽装、符号化の別表記、finish の欠落、actor の混入)を追加、TM-C6・TM-I1 に実装後の扱いを追記 |
+| 2026-10-09 | issue #16(IdP トークンの検証要件、ADR-010 追補)の反映: Keycloak アダプタが `iss` / `typ`(アクセストークンのみ)/ `azp`(`idp.adapter.allowedClients` の許可リスト)/ `aud`(`requireAudience`)を検証し、別クライアント・別 realm・リフレッシュトークン・ID トークンを拒否する。開発の逃げ道 `allowedClients: ["*"]` は WARNING と本番拒否(`dev_only_in_production`)。失敗理由はクレーム名だけをサーバーログに残す(TM-C2 の規律)。切り分けは `kp-gateway auth-check` |

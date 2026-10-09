@@ -20,11 +20,36 @@ const EXAMPLE_PATH = fileURLToPath(
 const DEV_EXAMPLE_PATH = fileURLToPath(
   new URL("../../../examples/deployment.dev.yaml", import.meta.url),
 );
+const KEYCLOAK_EXAMPLE_PATH = fileURLToPath(
+  new URL("../../../examples/deployment.keycloak.yaml", import.meta.url),
+);
+
+describe("examples/deployment.keycloak.yaml(手元の Keycloak で試す開発用設定。issue #16)", () => {
+  it("スキーマ・静的検証を通り、e2e/keycloak の realm と整合する(azp の検証を緩めない)", () => {
+    const config = loadDeploymentConfig(KEYCLOAK_EXAMPLE_PATH, {
+      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" } },
+    });
+    expect(config.deployment.name).toBe("dev-keycloak");
+    expect(config.idp.adapter).toEqual({
+      kind: "keycloak",
+      baseUrl: "http://localhost:8080",
+      realm: "kp",
+      clientId: "gateway",
+      clientSecretEnv: "KP_KEYCLOAK_CLIENT_SECRET",
+      allowedClients: ["e2e-cli"],
+      requireAudience: true,
+    });
+    expect(config.connectors.map((c) => c.id)).toEqual(["dev-docs"]);
+    expect(
+      resolveIdpAdapterConfig(config.idp.adapter, { KP_KEYCLOAK_CLIENT_SECRET: "dev-only-gateway-secret" }),
+    ).toMatchObject({ kind: "keycloak", allowedClients: ["e2e-cli"], requireAudience: true });
+  });
+});
 
 describe("examples/deployment.dev.yaml(手元で動かす開発用設定)", () => {
   it("スキーマ・静的検証を通り、開発用の部品だけで構成されている", () => {
     const config = loadDeploymentConfig(DEV_EXAMPLE_PATH, {
-      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false } },
+      capabilities: { "dev-docs": { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" } },
     });
     expect(config.deployment.name).toBe("dev-local");
     expect(config.idp.adapter).toEqual({ kind: "mock" });
@@ -45,8 +70,8 @@ describe("examples/deployment.yaml", () => {
   it("同梱サンプルがスキーマ・静的検証を通る", () => {
     const config = loadDeploymentConfig(EXAMPLE_PATH, {
       capabilities: {
-        gdrive: { nativeSearch: "full", ingest: false },
-        slack: { nativeSearch: "degraded", ingest: false },
+        gdrive: { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" },
+        slack: { nativeSearch: "degraded", ingest: false, privateScopeHandling: "classified" },
       },
     });
     expect(config.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
@@ -56,6 +81,10 @@ describe("examples/deployment.yaml", () => {
     expect(config.connectors.every((c) => c.privateScopes === "excluded")).toBe(true);
     expect(config.connectors.every((c) => !c.searchLayer.enabled)).toBe(true);
     expect(config.audit.failureMode).toBe("fail-closed");
+    // 本番サンプルは監査をファイルに永続化し、IdP は https(issue #17)
+    expect(config.audit.sink).toBe("jsonl");
+    expect(config.audit.jsonl?.rawQueryPath).toBeDefined();
+    expect(config.idp.adapter.kind === "keycloak" && config.idp.adapter.baseUrl).toMatch(/^https:/);
   });
 });
 
@@ -117,19 +146,42 @@ idp:
     realm: acme
     clientId: kp-gateway
     clientSecretEnv: TEST_KC_SECRET
+    allowedClients: [chat-ui]
 `;
 
   it("環境変数から秘密情報を解決する", () => {
     const config = parseDeploymentConfig(KEYCLOAK_YAML);
     const adapter = resolveIdpAdapterConfig(config.idp.adapter, {
-      TEST_KC_SECRET: "s3cret",
+      TEST_KC_SECRET: "dev-only-s3cret",
     });
     expect(adapter).toEqual({
       kind: "keycloak",
       baseUrl: "http://localhost:8080",
       realm: "acme",
       clientId: "kp-gateway",
-      clientSecret: "s3cret",
+      clientSecret: "dev-only-s3cret",
+      allowedClients: ["chat-ui"],
+      requireAudience: false,
+    });
+  });
+
+  it("allowedClients は必須で、requireAudience / allowedIssuers はそのまま渡す(issue #16)", () => {
+    expect(() =>
+      parseDeploymentConfig(KEYCLOAK_YAML.replace("    allowedClients: [chat-ui]\n", "")),
+    ).toThrow(/allowedClients/);
+    expect(() =>
+      parseDeploymentConfig(KEYCLOAK_YAML.replace("[chat-ui]", "[]")),
+    ).toThrow(DeploymentConfigError);
+    const config = parseDeploymentConfig(
+      `${KEYCLOAK_YAML}    requireAudience: true
+    allowedIssuers: [https://idp.example.test/realms/acme]
+`,
+    );
+    const adapter = resolveIdpAdapterConfig(config.idp.adapter, { TEST_KC_SECRET: "dev-only-s3cret" });
+    expect(adapter).toMatchObject({
+      allowedClients: ["chat-ui"],
+      requireAudience: true,
+      allowedIssuers: ["https://idp.example.test/realms/acme"],
     });
   });
 

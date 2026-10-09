@@ -28,7 +28,11 @@ export interface DocIdAuditConfig {
   hmacKey?: string;
 }
 
-/** docIdの出所。判定はコネクタのメタデータに基づきGateway(T-003)が行う。 */
+/**
+ * docIdの出所。privateScope は結果ごとの scope(コネクタが付ける。connector-sdk v0.4)と
+ * ソースの方針(privateScopes)の論理和で決める(ADR-016 追補2 決定5。citedDocIds は
+ * Orchestrator の audit.ts が組み立てる)。
+ */
 export interface DocIdOrigin {
   /** DM・プライベートチャンネル・個人スコープ等のプライベートスコープか */
   privateScope: boolean;

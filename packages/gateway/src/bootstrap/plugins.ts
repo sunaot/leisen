@@ -4,7 +4,7 @@
  * deployment.yaml の connectors[] を Connector 実体にする契約:
  *
  *   type ConnectorFactory =
- *     (init: { sourceId; settings; configDir }) => Connector | Promise<Connector>
+ *     (init: { sourceId; settings; configDir; policy }) => Connector | Promise<Connector>
  *
  * 解決順(キーは connectors[].kind。省略時は id):
  * 1. プログラム登録(assembleGateway の connectorFactories[kind])
@@ -28,15 +28,21 @@
  * - settings 内の相対パスは init.configDir(設定ファイルの所在ディレクトリ)基準で解決する
  * - factory の中でソースAPIを呼ばない(利用者本人の資格情報がない時点のため。
  *   サービスアカウントでの代替は不変条件1に反する)
+ * - init.policy(connector-sdk の SourcePolicy。deployment.yaml の privateScopes)に
+ *   従い、capabilities.privateScopeHandling を宣言する。全結果(SearchHit / FetchResult /
+ *   ContainerEntry)に scope を付ける(ADR-016 追補2 決定1〜3)。宣言のないプラグイン
+ *   (v0.3)は unsupported とみなされ、excluded の方針では起動を拒否される
  *
- * この契約は Gateway の起動コード側のものであり、connector-sdk の IF
- * (search / fetch / list / describe)は変更しない(不変条件5)。
+ * factory の契約(方針の受け取りと能力の宣言)もコネクタ IF(connector-sdk v0.4)の
+ * 一部である(ADR-016 追補2、不変条件5)。ConnectorFactoryInit は connector-sdk に
+ * 移さず、ここと各コネクタパッケージに同じ形で定義している(移設は #33 で決める)。
  */
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   ConnectorError,
   type Connector,
+  type SourcePolicy,
 } from "@kp/connector-sdk";
 import {
   CONNECTOR_KIND_PATTERN,
@@ -59,6 +65,24 @@ export interface ConnectorFactoryInit {
   readonly settings: Readonly<Record<string, unknown>>;
   /** 設定ファイルの所在ディレクトリ(絶対パス)。settings 内の相対パスの基準 */
   readonly configDir: string;
+  /**
+   * 導入単位のソース方針(connectors[].privateScopes。ADR-016 追補2 決定1)。
+   * consent は静的検証で拒否されるため渡らない
+   */
+  readonly policy: SourcePolicy;
+}
+
+/**
+ * connectors[] の宣言から factory に渡す方針を作る。consent は静的検証
+ * (private_scopes_consent_not_supported)で先に拒否されるが、万一届いた場合も
+ * included にはせず excluded に倒す(ADR-016 追補2 決定6)。
+ */
+export function sourcePolicyOf(
+  connector: Pick<ConnectorConfig, "privateScopes">,
+): SourcePolicy {
+  return {
+    privateScopes: connector.privateScopes === "included" ? "included" : "excluded",
+  };
 }
 
 export type ConnectorFactory = (
@@ -225,6 +249,8 @@ function isConnector(value: unknown): value is Connector {
     capabilities !== null &&
     ["full", "degraded", "none"].includes(capabilities["nativeSearch"] as string) &&
     typeof capabilities["ingest"] === "boolean" &&
+    // privateScopeHandling(v0.4)は省略可(v0.3 のプラグイン)。省略・未知の値は
+    // 設定検証で unsupported とみなす(privateScopeHandlingOf。ADR-016 追補2 決定3)
     CONNECTOR_METHODS.every((method) => typeof candidate[method] === "function")
   );
 }
@@ -311,6 +337,7 @@ export async function buildConnector(
       sourceId: connector.id,
       settings: connector.settings,
       configDir,
+      policy: sourcePolicyOf(connector),
     });
   } catch (error) {
     return { ok: false, issues: factoryFailureIssues(error, base, connector.kind) };

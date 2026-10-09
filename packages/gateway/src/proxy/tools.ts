@@ -18,6 +18,7 @@ import { callContextFromMeta, declarationFromMeta } from "./meta.js";
 import { bindSession } from "./session.js";
 import {
   GatewayError,
+  PRIVATE_SCOPE_EXCLUDED_MESSAGE,
   type GatewayErrorClass,
   type GatewayToolCall,
   type GatewayToolResult,
@@ -275,6 +276,13 @@ export function normalizeToolError(error: unknown): NormalizedToolError {
     return {
       errorClass: NOT_AVAILABLE_ERROR_CLASS,
       message: NOT_AVAILABLE_MESSAGE,
+    };
+  }
+  if (gatewayError.errorClass === "private_scope_excluded") {
+    // 方針による拒否は固定文言(ADR-016 追補2 決定4)。どの層が生成しても同じ文言にする
+    return {
+      errorClass: "private_scope_excluded",
+      message: PRIVATE_SCOPE_EXCLUDED_MESSAGE,
     };
   }
   return {
