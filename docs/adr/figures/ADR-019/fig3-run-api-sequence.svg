@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 780" width="1000" height="780" role="img" aria-labelledby="t3">
+  <title id="t3">図3 run API のシーケンスと、監査ストアのイベント列</title>
+  <defs>
+    <style>
+      text { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, "IPAPGothic", sans-serif; fill: #1f2328; }
+      .title { font-size: 18px; font-weight: 700; }
+      .h { font-size: 14px; font-weight: 700; }
+      .t { font-size: 12.5px; }
+      .s { font-size: 11px; fill: #59636e; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+      .ev { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 700; fill: #1a7f37; }
+      .badge { font-size: 10.5px; font-weight: 700; fill: #ffffff; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .blue { fill: #0969da; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/></marker>
+  </defs>
+  <rect width="1000" height="780" rx="10" fill="#ffffff"/>
+  <text class="title" x="20" y="34">図3 あるべき姿 — Gateway に run API(コネクタ IF とは別の面)を設ける</text>
+
+  <!-- ヘッダ -->
+  <rect x="60" y="56" width="160" height="44" rx="8" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+  <text class="h" x="140" y="77" text-anchor="middle">Orchestrator</text>
+  <text class="s" x="140" y="92" text-anchor="middle">申告者</text>
+  <rect x="420" y="56" width="160" height="44" rx="8" fill="#f3f9ff" stroke="#0969da" stroke-width="1.5"/>
+  <text class="h" x="500" y="77" text-anchor="middle">Gateway</text>
+  <text class="s" x="500" y="92" text-anchor="middle">検証者・唯一の書き手</text>
+  <rect x="740" y="56" width="160" height="44" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="h" x="820" y="77" text-anchor="middle">監査ストア</text>
+  <text class="s" x="820" y="92" text-anchor="middle">記録の列(JSONL が正)</text>
+
+  <!-- ライフライン -->
+  <line x1="140" y1="100" x2="140" y2="650" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <line x1="500" y1="100" x2="500" y2="650" stroke="#8c959f" stroke-dasharray="4 4"/>
+  <line x1="820" y1="100" x2="820" y2="650" stroke="#8c959f" stroke-dasharray="4 4"/>
+
+  <!-- 1. POST /runs -->
+  <text class="mono" x="150" y="134">POST /runs</text>
+  <text class="s" x="232" y="134">{ 質問原文 · actor }</text>
+  <text class="s" x="150" y="158">本人の Bearer + Orchestrator の資格情報(/runs の全経路)</text>
+  <line x1="140" y1="142" x2="497" y2="142" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <text class="s" x="512" y="164">質問原文 → 生クエリ表(30 日保持)</text>
+  <line x1="500" y1="172" x2="817" y2="172" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text class="ev" x="832" y="176">AnswerRun</text>
+  <text class="s" x="832" y="192">(pending)</text>
+
+  <text class="t" x="150" y="204">runId = <tspan font-weight="700">HMAC 署名付きの不透明な値</tspan></text>
+  <line x1="500" y1="212" x2="143" y2="212" stroke="#57606a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text class="s" x="150" y="228">中身: 乱数 · 発行時刻 · 有効期間。userId · actor は署名の入力で束縛(平文では持たない)</text>
+
+  <!-- 2. loop -->
+  <rect x="40" y="246" width="938" height="168" rx="8" fill="none" stroke="#8c959f"/>
+  <rect x="40" y="246" width="140" height="22" rx="8" fill="#eaeef2" stroke="#8c959f"/>
+  <text class="t" x="50" y="262" font-weight="700">loop 探索 × n</text>
+
+  <text class="mono" x="150" y="290">tools/call</text>
+  <text class="s" x="232" y="290">_meta.runId = 署名付き runId</text>
+  <line x1="140" y1="298" x2="497" y2="298" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="512" y="306" width="292" height="40" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+  <text class="t" x="522" y="323" font-weight="700">検証: 署名 · 本人と actor · 期限 · 資格情報</text>
+  <text class="s" x="522" y="339">署名だけで判定できる(索引不要 = 段階 1)</text>
+
+  <text class="s" x="512" y="364">段階 2 では返した docId も記録(引用検証の材料)</text>
+  <line x1="500" y1="372" x2="817" y2="372" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text class="ev" x="832" y="376">ToolInvocation*</text>
+
+  <text class="t" x="150" y="394">結果(本人の権限で得たもの)</text>
+  <line x1="500" y1="402" x2="143" y2="402" stroke="#57606a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+
+  <!-- 3. finish -->
+  <text class="mono" x="150" y="446">POST /runs/{id}/finish</text>
+  <line x1="140" y1="454" x2="497" y2="454" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="s" x="150" y="470">outcome · confidence · citations(LLM 由来 = 申告)</text>
+
+  <rect x="512" y="480" width="292" height="40" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+  <text class="t" x="522" y="497" font-weight="700">段階 2: citations ⊆ この run で返した docId</text>
+  <text class="s" x="522" y="513">run 単位の索引(SQLite 等、JSONL からの派生物)で照合</text>
+
+  <line x1="500" y1="540" x2="817" y2="540" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text class="s" x="512" y="532">引用 docId は最も厳しい規則で記録(決定5)</text>
+  <text class="ev" x="832" y="544">answer_run_finish</text>
+  <text class="s" x="832" y="560">(部分レコード)</text>
+
+  <!-- 4. feedback -->
+  <text class="mono" x="150" y="594">POST /runs/{id}/feedback</text>
+  <line x1="140" y1="602" x2="497" y2="602" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="s" x="150" y="618">利用者の評価(本人の run のときだけ)</text>
+  <text class="s" x="512" y="616">メモリ 1,000 件の制約がなくなる(#30)</text>
+  <line x1="500" y1="624" x2="817" y2="624" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text class="ev" x="832" y="628">answer_run_feedback</text>
+  <text class="s" x="832" y="644">(部分レコード)</text>
+
+  <!-- 下段 -->
+  <line x1="20" y1="666" x2="980" y2="666" stroke="#d0d7de"/>
+  <circle cx="34" cy="689" r="10" fill="#0969da"/><text class="badge" x="34" y="693" text-anchor="middle">C1</text>
+  <text class="t" x="52" y="693">書き手は Gateway。検証できる部分(runId · 本人 · 期限。引用の実在は段階 2)は Gateway が検証する。outcome の真偽は誰にも検証できない</text>
+  <circle cx="34" cy="714" r="10" fill="#0969da"/><text class="badge" x="34" y="718" text-anchor="middle">C2</text>
+  <text class="t" x="52" y="718">run の状態は監査ストアの記録の列に置く。各リクエストは独立し、Gateway のプロセスは無状態のまま</text>
+  <circle cx="34" cy="739" r="10" fill="#0969da"/><text class="badge" x="34" y="743" text-anchor="middle">C3</text>
+  <text class="t" x="52" y="743">run API は Gateway の管理面(本人の Bearer + Orchestrator の資格情報)。MCP のツール面・コネクタ IF には触れないので不変条件 5 の外</text>
+  <circle cx="34" cy="764" r="10" fill="#0969da"/><text class="badge" x="34" y="768" text-anchor="middle">C4</text>
+  <text class="t" x="52" y="768">Orchestrator は監査ストアをマウントしない。別ホストにも置ける(同じ運用者の下)。監査ファイルは Gateway の 1 系統に戻る</text>
+</svg>

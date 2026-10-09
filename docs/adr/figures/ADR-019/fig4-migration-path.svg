@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" role="img" aria-labelledby="t4">
+  <title id="t4">図4 現状 A から段階 1・段階 2 への移行と、それぞれで解ける問題</title>
+  <defs>
+    <style>
+      text { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, "IPAPGothic", sans-serif; fill: #1f2328; }
+      .title { font-size: 18px; font-weight: 700; }
+      .h { font-size: 14px; font-weight: 700; }
+      .t { font-size: 12.5px; }
+      .s { font-size: 11px; fill: #59636e; }
+      .rl { font-size: 12.5px; font-weight: 700; }
+      .badge { font-size: 10.5px; font-weight: 700; fill: #ffffff; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker>
+    <!-- 記号: ok / part / ng -->
+    <g id="ok"><circle r="9" fill="#1a7f37"/><polyline points="-4.5,0 -1.2,3.6 4.5,-3.6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="part"><circle r="9" fill="#bf8700"/><line x1="-4.5" y1="0" x2="4.5" y2="0" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></g>
+    <g id="ng"><circle r="9" fill="#cf222e"/><line x1="-3.6" y1="-3.6" x2="3.6" y2="3.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><line x1="3.6" y1="-3.6" x2="-3.6" y2="3.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></g>
+  </defs>
+  <rect width="1000" height="640" rx="10" fill="#ffffff"/>
+  <text class="title" x="20" y="34">図4 移行の道筋 — A で計測ループを閉じたまま段階 1 に移り、段階 2 は条件つきで進む</text>
+
+  <!-- 列ヘッダ(矢羽) -->
+  <polygon points="220,56 452,56 470,84 452,112 220,112" fill="#fff8f2" stroke="#bc4c00" stroke-width="1.5"/>
+  <text class="h" x="236" y="79">現状 A(実装済み)</text>
+  <text class="s" x="236" y="99">Orchestrator が別ボリュームに書く</text>
+  <polygon points="476,56 708,56 726,84 708,112 476,112 494,84" fill="#f3f9ff" stroke="#0969da" stroke-width="1.5"/>
+  <text class="h" x="506" y="79">段階 1(索引なし)</text>
+  <text class="s" x="506" y="99">run API + HMAC 署名付き runId</text>
+  <polygon points="732,56 980,56 980,112 732,112 750,84" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="h" x="762" y="79">段階 2(索引あり)</text>
+  <text class="s" x="762" y="99">run 単位の索引 + 引用の検証</text>
+
+  <!-- 行 -->
+  <g>
+    <!-- 罫線 -->
+    <line x1="20" y1="124" x2="980" y2="124" stroke="#d0d7de"/>
+    <line x1="20" y1="170" x2="980" y2="170" stroke="#d0d7de"/>
+    <line x1="20" y1="216" x2="980" y2="216" stroke="#d0d7de"/>
+    <line x1="20" y1="262" x2="980" y2="262" stroke="#d0d7de"/>
+    <line x1="20" y1="308" x2="980" y2="308" stroke="#d0d7de"/>
+    <line x1="20" y1="354" x2="980" y2="354" stroke="#d0d7de"/>
+    <line x1="20" y1="400" x2="980" y2="400" stroke="#d0d7de"/>
+    <line x1="20" y1="446" x2="980" y2="446" stroke="#d0d7de"/>
+    <line x1="20" y1="492" x2="980" y2="492" stroke="#d0d7de"/>
+
+    <!-- C1 -->
+    <circle cx="34" cy="147" r="10" fill="#57606a"/><text class="badge" x="34" y="151" text-anchor="middle">C1</text>
+    <text class="rl" x="52" y="143">観測点 ≠ 権威</text><text class="s" x="52" y="160">検証できる部分の検証</text>
+    <use href="#part" x="236" y="147"/><text class="t" x="252" y="143">userId は Gateway 認証値に束縛</text><text class="s" x="252" y="160">runId は申告のまま</text>
+    <use href="#part" x="492" y="147"/><text class="t" x="508" y="143">runId · userId を署名で検証</text><text class="s" x="508" y="160">引用は未検証</text>
+    <use href="#ok" x="748" y="147"/><text class="t" x="764" y="143">引用 ⊆ 返した docId も検証</text><text class="s" x="764" y="160">outcome の真偽は誰にも検証不能</text>
+
+    <!-- C2 -->
+    <circle cx="34" cy="193" r="10" fill="#57606a"/><text class="badge" x="34" y="197" text-anchor="middle">C2</text>
+    <text class="rl" x="52" y="189">run の状態の置き場</text><text class="s" x="52" y="206">ステートレス Gateway</text>
+    <use href="#ng" x="236" y="193"/><text class="t" x="252" y="189">Orchestrator のプロセス内</text><text class="s" x="252" y="206">Gateway は run を知らない</text>
+    <use href="#ok" x="492" y="193"/><text class="t" x="508" y="189">監査ストアのイベント列</text><text class="s" x="508" y="206">Gateway プロセスは無状態のまま</text>
+    <use href="#ok" x="748" y="193"/><text class="t" x="764" y="189">同左</text>
+
+    <!-- C3 -->
+    <circle cx="34" cy="239" r="10" fill="#57606a"/><text class="badge" x="34" y="243" text-anchor="middle">C3</text>
+    <text class="rl" x="52" y="235">ツール IF の凍結</text><text class="s" x="52" y="252">run の事象の置き場</text>
+    <use href="#part" x="236" y="239"/><text class="t" x="252" y="235">IF は不変だが、口がない</text><text class="s" x="252" y="252">runId は _meta の申告だけ</text>
+    <use href="#ok" x="492" y="239"/><text class="t" x="508" y="235">run API は別の面</text><text class="s" x="508" y="252">コネクタ IF は不変(不変条件 5 の外)</text>
+    <use href="#ok" x="748" y="239"/><text class="t" x="764" y="235">同左</text>
+
+    <!-- C4 -->
+    <circle cx="34" cy="285" r="10" fill="#57606a"/><text class="badge" x="34" y="289" text-anchor="middle">C4</text>
+    <text class="rl" x="52" y="281">TB2 との整合</text><text class="s" x="52" y="298">Orchestrator の置き場所</text>
+    <use href="#part" x="236" y="285"/><text class="t" x="252" y="281">同一運用者を前提に受容</text><text class="s" x="252" y="298">別ボリュームで被害範囲を限定</text>
+    <use href="#ok" x="492" y="285"/><text class="t" x="508" y="281">別ホストにも置ける</text><text class="s" x="508" y="298">監査ストアをマウントしない</text>
+    <use href="#ok" x="748" y="285"/><text class="t" x="764" y="281">同左</text>
+
+    <!-- C5 -->
+    <circle cx="34" cy="331" r="10" fill="#cf222e"/><text class="badge" x="34" y="335" text-anchor="middle">C5</text>
+    <text class="rl" x="52" y="327">索引がない</text><text class="s" x="52" y="344">唯一の本当の壁</text>
+    <use href="#ng" x="236" y="331"/><text class="t" x="252" y="327">突合はレポート時だけ</text><text class="s" x="252" y="344">(runId, userId) で事後に照合</text>
+    <use href="#part" x="492" y="331"/><text class="t" x="508" y="327">署名で所有者 · 期限だけ</text><text class="s" x="508" y="344">索引なしで済む範囲に絞る</text>
+    <use href="#ok" x="748" y="331"/><text class="t" x="764" y="327">run 単位の索引(SQLite 等)</text><text class="s" x="764" y="344">JSONL が正、索引は派生物</text>
+
+    <!-- 質問原文 -->
+    <text class="rl" x="52" y="373">質問原文</text><text class="s" x="52" y="390">#18 / #22</text>
+    <use href="#ng" x="236" y="377"/><text class="t" x="252" y="373">記録先なし</text><text class="s" x="252" y="390">レポートは「期限切れ」と誤表示</text>
+    <use href="#ok" x="492" y="377"/><text class="t" x="508" y="373">POST /runs → 生クエリ表</text><text class="s" x="508" y="390">Slack 有効時は書かない(#22)</text>
+    <use href="#ok" x="748" y="377"/><text class="t" x="764" y="373">同左</text>
+
+    <!-- feedback -->
+    <text class="rl" x="52" y="419">feedback の永続</text><text class="s" x="52" y="436">#30</text>
+    <use href="#ng" x="236" y="423"/><text class="t" x="252" y="419">メモリ内 1,000 件まで</text><text class="s" x="252" y="436">再起動で消える</text>
+    <use href="#ok" x="492" y="423"/><text class="t" x="508" y="419">answer_run_feedback</text><text class="s" x="508" y="436">部分レコードとして追記</text>
+    <use href="#ok" x="748" y="423"/><text class="t" x="764" y="419">同左</text>
+
+    <!-- 書き手 -->
+    <text class="rl" x="52" y="465">監査の書き手</text><text class="s" x="52" y="482">TM-I4</text>
+    <use href="#part" x="236" y="469"/><text class="t" x="252" y="465">2 系統(Gateway + Orch.)</text><text class="s" x="252" y="482">ボリュームの分離で成立</text>
+    <use href="#ok" x="492" y="469"/><text class="t" x="508" y="465">Gateway の 1 系統</text><text class="s" x="508" y="482">構造的に成立</text>
+    <use href="#ok" x="748" y="469"/><text class="t" x="764" y="465">同左</text>
+  </g>
+
+  <!-- 凡例 -->
+  <use href="#ok" x="34" y="514"/><text class="s" x="48" y="518">解ける</text>
+  <use href="#part" x="104" y="514"/><text class="s" x="118" y="518">一部 · 前提つき</text>
+  <use href="#ng" x="214" y="514"/><text class="s" x="228" y="518">解けない</text>
+
+  <!-- 進め方 -->
+  <rect x="20" y="538" width="960" height="88" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text class="h" x="36" y="562">進め方(ADR-019)</text>
+  <rect x="36" y="574" width="270" height="40" rx="6" fill="#fff8f2" stroke="#bc4c00"/>
+  <text class="t" x="171" y="590" text-anchor="middle">ADR-019 Accepted(2026-10-09)</text>
+  <text class="s" x="171" y="606" text-anchor="middle">段階 1 で進める。実装までは A のまま</text>
+  <line x1="306" y1="594" x2="346" y2="594" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="348" y="574" width="270" height="40" rx="6" fill="#f3f9ff" stroke="#0969da"/>
+  <text class="t" x="483" y="590" text-anchor="middle">T-023: 段階 1 を実装</text>
+  <text class="s" x="483" y="606" text-anchor="middle">@kp/audit 切り出し → run API → 移行</text>
+  <line x1="618" y1="594" x2="658" y2="594" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="660" y="574" width="304" height="40" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+  <text class="t" x="812" y="590" text-anchor="middle">段階 2: 索引を足して引用を検証(別 ADR)</text>
+  <text class="s" x="812" y="606" text-anchor="middle">AnswerRun のスキーマは全段階で共通</text>
+</svg>

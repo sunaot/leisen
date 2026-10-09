@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" role="img" aria-labelledby="t5">
+  <title id="t5">図5 モジュール境界と書き手の置き場所(段階 1 の同居と、条件つきの S2)</title>
+  <defs>
+    <style>
+      text { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, "IPAPGothic", sans-serif; fill: #1f2328; }
+      .title { font-size: 18px; font-weight: 700; }
+      .panel { font-size: 15px; font-weight: 700; }
+      .h { font-size: 14px; font-weight: 700; }
+      .t { font-size: 12.5px; }
+      .s { font-size: 11px; fill: #59636e; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 700; }
+      .blue { fill: #0969da; }
+      .red { fill: #cf222e; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker>
+  </defs>
+  <rect width="1000" height="640" rx="10" fill="#ffffff"/>
+  <text class="title" x="20" y="34">図5 モジュール境界 — 同じプロセスに同居しても、run と監査は MCP に依存しない</text>
+
+  <!-- 左パネル: 段階 1 -->
+  <rect x="20" y="52" width="545" height="560" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text class="panel" x="36" y="78">段階 1: Gateway プロセスに同居(G)</text>
+
+  <rect x="36" y="92" width="513" height="380" rx="10" fill="#f3f9ff" stroke="#0969da" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text class="t blue" x="48" y="111" font-weight="700">Gateway プロセス(単一レプリカ)</text>
+
+  <rect x="56" y="120" width="473" height="38" rx="6" fill="#ffffff" stroke="#57606a"/>
+  <text class="t" x="292" y="144" text-anchor="middle"><tspan font-weight="700">bootstrap / http.ts</tspan>(組み立て役 · HTTP の口 <tspan font-family="ui-monospace, Menlo, Consolas, monospace">/mcp</tspan> と <tspan font-family="ui-monospace, Menlo, Consolas, monospace">/runs</tspan>)</text>
+
+  <line x1="126" y1="158" x2="126" y2="188" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="292" y1="158" x2="292" y2="188" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="459" y1="158" x2="459" y2="188" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="56" y="190" width="140" height="46" rx="6" fill="#ffffff" stroke="#8c959f"/>
+  <text class="mono" x="126" y="209" text-anchor="middle">idp/</text>
+  <text class="s" x="126" y="226" text-anchor="middle">IdP Adapter(認証)</text>
+  <rect x="212" y="190" width="160" height="46" rx="6" fill="#ffffff" stroke="#8c959f"/>
+  <text class="mono" x="292" y="209" text-anchor="middle">proxy/</text>
+  <text class="s" x="292" y="226" text-anchor="middle">MCP · tools/call · _meta</text>
+  <rect x="388" y="190" width="141" height="46" rx="6" fill="#ffffff" stroke="#8c959f"/>
+  <text class="t" x="459" y="209" text-anchor="middle" font-weight="700">run API ハンドラ</text>
+  <text class="s" x="459" y="226" text-anchor="middle">/runs の HTTP 面</text>
+
+  <!-- proxy → run, handler → run -->
+  <line x1="300" y1="236" x2="300" y2="268" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="s" x="306" y="257">verify(runId, 主体)</text>
+  <line x1="459" y1="236" x2="430" y2="268" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="160" y="270" width="300" height="48" rx="6" fill="#fff8c5" stroke="#9a6700" stroke-width="1.5"/>
+  <text class="mono" x="310" y="290" text-anchor="middle">run/</text>
+  <text class="s" x="310" y="308" text-anchor="middle">runId の発行 · 検証(署名鍵) · 監査レコードの組み立て</text>
+
+  <!-- proxy → audit (ToolInvocation) -->
+  <polyline points="225,236 225,252 110,252 110,348" fill="none" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="s" x="48" y="290">ToolInvocation</text>
+  <line x1="310" y1="318" x2="310" y2="348" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="56" y="350" width="473" height="48" rx="6" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="mono" x="292" y="370" text-anchor="middle">@kp/audit</text>
+  <text class="s" x="292" y="388" text-anchor="middle">スキーマ · AuditSink · JSONL · 生クエリ表 · docId の不可逆化(依存は zod と Node 標準だけ)</text>
+
+  <rect x="56" y="410" width="473" height="50" rx="6" fill="#ffebe9" stroke="#cf222e"/>
+  <text class="t red" x="70" y="430" font-weight="700">✕ run/ と @kp/audit は次を import しない(lint で検査)</text>
+  <text class="s" x="70" y="449">proxy/ · idp/ · config/ · @modelcontextprotocol/sdk · @kp/connector-sdk</text>
+
+  <line x1="292" y1="472" x2="292" y2="506" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="s" x="300" y="494">AuditSink · RawQueryStore(既定 = 同じプロセス)</text>
+  <rect x="152" y="508" width="280" height="40" rx="6" fill="#ffffff" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="t" x="292" y="533" text-anchor="middle">監査ボリューム(Gateway の 1 系統)</text>
+
+  <text class="s" x="36" y="578">→ は import の向き(依存)。組み立て役だけが全モジュールを知る</text>
+  <text class="s" x="36" y="596">Orchestrator は別プロセスのまま、本人の Bearer で /mcp と /runs を呼ぶ(/runs は自分の資格情報も添える)</text>
+
+  <!-- 右パネル: S2 -->
+  <rect x="580" y="52" width="400" height="560" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text class="panel" x="596" y="78">条件を満たしたら S2: 書き手だけ別プロセス</text>
+
+  <rect x="596" y="92" width="368" height="150" rx="10" fill="#f3f9ff" stroke="#0969da" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text class="t blue" x="608" y="111" font-weight="700">Gateway プロセス(複数台にできる)</text>
+  <rect x="612" y="122" width="336" height="40" rx="6" fill="#ffffff" stroke="#8c959f"/>
+  <text class="t" x="780" y="147" text-anchor="middle">http · idp · proxy · run(段階 1 と同じ)</text>
+  <rect x="612" y="174" width="336" height="54" rx="6" fill="#fff8c5" stroke="#9a6700" stroke-width="1.5"/>
+  <text class="t" x="780" y="196" text-anchor="middle" font-weight="700">AuditSink · RawQueryStore = ネットワーク送信</text>
+  <text class="s" x="780" y="215" text-anchor="middle">差し替えるのはここだけ(at-least-once · 冪等キー)</text>
+
+  <line x1="780" y1="242" x2="780" y2="274" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="632" y="276" width="296" height="62" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="h" x="780" y="300" text-anchor="middle">監査サービス(唯一の書き手)</text>
+  <text class="s" x="780" y="320" text-anchor="middle">@kp/audit + 段階 2 の run 索引</text>
+  <line x1="780" y1="338" x2="780" y2="366" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="680" y="368" width="200" height="36" rx="6" fill="#ffffff" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="t" x="780" y="391" text-anchor="middle">監査ストア</text>
+
+  <rect x="596" y="424" width="368" height="118" rx="8" fill="#ffffff" stroke="#8c959f"/>
+  <text class="t" x="610" y="446" font-weight="700">移行の条件(いずれか 1 つ)</text>
+  <text class="t" x="610" y="470">1. Gateway を複数台にする</text>
+  <text class="t" x="610" y="492">2. 段階 2 の索引を複数の Gateway で共有する</text>
+  <text class="t" x="610" y="514">3. 監査の書き込み資格情報を Token Vault と</text>
+  <text class="t" x="626" y="532">同じプロセスに置けない(TM-F1 の厳格適用)</text>
+
+  <text class="t red" x="596" y="570" font-weight="700">✕ S1(run の事象だけ別サービス)は採らない</text>
+  <text class="s" x="596" y="590">認証の二重化 · 署名鍵の共有 · 書き手 2 系統が残る</text>
+</svg>
