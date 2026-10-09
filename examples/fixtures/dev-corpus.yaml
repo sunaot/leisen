@@ -3,7 +3,9 @@
 # examples/deployment.dev.yaml から settings.corpusFile で参照する。
 # すべて架空の社内文書であり、実在の組織・人物・機密情報・秘密情報を含まない
 # (URL は予約ドメイン example.test)。形式は packages/gateway/src/dev/fixture-connector.ts
-# の documentSchema(id / title / content / url / container / author / updatedAt)。
+# の documentSchema(id / title / content / url / container / author / updatedAt / scope)。
+# scope(private / shared、省略時 shared)は ADR-016 追補2 の領域の分類で、
+# privateScopes: excluded(既定)では private の文書を検索・一覧・fetch の対象から外す。
 documents:
   - id: expense-rules
     title: 経費精算ルール(2026年度版)

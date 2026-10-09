@@ -2,7 +2,8 @@
  * 監査シンクの解決(起動コード。deployment.yaml の audit.sink、ADR-011)。
  *
  * - "stdout" → StdoutDebugAuditSink(開発用。at-least-once を保証しない)。
- *   生クエリ原文はプロセス内メモリ(InMemoryRawQueryStore)
+ *   生クエリ原文はプロセス内メモリ(InMemoryRawQueryStore)。NODE_ENV=production では
+ *   assembleGateway が dev_only_in_production で拒否する(issue #17、ADR-011 追記)
  * - "jsonl"  → BufferedAuditSink(JsonlAuditStore(audit.jsonl.path))。
  *   rawQueryPath があれば JsonlRawQueryStore、なければ InMemoryRawQueryStore
  * - それ以外 → unknown_audit_sink で起動を拒否する(書き先の分からない監査は
@@ -40,6 +41,7 @@ import {
   DeploymentConfigError,
   type ConfigIssue,
 } from "../config/validate.js";
+import { assertNotProduction } from "../idp/mock.js";
 
 export interface ResolvedAuditSink {
   readonly sink: AuditSink;
@@ -91,6 +93,10 @@ export async function resolveAuditSink(
   configDir: string,
 ): Promise<ResolvedAuditSink> {
   if (audit.sink === AUDIT_SINK_STDOUT) {
+    // 二重の防御: assembleGateway が先に dev_only_in_production で拒否するが、
+    // この関数を直接呼ぶ経路でも本番では構築しない(issue #17)。audit/ 配下の
+    // モジュールは idp/ を import しないため、検査はここ(bootstrap)に置く
+    assertNotProduction("audit sink 'stdout'");
     return {
       sink: new StdoutDebugAuditSink(),
       rawQueryStore: new InMemoryRawQueryStore(),

@@ -26,6 +26,7 @@ describe("createIdpAdapter", () => {
         realm: "kp",
         clientId: "gateway",
         clientSecret: "dev-only-secret",
+        allowedClients: ["chat-ui"],
       },
       { providers: [] },
     );

@@ -302,7 +302,10 @@ const DEPLOYMENT_YAML = [
   "    kind: mock",
   "connectors:",
   "  - id: alpha",
-  "    privateScopes: consent",
+  // excluded 以外(included)のソースは全 docId をプライベートスコープとして扱う。
+  // consent は validate で拒否される(ADR-016 追補2 決定6。下のテスト)
+  "    privateScopes: included",
+  "    confirmPrivateScopesIncluded: true",
   "audit:",
   "  privateScopeDocIds: hashed",
   "",
@@ -407,6 +410,27 @@ describe("kp-ask: 利用者の束縛(H1)と citedDocIds の記録方針(H2)", ()
 
     expect(code).toBe(2);
     expect(err.join("\n")).toContain("deployment config rejected");
+    expect(harness.toolInvocations()).toEqual([]);
+  });
+
+  it("--config の privateScopes: consent は拒否して終了コード 2(#42 まで。ADR-016 追補2 決定6)", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(
+      DEPLOYMENT_YAML.replace(
+        "    privateScopes: included\n    confirmPrivateScopesIncluded: true",
+        "    privateScopes: consent",
+      ),
+    );
+    const { err, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(2);
+    expect(err.join("\n")).toContain("private_scopes_consent_not_supported");
     expect(harness.toolInvocations()).toEqual([]);
   });
 });

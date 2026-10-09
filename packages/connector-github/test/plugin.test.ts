@@ -42,7 +42,11 @@ describe("createConnector(Gateway のプラグイン契約)", () => {
     });
     expect(connector).toBeInstanceOf(GitHubConnector);
     expect(connector.sourceId).toBe("github-corp");
-    expect(connector.capabilities).toEqual({ nativeSearch: "degraded", ingest: false });
+    expect(connector.capabilities).toEqual({
+      nativeSearch: "degraded",
+      ingest: false,
+      privateScopeHandling: "classified",
+    });
     for (const method of ["search", "fetch", "list", "describe"] as const) {
       expect(typeof connector[method]).toBe("function");
     }

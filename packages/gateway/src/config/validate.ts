@@ -7,7 +7,10 @@
  * ソースAPIへの照会は行わない。
  */
 import { BlockList, isIP } from "node:net";
-import type { ConnectorCapabilities } from "@kp/connector-sdk";
+import {
+  privateScopeHandlingOf,
+  type ConnectorCapabilities,
+} from "@kp/connector-sdk";
 import { AUDIT_SINK_JSONL, type DeploymentConfig } from "./schema.js";
 
 /**
@@ -24,6 +27,13 @@ export type ConfigIssueCode =
   | "index_required_source_needs_search_layer"
   | "fail_open_requires_confirmation"
   | "private_scopes_included_requires_confirmation"
+  /** privateScopes: consent は同意状態の設計(#42)まで受け付けない(ADR-016 追補2 決定6) */
+  | "private_scopes_consent_not_supported"
+  /**
+   * 有効なコネクタの方針が excluded なのに、能力 privateScopeHandling が unsupported
+   * (宣言なしの v0.3 プラグインを含む)。除外を強制できない(ADR-016 追補2 決定3)
+   */
+  | "private_scopes_unenforceable"
   | "agent_execution_not_allowed_in_phase1"
   | "secret_env_missing"
   /** audit.sink: jsonl に audit.jsonl.path がない(静的検証) */
@@ -45,8 +55,17 @@ export type ConfigIssueCode =
   | "connector_auth_provider_missing"
   /** IdP Adapter を構築できない(開発用モックのセッション定義の不備等) */
   | "idp_adapter_misconfigured"
-  /** 開発専用の部品(mock IdP / mock_env / dev-fixture)を NODE_ENV=production で使おうとした */
+  /**
+   * 開発専用の部品(mock IdP / mock_env / dev-fixture / audit.sink: stdout /
+   * keycloak の allowedClients: ["*"])を NODE_ENV=production で使おうとした
+   * (stdout シンクは issue #17、ADR-011 追記。"*" は issue #16)
+   */
   | "dev_only_in_production"
+  /**
+   * idp.adapter.baseUrl が平文 http: でループバック以外を指すのに
+   * idp.adapter.confirmPlainHttp: true がない(validateIdpTransport、静的検証。issue #17)
+   */
+  | "idp_plain_http_requires_confirmation"
   /**
    * gateway.http.host がループバック以外なのに gateway.http.confirmExposedHost: true が
    * ない(validateGatewayHttpExposure。起動コードが待ち受けの前に検査する。T-012)
@@ -124,6 +143,21 @@ export function validateDeploymentConfig(
       });
     }
 
+    // privateScopes: consent の暫定拒否(ADR-016 追補2 決定6)。included の確認フラグと
+    // 同じく無効化済みのコネクタでも宣言時点で拒否する。スキーマの列挙値は残し、
+    // 解放は同意状態の持ち方の設計(#42)後にこの検証の緩和として行う
+    if (connector.privateScopes === "consent") {
+      issues.push({
+        code: "private_scopes_consent_not_supported",
+        path: `${base}.privateScopes`,
+        message:
+          `"consent" is not supported yet: per-user consent state is not designed (issue #42), ` +
+          `so the policy would not reach the connector and private scopes would not be excluded ` +
+          `(ADR-013 §1, ADR-016 addendum 2). Use "excluded" (default), or "included" with ` +
+          `confirmPrivateScopesIncluded: true`,
+      });
+    }
+
     // backend欠落もprivateScopes同様「宣言時拒否」とする(enabled: falseでも
     // 拒否)。無効化中に仕込まれた不完全な宣言が、有効化した瞬間に危険設定と
     // して発現することを防ぐ
@@ -154,6 +188,25 @@ export function validateDeploymentConfig(
         message: `connector "${connector.id}" is not registered in this deployment`,
       });
       return;
+    }
+
+    // 方針 excluded は、能力 privateScopeHandling が enforced / classified のコネクタで
+    // だけ起動できる(ADR-016 追補2 決定3)。unsupported(宣言なしの v0.3 プラグインを
+    // 含む)は結果に scope を付けないため、Gateway は全結果を private とみなして全件を
+    // 落とすことになり、ソース側の除外も期待できない。included(確認フラグ付き)は
+    // どの能力でも通す
+    if (
+      connector.privateScopes === "excluded" &&
+      privateScopeHandlingOf(capabilities) === "unsupported"
+    ) {
+      issues.push({
+        code: "private_scopes_unenforceable",
+        path: `${base}.privateScopes`,
+        message:
+          `connector "${connector.id}" declares privateScopeHandling "unsupported" (or none, as in ` +
+          `connector-sdk v0.3), so "excluded" cannot be enforced. Use a connector that declares ` +
+          `"enforced" or "classified" (connector-sdk v0.4, ADR-016 addendum 2)`,
+      });
     }
 
     // 検索層はingest実装コネクタのみ有効化できる(ADR-007)。ingestなしでの
@@ -206,6 +259,9 @@ export function validateDeploymentConfig(
     });
   }
 
+  // IdP への平文 http はループバック以外で確認フラグ必須(issue #17)
+  issues.push(...validateIdpTransport(config));
+
   // Phase 1では human-in-the-loop のみ許可(ADR-015)。解放は区分設定の
   // semanticsと本人同意の実装後に、このガードの緩和として行う
   for (const cls of ["scheduled", "autonomous"] as const) {
@@ -244,6 +300,45 @@ export function isLoopbackHost(host: string): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * IdP への平文 http の確認(issue #17)。イントロスペクション(RFC 7662)の往復には
+ * Gateway の clientSecret と利用者のセッショントークンが載る。baseUrl が平文 http: で
+ * ループバック以外(内部網のホスト名等)を指す構成は、経路が閉じた網であることを
+ * idp.adapter.confirmPlainHttp: true で明示させる(gateway.http.confirmExposedHost と
+ * 同じ規約)。https: は無条件に通す。URL として解析できない値はここでは扱わない
+ * (IdP Adapter の構築・呼び出しで失敗する)。設定値だけで判定できるため静的検証に置く。
+ */
+export function validateIdpTransport(config: DeploymentConfig): ConfigIssue[] {
+  const adapter = config.idp.adapter;
+  if (adapter.kind !== "keycloak") {
+    return [];
+  }
+  let url: URL;
+  try {
+    url = new URL(adapter.baseUrl);
+  } catch {
+    return [];
+  }
+  if (url.protocol !== "http:") {
+    return [];
+  }
+  // URL.hostname は IPv6 を [..] で囲む
+  const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
+  if (isLoopbackHost(host) || adapter.confirmPlainHttp === true) {
+    return [];
+  }
+  return [
+    {
+      code: "idp_plain_http_requires_confirmation",
+      path: "idp.adapter.baseUrl",
+      message:
+        `plain http to "${host}" sends the client secret and session tokens unencrypted. ` +
+        `Use https, or set idp.adapter.confirmPlainHttp: true only when the path to the IdP ` +
+        `is a closed network (docs/install.md)`,
+    },
+  ];
 }
 
 /**

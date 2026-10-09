@@ -5,7 +5,8 @@
  *   実行区分照合(ADR-015) → コネクタ解決(enabled) → レート制御 →
  *   資格情報取得(IdpAdapter、失敗時はコネクタを呼ばない) →
  *   コネクタ呼び出し(タイムアウト付き) → 結果の射影(既知フィールドのみ、
- *   snippet強制truncate。ADR-016、TM-A1) →
+ *   snippet強制truncate、scope の正規化。ADR-016、TM-A1) →
+ *   プライベート領域の方針の強制(privateScopes: excluded。ADR-016 追補2 決定4) →
  *   監査記録(正確に1レコード、失敗時は既定fail-closed、ADR-011 §4)
  *
  * ステートレス(ADR-001 追補3 決定1〜3): Gatewayは利用者ごとの状態を持たない。
@@ -20,11 +21,16 @@
  *   このクラスにのみ登録し、Orchestratorへ直接公開しない
  * - 監査レコード・エラーメッセージに秘密情報・文書内容・候補件数を
  *   含めない(不変条件3/6、TM-A2)
+ * - プライベート領域の除外は導入先の方針(deployment.yaml)の強制であって認可判定では
+ *   ない(ADR-016 追補2)。誰が何を見てよいかはソースが本人の資格情報で決めたままで、
+ *   ここでは認可済みの結果をコネクタが付けた scope で絞るだけ(権限モデル・ACL を持たない)。
+ *   落とした件数は監査・デバッグログ・メトリクスのいずれにも出さない(ADR-013)
  */
 import { randomUUID } from "node:crypto";
 import {
   ConnectorError,
   MAX_SNIPPET_CHARS,
+  normalizeDocumentScope,
   type AuthContext,
   type Connector,
   type ConnectorCapabilities,
@@ -47,6 +53,7 @@ import { SourceRateLimiter } from "./ratelimit.js";
 import { resolveCallContext, validateDeclaration } from "./session.js";
 import {
   GatewayError,
+  PRIVATE_SCOPE_EXCLUDED_MESSAGE,
   type CallContext,
   type ExecutionClass,
   type GatewaySession,
@@ -342,7 +349,7 @@ export class Gateway {
       entry.config.limits.timeoutMs,
       call.sourceId,
     );
-    return projectResult(raw);
+    return enforcePrivateScopes(projectResult(raw), entry.config.privateScopes);
   }
 
   private async invokeConnector(
@@ -379,13 +386,14 @@ export class Gateway {
 
 // ---- 結果の射影(TM-A1、ADR-016) ----
 //
-// コネクタの返答を信用せず、IF(connector-sdk v0.3)の既知フィールドだけから
+// コネクタの返答を信用せず、IF(connector-sdk v0.4)の既知フィールドだけから
 // 組み立て直す。型に存在しないフィールド(totalCount・debug・候補統計等)は実行時にも
 // 外へ出さない(不変条件3。型定義だけでは実行時の混入を防げない)。
 // - 必須フィールドの型不正はコネクタの契約違反として internal_error(固定文言。
 //   値はエコーしない)
 // - 任意フィールドは型が合う場合だけ残す。meta は string → string の組だけ残す
 // - snippet は MAX_SNIPPET_CHARS で強制 truncate(ADR-016)
+// - scope は "shared" 以外(欠落・未知の値)を "private" に正規化する(ADR-016 追補2 決定4)
 // 射影後の値は文字列・数値・配列・プレーンオブジェクトだけで構成される。
 
 const ANCHOR_KINDS: Readonly<Record<HitAnchor["kind"], true>> = {
@@ -506,6 +514,7 @@ function projectHit(value: unknown): SearchHit {
     ...(anchor !== undefined ? { anchor } : {}),
     ...(updatedAt !== undefined ? { updatedAt } : {}),
     ...(meta !== undefined ? { meta } : {}),
+    scope: normalizeDocumentScope(hit["scope"]),
   };
 }
 
@@ -527,6 +536,7 @@ function projectFetchResult(value: unknown): FetchResult {
     content: requireString(result["content"]),
     url: requireString(result["url"]),
     ...(nextPageCursor !== undefined ? { nextPageCursor } : {}),
+    scope: normalizeDocumentScope(result["scope"]),
   };
 }
 
@@ -546,6 +556,7 @@ function projectEntry(value: unknown): ContainerEntry {
     childCount >= 0
       ? { childCount }
       : {}),
+    scope: normalizeDocumentScope(entry["scope"]),
   };
 }
 
@@ -583,6 +594,76 @@ function projectResult(result: GatewayToolResult): GatewayToolResult {
       return { tool: "list", result: projectListResult(result.result) };
     case "describe":
       return { tool: "describe", result: projectDescription(result.result) };
+  }
+}
+
+// ---- プライベート領域の方針の強制(ADR-016 追補2 決定4) ----
+//
+// 射影済み(scope は正規化済み)の結果に deployment.yaml の privateScopes を適用する。
+// - excluded(既定): search / list / describe は private の結果を落とす。fetch は本文を
+//   捨てて private_scope_excluded で失敗させる(LLM は任意の documentId で fetch できる)
+// - included(確認フラグ付き): そのまま返す
+// - consent は起動時に拒否される(validate.ts、決定6)。万一届いても excluded と同じ扱い
+// 監査の returnedHitCount は落とした後の件数(handleToolCall が結果から数える)。
+// 落とした件数・事実は LLM・利用者にも、監査・デバッグログ・メトリクスにも出さない
+// (利用者・クエリと結び付くと「その利用者のプライベート領域に一致する文書がある」ことを
+// 示すため。ADR-013)。
+// TODO(ADR-016 追補2 決定4): 落とした・拒否した事実は、利用者・クエリ・docId・時刻と
+// 結合できない分離テレメトリ(日単位の集計、sourceId・ツール・能力・件数バケットのみ)に
+// 記録する。書き込み先が未実装のため、現在は落とす処理だけを行う。
+
+/** 方針が private の結果を返してよいか(included のときだけ)。 */
+function privateScopesAllowed(
+  privateScopes: ConnectorConfig["privateScopes"],
+): boolean {
+  return privateScopes === "included";
+}
+
+function enforcePrivateScopes(
+  result: GatewayToolResult,
+  privateScopes: ConnectorConfig["privateScopes"],
+): GatewayToolResult {
+  if (privateScopesAllowed(privateScopes)) {
+    return result;
+  }
+  switch (result.tool) {
+    case "search":
+      return {
+        tool: "search",
+        result: {
+          ...result.result,
+          hits: result.result.hits.filter((hit) => hit.scope === "shared"),
+        },
+      };
+    case "fetch":
+      if (result.result.scope !== "shared") {
+        // 本文は返さない(このスコープを抜けた時点で参照を失う)
+        throw new GatewayError(
+          "private_scope_excluded",
+          PRIVATE_SCOPE_EXCLUDED_MESSAGE,
+        );
+      }
+      return result;
+    case "list":
+      return {
+        tool: "list",
+        result: {
+          ...result.result,
+          entries: result.result.entries.filter(
+            (entry) => entry.scope === "shared",
+          ),
+        },
+      };
+    case "describe":
+      return {
+        tool: "describe",
+        result: {
+          ...result.result,
+          topContainers: result.result.topContainers.filter(
+            (entry) => entry.scope === "shared",
+          ),
+        },
+      };
   }
 }
 
@@ -645,6 +726,13 @@ function toGatewayError(cause: unknown): GatewayError {
     return new GatewayError(cause.errorClass, cause.message);
   }
   if (cause instanceof ConnectorError) {
+    if (cause.errorClass === "private_scope_excluded") {
+      // コネクタ(enforced)の拒否。文言は固定にする(会話の種別等を含みうるため)
+      return new GatewayError(
+        "private_scope_excluded",
+        PRIVATE_SCOPE_EXCLUDED_MESSAGE,
+      );
+    }
     return new GatewayError(cause.errorClass, cause.message, cause.retryAfterMs);
   }
   return new GatewayError("internal_error", "unexpected error during tool call");

@@ -63,6 +63,8 @@ export interface CorpusDocument {
   /** 検索で一致させる語(クエリの語との部分一致) */
   readonly keywords: readonly string[];
   readonly url?: string;
+  /** 結果の領域(ADR-016 追補2)。省略時は shared */
+  readonly scope?: "private" | "shared";
 }
 
 interface RecordedCall {
@@ -81,6 +83,8 @@ export class CorpusConnector implements Connector {
   readonly capabilities: ConnectorCapabilities = {
     nativeSearch: "full",
     ingest: false,
+    // 方針に関わらず全文書を返し、scope で分類する(除外は Gateway が行う)
+    privateScopeHandling: "classified",
   };
   readonly calls: RecordedCall[] = [];
 
@@ -134,6 +138,7 @@ export class CorpusConnector implements Connector {
         title: document.title,
         snippet: document.content.slice(0, 120),
         url: this.urlOf(document),
+        scope: document.scope ?? "shared",
       }));
     return { hits };
   }
@@ -153,13 +158,14 @@ export class CorpusConnector implements Connector {
       title: document.title,
       content: document.content,
       url: this.urlOf(document),
+      scope: document.scope ?? "shared",
     };
   }
 
   async list(auth: AuthContext): Promise<ListResult> {
     await this.record("list", auth);
     return {
-      entries: [{ id: `${this.sourceId}-root`, name: "root", kind: "folder" }],
+      entries: [{ id: `${this.sourceId}-root`, name: "root", kind: "folder", scope: "shared" }],
     };
   }
 
@@ -169,7 +175,7 @@ export class CorpusConnector implements Connector {
       sourceId: this.sourceId,
       displayName: `${this.sourceId} wiki`,
       summary: this.options.summary ?? `${this.sourceId} の社内文書`,
-      topContainers: [{ id: `${this.sourceId}-root`, name: "root", kind: "folder" }],
+      topContainers: [{ id: `${this.sourceId}-root`, name: "root", kind: "folder", scope: "shared" }],
       supportedFilters: ["updatedAfter"],
     };
   }
@@ -224,6 +230,8 @@ export interface GatewayHarnessOptions {
   readonly connectors: readonly Connector[];
   /** 資格情報プロバイダが source_not_connected を投げるソース */
   readonly notConnected?: readonly string[];
+  /** privateScopes: included(確認フラグ付き)にするソース。ほかは既定の excluded */
+  readonly includedSources?: readonly string[];
 }
 
 export interface GatewayHarness {
@@ -265,7 +273,15 @@ export async function startGateway(options: GatewayHarnessOptions): Promise<Gate
     schemaVersion: 1,
     deployment: { name: "t007-test" },
     idp: { adapter: { kind: "mock" } },
-    connectors: options.connectors.map((connector) => ({ id: connector.sourceId })),
+    connectors: options.connectors.map((connector) =>
+      options.includedSources?.includes(connector.sourceId) === true
+        ? {
+            id: connector.sourceId,
+            privateScopes: "included",
+            confirmPrivateScopesIncluded: true,
+          }
+        : { id: connector.sourceId },
+    ),
   });
   const gateway = new Gateway({
     config,

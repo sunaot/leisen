@@ -96,6 +96,51 @@ describe("verifyCitations(証拠台帳による出典の検証)", () => {
   });
 });
 
+describe("証拠台帳の結果ごとの scope(ADR-016 追補2 決定5)", () => {
+  it("search / fetch の scope を記録し、欠落・未知の値は private とする", () => {
+    const evidence = new EvidenceLedger();
+    evidence.recordSearch("alpha", {
+      hits: [
+        { documentId: "s", title: "S", url: "u", scope: "shared" },
+        { documentId: "p", title: "P", url: "u", scope: "private" },
+        { documentId: "m", title: "M", url: "u" },
+        { documentId: "x", title: "X", url: "u", scope: "public" },
+      ],
+    });
+    evidence.recordFetch("beta", { documentId: "f", title: "F", url: "u", scope: "shared" });
+    expect(evidence.scopeOf("alpha", "s")).toBe("shared");
+    expect(evidence.scopeOf("alpha", "p")).toBe("private");
+    expect(evidence.scopeOf("alpha", "m")).toBe("private");
+    expect(evidence.scopeOf("alpha", "x")).toBe("private");
+    expect(evidence.scopeOf("beta", "f")).toBe("shared");
+    // 台帳にない文書は private
+    expect(evidence.scopeOf("alpha", "unseen")).toBe("private");
+  });
+
+  it("同じ文書が複数回現れたら private を優先する(順序によらない)", () => {
+    const sharedFirst = new EvidenceLedger();
+    sharedFirst.recordSearch("alpha", { hits: [{ documentId: "d", scope: "shared" }] });
+    sharedFirst.recordFetch("alpha", { documentId: "d", scope: "private" });
+    expect(sharedFirst.scopeOf("alpha", "d")).toBe("private");
+
+    const privateFirst = new EvidenceLedger();
+    privateFirst.recordFetch("alpha", { documentId: "d", scope: "private" });
+    privateFirst.recordSearch("alpha", { hits: [{ documentId: "d", scope: "shared" }] });
+    expect(privateFirst.scopeOf("alpha", "d")).toBe("private");
+  });
+
+  it("scope は検証済みの出典(Answer の citations)に載せない", () => {
+    const evidence = new EvidenceLedger();
+    evidence.recordSearch("alpha", {
+      hits: [{ documentId: "d", title: "D", url: "https://alpha.example.test/d", scope: "private" }],
+    });
+    const { verified } = verifyCitations([{ documentId: "d", sourceId: "alpha" }], evidence);
+    expect(verified).toEqual([
+      { documentId: "d", sourceId: "alpha", title: "D", url: "https://alpha.example.test/d" },
+    ]);
+  });
+});
+
 describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
   async function setup(documents = [EXPENSE_POLICY]) {
     const alpha = new CorpusConnector("alpha", documents);

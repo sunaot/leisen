@@ -25,3 +25,14 @@ ADR-002はIdP起点のToken Exchange(RFC 8693)を基本方式、個別OAuthを�
 - T-002のKeycloak E2Eは実SaaS(Drive/Slack)の認可経路を検証しない。この限界をCI/READMEに明記する
 - T-004の前提・内容は auth-matrix.md の確定方式(Entra ID OBO / Google個別OAuth / Slack個別OAuth、GitHubはSCIM/EMU前提)に更新済み
 - 導入チェックリスト(T-012)に「GitHub SCIM連携必須」「Google管理者事前承認」等のソース別前提を反映する(auth-matrix.md §13)
+
+## 追補(2026-10-09): IdP トークンの検証要件(issue #16)
+
+利用者のセッショントークン(IdP が発行したアクセストークン)を受ける IdP Adapter は、「有効(active)であること」に加えて次を検証する。方式(イントロスペクション / JWKS ローカル検証)は問わない。
+
+1. **発行者**: 期待する発行者(既定は IdP の realm の URL。公開 URL が内部の呼び出し先と異なる構成だけ `allowedIssuers` で明示)と一致すること
+2. **種別**: 利用者のアクセストークンであること。リフレッシュトークン・ID トークン・種別不明のトークンは拒否する(fail-closed)
+3. **発行先**: トークンを得たクライアント(`azp`)が deployment.yaml の `idp.adapter.allowedClients`(必須・空不可)にあること。利用者がログインする UI・MCP クライアントは IdP に登録して列挙する
+4. **受け手**: `requireAudience: true` のとき、`aud` に Gateway 自身のクライアント ID が含まれること(IdP 側で付与する)
+
+原則: 検証は環境によらず常に行う。開発で緩められるのは許可リストの内容だけ(`allowedClients: ["*"]` で発行先の検証を省く)で、緩めたことは設定と起動ログ(WARNING)に現れ、`NODE_ENV=production` では起動を拒否する(`dev_only_in_production`)。既定の開発環境(リファレンス構成・`examples/deployment.keycloak.yaml`)は何も緩めずに通る。失敗はすべて `unauthenticated`(利用者には固定文言の 401)とし、理由はサーバーログにクレーム名だけで残す(トークン・利用者 ID・応答全体は出さない。不変条件6)。運用者の切り分けは `kp-gateway auth-check`。アダプタごとの契約は docs/idp-adapter-guide.md「受け手・種別・発行者の検証」。

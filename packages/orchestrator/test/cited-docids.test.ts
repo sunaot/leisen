@@ -7,6 +7,9 @@
  *   hashed → デプロイ固有鍵の HMAC / omitted → 記録しない
  * - hashed なのに鍵がない構成は構築時に拒否する(平文へ倒さない)
  * - deployment.yaml の connectors[](kind / privateScopes)から分類器を組み立てる
+ * - 結果ごとの scope(ADR-016 追補2 決定5): プライベートスコープ = 結果の scope が
+ *   shared でない、またはソースの方針が excluded でない(論理和)。scope の欠落・未知の
+ *   値は private。Gateway と Orchestrator の設定がずれても private の結果は平文にならない
  */
 import { createHmac } from "node:crypto";
 import { inspect } from "node:util";
@@ -27,7 +30,7 @@ import {
   docIdClassifierFromConnectors,
   scriptedSubmit,
   scriptedToolUse,
-  type Citation,
+  type AuditCitation,
   type CitedDocIdAudit,
   type DocIdClassifier,
 } from "../src/index.js";
@@ -56,8 +59,12 @@ const classify: DocIdClassifier = (sourceId) =>
     "slack-dm": { privateScope: true, slack: true },
   })[sourceId];
 
-function cite(sourceId: string, documentId = "doc-1"): Citation {
-  return { sourceId, documentId };
+function cite(
+  sourceId: string,
+  documentId = "doc-1",
+  scope: AuditCitation["scope"] = "shared",
+): AuditCitation {
+  return { sourceId, documentId, scope };
 }
 
 function hmac(docId: string): string {
@@ -110,6 +117,38 @@ describe("citedDocIdsForAudit", () => {
   });
 });
 
+describe("結果ごとの scope との論理和(ADR-016 追補2 決定5)", () => {
+  const hashed: CitedDocIdAudit = { classify, privateScopeDocIds: "hashed", hmacKey: HMAC_KEY };
+  const omitted: CitedDocIdAudit = { classify, privateScopeDocIds: "omitted" };
+
+  it("方針 excluded のソース: shared の結果は平文、private の結果は hashed / omitted", () => {
+    expect(
+      citedDocIdsForAudit([cite("wiki", "page-1", "shared"), cite("wiki", "dm-2", "private")], hashed),
+    ).toEqual(["wiki:page-1", hmac("wiki:dm-2")]);
+    expect(
+      citedDocIdsForAudit([cite("wiki", "page-1", "shared"), cite("wiki", "dm-2", "private")], omitted),
+    ).toEqual(["wiki:page-1"]);
+  });
+
+  it("方針 included(excluded 以外)のソース: shared の結果も従来どおり hashed / omitted", () => {
+    expect(citedDocIdsForAudit([cite("drive", "file-1", "shared")], hashed)).toEqual([
+      hmac("drive:file-1"),
+    ]);
+    expect(citedDocIdsForAudit([cite("drive", "file-1", "shared")], omitted)).toEqual([]);
+  });
+
+  it("scope の欠落・未知の値(型の外から来た値)は private とみなす", () => {
+    const missing = { sourceId: "wiki", documentId: "x" } as unknown as AuditCitation;
+    const unknown = { sourceId: "wiki", documentId: "y", scope: "Shared" } as unknown as AuditCitation;
+    expect(citedDocIdsForAudit([missing, unknown], hashed)).toEqual([hmac("wiki:x"), hmac("wiki:y")]);
+    expect(citedDocIdsForAudit([missing, unknown], omitted)).toEqual([]);
+  });
+
+  it("Slack・分類できないソースの扱いは scope によらず変わらない(記録しない)", () => {
+    expect(citedDocIdsForAudit([cite("slack", "d", "shared"), cite("unknown", "d", "shared")], hashed)).toEqual([]);
+  });
+});
+
 describe("Orchestrator の構築時の検証", () => {
   const base = {
     llm: new ScriptedLlmClient([]),
@@ -150,6 +189,7 @@ describe("deployment.yaml から分類器を組み立てる(kp-ask の --config)
     idp: { adapter: { kind: "mock" } },
     connectors: [
       { id: "wiki", kind: "dev-fixture" },
+      // consent は validate で拒否されるが(ADR-016 追補2 決定6)、届いた場合も安全側
       { id: "drive", kind: "gdrive", privateScopes: "consent" },
       { id: "shared", kind: "gdrive", privateScopes: "included", confirmPrivateScopesIncluded: true },
       { id: "slack" }, // kind は id と同じ slack
@@ -219,5 +259,75 @@ describe("run の AnswerRun.citedDocIds(実 Gateway)", () => {
     expect(
       await runWith({ classify: () => ({ privateScope: false, slack: true }), privateScopeDocIds: "omitted" }),
     ).toEqual([]);
+  });
+  it("Gateway が included でも Orchestrator の分類器が excluded とみなしていれば、private の結果は台帳の scope で hashed になる(設定のずれで平文にしない)", async () => {
+    const harness = await startGateway({
+      connectors: [
+        new CorpusConnector("alpha", [
+          { ...EXPENSE_POLICY, id: "dm-expense", scope: "private" },
+          EXPENSE_POLICY,
+        ]),
+      ],
+      includedSources: ["alpha"],
+    });
+    harnesses.push(harness);
+    const llm = new ScriptedLlmClient([
+      () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      () =>
+        scriptedSubmit({
+          answer: "経費精算の締め日は毎月25日です。",
+          citations: [
+            { documentId: "dm-expense", sourceId: "alpha" },
+            { documentId: EXPENSE_POLICY.id, sourceId: "alpha" },
+          ],
+          confidence: 0.9,
+        }),
+    ]);
+    const orchestrator = new Orchestrator({
+      llm,
+      auditLogger: harness.auditLogger,
+      // 分類器は「方針 excluded」(privateScope: false)のつもり
+      docIdAudit: {
+        classify: () => ({ privateScope: false, slack: false }),
+        privateScopeDocIds: "hashed",
+        hmacKey: HMAC_KEY,
+      },
+    });
+    const answer = await orchestrator.run({ question: "締め日は?", gateway: harness.client() });
+    // scope は Answer の citations に載せない
+    expect(answer.citations.map((c) => Object.keys(c).sort())).toEqual([
+      ["documentId", "sourceId", "title", "url"],
+      ["documentId", "sourceId", "title", "url"],
+    ]);
+    expect(harness.answerRuns()[0]?.citedDocIds).toEqual([
+      hmac("alpha:dm-expense"),
+      `alpha:${EXPENSE_POLICY.id}`,
+    ]);
+  });
+
+  it("Gateway が excluded(既定)なら private の文書は台帳に届かず、出典にできない", async () => {
+    const harness = await startGateway({
+      connectors: [
+        new CorpusConnector("alpha", [{ ...EXPENSE_POLICY, id: "dm-expense", scope: "private" }]),
+      ],
+    });
+    harnesses.push(harness);
+    const llm = new ScriptedLlmClient([
+      () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      () =>
+        scriptedSubmit({
+          answer: "経費精算の締め日は毎月25日です。",
+          citations: [{ documentId: "dm-expense", sourceId: "alpha" }],
+          confidence: 0.9,
+        }),
+    ]);
+    const orchestrator = new Orchestrator({
+      llm,
+      auditLogger: harness.auditLogger,
+      docIdAudit: { classify: () => ({ privateScope: false, slack: false }), privateScopeDocIds: "omitted" },
+    });
+    const answer = await orchestrator.run({ question: "締め日は?", gateway: harness.client() });
+    expect(answer.citations).toEqual([]);
+    expect(harness.answerRuns()[0]?.citedDocIds).toEqual([]);
   });
 });

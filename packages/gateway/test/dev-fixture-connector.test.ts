@@ -39,6 +39,7 @@ function bearer(overrides: { accessToken?: string; expiresAt?: number } = {}): A
   };
 }
 const AUTH = bearer();
+const EXCLUDED = { privateScopes: "excluded" } as const;
 
 const DOCS: DevFixtureDocument[] = [
   {
@@ -277,6 +278,7 @@ describe("search", () => {
       url: "https://intranet.example.test/expense",
       updatedAt: "2026-03-01T00:00:00Z",
       meta: { container: "admin", author: "admin-team" },
+      scope: "shared",
     });
   });
 });
@@ -322,6 +324,7 @@ describe("fetch", () => {
       title: "Short",
       content: "short",
       url: "u1",
+      scope: "shared",
     });
     expect((await c.fetch(AUTH, "empty")).content).toBe("");
   });
@@ -338,9 +341,9 @@ describe("list / describe", () => {
     const result = await connector().list(AUTH);
     expect(result).toEqual({
       entries: [
-        { id: "it", name: "it", kind: "folder", childCount: 2 },
-        { id: "admin", name: "admin", kind: "folder", childCount: 1 },
-        { id: "hr", name: "hr", kind: "folder", childCount: 1 },
+        { id: "it", name: "it", kind: "folder", childCount: 2, scope: "shared" },
+        { id: "admin", name: "admin", kind: "folder", childCount: 1, scope: "shared" },
+        { id: "hr", name: "hr", kind: "folder", childCount: 1, scope: "shared" },
       ],
     });
   });
@@ -375,16 +378,20 @@ describe("list / describe", () => {
       displayName: "開発用フィクスチャ(dev-docs)",
       summary: "テスト用コーパス",
       topContainers: [
-        { id: "it", name: "it", kind: "folder", childCount: 2 },
-        { id: "admin", name: "admin", kind: "folder", childCount: 1 },
-        { id: "hr", name: "hr", kind: "folder", childCount: 1 },
+        { id: "it", name: "it", kind: "folder", childCount: 2, scope: "shared" },
+        { id: "admin", name: "admin", kind: "folder", childCount: 1, scope: "shared" },
+        { id: "hr", name: "hr", kind: "folder", childCount: 1, scope: "shared" },
       ],
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
     });
   });
 
-  it("静的能力はネイティブ検索あり・ingestなし", () => {
-    expect(connector().capabilities).toEqual({ nativeSearch: "full", ingest: false });
+  it("静的能力はネイティブ検索あり・ingestなし・プライベート領域は enforced", () => {
+    expect(connector().capabilities).toEqual({
+      nativeSearch: "full",
+      ingest: false,
+      privateScopeHandling: "enforced",
+    });
   });
 });
 
@@ -397,6 +404,7 @@ describe("createDevFixtureConnector(settings)", () => {
       sourceId: "dev-docs",
       settings,
       configDir,
+      policy: EXCLUDED,
     }).then(
       () => undefined,
       (e: unknown) => e,
@@ -418,6 +426,7 @@ describe("createDevFixtureConnector(settings)", () => {
       sourceId: "dev-docs",
       settings: { corpusFile: "fixtures/corpus.yaml" },
       configDir: dir,
+      policy: EXCLUDED,
     });
     const result = await c.search(AUTH, "relative");
     expect(result.hits.map((h) => h.documentId)).toEqual(["only"]);
@@ -436,6 +445,7 @@ describe("createDevFixtureConnector(settings)", () => {
       sourceId: "dev-docs",
       settings: { corpusFile: file },
       configDir: "/nonexistent-config-dir",
+      policy: EXCLUDED,
     });
     expect((await c.search(AUTH, "json")).hits).toHaveLength(1);
   });
@@ -445,6 +455,7 @@ describe("createDevFixtureConnector(settings)", () => {
       sourceId: "dev-docs",
       settings: { corpusFile: "fixtures/dev-corpus.yaml" },
       configDir: EXAMPLES_DIR,
+      policy: EXCLUDED,
     });
     const result = await c.search(AUTH, "経費 精算");
     expect(result.hits[0]?.documentId).toBe("expense-rules");
@@ -461,6 +472,7 @@ describe("createDevFixtureConnector(settings)", () => {
         summary: "直接書いたコーパス",
       },
       configDir: EXAMPLES_DIR,
+      policy: EXCLUDED,
     });
     expect((await c.fetch(AUTH, "i")).content).toBe("abcd");
     expect(await c.describe(AUTH)).toMatchObject({
@@ -475,6 +487,7 @@ describe("createDevFixtureConnector(settings)", () => {
       sourceId: "dev-docs",
       settings: {},
       configDir: EXAMPLES_DIR,
+      policy: EXCLUDED,
     });
     const description = await c.describe(AUTH);
     expect(description.summary).toContain(`${DEV_FIXTURE_SAMPLE_DOCUMENTS.length}件`);
@@ -537,8 +550,91 @@ describe("本番(NODE_ENV=production)では構築を拒否する", () => {
   it("factory も コンストラクタも拒否する", async () => {
     vi.stubEnv("NODE_ENV", "production");
     await expect(
-      createDevFixtureConnector({ sourceId: "dev-docs", settings: {}, configDir: EXAMPLES_DIR }),
+      createDevFixtureConnector({ sourceId: "dev-docs", settings: {}, configDir: EXAMPLES_DIR, policy: EXCLUDED }),
     ).rejects.toThrow(IdpError);
     expect(() => new DevFixtureConnector("dev-docs", DOCS)).toThrow(/disabled in production/);
+  });
+});
+
+describe("プライベート領域(enforced、ADR-016 追補2 決定7)", () => {
+  // 合成データのみ(private は DM・個人スコープに相当する文書の代役)
+  const MIXED: readonly DevFixtureDocument[] = [
+    { id: "shared-memo", title: "Team memo", content: "release plan", url: "u1", container: "team" },
+    { id: "dm-memo", title: "Direct memo", content: "release plan draft", url: "u2", container: "dm", scope: "private" },
+    { id: "personal-note", title: "Personal note", content: "release notes", url: "u3", container: "team", scope: "private" },
+  ];
+
+  it("excluded(既定): private の文書は search に現れず、全ヒットは scope: shared", async () => {
+    for (const c of [connector(MIXED), connector(MIXED, { policy: EXCLUDED })]) {
+      const { hits } = await c.search(AUTH, "release");
+      expect(hits.map((h) => [h.documentId, h.scope])).toEqual([["shared-memo", "shared"]]);
+    }
+  });
+
+  it("excluded: private の文書の fetch は private_scope_excluded(not_found と区別する)", async () => {
+    const error = await connectorError(connector(MIXED).fetch(AUTH, "dm-memo"));
+    expect(error.errorClass).toBe("private_scope_excluded");
+    expect(error.message).not.toContain("dm-memo");
+    const missing = await connectorError(connector(MIXED).fetch(AUTH, "no-such-doc"));
+    expect(missing.errorClass).toBe("not_found");
+  });
+
+  it("excluded: list / describe は private の文書だけの区画を出さず、文書数も private を数えない", async () => {
+    const c = connector(MIXED);
+    expect((await c.list(AUTH)).entries).toEqual([
+      { id: "team", name: "team", kind: "folder", childCount: 1, scope: "shared" },
+    ]);
+    expect((await c.describe(AUTH)).topContainers).toEqual([
+      { id: "team", name: "team", kind: "folder", childCount: 1, scope: "shared" },
+    ]);
+    const error = await connectorError(c.list(AUTH, "dm"));
+    expect(error.errorClass).toBe("not_found");
+    // 既定の要約の件数も対象の文書だけを数える
+    expect((await c.describe(AUTH)).summary).toContain("1件");
+  });
+
+  it("included: private の文書も返し、scope で分類する(区画は中身がすべて private なら private)", async () => {
+    const c = connector(MIXED, { policy: { privateScopes: "included" } });
+    const { hits } = await c.search(AUTH, "release");
+    expect(Object.fromEntries(hits.map((h) => [h.documentId, h.scope]))).toEqual({
+      "shared-memo": "shared",
+      "dm-memo": "private",
+      "personal-note": "private",
+    });
+    expect((await c.fetch(AUTH, "dm-memo")).scope).toBe("private");
+    expect((await c.list(AUTH)).entries.map((e) => [e.id, e.scope])).toEqual([
+      ["team", "shared"],
+      ["dm", "private"],
+    ]);
+  });
+
+  it("factory は init.policy を渡す(included で private の文書が見える)", async () => {
+    const c = await createDevFixtureConnector({
+      sourceId: "dev-docs",
+      settings: { documents: MIXED },
+      configDir: EXAMPLES_DIR,
+      policy: { privateScopes: "included" },
+    });
+    expect((await c.search(AUTH, "draft")).hits.map((h) => h.documentId)).toEqual(["dm-memo"]);
+    const excluded = await createDevFixtureConnector({
+      sourceId: "dev-docs",
+      settings: { documents: MIXED },
+      configDir: EXAMPLES_DIR,
+      policy: EXCLUDED,
+    });
+    expect((await excluded.search(AUTH, "draft")).hits).toEqual([]);
+  });
+
+  it("コーパスの scope は private / shared 以外を拒否する", async () => {
+    const error = await createDevFixtureConnector({
+      sourceId: "dev-docs",
+      settings: { documents: [{ id: "x", title: "X", content: "c", url: "u", scope: "secret" }] },
+      configDir: EXAMPLES_DIR,
+      policy: EXCLUDED,
+    }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(DeploymentConfigError);
   });
 });
