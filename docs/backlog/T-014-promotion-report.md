@@ -26,3 +26,15 @@ ADR-011 追記(2026-09-17)と T-007 の実装により、`ToolInvocation.iterati
 - **ソース別未解決率**: run の所属(runs / unresolvedRuns / share)に describe を数えない(run の冒頭の全ソースへの describe で、全ソースが全 run に現れるのを防ぐ)。invocations(呼び出し数)は describe を含む全呼び出し数のまま
 - テスト(`packages/promotion-report/test/`): `fixture.ts` を T-007 の実際の形(run の冒頭の全ソースへの describe、ツール呼び出しの通番、search 0回の run)に更新。describe / fetch / list を含む run で再検索回数が search 件数になること(iteration の採番・記録順に依存しない)、重複行を除いて数えること、userId 不一致が除外されて警告に runId と件数だけが出ること、AnswerRun のない runId は警告にしないこと、describe だけのソースを run に数えないこと、テキスト表示の区分名と警告節
 - 文書: docs/audit-queries.md §0(レポートの追随、件数は `COUNT(DISTINCT requestId)`)・§1(describe を除く)・§2(search 件数ベースのクエリ)、docs/playbook.md(有効化判定の手順2)、ADR-017 確認事項4 に対応を追記
+
+## 更新(2026-10-09): 入力レコードの「重複」と「更新」の区別(issue #38)
+
+監査 JSONL は at-least-once で、同じレコードが複数行に現れうる(gateway の `audit/jsonl.ts`。書き込みの成否が確定しない失敗の再送)。一方、AnswerRun は同じ `runId` で pending → 最終状態 → フィードバックと**書き直される**(orchestrator の `AnswerRunJsonlSink`)。従来はこの両方を「重複」として一括りに数えていたため、レポートの `入力レコード数` の注記が正常な更新を異常な重複のように見せていた(issue #38)。T-021 で `--audit` を複数回受けて結合するようになり、Gateway の監査と Orchestrator の AnswerRun を 1 本のレポートに入れるときにこの区別が要る。
+
+- **重複(`duplicateRecordCount`)** = 同じ冪等キー(`tool_invocation` は `requestId`、`answer_run` は `runId`、`audit_access` は `accessId`、`retention_purge` は `purgeId`)で**内容も同じ**行。at-least-once の再送。集計から除く
+- **更新(`updatedRecordCount`)** = 同じ冪等キーで**内容が変わった**行(AnswerRun の pending → 最終状態 → フィードバック)。重複ではない。後のレコードを採って集計する。ただし AnswerRun の pending は確定済み(pending 以外)の状態を置き換えない(`--audit` のファイルの順序が前後しても最終状態で集計する)
+- `inputRecordCount` = 集計した件数 + `duplicateRecordCount` + `updatedRecordCount`
+- テキスト出力の `入力レコード数` の行には、重複と更新を分けて添える(例: `入力レコード数: N(重複 a 件を除いて集計。同じ記録の更新 b 件(AnswerRun の pending → 最終状態など)は後の状態で集計)`)。どちらも 0 なら注記なし
+- **レポートの読み方**: `duplicateRecordCount` が大きいときは監査シンクの再送(書き込み先の不安定さ)を疑う。`updatedRecordCount` は run 数のおおむね 1〜2 倍まで(pending + 最終状態 + フィードバック)が正常で、それを大きく超える場合は AnswerRun の書き直しの異常を疑う
+- 実装: `packages/promotion-report/src/aggregate.ts`(`dedupeAuditRecordsDetailed`、キーの順序に依らない正規化 JSON で同内容を判定)、`render.ts`(注記)。テストは `packages/promotion-report/test/`(同内容の再送が重複、pending → 最終状態が更新、pending がファイル順で後に来ても最終状態を採ること)
+- 文書: docs/playbook.md「有効化判定」手順、docs/install.md §7(at-least-once と冪等キー)
