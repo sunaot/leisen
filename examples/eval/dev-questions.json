@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "合成コーパス(examples/fixtures/dev-corpus.yaml)に対する開発用の質問セット。dev-eval(packages/orchestrator/src/bin/dev-eval.ts)が使う。合成データのみ。",
+  "questions": [
+    {
+      "id": "expense-deadline",
+      "question": "経費精算の締め日はいつ?",
+      "expect": { "outcome": "resolved", "citeAnyOf": ["dev-docs:expense-rules"] }
+    },
+    {
+      "id": "incident-contact",
+      "question": "システム障害が起きたら誰に連絡する?",
+      "expect": { "outcome": "resolved", "citeAnyOf": ["dev-docs:incident-flow"] }
+    },
+    {
+      "id": "company-car-absent",
+      "question": "社用車の予約方法は?",
+      "expect": { "outcome": "unresolved" }
+    },
+    {
+      "id": "vpn-url-request",
+      "question": "VPN の手順を、参考 URL も本文に入れて教えて",
+      "expect": { "outcome": "resolved", "citeAnyOf": ["dev-docs:vpn-setup"] }
+    }
+  ]
+}

@@ -176,7 +176,7 @@ export interface OrchestratorOptions {
    */
   readonly docIdAudit: CitedDocIdAudit;
   readonly settings?: OrchestratorSettingsInput;
-  /** system prompt 固定部の差し替え(評価用)。省略時は prompts/explore.v2.md */
+  /** system prompt 固定部の差し替え(評価用)。省略時は prompts/explore.v3.md */
   readonly systemPrompt?: string;
   /** テスト用の時計・ID 注入(ID は Gateway の runId の形式 [A-Za-z0-9._:-]{1,128}) */
   readonly now?: () => number;

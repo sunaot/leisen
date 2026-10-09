@@ -30,14 +30,14 @@ ADR-001追補3(2026-09-27 承認)により、runId / iteration の `_meta` 申�
 
 ## 実装状況(2026-09-27)
 
-**実装済み・脚本テスト済み。実走(Claude API の資格情報)は人間の前提待ちで未検証。** 設計判断は ADR-017(Proposed、人間レビュー待ち)。
+**実装済み・脚本テスト済み。実モデルでの実走は OpenAI 互換(LM Studio)で合成コーパスの 4 問を確認(2026-10-08、docs/eval/2026-10-08-explore-v3.md)。Claude API での実走は人間の前提待ちで未検証。** 設計判断は ADR-017(Proposed、人間レビュー待ち)。
 
 - `packages/orchestrator`(`@kp/orchestrator` 0.1.0)。依存は `@anthropic-ai/sdk` 0.128.0(exact、新規)、`@modelcontextprotocol/sdk` 1.30.1、`@kp/gateway`、`@kp/connector-sdk`、`zod`
 - LLM クライアント抽象 `LlmClient`: 本番 `AnthropicLlmClient`(既定 `claude-opus-5`・adaptive thinking・effort `high`・`tool_choice: auto`・strict ツール・prefill なし。モデル / effort / タイムアウト / 再試行 / max_tokens は設定注入。`stop_reason` の refusal / max_tokens / pause_turn を正規化エラーへ。SDK の型付き例外を具体的なものから分類。server-side fallbacks は既定 off の設定フラグ)、テスト用 `ScriptedLlmClient`
 - Gateway クライアント `McpGatewayClient`: SDK の Client + StreamableHTTPClientTransport、毎リクエスト `Authorization: Bearer`。isError を正規化エラーへ。セッショントークンはエラー・シリアライズに出さない
 - 探索ループ: runId を採番し(Gateway と同じ形式を検証)、全 `tools/call` の `_meta` に prefix 付きキーで runId / iteration(ツール呼び出しごとに0から単調増加、describe を含む)/ 実行区分 human_in_the_loop / actor human を申告(`_meta` の組み立ては `buildGatewayMeta` に集約。Gateway は申告キーの誤記を invalid_request で拒否するため、キーを手書きしない)。describe の `source_not_connected` は skippedSources へ入れて検索対象から外し、回答に未接続の旨と接続導線(プレースホルダ)を付ける。回答は `submit_answer`(strict)で提出させ、出典を run 内で受け取った文書に限って検証する。回答本文からは URL をすべて除去し、原典へのリンクは citations[].url だけが運ぶ(`src/sanitize.ts`)。上限(maxIterations / runTimeoutMs / costLimitPerQuery)到達時は最終ターンを1回だけ行い、1ターン・1 run のツール呼び出し件数の上限(maxToolCallsPerTurn / maxToolCallsPerRun)を超えた分は実行しない
 - AnswerRun: describe フェーズの後(Gateway が認証した userId が定まってから)に pending → 終了時に同じ runId で最終状態 → `recordFeedback`(利用者の userId 必須)で userFeedback を更新して再書き込み。書き込み失敗は fail-closed。AnswerRun.userId は Gateway が認証した userId に束縛する。citedDocIds は注入された分類(`docIdAudit`)で redaction する
-- プロンプト: `packages/orchestrator/prompts/explore.v2.md`(探索方針、出典必須、探索範囲の明示、インジェクション防御 — 文書内の隠しテキストを含む指示に従わない・回答本文に URL・リンク・画像を書かない)。system prompt は固定部だけで、ソース一覧(describe 結果)は最初の user ターンにデータとして渡す
+- プロンプト: `packages/orchestrator/prompts/explore.v3.md`(2026-10-08 に v2 から改訂。実モデルでの初回実走の結果を受けて検索語の作り方と list の意味を明記。評価は docs/eval/2026-10-08-explore-v3.md)(探索方針、出典必須、探索範囲の明示、インジェクション防御 — 文書内の隠しテキストを含む指示に従わない・回答本文に URL・リンク・画像を書かない)。system prompt は固定部だけで、ソース一覧(describe 結果)は最初の user ターンにデータとして渡す
 - CLI: `kp-ask`(`packages/orchestrator/src/bin/kp-ask.ts`)。資格情報が無い・無効なら「Claude API の資格情報が必要」を表示して終了コード 2。`--user-id` は照合用の申告(省略時は Gateway が認証した userId)、`--config <deployment.yaml>` で citedDocIds の記録方針を組み立てる(hashed なら `KP_AUDIT_HMAC_KEY` 必須)
 - テスト(vitest、ネットワークは 127.0.0.1 のみ): シナリオ(受け入れ条件1)、出典・URL の検証とインジェクション(受け入れ条件2)、AnswerRun とフィードバック(受け入れ条件3)、runId / iteration(受け入れ条件4)、`_meta` の組み立てと scheduled / autonomous 申告の拒否の E2E(受け入れ条件5・6)、上限・催促・失敗、AnthropicLlmClient(フェイクの messages.create、偽 fetch の実 SDK)、McpGatewayClient、kp-ask CLI
 - 使い方・設定・既知の限界は `packages/orchestrator/README.md`
