@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="1000" height="520" role="img" aria-labelledby="t2">
+  <title id="t2">図2 信頼境界 TB2 の再定義(いま と あるべき姿)</title>
+  <defs>
+    <style>
+      text { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, "IPAPGothic", sans-serif; fill: #1f2328; }
+      .title { font-size: 18px; font-weight: 700; }
+      .panel { font-size: 15px; font-weight: 700; }
+      .h { font-size: 14px; font-weight: 700; }
+      .t { font-size: 12.5px; }
+      .s { font-size: 11px; fill: #59636e; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+      .orange { fill: #bc4c00; }
+      .red { fill: #cf222e; }
+      .green { fill: #1a7f37; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker>
+  </defs>
+  <rect width="1000" height="520" rx="10" fill="#ffffff"/>
+  <text class="title" x="20" y="34">図2 TB2 の再定義 — 信頼しないのは「LLM 由来の内容」であって、コードの出所ではない</text>
+
+  <!-- 左パネル: いま -->
+  <rect x="20" y="52" width="470" height="300" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text class="panel" x="36" y="78">いま: TB2 = Orchestrator プロセス全体</text>
+
+  <rect x="36" y="94" width="270" height="180" rx="10" fill="#fff8f2" stroke="#bc4c00" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text class="t orange" x="48" y="113" font-weight="700">TB2(信頼しない)</text>
+  <rect x="52" y="122" width="238" height="140" rx="8" fill="#ffffff" stroke="#bc4c00"/>
+  <text class="h" x="66" y="143">Orchestrator</text>
+  <rect x="66" y="152" width="210" height="30" rx="5" fill="#fff1e5" stroke="#fb8f44"/>
+  <text class="t" x="171" y="172" text-anchor="middle">LLM の出力</text>
+  <rect x="66" y="188" width="210" height="30" rx="5" fill="#fff1e5" stroke="#fb8f44"/>
+  <text class="t" x="171" y="208" text-anchor="middle">探索ループのコード</text>
+  <rect x="66" y="224" width="210" height="30" rx="5" fill="#fff1e5" stroke="#fb8f44"/>
+  <text class="t" x="171" y="244" text-anchor="middle">AnswerRun の書き込み</text>
+
+  <line x1="306" y1="184" x2="352" y2="184" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="354" y="144" width="120" height="80" rx="8" fill="#f3f9ff" stroke="#0969da" stroke-width="1.5"/>
+  <text class="h" x="414" y="174" text-anchor="middle">Gateway</text>
+  <text class="s" x="414" y="194" text-anchor="middle">ToolInvocation</text>
+  <text class="s" x="414" y="209" text-anchor="middle">だけを書く</text>
+
+  <text class="t red" x="36" y="300" font-weight="700">字義どおりなら Orchestrator は監査を何も書けない</text>
+  <text class="t" x="36" y="322">→ 「同一運用者」を前提に、別ボリュームに書く例外を設けた(A)</text>
+  <text class="s" x="36" y="340">箱全体がオレンジ = 製品コードまで一律に信頼しない扱い</text>
+
+  <!-- 右パネル: あるべき -->
+  <rect x="510" y="52" width="470" height="300" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text class="panel" x="526" y="78">あるべき: TB2 = LLM 由来の内容</text>
+
+  <rect x="526" y="94" width="250" height="180" rx="10" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+  <text class="h" x="540" y="115">Orchestrator(製品コード)</text>
+  <text class="s" x="540" y="131">別プロセスのまま(α)</text>
+  <rect x="540" y="140" width="222" height="70" rx="8" fill="#fff8f2" stroke="#bc4c00" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text class="t orange" x="550" y="157" font-weight="700">TB2: LLM 由来の内容</text>
+  <text class="t" x="550" y="177">outcome · confidence · citations</text>
+  <text class="t" x="550" y="197">→ すべて「申告」として扱う</text>
+  <rect x="540" y="218" width="222" height="44" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+  <text class="t" x="651" y="236" text-anchor="middle">探索ループのコード</text>
+  <text class="s" x="651" y="253" text-anchor="middle">申告を組み立てて run API に送るだけ</text>
+
+  <line x1="776" y1="184" x2="842" y2="184" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="mono" x="809" y="176" text-anchor="middle" font-size="11">run API</text>
+  <rect x="844" y="124" width="122" height="120" rx="8" fill="#f3f9ff" stroke="#0969da" stroke-width="1.5"/>
+  <text class="h" x="905" y="150" text-anchor="middle">Gateway</text>
+  <text class="s" x="905" y="172" text-anchor="middle">申告を検証して</text>
+  <text class="s" x="905" y="188" text-anchor="middle">記録する</text>
+  <text class="t" x="905" y="214" text-anchor="middle" font-weight="700">監査の</text>
+  <text class="t" x="905" y="231" text-anchor="middle" font-weight="700">唯一の書き手</text>
+
+  <text class="t green" x="526" y="300" font-weight="700">Orchestrator は監査ストアに何もマウントしない</text>
+  <text class="t" x="526" y="322">→ TM-I4 が構造的に成立し、別の信頼境界にも置ける</text>
+  <text class="s" x="526" y="340">疑うのは内容(申告)だけ。検証できる部分は Gateway が検証する</text>
+
+  <!-- 下段: α / β -->
+  <text class="h" x="20" y="384">Orchestrator の置き場所の選択肢</text>
+
+  <rect x="20" y="396" width="470" height="108" rx="10" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+  <circle cx="44" cy="420" r="11" fill="#1a7f37"/>
+  <polyline points="38,420 42,425 50,414" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text class="h" x="64" y="425">α: 別プロセスのまま、run API で申告する(採る)</text>
+  <rect x="40" y="440" width="120" height="44" rx="6" fill="#ffffff" stroke="#57606a"/>
+  <text class="t" x="100" y="467" text-anchor="middle">Orchestrator</text>
+  <line x1="160" y1="462" x2="222" y2="462" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="224" y="440" width="100" height="44" rx="6" fill="#f3f9ff" stroke="#0969da"/>
+  <text class="t" x="274" y="467" text-anchor="middle">Gateway</text>
+  <text class="s" x="338" y="455">障害分離を保つ</text>
+  <text class="s" x="338" y="471">LLM 呼び出しと認可を</text>
+  <text class="s" x="338" y="487">別プロセスに置く</text>
+
+  <rect x="510" y="396" width="470" height="108" rx="10" fill="#ffebe9" stroke="#cf222e" stroke-width="1.5"/>
+  <circle cx="534" cy="420" r="11" fill="#cf222e"/>
+  <line x1="529" y1="415" x2="539" y2="425" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+  <line x1="539" y1="415" x2="529" y2="425" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+  <text class="h" x="554" y="425">β: Gateway と同一プロセスに統合(採らない)</text>
+  <rect x="530" y="440" width="200" height="44" rx="6" fill="#f3f9ff" stroke="#0969da"/>
+  <text class="t" x="630" y="458" text-anchor="middle">Gateway + Orchestrator</text>
+  <text class="s" x="630" y="475" text-anchor="middle">LLM 呼び出しと認可が同居</text>
+  <text class="s" x="744" y="455">LLM 側の障害・侵害が</text>
+  <text class="s" x="744" y="471">認可・監査に波及する</text>
+  <text class="s" x="744" y="487">TB2 の意図を失う</text>
+</svg>
