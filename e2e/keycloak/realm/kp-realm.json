@@ -19,7 +19,21 @@
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": true
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audience-gateway-e2e-cli",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "gateway",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "librechat",

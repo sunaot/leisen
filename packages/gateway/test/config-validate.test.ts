@@ -490,6 +490,7 @@ idp:
 ${adapterExtra}    realm: acme
     clientId: kp-gateway
     clientSecretEnv: TEST_KC_SECRET
+    allowedClients: [chat-ui]
 connectors:
   - id: gdrive
 `;

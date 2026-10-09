@@ -56,8 +56,9 @@ export type ConfigIssueCode =
   /** IdP Adapter を構築できない(開発用モックのセッション定義の不備等) */
   | "idp_adapter_misconfigured"
   /**
-   * 開発専用の部品(mock IdP / mock_env / dev-fixture / audit.sink: stdout)を
-   * NODE_ENV=production で使おうとした(stdout シンクは issue #17、ADR-011 追記)
+   * 開発専用の部品(mock IdP / mock_env / dev-fixture / audit.sink: stdout /
+   * keycloak の allowedClients: ["*"])を NODE_ENV=production で使おうとした
+   * (stdout シンクは issue #17、ADR-011 追記。"*" は issue #16)
    */
   | "dev_only_in_production"
   /**

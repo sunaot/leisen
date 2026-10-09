@@ -258,6 +258,14 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
       realm: "kp",
       clientId: "gateway",
       clientSecretEnv: "KP_KEYCLOAK_CLIENT_SECRET",
+      // 発行先クライアントの許可リストと aud の要求(issue #16)。スモーク(e2e-cli)と LibreChat overlay
+      allowedClients: ["e2e-cli", "librechat"],
+      requireAudience: true,
+      // iss は Keycloak の KC_HOSTNAME(基本 / overlay)で固定される公開 URL(baseUrl とは異なる)
+      allowedIssuers: [
+        "http://localhost:8080/realms/kp",
+        "https://keycloak.localhost:8443/realms/kp",
+      ],
     });
     expect(config.gateway.http).toEqual({
       host: "0.0.0.0",
@@ -420,6 +428,31 @@ describe("deploy/ の各ファイルの整合", () => {
     expect(realm.realm).toBe(adapter.realm);
     const client = realm.clients.find((c) => c.clientId === adapter.clientId);
     expect(client?.secret).toBe((await envExample())[adapter.clientSecretEnv]);
+  });
+
+  it("allowedClients の各クライアントは realm にあり、requireAudience のための audience マッパーを持つ。allowedIssuers は基本・overlay の KC_HOSTNAME と一致する(issue #16)", async () => {
+    const realm = await realmFile();
+    const config = referenceConfig();
+    if (config.idp.adapter.kind !== "keycloak") throw new Error("unexpected idp adapter");
+    const adapter = config.idp.adapter;
+    expect(adapter.allowedClients).not.toContain("*");
+    for (const clientId of adapter.allowedClients) {
+      const client = realm.clients.find((c) => c.clientId === clientId);
+      expect(client, `realm client ${clientId}`).toBeDefined();
+      const audience = client?.protocolMappers?.find(
+        (m) => m.protocolMapper === "oidc-audience-mapper",
+      );
+      expect(audience?.config?.["included.client.audience"], clientId).toBe(adapter.clientId);
+      expect(audience?.config?.["access.token.claim"], clientId).toBe("true");
+      expect(audience?.config?.["introspection.token.claim"], clientId).toBe("true");
+    }
+    expect(adapter.requireAudience).toBe(true);
+    const base = (await composeServices())["keycloak"]?.environment?.["KC_HOSTNAME"];
+    const overlay = (await overlayService("keycloak")).environment?.["KC_HOSTNAME"];
+    expect(adapter.allowedIssuers).toEqual([
+      `${base}/realms/${realm.realm}`,
+      `${overlay}/realms/${realm.realm}`,
+    ]);
   });
 
   it("Dockerfile の既定の設定パス・監査ボリューム(AnswerRun を含む)・待ち受けポートが deployment.yaml と overlay に一致する", async () => {

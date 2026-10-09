@@ -29,8 +29,9 @@ export interface CreateIdpAdapterDeps {
   readonly providers: readonly CredentialProvider[];
   readonly cache?: CredentialCacheOptions;
   /**
-   * 稼働中の警告の出力先(秘密情報を渡さない。現状はモックのセッション表が空のときの
-   * 拒否だけを通知する。issue #38)
+   * 稼働中の警告の出力先(秘密情報を渡さない)。モックのセッション表が空のときの拒否
+   * (issue #38)と、Keycloak の検証(iss / typ / azp / aud)で拒否した理由(クレーム名だけ。
+   * issue #16)を通知する
    */
   readonly warn?: (message: string) => void;
 }
@@ -52,7 +53,12 @@ export function createIdpAdapter(
     case "keycloak": {
       const { kind: _kind, ...keycloakConfig } = config;
       return new KeycloakIdpAdapter(
-        keycloakConfig,
+        {
+          ...keycloakConfig,
+          ...(deps.warn !== undefined && keycloakConfig.diagnose === undefined
+            ? { diagnose: deps.warn }
+            : {}),
+        },
         deps.providers,
         deps.cache ?? {},
       );

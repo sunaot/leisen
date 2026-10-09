@@ -26,6 +26,7 @@ import { MOCK_IDP_NO_SESSIONS_REJECTED, MOCK_IDP_NO_SESSIONS_WARNING } from "../
 const PACKAGE_DIR = fileURLToPath(new URL("../", import.meta.url));
 const EXAMPLES_DIR = fileURLToPath(new URL("../../../examples/", import.meta.url));
 const DEV_CONFIG = join(EXAMPLES_DIR, "deployment.dev.yaml");
+const KEYCLOAK_CONFIG = join(EXAMPLES_DIR, "deployment.keycloak.yaml");
 const DEV_CORPUS = join(EXAMPLES_DIR, "fixtures", "dev-corpus.yaml");
 const DIST_BIN = join(PACKAGE_DIR, "dist", "bin", "kp-gateway.js");
 const NPM_BIN_SHIM = join(PACKAGE_DIR, "bin", "kp-gateway.js");
@@ -79,6 +80,10 @@ describe("parseCliArgs", () => {
       ["validate", "-c", "a.yaml", "--host=localhost", "--port=65535"],
       { kind: "validate", configPath: "a.yaml", host: "localhost", port: 65535 },
     ],
+    [
+      ["auth-check", "-c", "a.yaml", "--token-env", "KP_SESSION_TOKEN"],
+      { kind: "auth-check", configPath: "a.yaml", tokenEnv: "KP_SESSION_TOKEN" },
+    ],
   ])("%j → %j", (argv, expected) => {
     expect(parseCliArgs(argv, {})).toEqual(expected);
   });
@@ -109,6 +114,10 @@ describe("parseCliArgs", () => {
     [["serve", "--config", "a.yaml", "--host", "a b"], "--host must be a host name or an IP address"],
     [["serve", "--config", "a.yaml", "--port"], "--port"],
     [["serve", "--config"], "--config"],
+    [["auth-check", "--config", "a.yaml"], "--token-env <VAR> is required"],
+    [["auth-check", "--config", "a.yaml", "--token-env", "not a name"], "--token-env <VAR> is required"],
+    [["auth-check", "--config", "a.yaml", "--token-env", "T", "--port", "1"], "auth-check does not take --port"],
+    [["validate", "--config", "a.yaml", "--token-env", "T"], "--token-env applies to auth-check only"],
   ])("使い方の誤り: %j", (argv, message) => {
     const result = parseCliArgs(argv, {});
     expect(result.kind).toBe("usage_error");
@@ -143,6 +152,16 @@ describe("runCli", () => {
     ]);
     expect(io.err.join("\n")).toContain("WARNING: development-only components in use");
     expectNoSecrets([...io.out, ...io.err].join("\n"));
+  });
+
+  it("validate: Keycloak の開発用設定(examples/deployment.keycloak.yaml)は Keycloak なしで検証でき、azp の WARNING は出ない(issue #16)", async () => {
+    const io = captureIo({
+      env: { KP_MOCK_TOKEN_DEV_DOCS: "dev-only-cli-token", KP_KEYCLOAK_CLIENT_SECRET: "dev-only-gateway-secret" },
+    });
+    expect(await runCli(["validate", "--config", KEYCLOAK_CONFIG], io)).toBe(0);
+    expect(io.out).toContain("  idp adapter: keycloak");
+    expect(io.err.join("\n")).not.toContain("azp check disabled");
+    expect([...io.out, ...io.err].join("\n")).not.toContain("dev-only-gateway-secret");
   });
 
   it("validate: 不備を全件列挙して 1", async () => {
@@ -240,6 +259,168 @@ audit:
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+/**
+ * kp-gateway auth-check(issue #16)。イントロスペクションは fetch の注入で模す(Keycloak なし)。
+ * トークン・clientSecret が出力に出ないことを確かめる。
+ */
+describe("runCli auth-check", () => {
+  const TOKEN = "dev-only-auth-check-token";
+  const CLIENT_SECRET = "dev-only-kc-client-secret";
+  const AUTH_ENV = { KP_SESSION_TOKEN: TOKEN, KP_TEST_KC_SECRET: CLIENT_SECRET };
+
+  async function keycloakConfig(allowedClients = "[chat-ui]"): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "kp-cli-auth-check-"));
+    tempDirs.push(dir);
+    const path = join(dir, "deployment.yaml");
+    await writeFile(
+      path,
+      `schemaVersion: 1
+deployment:
+  name: auth-check
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: https://idp.example.test
+    realm: kp
+    clientId: kp-gateway
+    clientSecretEnv: KP_TEST_KC_SECRET
+    allowedClients: ${allowedClients}
+    requireAudience: true
+audit:
+  sink: jsonl
+  jsonl:
+    path: audit.jsonl
+`,
+    );
+    return path;
+  }
+
+  /** イントロスペクションの応答を返す fetch。送られたトークンを記録する */
+  function introspection(body: unknown, sent: string[] = []): typeof fetch {
+    return (async (_url: unknown, init: unknown) => {
+      sent.push(String((init as RequestInit).body));
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+  }
+
+  const VALID = {
+    active: true,
+    sub: "user-uuid-9",
+    iss: "https://idp.example.test/realms/kp",
+    typ: "Bearer",
+    azp: "chat-ui",
+    aud: ["kp-gateway", "account"],
+  };
+
+  function expectNoAuthSecrets(lines: string[]): void {
+    const text = lines.join("\n");
+    expect(text).not.toContain(TOKEN);
+    expect(text).not.toContain(CLIENT_SECRET);
+  }
+
+  it("全項目 pass なら表と userId を標準出力に出して 0(トークン・clientSecret は出さない)", async () => {
+    const sent: string[] = [];
+    const io = captureIo({ env: AUTH_ENV, fetchImpl: introspection(VALID, sent) });
+    const config = await keycloakConfig();
+    expect(await runCli(["auth-check", "--config", config, "--token-env", "KP_SESSION_TOKEN"], io)).toBe(0);
+    expect(sent).toEqual([`token=${TOKEN}`]);
+    expect(io.out[0]).toBe(`kp-gateway auth-check: ${config}`);
+    expect(io.out.map((line) => line.trim().split(/\s+/).slice(0, 2).join(" "))).toEqual(
+      expect.arrayContaining(["active pass", "iss pass", "typ pass", "azp pass", "aud pass"]),
+    );
+    expect(io.out).toContain("  userId: user-uuid-9");
+    expect(io.out.at(-1)).toContain("result: PASS");
+    expect(io.err).toEqual([]);
+    expectNoAuthSecrets([...io.out, ...io.err]);
+  });
+
+  it("いずれかが fail なら理由(クレーム名だけ)を表に出して 1", async () => {
+    const io = captureIo({
+      env: AUTH_ENV,
+      fetchImpl: introspection({ ...VALID, typ: "Refresh", azp: "rogue" }),
+    });
+    const config = await keycloakConfig();
+    expect(await runCli(["auth-check", "--config", config, "--token-env", "KP_SESSION_TOKEN"], io)).toBe(1);
+    const rows = io.out.map((line) => line.trim().split(/\s+/).slice(0, 2).join(" "));
+    expect(rows).toEqual(expect.arrayContaining(["typ fail", "azp fail", "aud pass"]));
+    expect(io.out.join("\n")).toContain('typ "Refresh" is not Bearer');
+    expect(io.out.join("\n")).toContain('azp "rogue" is not in allowedClients');
+    expect(io.out.at(-1)).toContain("result: FAIL (2 check(s) failed");
+    expectNoAuthSecrets([...io.out, ...io.err]);
+  });
+
+  it("active でない応答は active が fail、残りは skipped で 1", async () => {
+    const io = captureIo({ env: AUTH_ENV, fetchImpl: introspection({ active: false }) });
+    expect(
+      await runCli(["auth-check", "--config", await keycloakConfig(), "--token-env", "KP_SESSION_TOKEN"], io),
+    ).toBe(1);
+    const rows = io.out.map((line) => line.trim().split(/\s+/).slice(0, 2).join(" "));
+    expect(rows).toEqual(expect.arrayContaining(["active fail", "iss skipped", "aud skipped"]));
+    expect(io.out.join("\n")).not.toContain("userId");
+  });
+
+  it('allowedClients: ["*"] なら azp は skipped で、WARNING を標準エラー出力に出す', async () => {
+    const io = captureIo({ env: AUTH_ENV, fetchImpl: introspection({ ...VALID, azp: "anything" }) });
+    const config = await keycloakConfig("['*']");
+    expect(await runCli(["auth-check", "--config", config, "--token-env", "KP_SESSION_TOKEN"], io)).toBe(0);
+    const rows = io.out.map((line) => line.trim().split(/\s+/).slice(0, 2).join(" "));
+    expect(rows).toContain("azp skipped");
+    expect(io.err.join("\n")).toContain("idp.adapter.allowedClients '*' (azp check disabled)");
+  });
+
+  it("IdP に届かなければ idp_unavailable を標準エラー出力に出して 1", async () => {
+    const io = captureIo({
+      env: AUTH_ENV,
+      fetchImpl: (async () => {
+        throw new Error("connect ECONNREFUSED");
+      }) as typeof fetch,
+    });
+    expect(
+      await runCli(["auth-check", "--config", await keycloakConfig(), "--token-env", "KP_SESSION_TOKEN"], io),
+    ).toBe(1);
+    expect(io.out).toEqual([]);
+    expect(io.err).toEqual(["kp-gateway: auth-check: idp_unavailable: keycloak introspection unreachable (realm: kp)"]);
+  });
+
+  it("kind: mock の設定には keycloak 専用と伝えて 2(IdP は呼ばない)", async () => {
+    let called = false;
+    const io = captureIo({
+      env: { ...SECRET_ENV, KP_SESSION_TOKEN: TOKEN },
+      fetchImpl: (async () => {
+        called = true;
+        return new Response("{}");
+      }) as typeof fetch,
+    });
+    expect(await runCli(["auth-check", "--config", DEV_CONFIG, "--token-env", "KP_SESSION_TOKEN"], io)).toBe(2);
+    expect(io.err).toEqual([
+      "kp-gateway: auth-check applies to idp.adapter.kind: keycloak only (this deployment uses 'mock')",
+    ]);
+    expect(called).toBe(false);
+    expectNoSecrets([...io.out, ...io.err].join("\n"));
+  });
+
+  it("トークンの環境変数が未設定なら変数名だけを出して 2、clientSecret の環境変数が未設定なら設定不備として 2", async () => {
+    const config = await keycloakConfig();
+    const noToken = captureIo({ env: { KP_TEST_KC_SECRET: CLIENT_SECRET }, fetchImpl: introspection(VALID) });
+    expect(await runCli(["auth-check", "--config", config, "--token-env", "KP_SESSION_TOKEN"], noToken)).toBe(2);
+    expect(noToken.err).toEqual(['kp-gateway: environment variable "KP_SESSION_TOKEN" is not set or empty']);
+
+    const noSecret = captureIo({ env: { KP_SESSION_TOKEN: TOKEN }, fetchImpl: introspection(VALID) });
+    expect(await runCli(["auth-check", "--config", config, "--token-env", "KP_SESSION_TOKEN"], noSecret)).toBe(2);
+    expect(noSecret.err.join("\n")).toContain("[secret_env_missing] idp.adapter.clientSecretEnv");
+    expectNoAuthSecrets([...noSecret.out, ...noSecret.err]);
+  });
+
+  it("設定ファイルの不備は 2", async () => {
+    const io = captureIo({ env: AUTH_ENV });
+    expect(await runCli(["auth-check", "--config", "/nonexistent/kp.yaml", "--token-env", "KP_SESSION_TOKEN"], io)).toBe(2);
+    expect(io.err).toEqual(["kp-gateway: cannot load /nonexistent/kp.yaml: ENOENT"]);
   });
 });
 

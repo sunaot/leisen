@@ -248,6 +248,25 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
       }),
     timeoutMs: z.number().int().min(1).optional(),
     /**
+     * トークンの発行先(azp)として受け入れるクライアント ID の許可リスト(issue #16)。必須・空不可。
+     * 利用者がログインする UI・MCP クライアントを realm に登録し、ここに列挙する。"*" は
+     * 任意のクライアントを受け入れる開発専用の逃げ道で(他の項目と混在しても同じ扱い)、
+     * NODE_ENV=production では起動コードが dev_only_in_production で拒否し、それ以外でも
+     * kp-gateway validate / serve が WARNING を出す
+     */
+    allowedClients: z.array(z.string().min(1)).min(1),
+    /**
+     * true なら aud に自分の clientId が含まれることを要求する(issue #16)。IdP 側で
+     * Gateway を audience に加えるマッパー等が要る(リファレンス realm は設定済み)。既定 false
+     */
+    requireAudience: z.boolean().default(false),
+    /**
+     * 受け入れる発行者(iss)の明示(issue #16)。省略時は `<baseUrl>/realms/<realm>`。
+     * IdP の公開 URL(トークンの iss)がイントロスペクションに使う baseUrl と異なる構成
+     * (コンテナ間はサービス名、利用者はホスト名で呼ぶ等)でだけ書く
+     */
+    allowedIssuers: z.array(z.string().min(1)).min(1).optional(),
+    /**
      * baseUrl が平文 http: でループバック以外を指すときの明示確認フラグ(issue #17)。
      * 省略時は false と同じ扱い(解析結果にはキーを補わない)。イントロスペクションの
      * 往復には clientSecret と利用者のセッショントークンが載るため、平文で内部網に

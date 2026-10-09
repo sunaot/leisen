@@ -32,6 +32,7 @@ import {
   createDevFixtureConnector,
   DeploymentConfigError,
   digestQuery,
+  KEYCLOAK_ANY_CLIENT_WARNING,
   loadDeploymentConfig,
   MOCK_IDP_NO_SESSIONS_REJECTED,
   MOCK_IDP_NO_SESSIONS_WARNING,
@@ -941,6 +942,7 @@ idp:
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: [chat-ui]
 connectors:
   - id: parked
     enabled: false
@@ -951,6 +953,58 @@ connectors:
       ["dev_only_in_production", "audit.sink"],
     ]);
     expect(error.issues[0]?.message).toContain("audit sink 'stdout'");
+  });
+
+  it('keycloak の allowedClients: ["*"](azp 検証の無効化)は本番では拒否し、それ以外では WARNING を出す(issue #16)', async () => {
+    const yaml = (clients: string) => `schemaVersion: 1
+deployment:
+  name: any-client
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: https://idp.example.test
+    realm: kp
+    clientId: kp-gateway
+    clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: ${clients}
+connectors:
+  - id: parked
+    enabled: false
+audit:
+  sink: jsonl
+  jsonl:
+    path: audit.jsonl
+`;
+    const dir = await mkdtemp(join(tmpdir(), "kp-bootstrap-any-client-"));
+    tempDirs.push(dir);
+    const env = { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" };
+
+    // 開発: 起動するが WARNING("*" が他の項目と混在していても同じ)
+    const lenient = await assemble({
+      config: parseDeploymentConfig(yaml("[chat-ui, '*']")),
+      env,
+      configDir: dir,
+    });
+    expect(lenient.warnings).toEqual([KEYCLOAK_ANY_CLIENT_WARNING]);
+    const strict = await assemble({
+      config: parseDeploymentConfig(yaml("[chat-ui]")),
+      env,
+      configDir: dir,
+    });
+    expect(strict.warnings).toEqual([]);
+
+    // 本番: dev_only_in_production
+    vi.stubEnv("NODE_ENV", "production");
+    const error = await rejection({
+      config: parseDeploymentConfig(yaml("['*']")),
+      env,
+      configDir: dir,
+    });
+    expect(error.issues.map((i) => [i.code, i.path])).toEqual([
+      ["dev_only_in_production", "idp.adapter.allowedClients"],
+    ]);
+    expect(error.issues[0]?.message).toContain("allowedClients '*' (azp check disabled)");
+    expect(error.message).not.toContain("dev-only-client-secret");
   });
 
   it("開発用の部品を使わない構成(https の IdP、jsonl シンク)は本番でも組み立てられる", async () => {
@@ -968,6 +1022,7 @@ idp:
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: [chat-ui]
 connectors:
   - id: parked
     enabled: false
@@ -1014,6 +1069,7 @@ idp:
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_MISSING_SECRET
+    allowedClients: [chat-ui]
 connectors:
   - id: a
     kind: dev-fixture

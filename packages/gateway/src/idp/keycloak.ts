@@ -14,6 +14,13 @@
  *
  * HTTP呼び出しはfetch注入・タイムアウト設定可(開発ルール: 外部APIは
  * 薄いラッパー越し・タイムアウト注入可能に)。
+ *
+ * 受け手・種別・発行者の検証(issue #16、ADR-010 追補 2026-10-09): active だけでなく、
+ * iss(発行者)・typ(アクセストークンであること)・azp(発行先クライアントの許可リスト)・
+ * aud(requireAudience 時に自分の clientId を含むこと)を順に検証する。検証は環境によらず
+ * 常に行い、開発で緩められるのは許可リストの内容(allowedClients: ["*"])だけで、緩めたことは
+ * 設定と起動ログに現れる。失敗はすべて unauthenticated(利用者への応答は固定文言)で、理由は
+ * diagnose フックにクレーム名だけで渡す(トークン・sub・応答全体は渡さない。不変条件6)。
  */
 import { CredentialResolvingIdpAdapter } from "./adapter.js";
 import type { CredentialCacheOptions } from "./cache.js";
@@ -33,25 +40,87 @@ export interface KeycloakIdpAdapterConfig {
   readonly clientSecret: string;
   /** HTTPタイムアウト(ms)。既定5000 */
   readonly timeoutMs?: number;
+  /**
+   * トークンの発行先(azp)として受け入れるクライアント ID の許可リスト。空は不可。
+   * "*" を含むと azp の検証を省略する(開発専用。NODE_ENV=production では起動時に拒否され、
+   * それ以外でも起動ログに WARNING が出る)。azp のない応答は "*" でない限り拒否する
+   */
+  readonly allowedClients: readonly string[];
+  /** true なら aud(文字列または配列)に自分の clientId が含まれることを要求する。既定 false */
+  readonly requireAudience?: boolean;
+  /**
+   * 受け入れる発行者(iss)。省略時は `${baseUrl}/realms/${realm}`。IdP の公開 URL が
+   * イントロスペクションに使う baseUrl と異なる構成(リバースプロキシ・コンテナ間の
+   * サービス名で呼ぶ等)でだけ明示する
+   */
+  readonly allowedIssuers?: readonly string[];
   /** テスト用fetch注入 */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * 検証に失敗した理由の出力先(サーバーログ用の1行)。クレーム名と設定値だけを渡し、
+   * トークン・sub・応答全体は渡さない(不変条件6)
+   */
+  readonly diagnose?: (message: string) => void;
 }
 
-interface IntrospectionResponse {
+/** RFC 7662 のイントロスペクション応答のうち、このアダプタが読むクレーム。 */
+export interface IntrospectionResponse {
   active: boolean;
   sub?: string;
   preferred_username?: string;
   name?: string;
   exp?: number;
+  iss?: string;
+  /** Keycloak: アクセストークンは "Bearer"、リフレッシュトークンは "Refresh"、ID トークンは "ID" */
+  typ?: string;
+  /** 発行先(authorized party)のクライアント ID */
+  azp?: string;
+  aud?: string | string[];
+}
+
+/** allowedClients の「任意のクライアントを受け入れる」印(開発専用)。 */
+export const ANY_CLIENT = "*";
+
+/** allowedClients に "*" が含まれる(他の項目と混在していても同じ扱い)。 */
+export function acceptsAnyClient(allowedClients: readonly string[]): boolean {
+  return allowedClients.includes(ANY_CLIENT);
+}
+
+/** allowedClients: ["*"] を受け入れたときの起動時の警告(kp-gateway validate / serve が出す)。 */
+export const KEYCLOAK_ANY_CLIENT_WARNING =
+  'any client is accepted (azp check disabled; idp.adapter.allowedClients contains "*")';
+
+export type IntrospectionCheckName = "active" | "iss" | "typ" | "azp" | "aud";
+
+/**
+ * 検証項目1件の結果(kp-gateway auth-check の表示と diagnose の文言に使う)。
+ * detail はクレーム名と設定値・クレームの値(iss / typ / azp / aud)だけで、トークン・sub・
+ * 応答全体を含まない。
+ */
+export interface IntrospectionCheck {
+  readonly name: IntrospectionCheckName;
+  readonly status: "pass" | "fail" | "skipped";
+  readonly detail: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+
+/** 末尾のスラッシュを落とす(issuer の既定値と introspectUrl を同じ基準で組み立てる)。 */
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function quoteList(values: readonly string[]): string {
+  return values.map((value) => JSON.stringify(value)).join(", ");
+}
 
 export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
   private readonly introspectUrl: string;
   private readonly authorizationHeader: string;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  /** 受け入れる iss(既定は `${baseUrl}/realms/${realm}`) */
+  private readonly allowedIssuers: readonly string[];
 
   constructor(
     private readonly config: KeycloakIdpAdapterConfig,
@@ -59,9 +128,17 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     cacheOptions: CredentialCacheOptions = {},
   ) {
     super(providers, cacheOptions);
-    this.introspectUrl = `${config.baseUrl}/realms/${encodeURIComponent(
+    if (config.allowedClients.length === 0) {
+      throw new IdpError("misconfigured", "keycloak allowedClients must not be empty");
+    }
+    const realmUrl = `${trimTrailingSlash(config.baseUrl)}/realms/${encodeURIComponent(
       config.realm,
-    )}/protocol/openid-connect/token/introspect`;
+    )}`;
+    this.introspectUrl = `${realmUrl}/protocol/openid-connect/token/introspect`;
+    this.allowedIssuers =
+      config.allowedIssuers !== undefined && config.allowedIssuers.length > 0
+        ? config.allowedIssuers.map(trimTrailingSlash)
+        : [realmUrl];
     this.authorizationHeader = `Basic ${Buffer.from(
       `${config.clientId}:${config.clientSecret}`,
     ).toString("base64")}`;
@@ -69,7 +146,123 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
+  /**
+   * イントロスペクション応答を検証項目ごとに判定する(順序: active → iss → typ → azp → aud)。
+   * active でなければ残りは skipped。aud は requireAudience のときだけ判定し、それ以外は
+   * skipped。azp は allowedClients に "*" があれば skipped。
+   */
+  checkIntrospection(body: IntrospectionResponse): IntrospectionCheck[] {
+    if (!body.active || !body.sub) {
+      const detail = !body.active ? "token is not active" : "sub is missing";
+      return [
+        { name: "active", status: "fail", detail },
+        { name: "iss", status: "skipped", detail: "token is not active" },
+        { name: "typ", status: "skipped", detail: "token is not active" },
+        { name: "azp", status: "skipped", detail: "token is not active" },
+        { name: "aud", status: "skipped", detail: "token is not active" },
+      ];
+    }
+    const checks: IntrospectionCheck[] = [{ name: "active", status: "pass", detail: "active" }];
+
+    const iss = typeof body.iss === "string" ? trimTrailingSlash(body.iss) : undefined;
+    checks.push(
+      iss !== undefined && this.allowedIssuers.includes(iss)
+        ? { name: "iss", status: "pass", detail: `iss is ${JSON.stringify(iss)}` }
+        : {
+            name: "iss",
+            status: "fail",
+            detail:
+              body.iss === undefined
+                ? `iss is missing (expected ${quoteList(this.allowedIssuers)})`
+                : `iss mismatch (expected ${quoteList(this.allowedIssuers)})`,
+          },
+    );
+
+    checks.push(
+      body.typ === "Bearer"
+        ? { name: "typ", status: "pass", detail: "typ is Bearer" }
+        : {
+            name: "typ",
+            status: "fail",
+            detail:
+              body.typ === undefined
+                ? "typ is missing (expected Bearer)"
+                : `typ ${JSON.stringify(body.typ)} is not Bearer`,
+          },
+    );
+
+    if (acceptsAnyClient(this.config.allowedClients)) {
+      checks.push({
+        name: "azp",
+        status: "skipped",
+        detail: 'allowedClients contains "*" (development only)',
+      });
+    } else if (typeof body.azp !== "string" || body.azp === "") {
+      checks.push({ name: "azp", status: "fail", detail: "azp is missing" });
+    } else if (this.config.allowedClients.includes(body.azp)) {
+      checks.push({
+        name: "azp",
+        status: "pass",
+        detail: `azp ${JSON.stringify(body.azp)} is in allowedClients`,
+      });
+    } else {
+      checks.push({
+        name: "azp",
+        status: "fail",
+        detail: `azp ${JSON.stringify(body.azp)} is not in allowedClients`,
+      });
+    }
+
+    if (this.config.requireAudience !== true) {
+      checks.push({ name: "aud", status: "skipped", detail: "requireAudience is false" });
+    } else {
+      const audiences =
+        typeof body.aud === "string" ? [body.aud] : Array.isArray(body.aud) ? body.aud : [];
+      const wanted = JSON.stringify(this.config.clientId);
+      checks.push(
+        audiences.includes(this.config.clientId)
+          ? { name: "aud", status: "pass", detail: `aud includes ${wanted}` }
+          : {
+              name: "aud",
+              status: "fail",
+              detail:
+                body.aud === undefined ? `aud is missing (expected ${wanted})` : `aud does not include ${wanted}`,
+            },
+      );
+    }
+    return checks;
+  }
+
   async authenticate(sessionToken: string): Promise<Identity> {
+    const body = await this.introspect(sessionToken);
+    const failed = this.checkIntrospection(body).find((check) => check.status === "fail");
+    if (failed !== undefined) {
+      // 理由はサーバーログ向けにクレーム名だけで残し、利用者には固定文言(HTTP 層が 401 の
+      // 固定文言に写す)。トークン・sub・応答全体は出さない
+      this.config.diagnose?.(`keycloak introspection rejected a session token: ${failed.detail}`);
+      throw new IdpError(
+        "unauthenticated",
+        "session token was rejected by keycloak introspection checks",
+      );
+    }
+    // checkIntrospection が通れば sub はある
+    const userId = body.sub ?? "";
+    const displayName = body.name ?? body.preferred_username;
+    return {
+      userId,
+      ...(displayName !== undefined ? { displayName } : {}),
+      session: {
+        subjectToken: sessionToken,
+        ...(body.exp !== undefined ? { expiresAt: body.exp * 1000 } : {}),
+      },
+    };
+  }
+
+  /**
+   * イントロスペクション(RFC 7662)を1回呼び、応答をそのまま返す(検証は checkIntrospection)。
+   * kp-gateway auth-check が検証項目ごとの結果を表示するために使う。
+   */
+  async introspect(sessionToken: string): Promise<IntrospectionResponse> {
     if (!sessionToken) {
       throw new IdpError("unauthenticated", "missing session token");
     }
@@ -110,20 +303,6 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
         "keycloak introspection returned a non-JSON response",
       );
     }
-    if (!body.active || !body.sub) {
-      throw new IdpError(
-        "unauthenticated",
-        "session token is not active per keycloak introspection",
-      );
-    }
-    const displayName = body.name ?? body.preferred_username;
-    return {
-      userId: body.sub,
-      ...(displayName !== undefined ? { displayName } : {}),
-      session: {
-        subjectToken: sessionToken,
-        ...(body.exp !== undefined ? { expiresAt: body.exp * 1000 } : {}),
-      },
-    };
+    return body;
   }
 }

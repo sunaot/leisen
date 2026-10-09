@@ -19,6 +19,7 @@ import {
   MockCredentialProvider,
   mockTokenEnvVar,
   type IdpAdapter,
+  type IdpAdapterConfig,
 } from "../../src/idp/index.js";
 
 const BASE_URL = process.env.KEYCLOAK_BASE_URL ?? "http://localhost:8080";
@@ -33,7 +34,12 @@ const USERS = {
   bob: "dev-only-bob-password",
 } as const;
 
-async function passwordGrant(username: keyof typeof USERS): Promise<string> {
+interface TokenResponse {
+  access_token: string;
+  refresh_token?: string;
+}
+
+async function passwordGrantTokens(username: keyof typeof USERS): Promise<TokenResponse> {
   const response = await fetch(
     `${BASE_URL}/realms/${REALM}/protocol/openid-connect/token`,
     {
@@ -50,8 +56,11 @@ async function passwordGrant(username: keyof typeof USERS): Promise<string> {
   if (!response.ok) {
     throw new Error(`password grant failed: ${response.status}`);
   }
-  const body = (await response.json()) as { access_token: string };
-  return body.access_token;
+  return (await response.json()) as TokenResponse;
+}
+
+async function passwordGrant(username: keyof typeof USERS): Promise<string> {
+  return (await passwordGrantTokens(username)).access_token;
 }
 
 /**
@@ -108,22 +117,30 @@ class MockConnector implements Connector {
   }
 }
 
+/**
+ * 受け手・種別・発行者の検証(issue #16)を実環境の値で行う構成。iss は e2e/keycloak の
+ * Keycloak(KC_HOSTNAME なし)が BASE_URL から導くため既定(`${baseUrl}/realms/${realm}`)で一致する。
+ */
+const ADAPTER_CONFIG: IdpAdapterConfig = {
+  kind: "keycloak",
+  baseUrl: BASE_URL,
+  realm: REALM,
+  clientId: GATEWAY_CLIENT.id,
+  clientSecret: GATEWAY_CLIENT.secret,
+  allowedClients: [PASSWORD_GRANT_CLIENT],
+  // realm の e2e-cli には Gateway を audience に加えるマッパーがある
+  requireAudience: true,
+};
+
 describe.skipIf(!process.env.KEYCLOAK_E2E)("Keycloak E2E (T-002)", () => {
   let adapter: IdpAdapter;
   const connector = new MockConnector();
 
   beforeAll(() => {
     process.env[mockTokenEnvVar(SOURCE_ID)] = "dev-only-mock-source-token";
-    adapter = createIdpAdapter(
-      {
-        kind: "keycloak",
-        baseUrl: BASE_URL,
-        realm: REALM,
-        clientId: GATEWAY_CLIENT.id,
-        clientSecret: GATEWAY_CLIENT.secret,
-      },
-      { providers: [new MockCredentialProvider(SOURCE_ID)] },
-    );
+    adapter = createIdpAdapter(ADAPTER_CONFIG, {
+      providers: [new MockCredentialProvider(SOURCE_ID)],
+    });
   });
 
   it("Keycloak発行トークン→authenticate→getCredential→モックコネクタ呼び出しが通る", async () => {
@@ -147,6 +164,40 @@ describe.skipIf(!process.env.KEYCLOAK_E2E)("Keycloak E2E (T-002)", () => {
       .catch((e) => e);
     expect(error).toBeInstanceOf(IdpError);
     expect((error as IdpError).errorClass).toBe("unauthenticated");
+  });
+
+  it("リフレッシュトークンは active でも typ が Refresh のため拒否される(issue #16)", async () => {
+    const tokens = await passwordGrantTokens("alice");
+    expect(tokens.refresh_token).toBeTruthy();
+    const diagnosed: string[] = [];
+    const strict = createIdpAdapter(ADAPTER_CONFIG, {
+      providers: [],
+      warn: (message) => diagnosed.push(message),
+    });
+    const error = await strict.authenticate(tokens.refresh_token ?? "").catch((e) => e);
+    expect(error).toBeInstanceOf(IdpError);
+    expect((error as IdpError).errorClass).toBe("unauthenticated");
+    expect(diagnosed.join("\n")).toContain('typ "Refresh" is not Bearer');
+    expect(diagnosed.join("\n")).not.toContain(tokens.refresh_token ?? "");
+  });
+
+  it("allowedClients にないクライアント(e2e-cli)が得たトークンは拒否される(issue #16)", async () => {
+    // realm のもう1つのクライアント librechat だけを許可し、e2e-cli のトークンを渡す
+    const diagnosed: string[] = [];
+    const strict = createIdpAdapter(
+      { ...ADAPTER_CONFIG, allowedClients: ["librechat"] },
+      { providers: [], warn: (message) => diagnosed.push(message) },
+    );
+    const token = await passwordGrant("alice");
+    const error = await strict.authenticate(token).catch((e) => e);
+    expect(error).toBeInstanceOf(IdpError);
+    expect((error as IdpError).errorClass).toBe("unauthenticated");
+    expect(diagnosed.join("\n")).toContain(
+      `azp ${JSON.stringify(PASSWORD_GRANT_CLIENT)} is not in allowedClients`,
+    );
+    expect(diagnosed.join("\n")).not.toContain(token);
+    // 同じトークンを許可リストに入れた構成は受け付ける
+    await expect(adapter.authenticate(token)).resolves.toMatchObject({ userId: expect.any(String) });
   });
 
   it("別ユーザーは別のuserIdとして分離される(不変条件4の前提)", async () => {

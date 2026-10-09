@@ -70,3 +70,7 @@ issue #21 のコメント(2026-10-08)で次が決まり、本 ADR を Accepted �
 - 「人間に確認してほしい点」1〜4 への個別の回答はなく、v1 の実装(決定 4・5・8・11 の記述どおり)で進める。異議があれば issue #21 にコメントする。
 - **決定 5(Slack 有効時の起動拒否と明示フラグによる解除)は 2026-10-09 にオーナーが v1 として確認した**(issue #21)。Slack を検索対象にする導入向けに、会話を永続化しないフロントエンドを別途用意する方針が決まり、T-009 をその定義に付け替えた(2026-10-09、issue #21。`docs/backlog/T-009-chat-ui.md`)。
 - 未決のまま残る点(本 ADR の範囲外として扱う): MCP クライアントから Gateway へ直接接続する経路の扱い(開発・検証用途に限るか、azp の許可リストで制限するか。issue #21 の判断点、#16・#24)、T-009(自前のチャット UI)を取り下げるか縮小するか。
+
+### 追記(2026-10-09): Gateway が受けるクライアントの範囲(issue #16)
+
+上の未決のうち「MCP クライアントから Gateway へ直接接続する経路を azp の許可リストで制限するか」は issue #16 のオーナー決定で決着した。**本番**では Gateway は deployment.yaml の `idp.adapter.allowedClients` に列挙したクライアントが得たトークンだけを受ける(issue #21 の B: 自作の MCP クライアントも IdP の realm に登録し、リストに足す。`requireAudience: true` なら Gateway を audience に加える設定も付ける)。LibreChat overlay の `librechat` と開発・CI 用の `e2e-cli` はリファレンス構成で列挙済み。**開発**では `allowedClients: ["*"]` が明示の逃げ道で(`azp` の検証だけを省く)、起動ログに WARNING が出て `NODE_ENV=production` では起動を拒否する。検証項目(iss / typ / azp / aud)の契約は ADR-010 追補(2026-10-09)と docs/idp-adapter-guide.md。

@@ -34,7 +34,9 @@ skip され、通常の `npm test` は Docker なしで通る。CI では `keycl
 - realm `kp`(`realm/kp-realm.json` から自動import)
 - クライアント `gateway`: イントロスペクション用 confidential クライアント
 - クライアント `e2e-cli`: テストがパスワードグラントでユーザートークンを
-  得るための public クライアント(direct access grants 有効。開発専用)
+  得るための public クライアント(direct access grants 有効。開発専用)。
+  アクセストークンに Gateway を audience として加えるマッパー付き(Gateway の
+  `requireAudience: true` のため。issue #16)
 - クライアント `librechat`: リファレンスデプロイの LibreChat overlay(T-021、ADR-018)が
   OpenID ログインに使う confidential クライアント(標準フローのみ、PKCE の S256 を必須)。
   リダイレクト先はコールバック `http://localhost:3080/oauth/openid/callback`、ログアウト後の

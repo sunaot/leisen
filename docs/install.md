@@ -125,6 +125,14 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   コンテナを使わない場合は `npx kp-gateway validate --config <deployment.yaml>`
 - 設定からプラグイン(`connectors[].module`)を読み込めるため、deployment.yaml とプラグインの置き場所の
   書き込み権限は管理者に限る(T-010)
+- `idp.adapter.allowedClients`(必須)は、トークンの発行先クライアント(`azp`)として受け入れるクライアント ID の
+  許可リスト(issue #16)。利用者がログインする UI・MCP クライアントを IdP に登録して列挙する(リファレンス構成は
+  `e2e-cli` と `librechat`)。`requireAudience: true` は `aud` に Gateway の `clientId` が含まれることを要求する
+  (realm の両クライアントには audience マッパーがある)。`allowedIssuers` は、トークンの発行者(`iss`。Keycloak の
+  `KC_HOSTNAME` で固定される公開 URL)がイントロスペクションに使う `baseUrl`(compose のサービス名)と異なる
+  ため明示している。`allowedClients: ["*"]` は開発専用(WARNING、本番では `dev_only_in_production`)。トークンが
+  401 になるときの切り分けは `docker compose run --rm --no-deps -e KP_SESSION_TOKEN gateway auth-check --token-env KP_SESSION_TOKEN`
+  (項目ごとの pass / fail / skipped を表示。トークンは出力しない)
 
 ## 5. 秘密情報の渡し方
 

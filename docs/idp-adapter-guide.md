@@ -63,6 +63,35 @@ IdPトークン(subject token)を交換に使うため、userId文字列だけ�
 6. 参照実装: `keycloak.ts`(イントロスペクション方式。採用理由は
    ファイル先頭コメント)
 
+## 受け手・種別・発行者の検証(全アダプタの契約)
+
+`authenticate` は「トークンが有効(active)であること」だけでは足りない。別の realm /
+IdP が発行したトークン、アクセストークン以外のトークン(リフレッシュトークン・ID
+トークン)、この Gateway 向けに発行されたのではないトークン(別のクライアントが
+別の API のために取得したもの)を、すべて `unauthenticated` で拒否する(issue #16、
+ADR-010 追補 2026-10-09)。検証は環境によらず常に行い、開発で緩められるのは
+許可リストの内容だけで、緩めたことは設定(`allowedClients: ["*"]`)と起動ログの
+WARNING に現れる。参照実装は `keycloak.ts` の `checkIntrospection`。
+
+| 項目 | 契約 | Keycloak 参照実装(RFC 7662 の応答) |
+|---|---|---|
+| 発行者 | 期待する発行者と完全一致(末尾スラッシュは同一視)。欠落は拒否 | `iss` = `${baseUrl}/realms/${realm}`(realm は URL エンコード)。IdP の公開 URL が `baseUrl` と異なる構成だけ `allowedIssuers` で明示 |
+| 種別 | 利用者のアクセストークンだけを受ける。欠落は拒否(fail-closed) | `typ` = `Bearer`(`Refresh` / `ID` は拒否) |
+| 発行先 | トークンを得たクライアントが許可リストにあること。欠落は拒否 | `azp` ∈ `allowedClients`。`"*"` を含むときだけ省略(開発専用。`NODE_ENV=production` では `dev_only_in_production`) |
+| 受け手 | 自分が受け手に含まれること(IdP 側の設定で付与される前提) | `requireAudience: true` のとき `aud`(文字列または配列)に自分の `clientId` を含む |
+
+- 検証の順序は active → 発行者 → 種別 → 発行先 → 受け手で、最初の失敗で止める。失敗は
+  すべて `IdpError("unauthenticated", <固定文言>)` にし、HTTP 層は 401 の固定文言に写す
+  (理由を利用者に返さない)
+- **診断フックの規則**: 失敗の理由は `diagnose`(factory の `deps.warn`。kp-gateway serve は
+  stderr の `WARNING:`)に 1 行で渡す。渡してよいのはクレーム名と、設定値・クレームの値の
+  うち秘密でないもの(`azp "foo" is not in allowedClients`、`aud does not include "gateway"`、
+  `typ "Refresh" is not Bearer`、`iss mismatch`)だけ。トークン・`sub`(利用者 ID)・応答全体は
+  渡さない(不変条件6)。診断フックにそれらが渡らないことをユニットテストで固定する
+- 運用者の切り分けは `kp-gateway auth-check --config <yaml> --token-env <VAR>`(項目ごとの
+  pass / fail / skipped)。新しいアダプタも同じ項目名(`active` / `iss` / `typ` / `azp` / `aud`)で
+  `checkIntrospection` 相当を公開すると、同じコマンドで診断できる
+
 ## 新しいソース(CredentialProvider)を追加する
 
 1. `CredentialProvider` を実装する(`sourceId` / `method` / `getCredential`)

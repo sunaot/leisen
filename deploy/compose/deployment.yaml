@@ -36,6 +36,20 @@ idp:
     realm: kp
     clientId: gateway
     clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+    # トークンの発行先(azp)として受け入れるクライアント(issue #16)。スモーク・MCP クライアント用の
+    # e2e-cli と LibreChat overlay の librechat(いずれも realm に登録済み)。自作の MCP クライアントを
+    # 使うときは realm に登録してここに足す。"*" は azp の検証を外す開発専用の逃げ道で、
+    # NODE_ENV=production では拒否される
+    allowedClients: [e2e-cli, librechat]
+    # aud に自分(clientId: gateway)が含まれることを要求する。realm の両クライアントには Gateway を
+    # audience に加えるマッパーがある
+    requireAudience: true
+    # 受け入れる発行者(iss)。Keycloak の KC_HOSTNAME で固定される公開 URL(基本の compose は
+    # http://localhost:8080、LibreChat overlay は https://keycloak.localhost:8443)であり、
+    # イントロスペクションに使う上の baseUrl(サービス名)とは異なるため明示する
+    allowedIssuers:
+      - http://localhost:8080/realms/kp
+      - https://keycloak.localhost:8443/realms/kp
 
 gateway:
   http:

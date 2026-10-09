@@ -342,6 +342,13 @@ Claude Code・MCP Inspector・自作エージェントなども同じ規約で�
 - 開発用のトークンは `scripts/smoke/keycloak-token.sh`(パスワードグラント、開発・CI 専用のクライアント
   `e2e-cli`。有効期間 5 分)で取る。本番の利用者のトークンは IdP のログイン(認可コードフロー)で得る
 - `ask` は LLM(LM Studio 等)を使う。LLM が動いていないと回答はエラーになる
+- **どのクライアントのトークンを受けるか**(issue #16、ADR-018 追記): Gateway はトークンの発行先クライアント
+  (`azp`)が deployment.yaml の `idp.adapter.allowedClients` にあるものだけを受ける。本番では、自作の MCP
+  クライアントを含め、使うクライアントを realm に登録して(`requireAudience: true` なら Gateway を audience に
+  加えるマッパーも付けて)このリストに足す(issue #21 の B)。リファレンス構成は `e2e-cli`(開発・CI 用)と
+  `librechat`。開発では `allowedClients: ["*"]` が明示の逃げ道(`azp` の検証だけを省く。起動ログに WARNING、
+  `NODE_ENV=production` では起動拒否)。トークンが 401 になる原因の切り分けは
+  `kp-gateway auth-check --config <yaml> --token-env KP_SESSION_TOKEN`
 
 curl で試す(トークンは環境変数に入れ、コマンドライン引数に載せない。`@<(…)` はヘッダをファイル
 記述子で渡す bash の書き方):

@@ -21,6 +21,15 @@ idp:
     clientId: kp-gateway
     # 秘密情報はこのファイルに書かない(不変条件6)。環境変数名で参照する
     clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+    # トークンの発行先(azp)として受け入れるクライアント ID の許可リスト(必須。issue #16)。
+    # 利用者がログインする UI・MCP クライアントを IdP に登録し、ここに列挙する。
+    # ["*"] は azp の検証を外す開発専用の逃げ道(NODE_ENV=production では拒否、それ以外は WARNING)
+    allowedClients: [kp-chat-ui]
+    # aud に clientId(kp-gateway)が含まれることを要求する。IdP 側で Gateway を audience に
+    # 加える設定(Keycloak なら audience マッパー)が前提
+    requireAudience: true
+    # 受け入れる発行者(iss)は既定で <baseUrl>/realms/<realm>。IdP の公開 URL が baseUrl と
+    # 異なる(内部のホスト名で呼ぶ等)ときだけ allowedIssuers: [<公開 URL>/realms/<realm>] を書く
 
 connectors:
   - id: gdrive

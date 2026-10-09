@@ -71,12 +71,33 @@ curl -s http://127.0.0.1:8787/mcp \
 - Claude Code: `claude mcp add --transport http kp-gateway http://127.0.0.1:8787/mcp --header "Authorization: Bearer dev-token"`。`claude mcp list` で `Connected` になることまで確認済み(対話の中でのツール呼び出しは**未検証**)
 - 出典付きの回答(Orchestrator の `ask` / `feedback`)をチャット UI(LibreChat)や MCP クライアントから使う場合は、Orchestrator を MCP サーバーとして起動する(`kp-ask serve`。T-021)。手順は [docs/ui-librechat.md](docs/ui-librechat.md)
 
-### 本番では開発用の部品が拒否される
+### Keycloak で試す
 
-モックIdP(`idp.adapter.kind: mock`)・モック資格情報(`auth.provider: mock_env`)・開発用コネクタ(`kind: dev-fixture`)は開発専用で、`NODE_ENV=production` では起動時に拒否される(`dev_only_in_production`)。
+モック IdP の代わりに Keycloak(`e2e/keycloak` の realm `kp`。利用者 alice / bob とクライアントはローカル専用のダミー)でセッション検証を通す。Docker が要る。設定は `examples/deployment.keycloak.yaml`(IdP 以外は `deployment.dev.yaml` と同じ)。
 
 ```bash
-NODE_ENV=production npx kp-gateway validate --config examples/deployment.dev.yaml   # 3件の不備を列挙して exit 1
+docker compose -f e2e/keycloak/docker-compose.yml up -d && e2e/keycloak/wait-ready.sh   # realm を取り込んで起動
+export KP_KEYCLOAK_CLIENT_SECRET=dev-only-gateway-secret     # realm のクライアント gateway の secret(ダミー)
+export KP_MOCK_TOKEN_DEV_DOCS=dev-only-token
+export KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"  # 利用者 alice のアクセストークン(クライアント e2e-cli。5 分で失効)
+
+npx kp-gateway auth-check --config examples/deployment.keycloak.yaml --token-env KP_SESSION_TOKEN   # 検証項目ごとの結果を表示
+npx kp-gateway serve --config examples/deployment.keycloak.yaml                                      # http://127.0.0.1:8787/mcp
+
+# 別の端末で(KP_SESSION_TOKEN と KP_AUDIT_HMAC_KEY、LLM の資格情報を設定したうえで。packages/orchestrator/README.md)
+npx kp-ask --gateway http://127.0.0.1:8787/mcp --config examples/deployment.keycloak.yaml "VPN の接続手順を教えて"
+```
+
+- Gateway は `active` だけでなく、発行者(`iss`)・種別(`typ` が `Bearer`。リフレッシュトークン・ID トークンは拒否)・発行先クライアント(`azp` が `idp.adapter.allowedClients` にあること)・受け手(`requireAudience: true` のとき `aud` に自分の `clientId` を含むこと)を検証する(issue #16)。どれかに失敗すると利用者には固定文言の 401 が返り、サーバーログ(stderr)に `WARNING: keycloak introspection rejected a session token: azp "foo" is not in allowedClients` のようにクレーム名だけの理由が 1 行出る(トークン・利用者 ID は出さない)。原因の切り分けは `kp-gateway auth-check --config <yaml> --token-env <変数名>`(環境変数のトークンを 1 回イントロスペクションし、`active` / `iss` / `typ` / `azp` / `aud` ごとの pass / fail / skipped と userId を表示。全項目 pass で exit 0、どれかが fail で 1、設定不備・`kind: mock` では 2。トークンは出力しない)
+- **自作の MCP クライアントなど新しいクライアントを使うとき**: realm(`e2e/keycloak/realm/kp-realm.json`、本番では IdP の管理画面)にクライアントを登録し、`requireAudience: true` なら Gateway を audience に加えるマッパー(`oidc-audience-mapper`、`included.client.audience: gateway`)を付けたうえで、deployment.yaml の `allowedClients` に追記して `kp-gateway validate` → 再起動する。realm を取り込み直すには `docker compose -f e2e/keycloak/docker-compose.yml down -v` してから起動する(既存の realm は上書きされない)
+- 開発だけで使う明示の逃げ道として `allowedClients: ["*"]` がある(`azp` の検証だけを省く。`iss` / `typ` / `aud` は検証する)。`validate` / `serve` は `WARNING: any client is accepted (azp check disabled; idp.adapter.allowedClients contains "*")` を出し、`NODE_ENV=production` では `dev_only_in_production` で起動を拒否する
+
+### 本番では開発用の部品が拒否される
+
+モックIdP(`idp.adapter.kind: mock`)・モック資格情報(`auth.provider: mock_env`)・開発用コネクタ(`kind: dev-fixture`)・監査シンク `stdout`・Keycloak の `allowedClients: ["*"]` は開発専用で、`NODE_ENV=production` では起動時に拒否される(`dev_only_in_production`)。
+
+```bash
+NODE_ENV=production npx kp-gateway validate --config examples/deployment.dev.yaml   # 4件の不備を列挙して exit 1
 ```
 
 `kp-gateway validate` は設定の読込からコネクタ・Gateway の組み立てまでを行い(listen しない)、見つかった不備を全件列挙して exit 1、問題がなければ要約を出して exit 0 で終わる。本番構成のサンプル `examples/deployment.yaml` はコネクタのプラグイン(`@kp/connector-<kind>`)と本人資格情報の取得方式(T-004)がまだないため、現時点では validate で不備が列挙される。
