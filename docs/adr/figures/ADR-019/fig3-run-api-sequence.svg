@@ -59,7 +59,7 @@
   <line x1="140" y1="298" x2="497" y2="298" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
 
   <rect x="512" y="306" width="292" height="40" rx="6" fill="#fff8c5" stroke="#9a6700"/>
-  <text class="t" x="522" y="323" font-weight="700">検証: 署名 · 本人の runId か · 期限内か</text>
+  <text class="t" x="522" y="323" font-weight="700">検証: 署名 · 本人と actor · 期限 · 資格情報</text>
   <text class="s" x="522" y="339">署名だけで判定できる(索引不要 = 段階 1)</text>
 
   <text class="s" x="512" y="364">段階 2 では返した docId も記録(引用検証の材料)</text>

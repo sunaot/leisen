@@ -50,8 +50,8 @@ A はどれも解いておらず、同一運用者の前提で C4 を受け入�
    | `POST /runs/{runId}/finish` `{ outcome, confidence, citations, searchedSources, failureReason }` | runId を検証し、searchedSources を有効なソースに限り、引用 docId に決定5 の規則をかける | `answer_run_finish`(部分レコード) |
    | `POST /runs/{runId}/feedback` `{ outcome }` | runId の本人とフィードバックの期間を検証する | `answer_run_feedback`(部分レコード) |
 
-   - **認証は二重にする。** 利用者本人の Bearer(`/mcp` と同じく IdP Adapter で検証)に加えて、**呼び出し元が Orchestrator であることの資格情報**を求める。既定はデプロイ固有の共有秘密(Orchestrator と Gateway だけが持ち、runId の署名鍵・docId の鍵とは別)を専用のヘッダで送り、Gateway が定数時間で比較する。mTLS への置き換えは導入先の選択とする。利用者が自分のトークンを別のクライアントで取って run API を直接呼び、AnswerRun を偽って昇格判定の集計を操作することを防ぐため(A では AnswerRun を書けたのは Orchestrator サービスだけだった。ここを後退させない)。トークンの azp / aud の許可リスト(セキュリティレビュー R1)が入ったら、それで置き換えられるかを見直す
-   - **記録は追記だけにし、前の状態を読まない。** finish と feedback は AnswerRun 全体ではなく部分レコードとして追記し、昇格判定レポートが runId ごとにフィールド単位で統合する(pending の AnswerRun が土台、finish の最新が結果の欄、feedback の最新が userFeedback)。finish の再送で userFeedback が消えることはない。A で書いた完全な AnswerRun もそのまま読める。これは ADR-011 の監査スキーマへの追加(部分レコード 2 種)で、スキーマ版の扱いは #30 と合わせる
+   - **認証は二重にする。** 利用者本人の Bearer(`/mcp` と同じく IdP Adapter で検証)に加えて、**呼び出し元が Orchestrator であることの資格情報**を求める。名前空間付きのキーで runId を申告する `/mcp` の `tools/call` にも同じ資格情報を求める(利用者が UI に出た自分の runId を付けて tools/call を直接呼び、自分の run の再検索回数や searchedSources を歪めることを防ぐ。未申告・旧キーの呼び出しは従来どおり Bearer だけ)。既定はデプロイ固有の共有秘密(Orchestrator と Gateway だけが持ち、runId の署名鍵・docId の鍵とは別)を専用のヘッダで送り、Gateway が定数時間で比較する。mTLS への置き換えは導入先の選択とする。利用者が自分のトークンを別のクライアントで取って run API を直接呼び、AnswerRun を偽って昇格判定の集計を操作することを防ぐため(A では AnswerRun を書けたのは Orchestrator サービスだけだった。ここを後退させない)。トークンの azp / aud の許可リスト(セキュリティレビュー R1)が入ったら、それで置き換えられるかを見直す
+   - **記録は追記だけにし、前の状態を読まない。** finish と feedback は AnswerRun 全体ではなく部分レコードとして追記し、昇格判定レポートが runId ごとにフィールド単位で統合する(pending の AnswerRun が土台、finish の最新が結果の欄、feedback の最新が userFeedback)。「最新」は Gateway が記録した時刻で決め、同じ時刻なら冪等キーで決める(sink は at-least-once で再送があり、ファイルの順は当てにしない)。統合するのは部分レコードの userId が pending と一致するときだけにする。土台の pending がない部分レコード(fail-open の構成や保持期間の境目で起こる)は捨てずに「孤立」として数える。finish の再送で userFeedback が消えることはない。A で書いた完全な AnswerRun もそのまま読める。これは ADR-011 の監査スキーマへの追加(部分レコード 2 種)で、スキーマ版の扱いは #30 と合わせる
    - **上限。** リクエスト本文の大きさ・質問の長さ・利用者ごとの頻度の上限を、`/runs` の 3 つの経路すべてにかける(期限内の runId で finish / feedback を再送して監査ストアを埋めることを防ぐ。既定値は T-023 で決め、deployment.yaml で変えられるようにする)
 
    ![図3 run API のシーケンスと監査ストアの記録の列。黄色の箱が Gateway の検証(段階 1 は署名だけ、段階 2 は索引で引用も)](figures/ADR-019/fig3-run-api-sequence.svg)
@@ -59,15 +59,15 @@ A はどれも解いておらず、同一運用者の前提で C4 を受け入�
 4. **runId は Gateway が発行する、HMAC 署名付きの不透明な値とする(段階 1)。** 符号化を次のとおり固定する
    - 形式は `r1.<kid>.<payload>.<sig>`。`kid` は `[a-z0-9]{1,8}`。payload と sig はパディングなしの base64url
    - payload は固定長 28 バイト: 乱数 16 バイト・発行時刻(uint64、秒)・有効期間(uint32、秒)。base64url で 38 文字
-   - sig は HMAC-SHA256(32 バイト、43 文字)。入力は `"leisen-runid-v1" ‖ 0x00 ‖ ASCII("r1.<kid>.<payload>") ‖ 0x00 ‖ userId ‖ 0x00 ‖ actor の正規化表現`。版・鍵・用途を入力に含め、可変長の値は区切りで分ける。**userId は runId に平文で入れず、署名の入力として束縛するだけにする**(runId は UI の `structuredContent` やログにも出るため。検証時には Gateway が認証した userId があるので再計算できる)。actor も束縛するので、委任エージェント(ADR-015)の呼び出しが人間の run に混ざらない
+   - sig は HMAC-SHA256(32 バイト、43 文字)。入力は `"leisen-runid-v1"`・`ASCII("r1.<kid>.<payload>")`・userId(UTF-8)・actor の正規化表現の 4 つを、それぞれ 4 バイトの長さ(big-endian)を前に付けて連結したもの。版・鍵・用途を入力に含め、値の境界は長さで分ける(区切り文字に頼らないので、userId に制御文字が含まれても曖昧にならない)。actor の正規化表現は、キーを辞書順に並べ空白を含まない JSON(on-behalf-of の連鎖は申告の順のまま)とする。**userId は runId に平文で入れず、署名の入力として束縛するだけにする**(runId は UI の `structuredContent` やログにも出るため。検証時には Gateway が認証した userId があるので再計算できる)。actor も束縛するので、委任エージェント(ADR-015)の呼び出しが人間の run に混ざらない
    - 全体は 94 文字以内で、既存の runId の文字種(`[A-Za-z0-9._:-]`、128 文字以内)に収まり、監査スキーマの runId の欄は変えない
-   - **検証**: 形式を確かめ、payload を復号して再符号化した文字列が元と一致すること(base64url の未使用ビットを使った別表記を拒否する)、sig の一致(`timingSafeEqual`)、期限を確かめる。署名だけで判定でき、索引は要らない(C5 を段階 1 の範囲で避ける)。`tools/call` と `finish` は有効期間内、`feedback` は発行時刻からフィードバックの期間内(既定値は T-023 で決める)で受ける。Orchestrator の run の上限時間(`runTimeoutMs`)は runId の有効期間より短くする
+   - **検証**: 形式を確かめ、payload を復号して再符号化した文字列が元と一致すること(base64url の未使用ビットを使った別表記を拒否する)、計算した sig を base64url の文字列にして runId の sig 部分と文字列どうしを定数時間で比べること(sig 側の別表記も拒否する)、期限を確かめる。署名だけで判定でき、索引は要らない(C5 を段階 1 の範囲で避ける)。`tools/call` と `finish` は有効期間内、`feedback` は発行時刻からフィードバックの期間内(既定値は T-023 で決める)で受ける。Orchestrator の run の上限時間(`runTimeoutMs`)は runId の有効期間より短くする
    - **`_meta` の扱い**: 検証の対象は名前空間付きのキー(`io.github.sunaot.leisen/runId`)だけにする。名前空間付きのキーで申告された runId が形式・署名・本人・actor・期限のどれかを満たさなければ、その呼び出しを固定文言で拒否する(申告値はエコーしない。現在の「不正値は未申告扱い」を改める)。拒否した呼び出しも ToolInvocation として残すが、申告された runId は記録せず、新しい単発 run の runId と `errorClass: invalid_run_id` で記録する(他人の run に混ぜない。拒否件数は TM-I5 の検出に使う)。名前空間のない旧キー(`runId`)と未申告の呼び出しは、従来どおり単発 run として記録する(Gateway に直接つなぐ汎用の MCP クライアント向け)。iteration は従来どおり Orchestrator の申告とする
    - **署名鍵**: 32 バイト以上のランダム値をデプロイ固有の秘密として環境変数から渡し、docId の HMAC 鍵・Orchestrator の資格情報とは分ける。鍵がない・短い・開発用の既定値(`.env.example` の値など)のときは production での起動を拒否し、別の鍵で代用しない。`kid` で現行と 1 つ前の鍵を同時に受ける。漏えい時は両方を入れ替え、期限内の run が無効になることを受け入れる。鍵はログ・監査・エラー・設定の出力(`kp-gateway validate` 等)に出さない(不変条件6)。鍵が漏れた場合の影響は、本人のトークンを持つ範囲で未発行の runId や長い期限の runId を作れることまでで、他人にはなりすませない(署名の入力に userId が入り、Bearer の検証は別にある)
    - 段階 1 で検証できるのは「runId を Gateway が発行したこと・本人と actor の run であること・期限内であること」まで。**引用がその run で返した文書かは Gateway では検証しない**(段階 2)。Orchestrator 側の出典の検証(ADR-017 決定3)は申告の質を保つ手段としてそのまま残す。outcome の妥当性はどの段階でも誰にも検証できない(C1 の残り)
 
 5. **引用 docId の記録は、申告された sourceId に頼らない。** 段階 1 の Gateway は引用の出所を検証できないので、docId の不可逆化(ADR-013 §2、不変条件7)の分類に申告の sourceId を使わず、最も厳しい規則を全件にかける
-   - deployment.yaml で永続化不可のソース(Slack)が有効な構成では、段階 1 の間は citedDocIds を記録しない(sourceId だけ残す)
+   - deployment.yaml で永続化不可のソース(Slack)が有効な構成では、段階 1 の間は citedDocIds を空にし、searchedSources だけを残す
    - それ以外の構成で、プライベートスコープを持つソースが有効なら、全件に `audit.privateScopeDocIds` の規則(既定 hashed。HMAC は決定的なので参照頻度の集計は保てる)をかける
    - 有効でない sourceId の引用は記録しない。searchedSources は有効なソースだけを残す(現在の Orchestrator 側の規則を引き継ぐ)
    - 段階 2 で引用を返却 docId と照合できるようになったら、照合済みの出所で分類する
@@ -121,7 +121,7 @@ A はどれも解いておらず、同一運用者の前提で C4 を受け入�
 - **不変条件**: 2(全ツール呼び出しを Gateway で監査)は変わらず、run の事象も Gateway を通るようになる。文言に run の事象を含めるかは確認事項3。5(コネクタ IF)には触れない。6 は署名鍵と Orchestrator の資格情報に適用する。7 は決定5・決定7 と既存の docId 不可逆化で守る
 - **残る限界**:
   - 侵害された Orchestrator は、手元の利用者トークンと Orchestrator の資格情報で、その利用者の期限内の run の結果を偽って申告できる(A と同じ。範囲はその利用者に限られる)
-  - Orchestrator の資格情報が漏れると、利用者が自分の run の結果を偽れるようになる(集計の汚染。他人の run には触れない)
+  - Orchestrator の資格情報が漏れると、利用者が自分の run の結果・ToolInvocation を偽れるようになる(集計の汚染。他人の run には触れない)
   - 引用の実在は段階 2 まで Gateway では検証しない。Slack が有効な構成では段階 1 の間 citedDocIds を記録しない(引用の集計が減る)
   - 期限内の runId は、同じ本人・actor なら再利用できる(finish・feedback の再送は最新が勝つ。上限で量は抑える)
 - **issue への影響**: #18 の書き手と質問原文の記録先はこの ADR で決まる。#30 の永続性は決定8 で決まる(同一性・スキーマ版は #30 で別に扱う)。#22 は Slack 有効時の扱いだけが残る
