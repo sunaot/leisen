@@ -56,6 +56,10 @@ describe("examples/deployment.yaml", () => {
     expect(config.connectors.every((c) => c.privateScopes === "excluded")).toBe(true);
     expect(config.connectors.every((c) => !c.searchLayer.enabled)).toBe(true);
     expect(config.audit.failureMode).toBe("fail-closed");
+    // 本番サンプルは監査をファイルに永続化し、IdP は https(issue #17)
+    expect(config.audit.sink).toBe("jsonl");
+    expect(config.audit.jsonl?.rawQueryPath).toBeDefined();
+    expect(config.idp.adapter.kind === "keycloak" && config.idp.adapter.baseUrl).toMatch(/^https:/);
   });
 });
 

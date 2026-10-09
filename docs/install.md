@@ -273,6 +273,17 @@ server {
 - リバースプロキシをコンテナで compose に加える場合は、gateway のホストへの公開(`ports`)を外し、
   `upstream` を `gateway:8787` にする
 
+### 6.4 IdP への平文 http と `confirmPlainHttp`
+
+- `idp.adapter.baseUrl` が平文 `http:` でループバック以外(内部網のホスト名・IP)を指す構成は、
+  `idp.adapter.confirmPlainHttp: true` がなければ静的検証が `idp_plain_http_requires_confirmation` で拒否する
+  (`kp-gateway validate` / `serve`、`kp-ask --config` も同じ。issue #17、ADR-011 追記)。イントロスペクション
+  (RFC 7662)の往復には Gateway の clientSecret と利用者のセッショントークンが載るため、平文で内部網に出す
+  構成は、経路が閉じた網であることを確認したうえで受け入れる(`gateway.http.confirmExposedHost` と同じ規約)
+- リファレンス設定の `http://keycloak:8080` は、Gateway → Keycloak の区間が compose のサービス間ネットワーク
+  だけを通る(Keycloak のホストへの公開は `127.0.0.1:8080` のみ)ため、`confirmPlainHttp: true` を付けている。Keycloak をホスト外に置く場合は `https` にしてフラグを外す
+- `https` とループバック(`http://localhost:8080` 等)は確認不要
+
 ## 7. 監査ログの永続化
 
 - `audit.sink: jsonl`。監査レコード本体は `/var/lib/kp/audit/audit.jsonl`(ボリューム `kp-audit`)、
@@ -288,7 +299,10 @@ server {
   JSON の `duplicateRecordCount` / `updatedRecordCount`)
 - 開発用の `audit.sink: stdout` の出力(`{"kind":"audit", …}` の行)も、標準出力をファイルに保存すれば
   そのまま promotion-report の `--audit` に渡せる(封筒の `kind` を外して JSONL と同じ検証をかける)。
-  保存するファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う(開発用)
+  保存するファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う(開発用)。
+  **`stdout` シンクは `NODE_ENV=production` では `dev_only_in_production` で起動を拒否される**(issue #17、
+  ADR-011 追記)。標準出力は運用ログと混ざり at-least-once も fail-closed も成立しないため、本番の監査にはならない。
+  コンテナのログ基盤で監査を集めたい場合も、`jsonl` のファイルを収集基盤に取り込む形にする
 - 書き込み失敗時は fail-closed(ADR-011)。ローカルバッファ(1000 件)で一時的な失敗を吸収し、あふれると
   ツール呼び出しが失敗する。停止(SIGTERM)時は処理中のリクエストを最大 10 秒待ってからバッファを
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、
@@ -331,6 +345,24 @@ server {
     --accessor <監査閲覧担当のuserId> \
     --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
   ```
+
+### 7.1 出力の規則(stdout = 結果、stderr = ログ、監査 = ファイル)
+
+各プロセスの出力先は次の規則に固定する(issue #17、ADR-011 追記)。構造化ロガーやリクエストログはなく、
+出力はこの表がすべて。
+
+| プロセス | stdout(機械が読む結果) | stderr(人が読むログ) | 監査(ファイル) |
+|---|---|---|---|
+| `kp-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink)、`WARNING`(開発部品の使用・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation 等)と `rawQueryPath`(生クエリ原文) |
+| `kp-gateway validate` | `validate: OK` と要約 | 設定の不備(`[code] path: message`)、`WARNING` | 書かない(ファイルも作らない) |
+| `kp-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告・エラー。AnswerRun(既定。開発用) | `--answer-run-jsonl` のファイル(AnswerRun) |
+| `kp-ask serve` | `--help` だけ | 起動ログ・エラー | `--answer-run-jsonl` のファイル(`NODE_ENV=production` では必須) |
+| compose | コンテナの stdout / stderr は `docker logs` へ。収集は導入先の運用 | 同左 | 名前付きボリューム(§7) |
+
+出さないもの: トークン・API キー・AuthContext(`redactAuthContext` 経由でしか文字列化しない。不変条件 6)、
+検索結果の内容、生の例外。監査レコードの docId は方針(`audit.privateScopeDocIds`)に応じて hashed / omitted。
+既知の不足: 運用ログ(非監査)に構造化の形式がない(grep 前提の行ログ)。HTTP 層の認証失敗は監査にもログにも
+残らない(issue #39)。`audit.sink: stdout` のとき生クエリ原文がプロセス内メモリに単調増加する(issue #29)。
 
 ## 8. 未実装事項(既知の制約)
 

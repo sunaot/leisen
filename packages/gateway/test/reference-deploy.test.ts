@@ -253,6 +253,8 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
     expect(config.idp.adapter).toEqual({
       kind: "keycloak",
       baseUrl: "http://keycloak:8080",
+      // Gateway → Keycloak の区間が compose のサービス間ネットワークだけを通る平文 http の明示確認(issue #17)
+      confirmPlainHttp: true,
       realm: "kp",
       clientId: "gateway",
       clientSecretEnv: "KP_KEYCLOAK_CLIENT_SECRET",

@@ -28,6 +28,11 @@ idp:
     # ホストで取得したトークンの発行者(iss)との整合は docker-compose.yml の
     # KC_HOSTNAME / KC_HOSTNAME_BACKCHANNEL_DYNAMIC で取っている
     baseUrl: http://keycloak:8080
+    # 平文 http でループバック以外を指すための明示確認(issue #17)。イントロスペクションの
+    # 往復(clientSecret・利用者のセッショントークン)は Gateway → Keycloak の区間が
+    # compose のサービス間ネットワークだけを通る前提で受け入れている。Keycloak をホスト外に
+    # 置く場合は https にしてこのフラグを外す
+    confirmPlainHttp: true
     realm: kp
     clientId: gateway
     clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET

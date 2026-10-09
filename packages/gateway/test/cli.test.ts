@@ -234,7 +234,9 @@ audit:
     try {
       const io = captureIo();
       expect(await runCli(["validate", "--config", DEV_CONFIG], io)).toBe(1);
-      expect(io.err.filter((l) => l.includes("[dev_only_in_production]"))).toHaveLength(3);
+      // mock IdP / mock_env / dev-fixture / audit.sink: stdout(issue #17)
+      expect(io.err.filter((l) => l.includes("[dev_only_in_production]"))).toHaveLength(4);
+      expect(io.err.join("\n")).toContain("[dev_only_in_production] audit.sink");
     } finally {
       vi.unstubAllEnvs();
     }

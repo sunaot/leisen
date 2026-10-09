@@ -23,6 +23,7 @@ export {
 export {
   validateDeploymentConfig,
   validateGatewayHttpExposure,
+  validateIdpTransport,
   isLoopbackHost,
   assertValidDeploymentConfig,
   DeploymentConfigError,

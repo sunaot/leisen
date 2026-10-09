@@ -10,6 +10,7 @@ import {
   MAX_AUTHZ_CACHE_TTL_SEC,
   parseDeploymentConfig,
   validateGatewayHttpExposure,
+  validateIdpTransport,
   type ConfigIssueCode,
 } from "../src/index.js";
 
@@ -473,5 +474,117 @@ describe("危険設定: gateway.http.host の非ループバック待ち受け(T
     expect(() => httpConfig('    host: 0.0.0.0\n    confirmExposedHost: "yes"\n')).toThrow(
       DeploymentConfigError,
     );
+  });
+});
+
+describe("危険設定: IdP への平文 http(issue #17、ADR-011 追記)", () => {
+  function keycloakYaml(baseUrl: string, adapterExtra = ""): string {
+    return `
+schemaVersion: 1
+deployment:
+  name: acme
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: "${baseUrl}"
+${adapterExtra}    realm: acme
+    clientId: kp-gateway
+    clientSecretEnv: TEST_KC_SECRET
+connectors:
+  - id: gdrive
+`;
+  }
+
+  function issues(yaml: string): readonly { code: string; path: string; message: string }[] {
+    try {
+      parseDeploymentConfig(yaml);
+      return [];
+    } catch (error) {
+      if (error instanceof DeploymentConfigError) {
+        return error.issues;
+      }
+      throw error;
+    }
+  }
+
+  it.each([
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://[::1]:8080",
+    "https://idp.example.test",
+    "https://keycloak:8443/auth",
+  ])("%s は確認フラグなしで通る", (baseUrl) => {
+    expect(issues(keycloakYaml(baseUrl))).toEqual([]);
+  });
+
+  it.each(["http://keycloak:8080", "http://10.0.0.5:8080", "http://idp.example.test"])(
+    "平文の非ループバック %s は確認フラグなしを拒否する",
+    (baseUrl) => {
+      const found = issues(keycloakYaml(baseUrl));
+      expect(found.map((i) => i.code)).toEqual(["idp_plain_http_requires_confirmation"]);
+      expect(found[0]?.path).toBe("idp.adapter.baseUrl");
+      expect(found[0]?.message).toContain("confirmPlainHttp");
+      // 秘密情報の環境変数名はメッセージに含めない
+      expect(found[0]?.message).not.toContain("TEST_KC_SECRET");
+    },
+  );
+
+  it("confirmPlainHttp: true なら平文の非ループバックでも通る", () => {
+    const config = parseDeploymentConfig(
+      keycloakYaml("http://keycloak:8080", "    confirmPlainHttp: true\n"),
+    );
+    expect(config.idp.adapter.kind === "keycloak" && config.idp.adapter.confirmPlainHttp).toBe(
+      true,
+    );
+    expect(validateIdpTransport(config)).toEqual([]);
+  });
+
+  it("confirmPlainHttp: false は省略と同じ(拒否する)", () => {
+    expect(
+      issues(keycloakYaml("http://keycloak:8080", "    confirmPlainHttp: false\n")).map(
+        (i) => i.code,
+      ),
+    ).toEqual(["idp_plain_http_requires_confirmation"]);
+  });
+
+  it("既定では解析結果に確認フラグを補わない", () => {
+    const config = parseDeploymentConfig(keycloakYaml("https://idp.example.test"));
+    expect(config.idp.adapter.kind === "keycloak" && config.idp.adapter.confirmPlainHttp).toBe(
+      undefined,
+    );
+  });
+
+  it("確認フラグの型不正はスキーマで拒否する", () => {
+    expect(() =>
+      parseDeploymentConfig(keycloakYaml("http://keycloak:8080", '    confirmPlainHttp: "yes"\n')),
+    ).toThrow(DeploymentConfigError);
+  });
+
+  it("確認フラグは kind: mock では受け付けない(strictObject)", () => {
+    expect(() =>
+      parseDeploymentConfig(
+        baseYaml("  - id: gdrive\n").replace(
+          "    kind: mock\n",
+          "    kind: mock\n    confirmPlainHttp: true\n",
+        ),
+      ),
+    ).toThrow(DeploymentConfigError);
+  });
+
+  it.each(["http://127.1:8080", "http://[::ffff:127.0.0.1]:8080", "http://0x7f000001:8080"])(
+    "URL パーサが 127.0.0.1 系に正規化する %s はループバックとして通る(fetch も同じ正規化先に接続する)",
+    (baseUrl) => {
+      expect(issues(keycloakYaml(baseUrl))).toEqual([]);
+    },
+  );
+
+  it("末尾ドット付きの localhost. は名前解決しないため非ループバック扱い(拒否)", () => {
+    expect(issues(keycloakYaml("http://localhost.:8080")).map((i) => i.code)).toEqual([
+      "idp_plain_http_requires_confirmation",
+    ]);
+  });
+
+  it("URL として解析できない baseUrl は静的検証では扱わない(IdP Adapter の構築・呼び出しで失敗する)", () => {
+    expect(issues(keycloakYaml("not a url"))).toEqual([]);
   });
 });

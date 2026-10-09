@@ -247,6 +247,15 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
         error: "clientSecretEnv must be an environment variable NAME, not a secret value",
       }),
     timeoutMs: z.number().int().min(1).optional(),
+    /**
+     * baseUrl が平文 http: でループバック以外を指すときの明示確認フラグ(issue #17)。
+     * 省略時は false と同じ扱い(解析結果にはキーを補わない)。イントロスペクションの
+     * 往復には clientSecret と利用者のセッショントークンが載るため、平文で内部網に
+     * 出す構成は、経路が閉じた網(compose のサービス間ネットワーク等)であることを
+     * 確認したうえで true にする。なければ静的検証が拒否する
+     * (idp_plain_http_requires_confirmation。gateway.http.confirmExposedHost と同じ規約)
+     */
+    confirmPlainHttp: z.boolean().optional(),
   }),
 ]);
 

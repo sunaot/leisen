@@ -26,7 +26,7 @@ import {
 } from "../bootstrap/assemble.js";
 import { DEV_ONLY_CONNECTOR_KINDS } from "../bootstrap/plugins.js";
 import { loadDeploymentConfig } from "../config/loader.js";
-import type { DeploymentConfig } from "../config/schema.js";
+import { AUDIT_SINK_STDOUT, type DeploymentConfig } from "../config/schema.js";
 import { DeploymentConfigError } from "../config/validate.js";
 import { IdpError } from "../idp/types.js";
 import { GatewayError } from "../proxy/types.js";
@@ -228,6 +228,7 @@ function devOnlyComponents(config: DeploymentConfig): string[] {
     ...[...new Set(enabled.map((c) => c.kind))]
       .filter((kind) => DEV_ONLY_CONNECTOR_KINDS.has(kind))
       .map((kind) => `connector kind '${kind}'`),
+    ...(config.audit.sink === AUDIT_SINK_STDOUT ? ["audit sink 'stdout'"] : []),
   ];
 }
 

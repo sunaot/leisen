@@ -13,9 +13,11 @@
  * - 有効なコネクタには本人資格情報の取得方式(auth.provider)を必須とする
  *   (connector_auth_provider_missing)。サービスアカウント等への暗黙の代替はない
  *   (不変条件1)
- * - 開発専用の部品(mock IdP / mock_env / dev-fixture)は NODE_ENV=production で
- *   拒否する(dev_only_in_production)。判定は既存の assertNotProduction を経由し、
- *   各部品のコンストラクタの検査は二重の防御として残る
+ * - 開発専用の部品(mock IdP / mock_env / dev-fixture、監査シンク stdout)は
+ *   NODE_ENV=production で拒否する(dev_only_in_production)。判定は既存の
+ *   assertNotProduction を経由し、各部品のコンストラクタの検査(stdout シンクは
+ *   resolveAuditSink の検査)は二重の防御として残る(stdout シンクは at-least-once を
+ *   保証せず運用ログと混ざるため本番の監査にならない。issue #17、ADR-011 追記)
  * - gateway.http.host がループバック以外なら gateway.http.confirmExposedHost: true を
  *   要求する(http_host_exposed_requires_confirmation。TLS 終端・Origin 検証を
  *   前段に委ねる前提の明示、T-012)
@@ -32,9 +34,10 @@ import type { Connector } from "@kp/connector-sdk";
 import type { RawQueryStore } from "../audit/rawquery.js";
 import { AuditLogger } from "../audit/sink.js";
 import { resolveIdpAdapterConfig } from "../config/loader.js";
-import type {
-  ConnectorAuthConfig,
-  DeploymentConfig,
+import {
+  AUDIT_SINK_STDOUT,
+  type ConnectorAuthConfig,
+  type DeploymentConfig,
 } from "../config/schema.js";
 import {
   DeploymentConfigError,
@@ -300,11 +303,16 @@ export async function assembleGateway(
   }
 
   // --- 監査シンク ---
+  const auditRejected =
+    config.audit.sink === AUDIT_SINK_STDOUT &&
+    rejectDevOnlyInProduction(issues, "audit.sink", "audit sink 'stdout'");
   let audit: ResolvedAuditSink | undefined;
-  try {
-    audit = await resolveAuditSink(config.audit, configDir);
-  } catch (error) {
-    collect(issues, error);
+  if (!auditRejected) {
+    try {
+      audit = await resolveAuditSink(config.audit, configDir);
+    } catch (error) {
+      collect(issues, error);
+    }
   }
 
   if (issues.length > 0 || idpAdapter === undefined || audit === undefined) {

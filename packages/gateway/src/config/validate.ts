@@ -55,8 +55,16 @@ export type ConfigIssueCode =
   | "connector_auth_provider_missing"
   /** IdP Adapter を構築できない(開発用モックのセッション定義の不備等) */
   | "idp_adapter_misconfigured"
-  /** 開発専用の部品(mock IdP / mock_env / dev-fixture)を NODE_ENV=production で使おうとした */
+  /**
+   * 開発専用の部品(mock IdP / mock_env / dev-fixture / audit.sink: stdout)を
+   * NODE_ENV=production で使おうとした(stdout シンクは issue #17、ADR-011 追記)
+   */
   | "dev_only_in_production"
+  /**
+   * idp.adapter.baseUrl が平文 http: でループバック以外を指すのに
+   * idp.adapter.confirmPlainHttp: true がない(validateIdpTransport、静的検証。issue #17)
+   */
+  | "idp_plain_http_requires_confirmation"
   /**
    * gateway.http.host がループバック以外なのに gateway.http.confirmExposedHost: true が
    * ない(validateGatewayHttpExposure。起動コードが待ち受けの前に検査する。T-012)
@@ -250,6 +258,9 @@ export function validateDeploymentConfig(
     });
   }
 
+  // IdP への平文 http はループバック以外で確認フラグ必須(issue #17)
+  issues.push(...validateIdpTransport(config));
+
   // Phase 1では human-in-the-loop のみ許可(ADR-015)。解放は区分設定の
   // semanticsと本人同意の実装後に、このガードの緩和として行う
   for (const cls of ["scheduled", "autonomous"] as const) {
@@ -288,6 +299,45 @@ export function isLoopbackHost(host: string): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * IdP への平文 http の確認(issue #17)。イントロスペクション(RFC 7662)の往復には
+ * Gateway の clientSecret と利用者のセッショントークンが載る。baseUrl が平文 http: で
+ * ループバック以外(内部網のホスト名等)を指す構成は、経路が閉じた網であることを
+ * idp.adapter.confirmPlainHttp: true で明示させる(gateway.http.confirmExposedHost と
+ * 同じ規約)。https: は無条件に通す。URL として解析できない値はここでは扱わない
+ * (IdP Adapter の構築・呼び出しで失敗する)。設定値だけで判定できるため静的検証に置く。
+ */
+export function validateIdpTransport(config: DeploymentConfig): ConfigIssue[] {
+  const adapter = config.idp.adapter;
+  if (adapter.kind !== "keycloak") {
+    return [];
+  }
+  let url: URL;
+  try {
+    url = new URL(adapter.baseUrl);
+  } catch {
+    return [];
+  }
+  if (url.protocol !== "http:") {
+    return [];
+  }
+  // URL.hostname は IPv6 を [..] で囲む
+  const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
+  if (isLoopbackHost(host) || adapter.confirmPlainHttp === true) {
+    return [];
+  }
+  return [
+    {
+      code: "idp_plain_http_requires_confirmation",
+      path: "idp.adapter.baseUrl",
+      message:
+        `plain http to "${host}" sends the client secret and session tokens unencrypted. ` +
+        `Use https, or set idp.adapter.confirmPlainHttp: true only when the path to the IdP ` +
+        `is a closed network (docs/install.md)`,
+    },
+  ];
 }
 
 /**

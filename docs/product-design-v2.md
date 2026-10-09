@@ -67,7 +67,7 @@ orchestrator:
   maxIterations: 6
   costLimitPerQuery: ...
 audit:
-  sink: stdout                 # 収集基盤は各社の運用に委ねる
+  sink: jsonl                  # 収集基盤は各社の運用に委ねる(stdout は開発専用で本番では拒否。ADR-011 追記 2026-10-09)
   failureMode: fail-closed     # 監査書き込み失敗時の既定(ADR-011)
   rawQueryRetentionDays: 30    # 生クエリ短期保持(ADR-011)
 ```

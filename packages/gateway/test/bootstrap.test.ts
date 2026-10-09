@@ -916,19 +916,47 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
 });
 
 describe("(h) 本番(NODE_ENV=production)", () => {
-  it("開発用の構成(mock IdP / mock_env / dev-fixture)を全件拒否する", async () => {
+  it("開発用の構成(mock IdP / mock_env / dev-fixture / audit.sink: stdout)を全件拒否する", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const error = await rejection({ config: devConfig(), env: DEV_ENV, configDir: EXAMPLES_DIR });
     expect(error.issues.map((i) => [i.code, i.path])).toEqual([
       ["dev_only_in_production", "idp.adapter.kind"],
       ["dev_only_in_production", "connectors[0].auth.provider"],
       ["dev_only_in_production", "connectors[0].kind"],
+      ["dev_only_in_production", "audit.sink"],
     ]);
     expect(error.message).toContain("disabled in production builds");
   });
 
-  it("開発用の部品を使わない構成は本番でも組み立てられる", async () => {
+  it("audit.sink: stdout は本番では単独でも拒否する(既定値のまま省略した場合を含む。issue #17)", async () => {
     vi.stubEnv("NODE_ENV", "production");
+    const error = await rejection({
+      config: parseDeploymentConfig(`schemaVersion: 1
+deployment:
+  name: prod-like
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: https://idp.example.test
+    realm: kp
+    clientId: kp-gateway
+    clientSecretEnv: KP_TEST_CLIENT_SECRET
+connectors:
+  - id: parked
+    enabled: false
+`),
+      env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" },
+    });
+    expect(error.issues.map((i) => [i.code, i.path])).toEqual([
+      ["dev_only_in_production", "audit.sink"],
+    ]);
+    expect(error.issues[0]?.message).toContain("audit sink 'stdout'");
+  });
+
+  it("開発用の部品を使わない構成(https の IdP、jsonl シンク)は本番でも組み立てられる", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const dir = await mkdtemp(join(tmpdir(), "kp-bootstrap-prod-"));
+    tempDirs.push(dir);
     const assembled = await assemble({
       config: parseDeploymentConfig(`schemaVersion: 1
 deployment:
@@ -936,7 +964,7 @@ deployment:
 idp:
   adapter:
     kind: keycloak
-    baseUrl: http://keycloak.example.test
+    baseUrl: https://idp.example.test
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_CLIENT_SECRET
@@ -944,11 +972,16 @@ connectors:
   - id: parked
     enabled: false
 audit:
-  sink: stdout
+  sink: jsonl
+  jsonl:
+    path: audit.jsonl
+    rawQueryPath: raw-queries.jsonl
 `),
       env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" },
+      configDir: dir,
     });
     expect(assembled.gateway.enabledSourceIds()).toEqual([]);
+    expect(assembled.auditSinkDescription).toContain(join(dir, "audit.jsonl"));
   });
 });
 
@@ -977,7 +1010,7 @@ deployment:
 idp:
   adapter:
     kind: keycloak
-    baseUrl: http://keycloak.example.test
+    baseUrl: https://keycloak.example.test
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_MISSING_SECRET

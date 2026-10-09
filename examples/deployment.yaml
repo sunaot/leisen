@@ -12,7 +12,11 @@ deployment:
 idp:
   adapter:
     kind: keycloak
-    baseUrl: http://localhost:8080
+    # 本番は https。平文 http でループバック以外(内部網のホスト名等)を指す場合は、
+    # 経路が閉じた網であることを確認したうえで confirmPlainHttp: true を併記する
+    # (なければ idp_plain_http_requires_confirmation で拒否。issue #17)。
+    # イントロスペクションの往復には clientSecret と利用者のセッショントークンが載る
+    baseUrl: https://idp.example.test
     realm: example
     clientId: kp-gateway
     # 秘密情報はこのファイルに書かない(不変条件6)。環境変数名で参照する
@@ -46,7 +50,15 @@ orchestrator:
   costLimitPerQuery: 0.5
 
 audit:
-  sink: stdout # 収集基盤は導入先の運用に委ねる。stdoutは開発用
+  # 監査レコードを JSONL ファイルへ追記する(ADR-011。at-least-once、fail-closed)。
+  # 収集基盤(SIEM 等)への転送はこのファイルを取り込む形で導入先の運用に委ねる。
+  # stdout シンクは開発用で、NODE_ENV=production では dev_only_in_production で
+  # 起動を拒否される(issue #17)。開発用の例は deployment.dev.yaml
+  sink: jsonl
+  jsonl:
+    path: /var/lib/kp/audit/audit.jsonl
+    # 生クエリ原文は保持期間・閲覧経路が異なるため別ファイル(ADR-011 §3)
+    rawQueryPath: /var/lib/kp/rawquery/raw-queries.jsonl
   failureMode: fail-closed # 監査レコードを書けないツール呼び出しは失敗させる(ADR-011)
   privateScopeDocIds: hashed # プライベートスコープdocIdはHMACで秘匿化して記録(ADR-013 §2)
   retentionDays: 365 # 監査ログ本体の保持(ADR-013 §3)
