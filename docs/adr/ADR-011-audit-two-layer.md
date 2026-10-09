@@ -21,4 +21,4 @@ ADR-001追補3(2026-09-27 承認)により、MCP仕様2026-07-28版のステー�
 
 ## 追記(2026-10-09): AnswerRun の書き手と runId の発行主体(ADR-019)
 
-ADR-019(Accepted)により、監査ストア(ToolInvocation・AnswerRun・rawQuery)に書くのは Gateway だけとする。Orchestrator は Gateway の run API(`POST /runs`・`POST /runs/{runId}/finish`・`POST /runs/{runId}/feedback`)で申告し、**runId は Gateway が発行する HMAC 署名付きの値**になる(本人と期限を署名だけで検証する)。iteration は引き続き Orchestrator の申告。未申告の呼び出しを単発runとして記録する扱いは変えない。質問原文は `POST /runs` で rawQuery テーブルに書く(Slack が有効な構成では #22 が決まるまで書かない)。2層モデルとスキーマは変更しない。実装は T-023。
+ADR-019(Accepted)により、監査ストア(ToolInvocation・AnswerRun・rawQuery)に書くのは Gateway だけとする。Orchestrator は Gateway の run API(`POST /runs`・`POST /runs/{runId}/finish`・`POST /runs/{runId}/feedback`)で申告し、**runId は Gateway が発行する HMAC 署名付きの値**になる(発行元・本人・actor・期限を署名だけで検証する)。iteration は引き続き Orchestrator の申告。未申告の呼び出しを単発runとして記録する扱いは変えない(名前空間付きのキーで申告された不正な runId は拒否し、`invalid_run_id` の単発runとして記録する)。質問原文は `POST /runs` で rawQuery テーブルに書く(Slack が有効な構成では #22 が決まるまで書かない)。2層モデルは変えないが、**AnswerRun に部分レコード `answer_run_finish`・`answer_run_feedback` を足し**、レポートは runId ごとにフィールド単位で統合する(Gateway は前の状態を読まずに追記するため)。§4 の書き込み失敗時の挙動は run API にも適用する。実装は T-023。

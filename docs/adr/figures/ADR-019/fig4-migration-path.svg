@@ -68,7 +68,7 @@
     <circle cx="34" cy="285" r="10" fill="#57606a"/><text class="badge" x="34" y="289" text-anchor="middle">C4</text>
     <text class="rl" x="52" y="281">TB2 との整合</text><text class="s" x="52" y="298">Orchestrator の置き場所</text>
     <use href="#part" x="236" y="285"/><text class="t" x="252" y="281">同一運用者を前提に受容</text><text class="s" x="252" y="298">別ボリュームで被害範囲を限定</text>
-    <use href="#ok" x="492" y="285"/><text class="t" x="508" y="281">別の信頼境界に置ける</text><text class="s" x="508" y="298">監査ストアをマウントしない</text>
+    <use href="#ok" x="492" y="285"/><text class="t" x="508" y="281">別ホストにも置ける</text><text class="s" x="508" y="298">監査ストアをマウントしない</text>
     <use href="#ok" x="748" y="285"/><text class="t" x="764" y="281">同左</text>
 
     <!-- C5 -->
@@ -81,13 +81,13 @@
     <!-- 質問原文 -->
     <text class="rl" x="52" y="373">質問原文</text><text class="s" x="52" y="390">#18 / #22</text>
     <use href="#ng" x="236" y="377"/><text class="t" x="252" y="373">記録先なし</text><text class="s" x="252" y="390">レポートは「期限切れ」と誤表示</text>
-    <use href="#ok" x="492" y="377"/><text class="t" x="508" y="373">POST /runs → 生クエリ表</text><text class="s" x="508" y="390">Slack 由来の扱いは #22 で別途</text>
+    <use href="#ok" x="492" y="377"/><text class="t" x="508" y="373">POST /runs → 生クエリ表</text><text class="s" x="508" y="390">Slack 有効時は書かない(#22)</text>
     <use href="#ok" x="748" y="377"/><text class="t" x="764" y="373">同左</text>
 
     <!-- feedback -->
     <text class="rl" x="52" y="419">feedback の永続</text><text class="s" x="52" y="436">#30</text>
     <use href="#ng" x="236" y="423"/><text class="t" x="252" y="419">メモリ内 1,000 件まで</text><text class="s" x="252" y="436">再起動で消える</text>
-    <use href="#ok" x="492" y="423"/><text class="t" x="508" y="419">feedback イベント</text><text class="s" x="508" y="436">AnswerRun に紐づけて永続</text>
+    <use href="#ok" x="492" y="423"/><text class="t" x="508" y="419">answer_run_feedback</text><text class="s" x="508" y="436">部分レコードとして追記</text>
     <use href="#ok" x="748" y="423"/><text class="t" x="764" y="419">同左</text>
 
     <!-- 書き手 -->

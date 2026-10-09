@@ -68,7 +68,7 @@
   <text class="t" x="905" y="231" text-anchor="middle" font-weight="700">唯一の書き手</text>
 
   <text class="t green" x="526" y="300" font-weight="700">Orchestrator は監査ストアに何もマウントしない</text>
-  <text class="t" x="526" y="322">→ TM-I4 が構造的に成立し、別の信頼境界にも置ける</text>
+  <text class="t" x="526" y="322">→ TM-I4 が構造で成り立つ。別ホストにも置ける(同じ運用者)</text>
   <text class="s" x="526" y="340">疑うのは内容(申告)だけ。検証できる部分は Gateway が検証する</text>
 
   <!-- 下段: α / β -->

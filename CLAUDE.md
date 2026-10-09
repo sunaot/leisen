@@ -51,4 +51,4 @@
 - Slackコネクタ(T-006)は RTS/公式MCP を第一候補とし(ADR-014)、着手前に導入形態の法務確認(人間タスク)が必要。法務確認が終わるまで着手しない
 - delegated_identity 認可スパイク(T-017)は Q2 に前倒し。ただし文書検索モジュール本体の実装は Q3 着手(ADR-006/008)であり、まだ書かない
 - 構造化クエリモダリティ(text-to-query)は v1.0 スコープ外(ADR-008)。マップ生成(Phase 3)も同様。Source Catalog(T-018)は Phase 1.5 として例外的にスコープ内
-- 人間の未決事項: ADR-004(ライセンス)、OSS公開時期(T-013の前提)、Slack導入形態の法務確認(ADR-014)、ADR-017(Orchestrator の LLM クライアント・既定モデル。Proposed。AnswerRun の書き手は ADR-019 で決着)、T-003 レビューの H1(未申告呼び出しを human_in_the_loop とする既定の受容再確認)、MCP SDK v2系(`@modelcontextprotocol/server` 等、仕様2026-07-28版対応)への移行時期(ADR-001追補3「SDK更新の検証結果」追記とスパイク `docs/spikes/mcp-sdk-v2-migration-spike.md`。HTTP配線はv1で完了済み、SDK依存部は隔離済み)
+- 人間の未決事項: ADR-004(ライセンス)、OSS公開時期(T-013の前提)、Slack導入形態の法務確認(ADR-014)、ADR-017(Orchestrator の LLM クライアント・既定モデル。Proposed。AnswerRun の書き手は ADR-019 で決着)、ADR-019 の確認事項 1〜4(run API の Orchestrator 資格情報、Slack 有効時の引用の記録、不変条件2 の文言に run の事象を含めるか、fail-open の適用範囲。いずれも安全側の既定で Accepted 済み)、T-003 レビューの H1(未申告呼び出しを human_in_the_loop とする既定の受容再確認)、MCP SDK v2系(`@modelcontextprotocol/server` 等、仕様2026-07-28版対応)への移行時期(ADR-001追補3「SDK更新の検証結果」追記とスパイク `docs/spikes/mcp-sdk-v2-migration-spike.md`。HTTP配線はv1で完了済み、SDK依存部は隔離済み)

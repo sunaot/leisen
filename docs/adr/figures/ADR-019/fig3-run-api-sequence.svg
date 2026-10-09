@@ -36,7 +36,8 @@
 
   <!-- 1. POST /runs -->
   <text class="mono" x="150" y="134">POST /runs</text>
-  <text class="s" x="232" y="134">{ 質問原文 }  本人の Bearer</text>
+  <text class="s" x="232" y="134">{ 質問原文 · actor }</text>
+  <text class="s" x="150" y="158">本人の Bearer + Orchestrator の資格情報(/runs の全経路)</text>
   <line x1="140" y1="142" x2="497" y2="142" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
 
   <text class="s" x="512" y="164">質問原文 → 生クエリ表(30 日保持)</text>
@@ -46,7 +47,7 @@
 
   <text class="t" x="150" y="204">runId = <tspan font-weight="700">HMAC 署名付きの不透明な値</tspan></text>
   <line x1="500" y1="212" x2="143" y2="212" stroke="#57606a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text class="s" x="150" y="228">中身: 乱数 · 発行時刻 · 期限。userId は署名の入力で束縛(平文では持たない)</text>
+  <text class="s" x="150" y="228">中身: 乱数 · 発行時刻 · 有効期間。userId · actor は署名の入力で束縛(平文では持たない)</text>
 
   <!-- 2. loop -->
   <rect x="40" y="246" width="938" height="168" rx="8" fill="none" stroke="#8c959f"/>
@@ -78,9 +79,9 @@
   <text class="s" x="522" y="513">run 単位の索引(SQLite 等、JSONL からの派生物)で照合</text>
 
   <line x1="500" y1="540" x2="817" y2="540" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text class="s" x="512" y="532">引用 docId は不可逆化して記録</text>
-  <text class="ev" x="832" y="544">AnswerRun</text>
-  <text class="s" x="832" y="560">(最終状態)</text>
+  <text class="s" x="512" y="532">引用 docId は最も厳しい規則で記録(決定5)</text>
+  <text class="ev" x="832" y="544">answer_run_finish</text>
+  <text class="s" x="832" y="560">(部分レコード)</text>
 
   <!-- 4. feedback -->
   <text class="mono" x="150" y="594">POST /runs/{id}/feedback</text>
@@ -88,8 +89,8 @@
   <text class="s" x="150" y="618">利用者の評価(本人の run のときだけ)</text>
   <text class="s" x="512" y="616">メモリ 1,000 件の制約がなくなる(#30)</text>
   <line x1="500" y1="624" x2="817" y2="624" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text class="ev" x="832" y="628">AnswerRun</text>
-  <text class="s" x="832" y="644">(userFeedback 更新)</text>
+  <text class="ev" x="832" y="628">answer_run_feedback</text>
+  <text class="s" x="832" y="644">(部分レコード)</text>
 
   <!-- 下段 -->
   <line x1="20" y1="666" x2="980" y2="666" stroke="#d0d7de"/>
@@ -98,7 +99,7 @@
   <circle cx="34" cy="714" r="10" fill="#0969da"/><text class="badge" x="34" y="718" text-anchor="middle">C2</text>
   <text class="t" x="52" y="718">run の状態は監査ストアの記録の列に置く。各リクエストは独立し、Gateway のプロセスは無状態のまま</text>
   <circle cx="34" cy="739" r="10" fill="#0969da"/><text class="badge" x="34" y="743" text-anchor="middle">C3</text>
-  <text class="t" x="52" y="743">run API は Gateway の管理面(同じ Bearer で認証)。MCP のツール面・コネクタ IF には触れないので不変条件 5 の外</text>
+  <text class="t" x="52" y="743">run API は Gateway の管理面(本人の Bearer + Orchestrator の資格情報)。MCP のツール面・コネクタ IF には触れないので不変条件 5 の外</text>
   <circle cx="34" cy="764" r="10" fill="#0969da"/><text class="badge" x="34" y="768" text-anchor="middle">C4</text>
-  <text class="t" x="52" y="768">Orchestrator は監査ストアをマウントしない。別ホスト · 別の運用者にも置ける。監査ファイルは Gateway の 1 系統に戻る</text>
+  <text class="t" x="52" y="768">Orchestrator は監査ストアをマウントしない。別ホストにも置ける(同じ運用者の下)。監査ファイルは Gateway の 1 系統に戻る</text>
 </svg>

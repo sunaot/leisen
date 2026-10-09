@@ -48,7 +48,7 @@
 
   <rect x="160" y="270" width="300" height="48" rx="6" fill="#fff8c5" stroke="#9a6700" stroke-width="1.5"/>
   <text class="mono" x="310" y="290" text-anchor="middle">run/</text>
-  <text class="s" x="310" y="308" text-anchor="middle">runId の発行 · 検証(署名鍵) · AnswerRun の組み立て</text>
+  <text class="s" x="310" y="308" text-anchor="middle">runId の発行 · 検証(署名鍵) · 監査レコードの組み立て</text>
 
   <!-- proxy → audit (ToolInvocation) -->
   <polyline points="225,236 225,252 110,252 110,348" fill="none" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
@@ -57,19 +57,19 @@
 
   <rect x="56" y="350" width="473" height="48" rx="6" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
   <text class="mono" x="292" y="370" text-anchor="middle">@kp/audit</text>
-  <text class="s" x="292" y="388" text-anchor="middle">スキーマ · AuditSink · JSONL · 生クエリ表 · docId の不可逆化(依存は zod だけ)</text>
+  <text class="s" x="292" y="388" text-anchor="middle">スキーマ · AuditSink · JSONL · 生クエリ表 · docId の不可逆化(依存は zod と Node 標準だけ)</text>
 
   <rect x="56" y="410" width="473" height="50" rx="6" fill="#ffebe9" stroke="#cf222e"/>
   <text class="t red" x="70" y="430" font-weight="700">✕ run/ と @kp/audit は次を import しない(lint で検査)</text>
   <text class="s" x="70" y="449">proxy/ · idp/ · config/ · @modelcontextprotocol/sdk · @kp/connector-sdk</text>
 
   <line x1="292" y1="472" x2="292" y2="506" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#a)"/>
-  <text class="s" x="300" y="494">AuditSink(既定 = 同じプロセスで JSONL に追記)</text>
+  <text class="s" x="300" y="494">AuditSink · RawQueryStore(既定 = 同じプロセス)</text>
   <rect x="152" y="508" width="280" height="40" rx="6" fill="#ffffff" stroke="#1a7f37" stroke-width="1.5"/>
   <text class="t" x="292" y="533" text-anchor="middle">監査ボリューム(Gateway の 1 系統)</text>
 
   <text class="s" x="36" y="578">→ は import の向き(依存)。組み立て役だけが全モジュールを知る</text>
-  <text class="s" x="36" y="596">Orchestrator は別プロセスのまま、/mcp と /runs を本人の Bearer で呼ぶだけ</text>
+  <text class="s" x="36" y="596">Orchestrator は別プロセスのまま、本人の Bearer で /mcp と /runs を呼ぶ(/runs は自分の資格情報も添える)</text>
 
   <!-- 右パネル: S2 -->
   <rect x="580" y="52" width="400" height="560" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
@@ -80,7 +80,7 @@
   <rect x="612" y="122" width="336" height="40" rx="6" fill="#ffffff" stroke="#8c959f"/>
   <text class="t" x="780" y="147" text-anchor="middle">http · idp · proxy · run(段階 1 と同じ)</text>
   <rect x="612" y="174" width="336" height="54" rx="6" fill="#fff8c5" stroke="#9a6700" stroke-width="1.5"/>
-  <text class="t" x="780" y="196" text-anchor="middle" font-weight="700">AuditSink = ネットワーク送信の実装</text>
+  <text class="t" x="780" y="196" text-anchor="middle" font-weight="700">AuditSink · RawQueryStore = ネットワーク送信</text>
   <text class="s" x="780" y="215" text-anchor="middle">差し替えるのはここだけ(at-least-once · 冪等キー)</text>
 
   <line x1="780" y1="242" x2="780" y2="274" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
