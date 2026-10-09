@@ -17,7 +17,7 @@
     <g id="ng"><circle r="9" fill="#cf222e"/><line x1="-3.6" y1="-3.6" x2="3.6" y2="3.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><line x1="3.6" y1="-3.6" x2="-3.6" y2="3.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></g>
   </defs>
   <rect width="1000" height="640" rx="10" fill="#ffffff"/>
-  <text class="title" x="20" y="34">図4 移行の道筋 — A で計測ループを閉じたまま、ADR で run API を決めて段階 1 → 2 に進む</text>
+  <text class="title" x="20" y="34">図4 移行の道筋 — A で計測ループを閉じたまま段階 1 に移り、段階 2 は条件つきで進む</text>
 
   <!-- 列ヘッダ(矢羽) -->
   <polygon points="220,56 452,56 470,84 452,112 220,112" fill="#fff8f2" stroke="#bc4c00" stroke-width="1.5"/>
@@ -104,16 +104,16 @@
 
   <!-- 進め方 -->
   <rect x="20" y="538" width="960" height="88" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
-  <text class="h" x="36" y="562">進め方(手戻りが少ない順)</text>
+  <text class="h" x="36" y="562">進め方(ADR-019)</text>
   <rect x="36" y="574" width="270" height="40" rx="6" fill="#fff8f2" stroke="#bc4c00"/>
-  <text class="t" x="171" y="590" text-anchor="middle">ADR-017 確認事項 3 を A で決着</text>
-  <text class="s" x="171" y="606" text-anchor="middle">「観測点 ≠ 権威」の限界と予定の進化を明記</text>
+  <text class="t" x="171" y="590" text-anchor="middle">ADR-019 Accepted(2026-10-09)</text>
+  <text class="s" x="171" y="606" text-anchor="middle">段階 1 で進める。実装までは A のまま</text>
   <line x1="306" y1="594" x2="346" y2="594" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
   <rect x="348" y="574" width="270" height="40" rx="6" fill="#f3f9ff" stroke="#0969da"/>
-  <text class="t" x="483" y="590" text-anchor="middle">ADR-019 ドラフト(run API)</text>
-  <text class="s" x="483" y="606" text-anchor="middle">人間のレビュー → 承認後に段階 1 を実装</text>
+  <text class="t" x="483" y="590" text-anchor="middle">T-023: 段階 1 を実装</text>
+  <text class="s" x="483" y="606" text-anchor="middle">@kp/audit 切り出し → run API → 移行</text>
   <line x1="618" y1="594" x2="658" y2="594" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
   <rect x="660" y="574" width="304" height="40" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
-  <text class="t" x="812" y="590" text-anchor="middle">段階 2: 索引を足して引用を検証</text>
+  <text class="t" x="812" y="590" text-anchor="middle">段階 2: 索引を足して引用を検証(別 ADR)</text>
   <text class="s" x="812" y="606" text-anchor="middle">AnswerRun のスキーマは全段階で共通</text>
 </svg>

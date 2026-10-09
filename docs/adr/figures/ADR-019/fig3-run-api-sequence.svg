@@ -27,7 +27,7 @@
   <text class="s" x="500" y="92" text-anchor="middle">検証者・唯一の書き手</text>
   <rect x="740" y="56" width="160" height="44" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
   <text class="h" x="820" y="77" text-anchor="middle">監査ストア</text>
-  <text class="s" x="820" y="92" text-anchor="middle">イベント列(JSONL が正)</text>
+  <text class="s" x="820" y="92" text-anchor="middle">記録の列(JSONL が正)</text>
 
   <!-- ライフライン -->
   <line x1="140" y1="100" x2="140" y2="650" stroke="#8c959f" stroke-dasharray="4 4"/>
@@ -41,11 +41,12 @@
 
   <text class="s" x="512" y="164">質問原文 → 生クエリ表(30 日保持)</text>
   <line x1="500" y1="172" x2="817" y2="172" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text class="ev" x="832" y="176">run_started</text>
+  <text class="ev" x="832" y="176">AnswerRun</text>
+  <text class="s" x="832" y="192">(pending)</text>
 
   <text class="t" x="150" y="204">runId = <tspan font-weight="700">HMAC 署名付きの不透明な値</tspan></text>
   <line x1="500" y1="212" x2="143" y2="212" stroke="#57606a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text class="s" x="150" y="228">中身: userId · 発行時刻 · 期限(Gateway だけが署名できる)</text>
+  <text class="s" x="150" y="228">中身: 乱数 · 発行時刻 · 期限。userId は署名の入力で束縛(平文では持たない)</text>
 
   <!-- 2. loop -->
   <rect x="40" y="246" width="938" height="168" rx="8" fill="none" stroke="#8c959f"/>
@@ -60,9 +61,9 @@
   <text class="t" x="522" y="323" font-weight="700">検証: 署名 · 本人の runId か · 期限内か</text>
   <text class="s" x="522" y="339">署名だけで判定できる(索引不要 = 段階 1)</text>
 
-  <text class="s" x="512" y="364">返した docId も記録(段階 2 の引用検証の材料)</text>
+  <text class="s" x="512" y="364">段階 2 では返した docId も記録(引用検証の材料)</text>
   <line x1="500" y1="372" x2="817" y2="372" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text class="ev" x="832" y="376">tool_invocation*</text>
+  <text class="ev" x="832" y="376">ToolInvocation*</text>
 
   <text class="t" x="150" y="394">結果(本人の権限で得たもの)</text>
   <line x1="500" y1="402" x2="143" y2="402" stroke="#57606a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
@@ -77,9 +78,9 @@
   <text class="s" x="522" y="513">run 単位の索引(SQLite 等、JSONL からの派生物)で照合</text>
 
   <line x1="500" y1="540" x2="817" y2="540" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text class="s" x="512" y="532">AnswerRun と同じスキーマ</text>
-  <text class="ev" x="832" y="544">run_finished</text>
-  <text class="s" x="832" y="560">(= AnswerRun)</text>
+  <text class="s" x="512" y="532">引用 docId は不可逆化して記録</text>
+  <text class="ev" x="832" y="544">AnswerRun</text>
+  <text class="s" x="832" y="560">(最終状態)</text>
 
   <!-- 4. feedback -->
   <text class="mono" x="150" y="594">POST /runs/{id}/feedback</text>
@@ -87,14 +88,15 @@
   <text class="s" x="150" y="618">利用者の評価(本人の run のときだけ)</text>
   <text class="s" x="512" y="616">メモリ 1,000 件の制約がなくなる(#30)</text>
   <line x1="500" y1="624" x2="817" y2="624" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text class="ev" x="832" y="628">feedback*</text>
+  <text class="ev" x="832" y="628">AnswerRun</text>
+  <text class="s" x="832" y="644">(userFeedback 更新)</text>
 
   <!-- 下段 -->
   <line x1="20" y1="666" x2="980" y2="666" stroke="#d0d7de"/>
   <circle cx="34" cy="689" r="10" fill="#0969da"/><text class="badge" x="34" y="693" text-anchor="middle">C1</text>
-  <text class="t" x="52" y="693">書き手は Gateway。検証できる部分(runId · userId · 引用の実在)は Gateway が検証する。outcome の真偽は誰が書いても検証できない</text>
+  <text class="t" x="52" y="693">書き手は Gateway。検証できる部分(runId · 本人 · 期限。引用の実在は段階 2)は Gateway が検証する。outcome の真偽は誰にも検証できない</text>
   <circle cx="34" cy="714" r="10" fill="#0969da"/><text class="badge" x="34" y="718" text-anchor="middle">C2</text>
-  <text class="t" x="52" y="718">run の状態は監査ストアのイベント列に置く。各リクエストは独立し、Gateway のプロセスは無状態のまま</text>
+  <text class="t" x="52" y="718">run の状態は監査ストアの記録の列に置く。各リクエストは独立し、Gateway のプロセスは無状態のまま</text>
   <circle cx="34" cy="739" r="10" fill="#0969da"/><text class="badge" x="34" y="743" text-anchor="middle">C3</text>
   <text class="t" x="52" y="743">run API は Gateway の管理面(同じ Bearer で認証)。MCP のツール面・コネクタ IF には触れないので不変条件 5 の外</text>
   <circle cx="34" cy="764" r="10" fill="#0969da"/><text class="badge" x="34" y="768" text-anchor="middle">C4</text>
