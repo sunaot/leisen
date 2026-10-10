@@ -675,6 +675,7 @@ describe("what reaches the LLM over MCP (security review 2026-09-27)", () => {
               snippet: "s",
               url: "https://example.test/d1",
               rawCandidates: ["unauthorized-candidate-title"],
+              scope: "shared",
             },
           ],
           totalCount: 987654,
@@ -690,7 +691,9 @@ describe("what reaches the LLM over MCP (security review 2026-09-27)", () => {
     })) as CallToolResult;
     expect(projected.isError).toBeFalsy();
     expect(projected.structuredContent).toEqual({
-      hits: [{ documentId: "d1", title: "t1", snippet: "s", url: "https://example.test/d1" }],
+      hits: [
+        { documentId: "d1", title: "t1", snippet: "s", url: "https://example.test/d1", scope: "shared" },
+      ],
     });
     expect(JSON.stringify(projected)).not.toMatch(/totalCount|preFilter|candidate|987654/);
 

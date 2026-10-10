@@ -3,7 +3,11 @@
  *
  *   kp-gateway serve    --config <deployment.yaml> [--port <n>] [--host <addr>]   Gatewayを起動する
  *   kp-gateway validate --config <deployment.yaml> [--port <n>] [--host <addr>]   設定を検証する(listen しない)
+ *   kp-gateway auth-check --config <deployment.yaml> --token-env <VAR>           Keycloak の検証項目を1回試す
  *
+ * - auth-check は環境変数 <VAR> のセッショントークンを IdP(kind: keycloak のみ)でイントロスペクションし、
+ *   検証項目(active / iss / typ / azp / aud)ごとの pass / fail / skipped と userId を標準出力に出す
+ *   (issue #16)。トークンは引数に取らず、出力にも出さない。コネクタは組み立てず listen もしない
  * - --config を省略すると環境変数 KP_DEPLOYMENT_CONFIG を使う
  * - --port / --host は deployment.yaml の gateway.http.port / host より優先する(issue #38)。
  *   上書き後の値で公開境界の検査(validateGatewayHttpExposure)を行うため、ループバック以外の
@@ -11,6 +15,7 @@
  * - 待ち受けのポートが使用中(EADDRINUSE)なら、変更の方法を日本語で案内して終了コード 1
  * - 起動時の警告(モック IdP のセッション表が空など)は validate / serve の両方で stderr に出す
  * - 終了コード: 0 正常 / 1 設定不備・起動失敗・停止時の監査flush失敗 / 2 使い方の誤り
+ *   (auth-check: 0 全項目 pass / 1 いずれかが fail または IdP に届かない / 2 設定不備・使い方の誤り)
  * - 出力: 起動ログとエラーは標準エラー出力(標準出力は audit.sink: stdout の監査
  *   レコードが使う)。validate の結果は標準出力
  * - トークン・clientSecret・環境変数の値・設定オブジェクト全体は出さない
@@ -25,24 +30,31 @@ import {
   type AssembledGateway,
 } from "../bootstrap/assemble.js";
 import { DEV_ONLY_CONNECTOR_KINDS } from "../bootstrap/plugins.js";
-import { loadDeploymentConfig } from "../config/loader.js";
-import type { DeploymentConfig } from "../config/schema.js";
+import { loadDeploymentConfig, resolveIdpAdapterConfig } from "../config/loader.js";
+import { AUDIT_SINK_STDOUT, type DeploymentConfig } from "../config/schema.js";
 import { DeploymentConfigError } from "../config/validate.js";
+import { acceptsAnyClient, KeycloakIdpAdapter, type IntrospectionCheck } from "../idp/keycloak.js";
 import { IdpError } from "../idp/types.js";
 import { GatewayError } from "../proxy/types.js";
 
 export const CLI_USAGE = `usage: kp-gateway <command> [--config <deployment.yaml>] [--port <n>] [--host <addr>]
+       kp-gateway auth-check --config <deployment.yaml> --token-env <VAR>
 
 commands:
-  serve      start the gateway (MCP Streamable HTTP) until SIGINT / SIGTERM
-  validate   load the config and assemble the gateway without listening;
-             list every problem found
+  serve       start the gateway (MCP Streamable HTTP) until SIGINT / SIGTERM
+  validate    load the config and assemble the gateway without listening;
+              list every problem found
+  auth-check  introspect the session token held in environment variable <VAR> once
+              (idp.adapter.kind: keycloak only) and print pass / fail / skipped for
+              each check (active, iss, typ, azp, aud) plus the userId; the token is
+              never printed. exit 0 when every check passes, 1 otherwise
 
 options:
   -c, --config <path>  deployment.yaml (default: $KP_DEPLOYMENT_CONFIG)
       --port <n>       listen on this port instead of gateway.http.port (1-65535)
       --host <addr>    listen on this address instead of gateway.http.host; a non-loopback
                        address still requires gateway.http.confirmExposedHost: true
+      --token-env <VAR> (auth-check) name of the environment variable holding the token
   -h, --help           show this help
 
 exit codes: 0 ok, 1 configuration or runtime error, 2 usage error`;
@@ -56,7 +68,11 @@ export interface ListenOverrides {
 export type CliCommand =
   | { readonly kind: "help" }
   | ({ readonly kind: "serve" | "validate"; readonly configPath: string } & ListenOverrides)
+  | { readonly kind: "auth-check"; readonly configPath: string; readonly tokenEnv: string }
   | { readonly kind: "usage_error"; readonly message: string };
+
+/** 環境変数名の形式(--token-env。値ではなく名前を受ける)。 */
+const ENV_VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** --port の値(1〜65535 の整数。gateway.http.port のスキーマと同じ範囲)。 */
 function parsePort(value: string): number | undefined {
@@ -82,6 +98,7 @@ export function parseCliArgs(
         config: { type: "string", short: "c" },
         port: { type: "string" },
         host: { type: "string" },
+        "token-env": { type: "string" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: true,
@@ -100,7 +117,7 @@ export function parseCliArgs(
   if (command === undefined) {
     return { kind: "usage_error", message: "a command is required" };
   }
-  if (command !== "serve" && command !== "validate") {
+  if (command !== "serve" && command !== "validate" && command !== "auth-check") {
     return { kind: "usage_error", message: `unknown command: ${command}` };
   }
   if (extra.length > 0) {
@@ -112,6 +129,22 @@ export function parseCliArgs(
       kind: "usage_error",
       message: "--config <path> is required (or set KP_DEPLOYMENT_CONFIG)",
     };
+  }
+  if (command === "auth-check") {
+    if (parsed.values.port !== undefined || parsed.values.host !== undefined) {
+      return { kind: "usage_error", message: "auth-check does not take --port / --host" };
+    }
+    const tokenEnv = parsed.values["token-env"];
+    if (tokenEnv === undefined || !ENV_VAR_NAME.test(tokenEnv)) {
+      return {
+        kind: "usage_error",
+        message: "--token-env <VAR> is required and must be an environment variable NAME",
+      };
+    }
+    return { kind: "auth-check", configPath, tokenEnv };
+  }
+  if (parsed.values["token-env"] !== undefined) {
+    return { kind: "usage_error", message: "--token-env applies to auth-check only" };
   }
   let port: number | undefined;
   if (parsed.values.port !== undefined) {
@@ -169,6 +202,8 @@ export interface CliDeps extends CliIo {
   readonly env?: Env;
   /** serve の停止合図(既定 SIGINT / SIGTERM)。解決値はログ用の理由 */
   readonly waitForShutdown?: () => Promise<string>;
+  /** auth-check のイントロスペクション呼び出しに使う fetch(テスト用注入。既定 globalThis.fetch) */
+  readonly fetchImpl?: typeof fetch;
 }
 
 /** 最初の SIGINT / SIGTERM を待つ(2回目は既定動作=即時終了に任せる)。 */
@@ -228,6 +263,10 @@ function devOnlyComponents(config: DeploymentConfig): string[] {
     ...[...new Set(enabled.map((c) => c.kind))]
       .filter((kind) => DEV_ONLY_CONNECTOR_KINDS.has(kind))
       .map((kind) => `connector kind '${kind}'`),
+    ...(config.audit.sink === AUDIT_SINK_STDOUT ? ["audit sink 'stdout'"] : []),
+    ...(config.idp.adapter.kind === "keycloak" && acceptsAnyClient(config.idp.adapter.allowedClients)
+      ? ["idp.adapter.allowedClients '*' (azp check disabled)"]
+      : []),
   ];
 }
 
@@ -393,6 +432,90 @@ async function serveCommand(
   return 0;
 }
 
+/** auth-check の1行(列幅は固定。detail にトークン・sub は含まれない)。 */
+function formatCheck(check: IntrospectionCheck): string {
+  return `  ${check.name.padEnd(7)} ${check.status.padEnd(8)} ${check.detail}`;
+}
+
+/**
+ * auth-check: 設定を読み、IdP(keycloak)のイントロスペクションを1回呼んで検証項目ごとの結果を出す。
+ * コネクタの組み立て・listen はしない。トークンは環境変数から読み、出力に出さない。
+ */
+async function authCheckCommand(
+  configPath: string,
+  tokenEnv: string,
+  deps: CliDeps,
+): Promise<number> {
+  const env = deps.env ?? process.env;
+  const absolute = resolve(configPath);
+  let config: DeploymentConfig;
+  try {
+    config = loadDeploymentConfig(absolute);
+  } catch (error) {
+    reportError(deps, `cannot load ${absolute}`, error);
+    return 2;
+  }
+  if (config.idp.adapter.kind !== "keycloak") {
+    deps.stderr(
+      `kp-gateway: auth-check applies to idp.adapter.kind: keycloak only ` +
+        `(this deployment uses '${config.idp.adapter.kind}')`,
+    );
+    return 2;
+  }
+  const token = env[tokenEnv];
+  if (token === undefined || token === "") {
+    deps.stderr(`kp-gateway: environment variable "${tokenEnv}" is not set or empty`);
+    return 2;
+  }
+  let adapter: KeycloakIdpAdapter;
+  try {
+    const resolved = resolveIdpAdapterConfig(config.idp.adapter, env);
+    if (resolved.kind !== "keycloak") {
+      deps.stderr("kp-gateway: auth-check applies to idp.adapter.kind: keycloak only");
+      return 2;
+    }
+    const { kind: _kind, ...keycloakConfig } = resolved;
+    adapter = new KeycloakIdpAdapter(
+      { ...keycloakConfig, ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}) },
+      [],
+    );
+  } catch (error) {
+    reportError(deps, `deployment "${config.deployment.name}" rejected`, error);
+    return 2;
+  }
+  warnDevOnly(deps, config);
+
+  let checks: readonly IntrospectionCheck[];
+  let userId: string | undefined;
+  try {
+    const body = await adapter.introspect(token);
+    checks = adapter.checkIntrospection(body);
+    // sub は active の検証を通ったときだけ表示する(通らない応答の値は信用しない)
+    if (checks.some((check) => check.name === "active" && check.status === "pass")) {
+      userId = body.sub;
+    }
+  } catch (error) {
+    deps.stderr(`kp-gateway: auth-check: ${describeError(error)}`);
+    return 1;
+  }
+  const failed = checks.filter((check) => check.status === "fail").length;
+  deps.stdout(`kp-gateway auth-check: ${absolute}`);
+  deps.stdout(`  idp: keycloak realm "${config.idp.adapter.realm}" at ${config.idp.adapter.baseUrl}`);
+  deps.stdout(`  ${"check".padEnd(7)} ${"result".padEnd(8)} detail`);
+  for (const check of checks) {
+    deps.stdout(formatCheck(check));
+  }
+  if (userId !== undefined) {
+    deps.stdout(`  userId: ${userId}`);
+  }
+  deps.stdout(
+    failed === 0
+      ? "result: PASS (the token would be accepted by the gateway)"
+      : `result: FAIL (${failed} check(s) failed; the gateway would answer 401)`,
+  );
+  return failed === 0 ? 0 : 1;
+}
+
 /** CLI本体。終了コードを返す(プロセスの終了は呼び出し側)。 */
 export async function runCli(
   argv: readonly string[],
@@ -411,5 +534,7 @@ export async function runCli(
       return validateCommand(command.configPath, command, deps);
     case "serve":
       return serveCommand(command.configPath, command, deps);
+    case "auth-check":
+      return authCheckCommand(command.configPath, command.tokenEnv, deps);
   }
 }

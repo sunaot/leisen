@@ -1,0 +1,54 @@
+# deployment.keycloak.yaml — 手元で Keycloak(e2e/keycloak の realm kp)を IdP にして Gateway を動かす開発用設定
+#
+# README「手元で動かす(5分)」→「Keycloak で試す」を参照。例:
+#   docker compose -f e2e/keycloak/docker-compose.yml up -d && e2e/keycloak/wait-ready.sh
+#   export KP_KEYCLOAK_CLIENT_SECRET=dev-only-gateway-secret   # realm のクライアント gateway の secret(ローカル専用のダミー)
+#   export KP_MOCK_TOKEN_DEV_DOCS=dev-only-token               # dev-docs に渡す本人資格情報(モック)
+#   export KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)" # 利用者 alice のアクセストークン(e2e-cli、5 分で失効)
+#   npx kp-gateway auth-check --config examples/deployment.keycloak.yaml --token-env KP_SESSION_TOKEN
+#   npx kp-gateway serve --config examples/deployment.keycloak.yaml
+#
+# - IdP 以外は deployment.dev.yaml と同じ(開発専用の部品: auth.provider: mock_env / kind: dev-fixture /
+#   audit.sink: stdout。NODE_ENV=production では起動時に拒否される)
+# - 秘密情報はこのファイルに書かない(不変条件6)。環境変数名だけを書く
+schemaVersion: 1
+
+deployment:
+  name: dev-keycloak
+
+idp:
+  adapter:
+    kind: keycloak
+    # e2e/keycloak の Keycloak(ホストに 8080 で公開)。ループバックなので平文 http でも確認フラグは不要。
+    # トークンの発行者(iss)は http://localhost:8080/realms/kp で、この baseUrl から導く既定値と一致する
+    baseUrl: http://localhost:8080
+    realm: kp
+    # イントロスペクション(RFC 7662)を呼ぶ confidential クライアント。secret は環境変数で渡す
+    clientId: gateway
+    clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+    # トークンの発行先(azp)として受け入れるクライアント(issue #16)。scripts/smoke/keycloak-token.sh が使う
+    # e2e-cli。自作の MCP クライアントで試すときは realm(e2e/keycloak/realm/kp-realm.json)に登録して
+    # ここに足す。["*"] は azp の検証を外す開発専用の逃げ道(起動ログに WARNING、本番では拒否)
+    allowedClients: [e2e-cli]
+    # aud に clientId(gateway)が含まれることを要求する(realm の e2e-cli には audience マッパーがある)
+    requireAudience: true
+
+gateway:
+  http:
+    host: 127.0.0.1 # ループバックのみで待ち受ける
+    port: 8787
+    path: /mcp
+
+connectors:
+  - id: dev-docs
+    # 組み込みの開発用コネクタ(インメモリの合成コーパス)
+    kind: dev-fixture
+    auth:
+      # 本人資格情報は環境変数 KP_MOCK_TOKEN_DEV_DOCS の固定値(開発専用)
+      provider: mock_env
+    settings:
+      corpusFile: fixtures/dev-corpus.yaml
+
+audit:
+  # 監査レコードを標準出力へ JSON で出す(開発用。NODE_ENV=production では拒否される)
+  sink: stdout

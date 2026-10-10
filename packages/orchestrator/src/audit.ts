@@ -18,7 +18,14 @@
  *   redaction(docid.ts)を通す: Slack は常に記録しない、プライベートスコープは
  *   audit.privateScopeDocIds(hashed / omitted)に従う、分類できないソースは記録しない
  *   (fail-closed。セキュリティレビュー H2、ADR-013 §2)
+ * - プライベートスコープかどうかは「結果の scope が shared でない」または「ソースの方針が
+ *   excluded でない」の論理和で決める(ADR-016 追補2 決定5)。scope は証拠台帳
+ *   (citations.ts)が結果ごとに記録したもので、Answer の citations には載せない
  */
+import {
+  normalizeDocumentScope,
+  type DocumentScope,
+} from "@kp/connector-sdk";
 import {
   digestQuery,
   redactDocIdForAudit,
@@ -31,7 +38,7 @@ import {
   type DeploymentConfig,
   type DocIdAuditConfig,
 } from "@kp/gateway";
-import type { AnswerOutcome, Citation } from "./answer.js";
+import type { AnswerOutcome } from "./answer.js";
 
 /** Phase 1 の実行区分は human-in-the-loop 固定(ADR-015、ADR-017 決定5)。 */
 export const HUMAN_ACTOR: Actor = { kind: "human" };
@@ -65,13 +72,24 @@ export function pendingAnswerRun(input: PendingAnswerRunInput): AnswerRunAuditRe
   };
 }
 
+/**
+ * 監査の docId 分類に渡す引用(ADR-016 追補2 決定5)。scope は証拠台帳が記録した
+ * 結果ごとの領域(EvidenceLedger.scopeOf)。Answer の citations とは別に組み立てる
+ */
+export interface AuditCitation {
+  readonly sourceId: string;
+  readonly documentId: string;
+  readonly scope: DocumentScope;
+}
+
 export interface FinishedAnswerRunInput {
   /** ISO 8601 */
   readonly endedAt: string;
   readonly outcome: AnswerOutcome;
   readonly confidence: number;
   readonly searchedSources: readonly string[];
-  readonly citations: readonly Citation[];
+  /** 検証済みの引用と、その結果ごとの領域(監査の docId 分類だけに使う) */
+  readonly citations: readonly AuditCitation[];
   /** 正規化コード(lower snake_case)のみ。生のエラーメッセージを入れない(TM-A2) */
   readonly failureReason: string | null;
 }
@@ -96,7 +114,12 @@ export function finishedAnswerRun(
 
 /** ソースの分類(citedDocIds の記録方針を決める)。 */
 export interface SourceDocIdClass {
-  /** DM・プライベートチャンネル・個人スコープ等を含むソースか(ADR-013 §1・§2) */
+  /**
+   * ソースの方針がプライベート領域を含みうるか(privateScopes が excluded 以外。
+   * ADR-013 §1・§2)。true ならそのソースの docId は結果の scope によらず全件を
+   * プライベートスコープとして扱う(ADR-016 追補2 決定5: included のソースは shared の
+   * 結果も hashed / omitted。コネクタの分類の誤りを平文の記録にしない)
+   */
   readonly privateScope: boolean;
   /** Slack 由来か。true なら設定に関わらず記録しない(ADR-013 §2、ADR-014) */
   readonly slack: boolean;
@@ -148,24 +171,32 @@ function classifySource(
  * documentId はコネクタスコープの不透明な ID のため `<sourceId>:<documentId>` で
  * 一意にし、gateway の redactDocIdForAudit(docid.ts)を通す:
  * - Slack と分類されたソース: 記録しない(常に)
- * - プライベートスコープのソース: hashed なら HMAC(hmac:…)、omitted なら記録しない
- * - それ以外(非プライベート・非 Slack): そのまま記録する
+ * - プライベートスコープの引用: hashed なら HMAC(hmac:…)、omitted なら記録しない。
+ *   プライベートスコープ = 結果の scope が shared でない(欠落・未知を含む)、または
+ *   ソースの方針が excluded でない(ADR-016 追補2 決定5 の論理和)
+ * - それ以外(方針 excluded のソースの shared の結果、非 Slack): そのまま記録する
  * - 分類できないソース: 記録しない(プライベートスコープ + omitted とみなす。fail-closed)
  */
 export function citedDocIdsForAudit(
-  citations: readonly Citation[],
+  citations: readonly AuditCitation[],
   docIdAudit: CitedDocIdAudit,
 ): string[] {
   const out: string[] = [];
   for (const citation of citations) {
     const docId = `${citation.sourceId}:${citation.documentId}`;
     const classified = classifySource(docIdAudit.classify, citation.sourceId);
+    // 実行時の欠落・未知の値は private(型の外から来た値も安全側に倒す)
+    const resultIsPrivate =
+      normalizeDocumentScope((citation as { scope?: unknown }).scope) !== "shared";
     const redacted =
       classified === undefined
         ? redactDocIdForAudit(docId, UNKNOWN_SOURCE_ORIGIN, UNKNOWN_SOURCE_POLICY)
         : redactDocIdForAudit(
             docId,
-            { privateScope: classified.privateScope, slackOrigin: classified.slack },
+            {
+              privateScope: resultIsPrivate || classified.privateScope,
+              slackOrigin: classified.slack,
+            },
             {
               privateScopeDocIds: docIdAudit.privateScopeDocIds,
               ...(docIdAudit.hmacKey !== undefined ? { hmacKey: docIdAudit.hmacKey } : {}),
@@ -214,7 +245,8 @@ export function isSlackKind(kind: string): boolean {
 
 /**
  * deployment.yaml の connectors[] から分類器を作る: kind が slack → slack、
- * privateScopes が excluded 以外(consent / included)→ privateScope。
+ * privateScopes が excluded 以外(included。consent は起動時に拒否されるが、届いた
+ * 場合も安全側)→ privateScope。結果ごとの scope との論理和は citedDocIdsForAudit が取る。
  * connectors[] にないソースは undefined(記録しない)。
  */
 export function docIdClassifierFromConnectors(

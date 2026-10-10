@@ -18,6 +18,11 @@
  *   snippet は一致箇所の周辺を MAX_SNIPPET_CHARS 以内で切り出す
  * - fetch: 本文を pageChars 文字(コードポイント)ごとにページングする
  * - list: 区画(文書の container)の一覧。区画は入れ子を持たない
+ * - プライベート領域(ADR-016 追補2): 文書に任意の scope(private / shared、既定 shared)を
+ *   付けられる。privateScopeHandling は "enforced": 方針(init.policy)が excluded のとき
+ *   private の文書を search / list / describe から外し、fetch は private_scope_excluded で
+ *   拒否する(ソース側の除外に相当。構築時に対象から外す)。全結果に scope を付ける。
+ *   区画の scope は、区画内の(対象の)文書がすべて private なら private、それ以外は shared
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -35,6 +40,7 @@ import {
   type SearchOptions,
   type SearchResult,
   type SourceDescription,
+  type SourcePolicy,
 } from "@kp/connector-sdk";
 import YAML from "yaml";
 import { z } from "zod";
@@ -70,6 +76,11 @@ const documentSchema = z.strictObject({
   author: z.string().min(1).optional(),
   /** ISO 8601(オフセット付き)。filters.updatedAfter / updatedBefore の対象 */
   updatedAt: z.iso.datetime({ offset: true }).optional(),
+  /**
+   * 文書の領域(ADR-016 追補2)。private は DM・個人スコープ等に相当する合成データ。
+   * 省略時は shared
+   */
+  scope: z.enum(["private", "shared"]).optional(),
 });
 
 export type DevFixtureDocument = z.infer<typeof documentSchema>;
@@ -162,6 +173,8 @@ export interface DevFixtureConnectorOptions {
   summary?: string;
   /** テスト用の時計(資格情報の失効判定) */
   now?: () => number;
+  /** 導入単位の方針(ADR-016 追補2 決定1)。既定 excluded */
+  policy?: SourcePolicy;
 }
 
 interface IndexedDocument {
@@ -257,6 +270,11 @@ function makeSnippet(content: string, patterns: readonly RegExp[]): string {
     : snippet;
 }
 
+/** 文書の領域(省略時は shared)。 */
+function scopeOf(document: DevFixtureDocument): "private" | "shared" {
+  return document.scope ?? "shared";
+}
+
 function parseFilterTime(value: string | undefined, name: string): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -275,11 +293,18 @@ export class DevFixtureConnector implements Connector {
   readonly capabilities: ConnectorCapabilities = {
     nativeSearch: "full",
     ingest: false,
+    privateScopeHandling: "enforced",
   };
+  /** 検索対象の文書(excluded では private の文書を含まない) */
   private readonly documents: readonly IndexedDocument[];
   private readonly byId: ReadonlyMap<string, DevFixtureDocument>;
-  /** 区画 → 文書数(コーパスでの初出順) */
-  private readonly containers: ReadonlyMap<string, number>;
+  /** excluded の方針で対象から外した文書の ID(fetch の拒否の分類に使う) */
+  private readonly excludedIds: ReadonlySet<string>;
+  /** 区画 → 文書数と、区画内の文書がすべて private か(コーパスでの初出順) */
+  private readonly containers: ReadonlyMap<
+    string,
+    { count: number; allPrivate: boolean }
+  >;
   private readonly pageChars: number;
   private readonly displayName: string;
   private readonly summary: string;
@@ -291,7 +316,16 @@ export class DevFixtureConnector implements Connector {
     options: DevFixtureConnectorOptions = {},
   ) {
     assertNotProduction("DevFixtureConnector");
-    const validated = documentsSchema.parse(documents);
+    const parsed = documentsSchema.parse(documents);
+    const privateScopes = options.policy?.privateScopes ?? "excluded";
+    // ソース側の除外に相当: excluded では private の文書を最初から対象に入れない
+    const validated =
+      privateScopes === "included"
+        ? parsed
+        : parsed.filter((d) => scopeOf(d) === "shared");
+    this.excludedIds = new Set(
+      parsed.filter((d) => !validated.includes(d)).map((d) => d.id),
+    );
     this.documents = validated.map((document, order) => ({
       document,
       order,
@@ -299,10 +333,15 @@ export class DevFixtureConnector implements Connector {
         document.updatedAt !== undefined ? Date.parse(document.updatedAt) : undefined,
     }));
     this.byId = new Map(validated.map((d) => [d.id, d]));
-    const containers = new Map<string, number>();
-    for (const { container } of validated) {
+    const containers = new Map<string, { count: number; allPrivate: boolean }>();
+    for (const document of validated) {
+      const { container } = document;
       if (container !== undefined) {
-        containers.set(container, (containers.get(container) ?? 0) + 1);
+        const current = containers.get(container) ?? { count: 0, allPrivate: true };
+        containers.set(container, {
+          count: current.count + 1,
+          allPrivate: current.allPrivate && scopeOf(document) === "private",
+        });
       }
     }
     this.containers = containers;
@@ -376,6 +415,7 @@ export class DevFixtureConnector implements Connector {
           url: document.url,
           ...(document.updatedAt !== undefined ? { updatedAt: document.updatedAt } : {}),
           ...(Object.keys(meta).length > 0 ? { meta } : {}),
+          scope: scopeOf(document),
         };
       });
     // 総件数は返さない(ADR-012/016)。続きの有無だけをカーソルで示す
@@ -390,6 +430,14 @@ export class DevFixtureConnector implements Connector {
     pageCursor?: string,
   ): Promise<FetchResult> {
     this.assertCredential(auth);
+    if (this.excludedIds.has(documentId)) {
+      // 方針(excluded)による拒否。本人が取得できる文書なので not_found とは区別する
+      // (ADR-016 追補2 決定4。enforced のコネクタは自ら同じ分類で拒否してよい)
+      throw new ConnectorError(
+        "private_scope_excluded",
+        "document is in a private scope excluded by this deployment",
+      );
+    }
     const document = this.byId.get(documentId);
     if (document === undefined) {
       throw new ConnectorError("not_found", "document not found");
@@ -407,6 +455,7 @@ export class DevFixtureConnector implements Connector {
       content: chars.slice(offset, end).join(""),
       url: document.url,
       ...(end < chars.length ? { nextPageCursor: encodeCursor("fetch", end) } : {}),
+      scope: scopeOf(document),
     };
   }
 
@@ -443,11 +492,12 @@ export class DevFixtureConnector implements Connector {
   }
 
   private containerEntries(): ContainerEntry[] {
-    return [...this.containers].map(([name, count]) => ({
+    return [...this.containers].map(([name, { count, allPrivate }]) => ({
       id: name,
       name,
       kind: "folder",
       childCount: count,
+      scope: allPrivate ? "private" : "shared",
     }));
   }
 
@@ -538,5 +588,6 @@ export async function createDevFixtureConnector(
     pageChars: settings.pageChars,
     ...(settings.displayName !== undefined ? { displayName: settings.displayName } : {}),
     ...(settings.summary !== undefined ? { summary: settings.summary } : {}),
+    policy: init.policy,
   });
 }

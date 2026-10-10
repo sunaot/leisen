@@ -56,8 +56,8 @@
 #   - node が PID 1 で動く。kp-gateway serve は SIGTERM / SIGINT を自分で処理し、処理中の
 #     リクエストを待って(最大 10 秒)監査バッファを flush してから終了する。停止猶予は
 #     それより長く取ること(compose の stop_grace_period: 30s)
-#   - NODE_ENV=production では開発用の部品(mock IdP / mock_env / dev-fixture)が起動時に
-#     拒否される。評価用のリファレンス compose は NODE_ENV=development で上書きしている
+#   - NODE_ENV=production では開発用の部品(mock IdP / mock_env / dev-fixture / audit.sink: stdout)が
+#     起動時に拒否される。評価用のリファレンス compose は NODE_ENV=development で上書きしている
 #   - HEALTHCHECK は GET /healthz(待ち受けの死活のみ。監査 sink の状態は含まない —
 #     docs/install.md「未実装事項」)。イメージに curl がないため node で確認する。
 #     待ち受けのポートを変えたら KP_HEALTHCHECK_URL も合わせる。orchestrator として

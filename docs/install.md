@@ -125,6 +125,14 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   コンテナを使わない場合は `npx kp-gateway validate --config <deployment.yaml>`
 - 設定からプラグイン(`connectors[].module`)を読み込めるため、deployment.yaml とプラグインの置き場所の
   書き込み権限は管理者に限る(T-010)
+- `idp.adapter.allowedClients`(必須)は、トークンの発行先クライアント(`azp`)として受け入れるクライアント ID の
+  許可リスト(issue #16)。利用者がログインする UI・MCP クライアントを IdP に登録して列挙する(リファレンス構成は
+  `e2e-cli` と `librechat`)。`requireAudience: true` は `aud` に Gateway の `clientId` が含まれることを要求する
+  (realm の両クライアントには audience マッパーがある)。`allowedIssuers` は、トークンの発行者(`iss`。Keycloak の
+  `KC_HOSTNAME` で固定される公開 URL)がイントロスペクションに使う `baseUrl`(compose のサービス名)と異なる
+  ため明示している。`allowedClients: ["*"]` は開発専用(WARNING、本番では `dev_only_in_production`)。トークンが
+  401 になるときの切り分けは `docker compose run --rm --no-deps -e KP_SESSION_TOKEN gateway auth-check --token-env KP_SESSION_TOKEN`
+  (項目ごとの pass / fail / skipped を表示。トークンは出力しない)
 
 ## 5. 秘密情報の渡し方
 
@@ -273,6 +281,17 @@ server {
 - リバースプロキシをコンテナで compose に加える場合は、gateway のホストへの公開(`ports`)を外し、
   `upstream` を `gateway:8787` にする
 
+### 6.4 IdP への平文 http と `confirmPlainHttp`
+
+- `idp.adapter.baseUrl` が平文 `http:` でループバック以外(内部網のホスト名・IP)を指す構成は、
+  `idp.adapter.confirmPlainHttp: true` がなければ静的検証が `idp_plain_http_requires_confirmation` で拒否する
+  (`kp-gateway validate` / `serve`、`kp-ask --config` も同じ。issue #17、ADR-011 追記)。イントロスペクション
+  (RFC 7662)の往復には Gateway の clientSecret と利用者のセッショントークンが載るため、平文で内部網に出す
+  構成は、経路が閉じた網であることを確認したうえで受け入れる(`gateway.http.confirmExposedHost` と同じ規約)
+- リファレンス設定の `http://keycloak:8080` は、Gateway → Keycloak の区間が compose のサービス間ネットワーク
+  だけを通る(Keycloak のホストへの公開は `127.0.0.1:8080` のみ)ため、`confirmPlainHttp: true` を付けている。Keycloak をホスト外に置く場合は `https` にしてフラグを外す
+- `https` とループバック(`http://localhost:8080` 等)は確認不要
+
 ## 7. 監査ログの永続化
 
 - `audit.sink: jsonl`。監査レコード本体は `/var/lib/kp/audit/audit.jsonl`(ボリューム `kp-audit`)、
@@ -288,7 +307,10 @@ server {
   JSON の `duplicateRecordCount` / `updatedRecordCount`)
 - 開発用の `audit.sink: stdout` の出力(`{"kind":"audit", …}` の行)も、標準出力をファイルに保存すれば
   そのまま promotion-report の `--audit` に渡せる(封筒の `kind` を外して JSONL と同じ検証をかける)。
-  保存するファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う(開発用)
+  保存するファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う(開発用)。
+  **`stdout` シンクは `NODE_ENV=production` では `dev_only_in_production` で起動を拒否される**(issue #17、
+  ADR-011 追記)。標準出力は運用ログと混ざり at-least-once も fail-closed も成立しないため、本番の監査にはならない。
+  コンテナのログ基盤で監査を集めたい場合も、`jsonl` のファイルを収集基盤に取り込む形にする
 - 書き込み失敗時は fail-closed(ADR-011)。ローカルバッファ(1000 件)で一時的な失敗を吸収し、あふれると
   ツール呼び出しが失敗する。停止(SIGTERM)時は処理中のリクエストを最大 10 秒待ってからバッファを
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、
@@ -331,6 +353,24 @@ server {
     --accessor <監査閲覧担当のuserId> \
     --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
   ```
+
+### 7.1 出力の規則(stdout = 結果、stderr = ログ、監査 = ファイル)
+
+各プロセスの出力先は次の規則に固定する(issue #17、ADR-011 追記)。構造化ロガーやリクエストログはなく、
+出力はこの表がすべて。
+
+| プロセス | stdout(機械が読む結果) | stderr(人が読むログ) | 監査(ファイル) |
+|---|---|---|---|
+| `kp-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink)、`WARNING`(開発部品の使用・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation 等)と `rawQueryPath`(生クエリ原文) |
+| `kp-gateway validate` | `validate: OK` と要約 | 設定の不備(`[code] path: message`)、`WARNING` | 書かない(ファイルも作らない) |
+| `kp-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告・エラー。AnswerRun(既定。開発用) | `--answer-run-jsonl` のファイル(AnswerRun) |
+| `kp-ask serve` | `--help` だけ | 起動ログ・エラー | `--answer-run-jsonl` のファイル(`NODE_ENV=production` では必須) |
+| compose | コンテナの stdout / stderr は `docker logs` へ。収集は導入先の運用 | 同左 | 名前付きボリューム(§7) |
+
+出さないもの: トークン・API キー・AuthContext(`redactAuthContext` 経由でしか文字列化しない。不変条件 6)、
+検索結果の内容、生の例外。監査レコードの docId は方針(`audit.privateScopeDocIds`)に応じて hashed / omitted。
+既知の不足: 運用ログ(非監査)に構造化の形式がない(grep 前提の行ログ)。HTTP 層の認証失敗は監査にもログにも
+残らない(issue #39)。`audit.sink: stdout` のとき生クエリ原文がプロセス内メモリに単調増加する(issue #29)。
 
 ## 8. 未実装事項(既知の制約)
 
@@ -377,9 +417,22 @@ server {
 - [ ] **Google Workspace: 管理者によるアプリの事前承認(ドメインインストール)。** Restricted scope の
   検証免除の条件を導入形態ごとに確認する(auth-matrix §2・§12.3)
 - [ ] **Kerberos(ファイル共有、T-017)を使う場合はチケット寿命の短縮を検討する**(失効反映のラグ)
-- [ ] **privateScopes の方針を決める**(既定 `excluded`)。`consent` / `included` を採る場合は利用規程
+- [ ] **GitHub: GitHub App は組織にだけインストールする**(個人アカウントにはインストールしない)。
+  GitHub コネクタは issue / PR・fetch の結果から所有者が個人アカウントかを判定できないため、個人の非公開
+  リポジトリを検索範囲に入れない前提を構成で守る(packages/connector-github/README.md「プライベート領域」、
+  ADR-016 追補2 決定7)
+- [ ] **privateScopes の方針を決める**(既定 `excluded`)。`included` を採る場合は利用規程
   ([docs/usage-policy-template.md](usage-policy-template.md))の整備と労使協議・就業規則との整合確認を行い、
-  `included` は確認フラグを付ける(ADR-013 §1、TM-E4)
+  確認フラグ(`confirmPrivateScopesIncluded: true`)を付ける(ADR-013 §1、TM-E4)。
+  - `consent`(本人オプトイン)は**現在は指定できない**。同意状態の持ち方(#42)が未設計で、方針が
+    コネクタに届かず除外も確認フラグも効かないため、`kp-gateway validate` / `serve` と `kp-ask` /
+    `kp-ask serve` は無効化済みのコネクタでも `private_scopes_consent_not_supported` で起動を拒否する
+    (ADR-016 追補2 決定6)
+  - `excluded` は、コネクタが能力 `privateScopeHandling` に `enforced` か `classified` を宣言している
+    場合だけ起動できる。宣言のないコネクタ(connector-sdk v0.3 のプラグイン)・`unsupported` のコネクタは
+    `private_scopes_unenforceable` で起動を拒否する。`excluded` のソースでは、Gateway が DM・プライベート
+    チャンネル・個人スコープに分類された結果を検索・一覧から落とし、fetch を `private_scope_excluded` で
+    拒否する(ADR-016 追補2 決定3・4、TM-E8)
 - [ ] 監査閲覧担当の指名と閲覧目的の規程化、メタ監査の運用(ADR-013 §3)
 - [ ] `audit.failureMode` は `fail-closed` のまま運用する(`fail-open` はセキュリティポリシーへの明文化と
   確認フラグが必要。ADR-011)
@@ -389,6 +442,37 @@ server {
   未実装であることを踏まえた運用計画を立てる(§8)
 - [ ] コアダンプを無効にする(メモリ上のトークンを残さない。TM-C3。compose は `ulimits: core: 0`)
 - [ ] Slack を対象にする場合は導入形態の法務確認(ADR-014。T-006 は法務確認待ち)
+
+### 10.1 直接接続の統制
+
+leisen への同意は、エージェント製品から各ソースへ直接つなぐこと(直接接続)の許可にはならない。同意は
+OAuth アプリ単位で行うためである。ただし、ソース側でアプリを制限していなければ、leisen の導入と関係なく
+直接接続ができてしまう。leisen を公認の経路にするなら、次の項目でほかの経路を塞ぐ。背景と体験の比較は
+[docs/direct-connection.md](direct-connection.md)。
+
+- [ ] **ソースのアプリ承認制で、leisen の OAuth アプリだけを承認する**(各ソースの管理者同意の仕組みは
+  [docs/auth-matrix.md](auth-matrix.md) の「管理者同意」行)
+  - Google Workspace: アプリアクセス制御で leisen のクライアントを信頼済みにし、信頼済み以外のアプリから
+    Drive へのアクセスを止める。**社内アプリ(自社の GCP プロジェクトで作ったクライアント)を自動で信頼する
+    設定は切る**か、プロジェクトを作れる人を限る(切らないと、社員が自分で作ったクライアントが通る)
+  - Slack: アプリ承認制を有効にし、leisen 以外のアプリ(エージェント製品の Slack 連携を含む)を承認しない。
+    **利用者が自分で作ったアプリをワークスペースに入れられないようにする**(承認制の対象に含める)
+  - GitHub: Org の OAuth App アクセス制限と GitHub App のインストール承認を有効にしておく
+  - Notion: Enterprise ではコネクションの承認リストで管理する。Enterprise 以外のプランでは止められない
+    前提で利用規程に書く
+  - Microsoft 365: 利用者による同意を止め、admin consent で承認したアプリだけにする
+- [ ] **GitHub の個人アクセストークン(PAT)を制限する**: Org で classic PAT のアクセスを禁止し、fine-grained
+  PAT を承認制にする。開発者は PAT を日常的に使い、公式の GitHub MCP サーバーも PAT で設定できるため、
+  規程だけでは止まらない
+- [ ] **ブラウザを操作するエージェントを端末側で管理する**: ブラウザ拡張の許可リスト(管理ポリシー)と、
+  エージェント製品の組織管理設定で、ブラウザ操作・画面操作の機能を許可するかを決める。本人の Web セッションで
+  動くため、ソース側からは本人の操作と区別できない
+- [ ] **エージェント製品の組織管理機能で、ソースへの公式コネクタを無効にし、leisen(`kp-ask serve`。
+  [docs/ui-librechat.md](ui-librechat.md))をカスタムコネクタとして配布する**(管理機能がある製品のみ)
+- [ ] **利用規程に、leisen 以外の経路で社内データをエージェントに渡すことの扱いを書く**(セッショントークンの
+  流用、規約外の自作アプリ、エクスポートやコピー&ペーストを含む。
+  [docs/usage-policy-template.md](usage-policy-template.md))
+- [ ] **事後の検知**: 各ソースのネイティブ監査ログで、leisen 以外の OAuth クライアントからのアクセスを定期的に確認する
 
 ## 11. Helm 化の要件(スコープ外)
 

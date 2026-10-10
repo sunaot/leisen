@@ -120,6 +120,11 @@ export function resolveIdpAdapterConfig(
         realm: adapter.realm,
         clientId: adapter.clientId,
         clientSecret,
+        allowedClients: adapter.allowedClients,
+        requireAudience: adapter.requireAudience,
+        ...(adapter.allowedIssuers !== undefined
+          ? { allowedIssuers: adapter.allowedIssuers }
+          : {}),
         ...(adapter.timeoutMs !== undefined ? { timeoutMs: adapter.timeoutMs } : {}),
       };
     }

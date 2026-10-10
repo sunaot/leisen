@@ -32,6 +32,7 @@ import {
   createDevFixtureConnector,
   DeploymentConfigError,
   digestQuery,
+  KEYCLOAK_ANY_CLIENT_WARNING,
   loadDeploymentConfig,
   MOCK_IDP_NO_SESSIONS_REJECTED,
   MOCK_IDP_NO_SESSIONS_WARNING,
@@ -161,12 +162,12 @@ function mockFactory(created: MockConnector[] = []): ConnectorFactory {
 function pluginConnector(sourceId: string) {
   return {
     sourceId,
-    capabilities: { nativeSearch: "full", ingest: false },
+    capabilities: { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" },
     async search() {
       return { hits: [] };
     },
     async fetch(_auth: unknown, documentId: string) {
-      return { documentId, title: "t", content: "c", url: "u" };
+      return { documentId, title: "t", content: "c", url: "u", scope: "shared" };
     },
     async list() {
       return { entries: [] };
@@ -625,7 +626,13 @@ describe("(e)(g) コネクタ実装の解決", () => {
       }),
     });
     expect(inits).toEqual([
-      { sourceId: "wiki", settings: { baseUrl: "https://wiki.example.test" }, configDir: "/etc/kp" },
+      {
+        sourceId: "wiki",
+        settings: { baseUrl: "https://wiki.example.test" },
+        configDir: "/etc/kp",
+        // 方針(ADR-016 追補2 決定1)。privateScopes の既定は excluded
+        policy: { privateScopes: "excluded" },
+      },
     ]);
     expect(assembled.gateway.enabledSourceIds()).toEqual(["wiki"]);
   });
@@ -743,11 +750,11 @@ describe("(e)(g) コネクタ実装の解決", () => {
       `export function createConnector({ sourceId, settings }) {
   return {
     sourceId,
-    capabilities: { nativeSearch: "full", ingest: false },
+    capabilities: { nativeSearch: "full", ingest: false, privateScopeHandling: "classified" },
     async search(_auth, query) {
-      return { hits: [{ documentId: "d1", title: settings.title + ":" + query, snippet: "", url: "u" }] };
+      return { hits: [{ documentId: "d1", title: settings.title + ":" + query, snippet: "", url: "u", scope: "shared" }] };
     },
-    async fetch(_auth, documentId) { return { documentId, title: "t", content: "c", url: "u" }; },
+    async fetch(_auth, documentId) { return { documentId, title: "t", content: "c", url: "u", scope: "shared" }; },
     async list() { return { entries: [] }; },
     async describe() {
       return { sourceId, displayName: sourceId, summary: "echo", topContainers: [], supportedFilters: [] };
@@ -797,7 +804,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
         "not-a-connector": () => ({}) as never,
         "wrong-source": () => pluginConnector("someone-else") as never,
         "bad-capabilities": ({ sourceId }) =>
-          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "None", ingest: false } }) as never,
+          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "None", ingest: false, privateScopeHandling: "classified" } }) as never,
       },
     });
     expect(error.issues.map((i) => [i.code, i.path])).toEqual([
@@ -904,24 +911,106 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
       sourceId: "dev-docs",
       settings: { corpusFile: "fixtures/dev-corpus.yaml" },
       configDir: EXAMPLES_DIR.replace(/\/$/, ""),
+      policy: { privateScopes: "excluded" },
     });
   });
 });
 
 describe("(h) 本番(NODE_ENV=production)", () => {
-  it("開発用の構成(mock IdP / mock_env / dev-fixture)を全件拒否する", async () => {
+  it("開発用の構成(mock IdP / mock_env / dev-fixture / audit.sink: stdout)を全件拒否する", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const error = await rejection({ config: devConfig(), env: DEV_ENV, configDir: EXAMPLES_DIR });
     expect(error.issues.map((i) => [i.code, i.path])).toEqual([
       ["dev_only_in_production", "idp.adapter.kind"],
       ["dev_only_in_production", "connectors[0].auth.provider"],
       ["dev_only_in_production", "connectors[0].kind"],
+      ["dev_only_in_production", "audit.sink"],
     ]);
     expect(error.message).toContain("disabled in production builds");
   });
 
-  it("開発用の部品を使わない構成は本番でも組み立てられる", async () => {
+  it("audit.sink: stdout は本番では単独でも拒否する(既定値のまま省略した場合を含む。issue #17)", async () => {
     vi.stubEnv("NODE_ENV", "production");
+    const error = await rejection({
+      config: parseDeploymentConfig(`schemaVersion: 1
+deployment:
+  name: prod-like
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: https://idp.example.test
+    realm: kp
+    clientId: kp-gateway
+    clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: [chat-ui]
+connectors:
+  - id: parked
+    enabled: false
+`),
+      env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" },
+    });
+    expect(error.issues.map((i) => [i.code, i.path])).toEqual([
+      ["dev_only_in_production", "audit.sink"],
+    ]);
+    expect(error.issues[0]?.message).toContain("audit sink 'stdout'");
+  });
+
+  it('keycloak の allowedClients: ["*"](azp 検証の無効化)は本番では拒否し、それ以外では WARNING を出す(issue #16)', async () => {
+    const yaml = (clients: string) => `schemaVersion: 1
+deployment:
+  name: any-client
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: https://idp.example.test
+    realm: kp
+    clientId: kp-gateway
+    clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: ${clients}
+connectors:
+  - id: parked
+    enabled: false
+audit:
+  sink: jsonl
+  jsonl:
+    path: audit.jsonl
+`;
+    const dir = await mkdtemp(join(tmpdir(), "kp-bootstrap-any-client-"));
+    tempDirs.push(dir);
+    const env = { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" };
+
+    // 開発: 起動するが WARNING("*" が他の項目と混在していても同じ)
+    const lenient = await assemble({
+      config: parseDeploymentConfig(yaml("[chat-ui, '*']")),
+      env,
+      configDir: dir,
+    });
+    expect(lenient.warnings).toEqual([KEYCLOAK_ANY_CLIENT_WARNING]);
+    const strict = await assemble({
+      config: parseDeploymentConfig(yaml("[chat-ui]")),
+      env,
+      configDir: dir,
+    });
+    expect(strict.warnings).toEqual([]);
+
+    // 本番: dev_only_in_production
+    vi.stubEnv("NODE_ENV", "production");
+    const error = await rejection({
+      config: parseDeploymentConfig(yaml("['*']")),
+      env,
+      configDir: dir,
+    });
+    expect(error.issues.map((i) => [i.code, i.path])).toEqual([
+      ["dev_only_in_production", "idp.adapter.allowedClients"],
+    ]);
+    expect(error.issues[0]?.message).toContain("allowedClients '*' (azp check disabled)");
+    expect(error.message).not.toContain("dev-only-client-secret");
+  });
+
+  it("開発用の部品を使わない構成(https の IdP、jsonl シンク)は本番でも組み立てられる", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const dir = await mkdtemp(join(tmpdir(), "kp-bootstrap-prod-"));
+    tempDirs.push(dir);
     const assembled = await assemble({
       config: parseDeploymentConfig(`schemaVersion: 1
 deployment:
@@ -929,19 +1018,25 @@ deployment:
 idp:
   adapter:
     kind: keycloak
-    baseUrl: http://keycloak.example.test
+    baseUrl: https://idp.example.test
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: [chat-ui]
 connectors:
   - id: parked
     enabled: false
 audit:
-  sink: stdout
+  sink: jsonl
+  jsonl:
+    path: audit.jsonl
+    rawQueryPath: raw-queries.jsonl
 `),
       env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" },
+      configDir: dir,
     });
     expect(assembled.gateway.enabledSourceIds()).toEqual([]);
+    expect(assembled.auditSinkDescription).toContain(join(dir, "audit.jsonl"));
   });
 });
 
@@ -970,10 +1065,11 @@ deployment:
 idp:
   adapter:
     kind: keycloak
-    baseUrl: http://keycloak.example.test
+    baseUrl: https://keycloak.example.test
     realm: kp
     clientId: kp-gateway
     clientSecretEnv: KP_TEST_MISSING_SECRET
+    allowedClients: [chat-ui]
 connectors:
   - id: a
     kind: dev-fixture
@@ -1007,10 +1103,56 @@ audit:
 `),
       connectorFactories: {
         files: ({ sourceId }) =>
-          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "none", ingest: true } }) as never,
+          ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "none", ingest: true, privateScopeHandling: "classified" } }) as never,
       },
     });
     expect(codes(error)).toEqual(["index_required_source_needs_search_layer"]);
+  });
+
+  it("privateScopeHandling を宣言しない(v0.3 の)プラグインは excluded(既定)で起動を拒否する(ADR-016 追補2 決定3)", async () => {
+    const v03 = ({ sourceId }: { sourceId: string }) =>
+      ({ ...pluginConnector(sourceId), capabilities: { nativeSearch: "full", ingest: false } }) as never;
+    const error = await rejection({
+      config: config(`connectors:
+  - id: legacy
+    kind: legacy
+    auth:
+      provider: mock_env
+`),
+      connectorFactories: { legacy: v03 },
+    });
+    expect(codes(error)).toEqual(["private_scopes_unenforceable"]);
+
+    // included(確認フラグ付き)なら同じプラグインでも起動できる
+    const assembled = await assemble({
+      config: config(`connectors:
+  - id: legacy
+    kind: legacy
+    privateScopes: included
+    confirmPrivateScopesIncluded: true
+    auth:
+      provider: mock_env
+`),
+      connectorFactories: { legacy: v03 },
+    });
+    expect(assembled.gateway.enabledSourceIds()).toEqual(["legacy"]);
+  });
+
+  it("privateScopes: consent は設定の読み込み(validate / serve の前段)で拒否する(#42 まで。ADR-016 追補2 決定6)", () => {
+    let error: unknown;
+    try {
+      config(`connectors:
+  - id: dev-docs
+    kind: dev-fixture
+    privateScopes: consent
+    auth:
+      provider: mock_env
+`);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(DeploymentConfigError);
+    expect(codes(error as DeploymentConfigError)).toEqual(["private_scopes_consent_not_supported"]);
   });
 });
 

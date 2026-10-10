@@ -12,11 +12,24 @@ deployment:
 idp:
   adapter:
     kind: keycloak
-    baseUrl: http://localhost:8080
+    # 本番は https。平文 http でループバック以外(内部網のホスト名等)を指す場合は、
+    # 経路が閉じた網であることを確認したうえで confirmPlainHttp: true を併記する
+    # (なければ idp_plain_http_requires_confirmation で拒否。issue #17)。
+    # イントロスペクションの往復には clientSecret と利用者のセッショントークンが載る
+    baseUrl: https://idp.example.test
     realm: example
     clientId: kp-gateway
     # 秘密情報はこのファイルに書かない(不変条件6)。環境変数名で参照する
     clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+    # トークンの発行先(azp)として受け入れるクライアント ID の許可リスト(必須。issue #16)。
+    # 利用者がログインする UI・MCP クライアントを IdP に登録し、ここに列挙する。
+    # ["*"] は azp の検証を外す開発専用の逃げ道(NODE_ENV=production では拒否、それ以外は WARNING)
+    allowedClients: [kp-chat-ui]
+    # aud に clientId(kp-gateway)が含まれることを要求する。IdP 側で Gateway を audience に
+    # 加える設定(Keycloak なら audience マッパー)が前提
+    requireAudience: true
+    # 受け入れる発行者(iss)は既定で <baseUrl>/realms/<realm>。IdP の公開 URL が baseUrl と
+    # 異なる(内部のホスト名で呼ぶ等)ときだけ allowedIssuers: [<公開 URL>/realms/<realm>] を書く
 
 connectors:
   - id: gdrive
@@ -28,7 +41,8 @@ connectors:
       maxRequestsPerMinute: 300
     # DM・プライベート領域は既定で検索対象外(ADR-013 §1)。
     # included へ変更する場合は confirmPrivateScopesIncluded: true と
-    # 利用規程の整備(docs/usage-policy-template.md)が必須
+    # 利用規程の整備(docs/usage-policy-template.md)が必須。
+    # consent は同意状態の設計(#42)まで起動時に拒否する(ADR-016 追補2 決定6)
     privateScopes: excluded
     searchLayer:
       # 全導入は検索層OFFで開始し、昇格判定レポート(T-014)の証拠に
@@ -45,7 +59,15 @@ orchestrator:
   costLimitPerQuery: 0.5
 
 audit:
-  sink: stdout # 収集基盤は導入先の運用に委ねる。stdoutは開発用
+  # 監査レコードを JSONL ファイルへ追記する(ADR-011。at-least-once、fail-closed)。
+  # 収集基盤(SIEM 等)への転送はこのファイルを取り込む形で導入先の運用に委ねる。
+  # stdout シンクは開発用で、NODE_ENV=production では dev_only_in_production で
+  # 起動を拒否される(issue #17)。開発用の例は deployment.dev.yaml
+  sink: jsonl
+  jsonl:
+    path: /var/lib/kp/audit/audit.jsonl
+    # 生クエリ原文は保持期間・閲覧経路が異なるため別ファイル(ADR-011 §3)
+    rawQueryPath: /var/lib/kp/rawquery/raw-queries.jsonl
   failureMode: fail-closed # 監査レコードを書けないツール呼び出しは失敗させる(ADR-011)
   privateScopeDocIds: hashed # プライベートスコープdocIdはHMACで秘匿化して記録(ADR-013 §2)
   retentionDays: 365 # 監査ログ本体の保持(ADR-013 §3)

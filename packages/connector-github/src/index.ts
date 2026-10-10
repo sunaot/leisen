@@ -1,7 +1,7 @@
 /**
  * @kp/connector-github — GitHub コネクタ(T-019)。
  *
- * connector-sdk v0.3 の Connector を GitHub REST API で実装する。全呼び出しを
+ * connector-sdk v0.4 の Connector を GitHub REST API で実装する。全呼び出しを
  * 利用者本人の user access token で行う(不変条件1、ADR-010、auth-matrix §4)。
  * 使い方・前提・既知の限界は README.md を参照。
  *
@@ -12,7 +12,7 @@
  * documentId はコネクタスコープの不透明な文字列(ADR-007)。テストは相対 import で
  * 内部モジュールを参照する。
  */
-import { ConnectorError } from "@kp/connector-sdk";
+import { ConnectorError, type SourcePolicy } from "@kp/connector-sdk";
 import {
   GitHubConnector,
   type GitHubConnectorOptions,
@@ -36,6 +36,11 @@ export interface GitHubConnectorFactoryInit {
   readonly settings?: Readonly<Record<string, unknown>>;
   /** 設定ファイルの所在ディレクトリ(本コネクタの設定に相対パスはないため使わない) */
   readonly configDir?: string;
+  /**
+   * 導入単位のソース方針(ADR-016 追補2 決定1)。本コネクタは "classified"(ソース側で
+   * 除外せず、結果に scope を付けて Gateway に除外を任せる)のため、方針で動作を変えない
+   */
+  readonly policy?: SourcePolicy;
 }
 
 /** settings に書ける値の種類。 */

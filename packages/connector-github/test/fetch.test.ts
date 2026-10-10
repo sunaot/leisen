@@ -249,6 +249,7 @@ describe("fetch: file", () => {
       title: path,
       content: text,
       url: `https://github.com/acme/app/blob/${COMMIT_SHA}/docs/${encodeURIComponent("設計 メモ #1.md")}`,
+      scope: "shared",
     });
   });
 
