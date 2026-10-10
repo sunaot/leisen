@@ -448,14 +448,14 @@ node packages/orchestrator/dist/bin/dev-eval.js --label after -- \
 
 | オプション | 内容 |
 |---|---|
-| `--questions <file>` | 質問セット(既定 `examples/eval/dev-questions.json`)。質問ごとに期待する `outcome`(resolved / unresolved)と、resolved なら引用すべき文書(`citeAnyOf`、`sourceId:documentId`)を書く |
+| `--questions <file>` | 質問セット(既定 `examples/eval/dev-questions.json`)。質問ごとに期待する `outcome`(resolved / unresolved)と、resolved なら引用すべき文書(どれか1つで足りる `citeAnyOf`、すべてが要る `citeAllOf`。`sourceId:documentId`)、任意で種類 `category`(baseline / uncovered-doc / paraphrase / english / multi-doc / absent)を書く |
 | `--repeat <N>` | 各質問を N 回流す(1〜20、既定 1。ぶれを見る) |
 | `--only <id,...>` | 質問を ID で絞る |
 | `--label <見出し>` | 表の見出し(例: before / after) |
 | `--timeout-sec <N>` | 1問あたりの打ち切り(既定 300 秒) |
 | `--` 以降 | kp-ask にそのまま渡す。dev-eval は `--json` と質問文を足す |
 
-- 判定: 期待した outcome か、resolved を期待した質問で期待した文書のどれかを引用したか、回答本文に URL が残っていないか。○ 合格 / × 不合格 / ! エラー(kp-ask が回答を返せない・run が error)。終了コードは全問合格で 0、それ以外 1、引数・質問セットの不備で 2
+- 判定: 期待した outcome か、resolved を期待した質問で期待した文書を引用したか(`citeAnyOf` はどれか、`citeAllOf` はすべて)、回答本文に URL が残っていないか。種類を書いた質問があれば種類ごとの合格数を、`--repeat` が 2 以上なら質問ごとの合格回数(n 回中 k 回)も表にする。○ 合格 / × 不合格 / ! エラー(kp-ask が回答を返せない・run が error)。終了コードは全問合格で 0、それ以外 1、引数・質問セットの不備で 2
 - 表に出すのは質問 ID・判定・outcome・引用した文書 ID・LLM ターン数・ツール呼び出し数(describe を含む)・トークン数・所要時間(kp-ask の起動から終了までの実時間)。質問文・回答本文は出さない。進捗は stderr、表は stdout(`> report.md` で保存できる)
 - kp-ask の stderr(AnswerRun の監査レコードと失敗時の案内)は、回答を返せなかった run のときだけ流す。AnswerRun を残す場合は `--` 以降に `--answer-run-jsonl <path>` を付ける
 - 合成データ専用。表には引用した文書 ID(`sourceId:documentId`)をそのまま出し、AnswerRun の citedDocIds の分類(Slack・分類できないソースは記録しない)を通らないため、Slack を含むデプロイや実データには向けない(不変条件7)。実データの質問セットの扱い(機密クエリの保管・アイデンティティごとの期待値・文書 ID の分類)は T-008 で決める
