@@ -73,6 +73,11 @@ export interface ToolCallRequest {
   readonly arguments: unknown;
   /** リクエストの `_meta`(meta.ts が解釈する) */
   readonly meta: unknown;
+  /**
+   * トランスポート層が Orchestrator の資格情報(共有秘密)を検証したか(ADR-019 決定3)。
+   * 名前空間付きのキーで申告された runId は、これが true でなければ受理されない
+   */
+  readonly orchestratorVerified?: boolean;
 }
 
 const filtersSchema = z.strictObject({
@@ -378,11 +383,10 @@ export async function runToolCall(
       declarationFromMeta(request.meta),
     );
     const call = parseToolCall(request.name, request.arguments);
-    const outcome = await gateway.handleToolCall(
-      session,
-      call,
-      callContextFromMeta(request.meta),
-    );
+    const outcome = await gateway.handleToolCall(session, call, {
+      ...callContextFromMeta(request.meta),
+      ...(request.orchestratorVerified === true ? { orchestratorVerified: true } : {}),
+    });
     return succeeded(outcome.result);
   } catch (error) {
     return failed(normalizeToolError(error));

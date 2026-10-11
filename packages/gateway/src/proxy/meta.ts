@@ -28,11 +28,14 @@
  *     自体の綴り違い(`execClass` 等)、prefix を誤った actor(`kp.gateway/actor`
  *     等。他社名前空間の actor と区別できない)。いずれも既定の human_in_the_loop /
  *     human として扱われる(T-003 H1)
- * - runId / iteration(ADR-011 追記): Orchestrator(T-007)が申告する監査の束ね。
+ * - runId / iteration(ADR-011 追記、ADR-019 決定4): Orchestrator(T-007)が申告する監査の
+ *   束ね。名前空間付きのキーの runId は Gateway が発行した署名付きの値でなければならず、
+ *   形式・署名・本人・actor・期限・Orchestrator の資格情報のどれかを満たさなければ呼び出しを
+ *   固定文言で拒否して `invalid_run_id` の単発 run として記録する(gateway.ts)。
  *   移行期間として裸キー(`runId` / `iteration`)も受けるが、Gatewayの名前空間の
  *   キー(骨格で判定)が1つでもあれば裸キーはすべて無視する(キー単位の
- *   フォールバックで新旧の申告を混在させない)。不正値(runId は [A-Za-z0-9._:-] の
- *   1〜128文字、iteration は0以上の安全な整数。session.ts)は未申告として扱う:
+ *   フォールバックで新旧の申告を混在させない)。裸キーの不正値(runId は [A-Za-z0-9._:-] の
+ *   1〜128文字、iteration は0以上の安全な整数)は未申告として扱う:
  *   監査の相関メタデータであり、呼び出し自体は単発run(session.ts
  *   resolveCallContext)として必ず記録されるため
  * - executionClass / actor(ADR-015): リクエストごとの実行区分・呼び出し主体。
@@ -176,16 +179,27 @@ function readCallContextValue(
   return legacyAllowed && has(record, bare) ? record[bare] : undefined;
 }
 
-/** `_meta` から runId / iteration の申告を読む(不正値は未申告扱い)。 */
+/**
+ * `_meta` から runId / iteration の申告を読む。
+ * - 名前空間付きのキーの runId は検証の対象(declaredRunId。ADR-019 決定4): 値をそのまま
+ *   Gateway コアに渡し、署名・本人・actor・期限と Orchestrator の資格情報を満たさなければ
+ *   呼び出しが拒否される(「不正値は未申告扱い」は名前空間付きのキーには適用しない)
+ * - 裸キー(移行期間)の runId は従来どおり形だけを見て、不正値は未申告扱い(単発 run)
+ * - iteration は不正値を未申告扱い(どちらのキーでも同じ)
+ */
 export function callContextFromMeta(meta: unknown): CallContext {
   const record = asRecord(meta);
   // 名前空間内のキーが1つでもあれば裸キーはすべて無視する(minor-8)
   const legacyAllowed = !presentKeys(record).some(inGatewayNamespace);
-  const runId = readCallContextValue(record, "runId", legacyAllowed);
   const iteration = readCallContextValue(record, "iteration", legacyAllowed);
+  const iterationPart = isValidIteration(iteration) ? { iteration } : {};
+  if (has(record, GATEWAY_META_KEYS.runId)) {
+    return { declaredRunId: record[GATEWAY_META_KEYS.runId], ...iterationPart };
+  }
+  const runId = readCallContextValue(record, "runId", legacyAllowed);
   return {
     ...(isValidRunId(runId) ? { runId } : {}),
-    ...(isValidIteration(iteration) ? { iteration } : {}),
+    ...iterationPart,
   };
 }
 

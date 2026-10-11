@@ -63,6 +63,11 @@ export const GATEWAY_SERVER_INFO = {
  * (クライアントが設定する手段はない)。
  */
 const IDENTITY_AUTH_EXTRA_KEY = "kp.gateway/identity";
+/**
+ * AuthInfo.extra 上の「HTTP 層が Orchestrator の資格情報を検証済み」の印(ADR-019 決定3)。
+ * 名前空間付きのキーで runId を申告する tools/call の受理に要る(gateway.ts)。
+ */
+const ORCHESTRATOR_VERIFIED_AUTH_EXTRA_KEY = "kp.gateway/orchestratorVerified";
 
 /**
  * AuthInfo.token に入れる固定値(秘密情報ではない)。SDK の AuthInfo は token を
@@ -87,8 +92,14 @@ const ISSUED_AUTH_EXTRAS = new WeakSet<object>();
  * トークンを含む。不変条件6: このオブジェクトをログ・エラーへ出さない)は extra で
  * 渡す。clientId / scopes は Gatewayの認証(IdpAdapter)に対応する概念がないため空にする。
  */
-export function gatewayAuthInfo(identity: Identity): AuthInfo {
-  const extra = { [IDENTITY_AUTH_EXTRA_KEY]: identity };
+export function gatewayAuthInfo(
+  identity: Identity,
+  options: { readonly orchestratorVerified?: boolean } = {},
+): AuthInfo {
+  const extra = {
+    [IDENTITY_AUTH_EXTRA_KEY]: identity,
+    [ORCHESTRATOR_VERIFIED_AUTH_EXTRA_KEY]: options.orchestratorVerified === true,
+  };
   ISSUED_AUTH_EXTRAS.add(extra);
   return {
     token: GATEWAY_AUTH_INFO_TOKEN,
@@ -119,6 +130,16 @@ function identityFromAuthInfo(
     typeof session.subjectToken === "string"
     ? (candidate as Identity)
     : undefined;
+}
+
+/** HTTP 層が Orchestrator の資格情報を検証したか(gatewayAuthInfo が発行した extra だけを信用)。 */
+function orchestratorVerifiedFromAuthInfo(authInfo: AuthInfo | undefined): boolean {
+  const extra = authInfo?.extra;
+  return (
+    extra !== undefined &&
+    ISSUED_AUTH_EXTRAS.has(extra) &&
+    extra[ORCHESTRATOR_VERIFIED_AUTH_EXTRA_KEY] === true
+  );
 }
 
 /**
@@ -188,6 +209,7 @@ export function createGatewayMcpServer(gateway: Gateway): Server {
         name: request.params.name,
         arguments: request.params.arguments,
         meta: request.params._meta,
+        orchestratorVerified: orchestratorVerifiedFromAuthInfo(extra.authInfo),
       });
       return toCallToolResult(outcome, identity);
     },

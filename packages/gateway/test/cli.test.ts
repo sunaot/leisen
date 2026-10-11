@@ -149,8 +149,12 @@ describe("runCli", () => {
       "  enabled sources: dev-docs",
       "  idp adapter: mock",
       "  audit sink: stdout (development only; not at-least-once)",
+      expect.stringMatching(
+        /^  run api: \/runs \(signing key: ephemeral, kid [0-9a-f]{8}; orchestrator credential: development default; ttl 900s, feedback window 604800s\)$/,
+      ),
     ]);
     expect(io.err.join("\n")).toContain("WARNING: development-only components in use");
+    expect(io.err.join("\n")).toContain("ephemeral runId signing key");
     expectNoSecrets([...io.out, ...io.err].join("\n"));
   });
 

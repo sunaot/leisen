@@ -319,8 +319,81 @@ const gatewayHttpSchema = z.strictObject({
     .default(DEFAULT_GATEWAY_HTTP_PATH),
 });
 
+/**
+ * run API(ADR-019 決定3・4、T-023)の設定。秘密情報(runId の署名鍵・Orchestrator の
+ * 資格情報)は環境変数名で参照する。既定値は T-023 で決めた案。
+ */
+export const DEFAULT_RUN_ID_KEY_ENV = "KP_RUN_ID_KEY";
+export const DEFAULT_RUN_ID_PREVIOUS_KEY_ENV = "KP_RUN_ID_KEY_PREVIOUS";
+export const DEFAULT_ORCHESTRATOR_CREDENTIAL_ENV = "KP_ORCHESTRATOR_CREDENTIAL";
+/** runId の有効期間の既定(秒)。Orchestrator の runTimeoutMs(既定 120 秒)より長くする */
+export const DEFAULT_RUN_ID_TTL_SEC = 900;
+/** 発行時刻からフィードバックを受ける期間の既定(秒)。7 日 */
+export const DEFAULT_RUN_FEEDBACK_WINDOW_SEC = 7 * 24 * 3600;
+/** /runs の本文の上限(バイト)の既定 */
+export const DEFAULT_RUN_MAX_BODY_BYTES = 64 * 1024;
+/** /runs の利用者ごとの頻度上限(3 経路の合計、リクエスト/分)の既定 */
+export const DEFAULT_RUN_MAX_REQUESTS_PER_USER_PER_MINUTE = 60;
+
+const envVarName = (what: string) =>
+  z.string().regex(ENV_VAR_NAME_PATTERN, {
+    error: `${what} must be an environment variable NAME, not a secret value`,
+  });
+
+const gatewayRunsSchema = z.strictObject({
+  /**
+   * runId の署名鍵(現行)を保持する環境変数の名前。値は 32 バイト以上のランダム値を
+   * base64 / base64url / hex で書く(例: `openssl rand -base64 32`)。kid は鍵の SHA-256 の
+   * 先頭 8 文字から導出する。欠落・短い・開発用の値は NODE_ENV=production で起動を拒否する。
+   * production 以外で未設定なら起動ごとの一時鍵を使う(WARNING。再起動で runId が無効になる)
+   */
+  signingKeyEnv: envVarName("signingKeyEnv").default(DEFAULT_RUN_ID_KEY_ENV),
+  /** 1 つ前の署名鍵(鍵の入れ替え中だけ設定する)。未設定なら現行だけを受ける */
+  previousSigningKeyEnv: envVarName("previousSigningKeyEnv").default(
+    DEFAULT_RUN_ID_PREVIOUS_KEY_ENV,
+  ),
+  /**
+   * 呼び出し元が Orchestrator であることの資格情報(共有秘密)を保持する環境変数の名前。
+   * Orchestrator と Gateway だけが持ち、署名鍵・docId の HMAC 鍵とは別の値にする。
+   * 16 文字以上。production 以外で未設定なら開発用の既定値(WARNING)
+   */
+  orchestratorCredentialEnv: envVarName("orchestratorCredentialEnv").default(
+    DEFAULT_ORCHESTRATOR_CREDENTIAL_ENV,
+  ),
+  /** runId の有効期間(秒)。tools/call と finish はこの間だけ受ける */
+  ttlSec: z.number().int().min(1).max(86_400).default(DEFAULT_RUN_ID_TTL_SEC),
+  /** 発行時刻からフィードバックを受ける期間(秒) */
+  feedbackWindowSec: z
+    .number()
+    .int()
+    .min(1)
+    .max(365 * 24 * 3600)
+    .default(DEFAULT_RUN_FEEDBACK_WINDOW_SEC),
+  limits: z
+    .strictObject({
+      /** リクエスト本文の上限(バイト)。3 経路すべて */
+      maxBodyBytes: z.number().int().min(1024).default(DEFAULT_RUN_MAX_BODY_BYTES),
+      /** 質問の最大文字数(POST /runs) */
+      maxQuestionChars: z.number().int().min(1).default(4_000),
+      /** 引用の最大件数(finish) */
+      maxCitations: z.number().int().min(0).default(50),
+      /** searchedSources の最大件数(finish) */
+      maxSearchedSources: z.number().int().min(0).default(50),
+      /** sourceId・documentId・理由コードなど識別子の最大文字数 */
+      maxIdChars: z.number().int().min(1).default(512),
+      /** 利用者ごとの頻度上限(3 経路の合計、リクエスト/分) */
+      maxRequestsPerUserPerMinute: z
+        .number()
+        .int()
+        .min(1)
+        .default(DEFAULT_RUN_MAX_REQUESTS_PER_USER_PER_MINUTE),
+    })
+    .prefault({}),
+});
+
 const gatewaySchema = z.strictObject({
   http: gatewayHttpSchema.prefault({}),
+  runs: gatewayRunsSchema.prefault({}),
 });
 
 const orchestratorSchema = z.strictObject({
@@ -362,6 +435,12 @@ const auditSchema = z.strictObject({
   confirmFailOpen: z.boolean().default(false),
   /** プライベートスコープdocIdの記録方式(ADR-013 §2)。平文の選択肢は提供しない */
   privateScopeDocIds: z.enum(["hashed", "omitted"]).default("hashed"),
+  /**
+   * hashed の HMAC 鍵(デプロイ固有の秘密)を保持する環境変数の名前。Gateway が run API の
+   * finish で引用 docId を不可逆化するときに使う(ADR-019 決定5)。プライベートスコープを
+   * 持つソースが有効で hashed のときは起動時に必須(secret_env_missing)
+   */
+  docIdHmacKeyEnv: envVarName("docIdHmacKeyEnv").default("KP_AUDIT_HMAC_KEY"),
   /** AnswerRun / ToolInvocation(監査ログ本体)の保持日数(ADR-013 §3) */
   retentionDays: positiveDays.default(365),
   /** rawQueryテーブルの保持日数(ADR-011 §3) */
@@ -424,5 +503,16 @@ export type ConnectorLimits = ConnectorConfig["limits"];
 export type IdpAdapterConfigSection = DeploymentConfig["idp"]["adapter"];
 export type GatewayHttpConfig = DeploymentConfig["gateway"]["http"];
 export type AuditConfig = DeploymentConfig["audit"];
+export type GatewayRunsConfig = DeploymentConfig["gateway"]["runs"];
+
+/**
+ * Slack と分類するコネクタの kind(`slack`、または `slack-` で始まるプラグイン名)。
+ * 広めに取るほど記録しない側に倒れる(ADR-013 §2)。永続化不可のソース(不変条件7、
+ * ADR-014)の有効化の判定に、Gateway(run API の引用の記録。ADR-019 決定5・7)と
+ * Orchestrator(kp-ask serve。ADR-018 決定5)が同じ規則を使う。
+ */
+export function isSlackKind(kind: string): boolean {
+  return kind === "slack" || kind.startsWith("slack-");
+}
 export type ConnectorAuthConfig = NonNullable<ConnectorConfig["auth"]>;
 export type AgentExecutionConfig = DeploymentConfig["agentExecution"];

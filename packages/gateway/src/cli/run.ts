@@ -285,6 +285,7 @@ function summaryLines(
     `enabled sources: ${sources.length > 0 ? sources.join(", ") : "(none)"}`,
     `idp adapter: ${config.idp.adapter.kind}`,
     `audit sink: ${assembled.auditSinkDescription}`,
+    `run api: ${assembled.runApiDescription}`,
   ];
 }
 

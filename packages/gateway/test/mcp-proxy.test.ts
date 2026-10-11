@@ -466,41 +466,27 @@ describe("_meta runId / iteration (ADR-001 追補3 決定3・4、ADR-011 追記)
   });
 
   const K = GATEWAY_META_KEYS;
-  it.each([
-    [
-      "prefixed keys",
-      { [K.runId]: "run-prefixed", [K.iteration]: 3 },
-      { runId: "run-prefixed", iteration: 3 },
-    ],
-    [
-      "bare keys (migration period)",
-      { runId: "run-bare", iteration: 2 },
-      { runId: "run-bare", iteration: 2 },
-    ],
-    [
-      "both (prefixed wins)",
-      { [K.runId]: "run-prefixed", [K.iteration]: 4, runId: "run-bare", iteration: 9 },
-      { runId: "run-prefixed", iteration: 4 },
-    ],
-  ] as const)("records the declared run for %s", async (_label, meta, expected) => {
+  it("records the declared run for bare keys (migration period)", async () => {
     const { client, sink } = await connectAs();
     await client.callTool({
       name: "search",
       arguments: { source: "alpha", query: "q" },
-      _meta: meta,
+      _meta: { runId: "run-bare", iteration: 2 },
     });
     expect(sink.records).toHaveLength(1);
-    expect(sink.records[0]).toMatchObject(expected);
+    expect(sink.records[0]).toMatchObject({ runId: "run-bare", iteration: 2 });
   });
 
   it.each([
-    ["non-string runId / negative iteration", { [K.runId]: 42, [K.iteration]: -1 }],
-    ["empty runId / fractional iteration", { [K.runId]: "", [K.iteration]: 1.5 }],
-    ["string iteration", { [K.runId]: null, [K.iteration]: "3" }],
-    // prefix付きキーがあれば裸キーへはフォールバックしない
-    ["invalid prefixed runId shadows a valid bare key", { [K.runId]: "", runId: "run-bare" }],
+    ["an unsigned prefixed runId", { [K.runId]: "run-prefixed", [K.iteration]: 3 }],
+    // prefix付きキーがあれば裸キーへはフォールバックしない(不正な prefix 付き runId が有効な裸キーを覆う)
+    ["both prefixed and bare keys (prefixed wins, so the call is rejected)", { [K.runId]: "run-prefixed", [K.iteration]: 4, runId: "run-bare", iteration: 9 }],
+    ["a non-string prefixed runId", { [K.runId]: 42, [K.iteration]: -1 }],
+    ["an empty prefixed runId", { [K.runId]: "", [K.iteration]: 1.5 }],
+    ["a null prefixed runId", { [K.runId]: null, [K.iteration]: "3" }],
+    ["an empty prefixed runId shadowing a valid bare key", { [K.runId]: "", runId: "run-bare" }],
   ] as const)(
-    "treats invalid values as undeclared: single-shot run (%s)",
+    "rejects %s as invalid_run_id and records a single-shot run (ADR-019 決定4; signed runIds: test/run-api.test.ts)",
     async (_label, meta) => {
       const { client, alpha, sink } = await connectAs();
       const result = (await client.callTool({
@@ -508,14 +494,32 @@ describe("_meta runId / iteration (ADR-001 追補3 決定3・4、ADR-011 追記)
         arguments: { source: "alpha", query: "q" },
         _meta: meta,
       })) as CallToolResult;
-      // 相関メタデータの不正で呼び出し自体は失敗させず、監査は単発runとして残す
-      expect(result.isError).toBeFalsy();
-      expect(alpha.calls).toHaveLength(1);
+      expect(result.isError).toBe(true);
+      expect(firstText(result)).toMatchObject({ errorClass: "invalid_run_id" });
+      expect(JSON.stringify(result)).not.toContain("run-prefixed");
+      expect(JSON.stringify(result)).not.toContain("run-bare");
+      expect(alpha.calls).toHaveLength(0);
       const [record] = toolRecords(sink.records);
-      expect(record?.iteration).toBe(0);
+      expect(record).toMatchObject({ errorClass: "invalid_run_id", iteration: 0 });
       expect(record?.runId).toMatch(/^[0-9a-f-]{36}$/);
     },
   );
+
+  it.each([
+    ["negative iteration", { runId: "run-bare", iteration: -1 }],
+    ["fractional iteration", { runId: "run-bare", iteration: 1.5 }],
+    ["string iteration", { runId: "run-bare", iteration: "3" }],
+  ] as const)("treats an invalid bare iteration as 0 (%s)", async (_label, meta) => {
+    const { client, alpha, sink } = await connectAs();
+    const result = (await client.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: meta,
+    })) as CallToolResult;
+    expect(result.isError).toBeFalsy();
+    expect(alpha.calls).toHaveLength(1);
+    expect(toolRecords(sink.records)[0]).toMatchObject({ runId: "run-bare", iteration: 0 });
+  });
 
   it("gives each undeclared call its own single-shot run on the same connection", async () => {
     const { client, sink } = await connectAs();

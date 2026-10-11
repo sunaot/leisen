@@ -499,23 +499,32 @@ describe("tools/list does not depend on the user or the connection (ADR-012)", (
 });
 
 describe("_meta declarations over HTTP (ADR-011 追記、ADR-015)", () => {
-  it("records a prefixed runId / iteration declaration in the audit record", async () => {
-    const { sink, connect } = await startHarness();
+  it("rejects a prefixed runId that this gateway did not issue (invalid_run_id, recorded as a single-shot run; ADR-019 決定4)", async () => {
+    // 署名付き runId の受理は test/run-api.test.ts。ここでは run API のない構成で、名前空間付きの
+    // キーの runId が「未申告扱い」ではなく拒否になることを固定する
+    const { alpha, sink, connect } = await startHarness();
     const alice = await connect("session-alice");
-    await alice.callTool({
+    const result = (await alice.callTool({
       name: "search",
       arguments: { source: "alpha", query: "q" },
       _meta: {
         [GATEWAY_META_KEYS.runId]: "run-http-1",
         [GATEWAY_META_KEYS.iteration]: 2,
       },
-    });
+    })) as CallToolResult;
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toMatchObject({ errorClass: "invalid_run_id" });
+    expect(JSON.stringify(result)).not.toContain("run-http-1");
+    expect(alpha.calls).toHaveLength(0);
     expect(sink.records).toHaveLength(1);
     expect(sink.records[0]).toMatchObject({
-      runId: "run-http-1",
-      iteration: 2,
+      errorClass: "invalid_run_id",
+      iteration: 0,
       userId: "alice",
     });
+    expect(sink.records[0]?.recordType === "tool_invocation" ? sink.records[0].runId : "").toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
   });
 
   it("records undeclared calls as single-shot runs (distinct runId, iteration 0)", async () => {

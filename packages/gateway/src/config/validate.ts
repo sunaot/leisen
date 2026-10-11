@@ -36,6 +36,14 @@ export type ConfigIssueCode =
   | "private_scopes_unenforceable"
   | "agent_execution_not_allowed_in_phase1"
   | "secret_env_missing"
+  /** run API(ADR-019): runId の署名鍵の環境変数が本番で未設定 */
+  | "run_signing_key_missing"
+  /** run API: runId の署名鍵が復号できない・32 バイト未満・現行と 1 つ前が同じ */
+  | "run_signing_key_invalid"
+  /** run API: Orchestrator の資格情報の環境変数が本番で未設定 */
+  | "run_orchestrator_credential_missing"
+  /** run API: Orchestrator の資格情報が短すぎる */
+  | "run_orchestrator_credential_invalid"
   /** audit.sink: jsonl に audit.jsonl.path がない(静的検証) */
   | "audit_sink_options_missing"
   // --- 以下は起動コード(bootstrap/)が出す ---

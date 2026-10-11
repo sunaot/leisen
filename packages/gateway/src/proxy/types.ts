@@ -23,6 +23,13 @@ import type { Identity } from "../idp/types.js";
 /** 実行区分(ADR-015)。Phase 1では human_in_the_loop 以外を既定拒否する。 */
 export type ExecutionClass = "human_in_the_loop" | "scheduled" | "autonomous";
 
+/** 実行区分 → deployment.yaml の agentExecution のキー。 */
+export const EXECUTION_CLASS_CONFIG_KEY = {
+  human_in_the_loop: "humanInTheLoop",
+  scheduled: "scheduled",
+  autonomous: "autonomous",
+} as const satisfies Record<ExecutionClass, "humanInTheLoop" | "scheduled" | "autonomous">;
+
 /**
  * リクエストごとにクライアント(Orchestrator)が申告する属性。MCP経由では
  * `_meta` の `io.github.sunaot.leisen/executionClass` / `.../actor` で申告する
@@ -54,13 +61,25 @@ export interface GatewaySession {
  * 採番状態を持たない。
  */
 export interface CallContext {
-  /** 親のAnswerRun。未申告なら呼び出し単位の新規runId(単発run) */
+  /**
+   * 旧キー(裸の `runId`)または in-process の呼び出し元が申告した runId。不正値は未申告
+   * として扱い、呼び出し単位の新規 runId(単発 run)で記録する(ADR-011 追記)
+   */
   runId?: string;
   /**
    * 探索ループ内の反復連番(0始まり)。runId と組でのみ意味を持つ:
    * runId 申告時に省略すれば 0、runId 未申告(単発run)なら常に 0
    */
   iteration?: number;
+  /**
+   * 名前空間付きのキー(`io.github.sunaot.leisen/runId`)で申告された runId(ADR-019 決定4)。
+   * Gateway が発行した署名付きの値で、本人・actor・期限を満たし、呼び出し元が Orchestrator の
+   * 資格情報を提示していなければ、その呼び出しを固定文言で拒否し `invalid_run_id` の単発 run
+   * として記録する(申告値は記録しない)。runId(旧キー)より優先する
+   */
+  declaredRunId?: unknown;
+  /** HTTP 層が Orchestrator の資格情報(共有秘密)を検証済みか。declaredRunId の受理に必要 */
+  orchestratorVerified?: boolean;
 }
 
 /** コネクタツールごとの引数(connector-sdk v0.4のIFに対応)。 */
@@ -109,6 +128,13 @@ export type GatewayErrorClass =
   | "timeout"
   | "audit_write_failed"
   | "internal_error"
+  // run API(ADR-019): 名前空間付きで申告された runId が形式・署名・本人・actor・期限の
+  // どれかを満たさない、または Orchestrator の資格情報なしで申告された(TM-I5)
+  | "invalid_run_id"
+  // run API: 呼び出し元が Orchestrator であることの資格情報が欠落・不一致
+  | "orchestrator_credential_invalid"
+  // run API: リクエスト本文が上限を超えた
+  | "payload_too_large"
   // IdP層から透過(idp/types.ts IdpErrorClass)
   | "unauthenticated"
   | "source_not_connected"

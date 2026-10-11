@@ -56,13 +56,19 @@ export function finishRunRequestSchema(limits: RunRequestLimits = DEFAULT_RUN_RE
       .max(limits.maxCitations)
       .default([]),
     failureReason: reasonCodeSchema.nullable().default(null),
+    /** runId に束縛した actor(ADR-015)。省略時は human。形の検証は呼び出し側(actorSchema) */
+    actor: z.unknown().optional(),
   });
 }
 export type FinishRunRequest = z.infer<ReturnType<typeof finishRunRequestSchema>>;
 
 /** `POST /runs/{runId}/feedback` の本文。 */
 export function feedbackRunRequestSchema() {
-  return z.strictObject({ outcome: userFeedbackSchema });
+  return z.strictObject({
+    outcome: userFeedbackSchema,
+    /** runId に束縛した actor(ADR-015)。省略時は human。形の検証は呼び出し側(actorSchema) */
+    actor: z.unknown().optional(),
+  });
 }
 export type FeedbackRunRequest = z.infer<ReturnType<typeof feedbackRunRequestSchema>>;
 
