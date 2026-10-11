@@ -22,7 +22,6 @@ import {
   startGateway,
   type GatewayHarness,
   type GatewayHarnessOptions,
-  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { fetchedDocuments, firstHit, searchHits } from "./helpers/script.js";
 
@@ -78,7 +77,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日はいつ?",
@@ -151,7 +150,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "出張費の払い戻しの期限は?",
@@ -200,7 +199,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
           unresolvedReason: "該当する文書が見つからなかった",
         }),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "来期の組織変更は決まっている?",
@@ -259,7 +258,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -289,7 +288,7 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
     const alpha = new CorpusConnector("alpha", [EXPENSE_POLICY]);
     const harness = await setup({ connectors: [alpha], notConnected: ["alpha"] });
     const llm = new ScriptedLlmClient([]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",

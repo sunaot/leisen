@@ -9,10 +9,10 @@
  *
  * - `--` 以降はそのまま kp-ask に渡す(--gateway / --config / --llm / --model 等)。dev-eval は
  *   `--json` と質問文を足す。トークン・LLM の設定は kp-ask と同じく環境変数で渡す
- *   (KP_SESSION_TOKEN、KP_LLM_*、KP_AUDIT_HMAC_KEY 等。dev-eval は値を読まない・表示しない)
+ *   (KP_SESSION_TOKEN、KP_LLM_*、KP_ORCHESTRATOR_CREDENTIAL 等。dev-eval は値を読まない・表示しない)
  * - 質問は1問ずつ順に流す(ローカル推論を並行に叩かない)。進捗は stderr、表は stdout
  * - kp-ask の stderr(AnswerRun の監査レコードと案内)は、kp-ask が回答を返せなかったときだけ
- *   そのまま stderr に流す。記録を残す場合は kp-ask の --answer-run-jsonl を `--` 以降に付ける
+ *   そのまま stderr に流す。run の記録(AnswerRun)は Gateway の監査ログに残る(ADR-019)
  * - 終了コード: 0 全問合格、1 不合格・エラーあり、2 引数・質問セットの不備
  */
 import { spawn } from "node:child_process";

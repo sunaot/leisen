@@ -18,6 +18,10 @@
  *   (gatewayUserIdFromResultMeta。AnswerRun の主体の束縛に使う、H1)
  * - 接続(initialize)は最初の呼び出しで1回だけ行い、以降の要求で使い回す。
  *   Gateway はステートレスなので、接続の使い回しにユーザー状態の意味はない
+ * - run API(ADR-019 決定3): `POST /runs`・`/runs/{runId}/finish`・`/runs/{runId}/feedback` を
+ *   MCP エンドポイントと同じオリジンの固定パス `/runs` に fetch で呼ぶ。本人の Bearer に加えて
+ *   Orchestrator の資格情報(orchestratorCredential、専用ヘッダ)を送る。資格情報も秘密情報で、
+ *   ログ・エラーに出さない。応答の拒否は固定の分類(GatewayClientError)に写し、本文の文言は流さない
  * - 接続にも最初の呼び出しの signal(run の時間上限など)を効かせる(セキュリティレビュー m1):
  *   initialize の要求は SDK が signal で取り消すが、続く notifications/initialized の送信には
  *   期限がないため、signal が中断されたら SDK クライアントを閉じて進行中の HTTP 要求ごと止める。
@@ -32,15 +36,21 @@ import {
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { GatewayClientError } from "../errors.js";
+import { ORCHESTRATOR_CREDENTIAL_HEADER } from "@kp/gateway";
+import { GatewayClientError, type GatewayClientErrorClass } from "../errors.js";
 import { gatewayUserIdFromResultMeta } from "./meta.js";
 import type {
+  FinishRunInput,
   GatewayCallOptions,
   GatewayCallOutcome,
   GatewayClient,
   GatewayToolError,
   GatewayToolSchema,
+  StartRunResult,
 } from "./types.js";
+
+/** run API のパス(Gateway の GATEWAY_RUNS_PATH。MCP エンドポイントと同じオリジン)。 */
+const RUNS_PATH = "/runs";
 
 /** MCP 1リクエストのタイムアウト既定(SDK の DEFAULT_REQUEST_TIMEOUT_MSEC と同じ)。 */
 export const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 60_000;
@@ -58,6 +68,11 @@ export interface McpGatewayClientOptions {
   readonly url: string | URL;
   /** 利用者本人のセッショントークン(秘密情報。ログ・エラーに出さない) */
   readonly sessionToken: string;
+  /**
+   * 呼び出し元が Orchestrator であることの資格情報(Gateway と共有する秘密。ADR-019 決定3)。
+   * run API と、runId を申告する tools/call に付ける。なければ run API は拒否される
+   */
+  readonly orchestratorCredential?: string;
   /** MCP 1リクエストのタイムアウト(ms) */
   readonly requestTimeoutMs?: number;
   /**
@@ -148,7 +163,9 @@ export function isPlainHttpBeyondLoopback(url: URL): boolean {
 
 export class McpGatewayClient implements GatewayClient {
   readonly #url: URL;
+  readonly #runsUrl: URL;
   readonly #sessionToken: string;
+  readonly #orchestratorCredential: string | undefined;
   readonly #requestTimeoutMs: number;
   #connection: Promise<Client> | undefined;
   /** 接続中・接続済みの SDK クライアント(close で接続の完了を待たずに閉じるため) */
@@ -172,10 +189,127 @@ export class McpGatewayClient implements GatewayClient {
     if (!/^\S+$/.test(options.sessionToken)) {
       throw new GatewayClientError("unauthenticated", "a session token is required");
     }
+    if (options.orchestratorCredential !== undefined && !/^\S+$/.test(options.orchestratorCredential)) {
+      throw new GatewayClientError("gateway_protocol_error", "the orchestrator credential is invalid");
+    }
     this.#url = url;
+    this.#runsUrl = new URL(RUNS_PATH, url.origin);
     this.#sessionToken = options.sessionToken;
+    this.#orchestratorCredential = options.orchestratorCredential;
     this.#requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS;
+  }
+
+  async startRun(
+    input: { readonly question: string },
+    options: GatewayCallOptions = {},
+  ): Promise<StartRunResult> {
+    const body = await this.#postRuns(this.#runsUrl, { question: input.question }, options);
+    const runId = body["runId"];
+    const expiresAt = body["expiresAt"];
+    const feedbackUntil = body["feedbackUntil"];
+    if (
+      typeof runId !== "string" ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(runId) ||
+      typeof expiresAt !== "string" ||
+      Number.isNaN(Date.parse(expiresAt)) ||
+      typeof feedbackUntil !== "string" ||
+      Number.isNaN(Date.parse(feedbackUntil))
+    ) {
+      throw new GatewayClientError(
+        "gateway_protocol_error",
+        "the gateway returned an unreadable run start result",
+      );
+    }
+    return { runId, expiresAt, feedbackUntil };
+  }
+
+  async finishRun(
+    runId: string,
+    input: FinishRunInput,
+    options: GatewayCallOptions = {},
+  ): Promise<void> {
+    await this.#postRuns(
+      this.#runUrl(runId, "finish"),
+      {
+        outcome: input.outcome,
+        confidence: input.confidence,
+        searchedSources: [...input.searchedSources],
+        citations: input.citations.map((c) => ({ sourceId: c.sourceId, documentId: c.documentId })),
+        failureReason: input.failureReason,
+      },
+      options,
+    );
+  }
+
+  async feedbackRun(
+    runId: string,
+    outcome: "resolved" | "unresolved",
+    options: GatewayCallOptions = {},
+  ): Promise<void> {
+    await this.#postRuns(this.#runUrl(runId, "feedback"), { outcome }, options);
+  }
+
+  #runUrl(runId: string, action: "finish" | "feedback"): URL {
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(runId)) {
+      // 形の外の runId を URL に載せない(Gateway も 404 で拒否する)
+      throw new GatewayClientError("run_not_accepted", "the runId is not in an acceptable form");
+    }
+    return new URL(`${RUNS_PATH}/${runId}/${action}`, this.#url.origin);
+  }
+
+  /** run API への POST。拒否は固定の分類に写し、応答本文の文言・申告値は流さない。 */
+  async #postRuns(
+    url: URL,
+    body: unknown,
+    options: GatewayCallOptions,
+  ): Promise<Record<string, unknown>> {
+    if (this.#closed) {
+      throw new GatewayClientError("gateway_protocol_error", "the gateway client is closed");
+    }
+    if (options.signal?.aborted === true) {
+      throw new GatewayClientError("aborted", "the gateway request was aborted");
+    }
+    const timeout = AbortSignal.timeout(this.#requestTimeoutMs);
+    const signal =
+      options.signal !== undefined ? AbortSignal.any([options.signal, timeout]) : timeout;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.#sessionToken}`,
+          "content-type": "application/json",
+          ...(this.#orchestratorCredential !== undefined
+            ? { [ORCHESTRATOR_CREDENTIAL_HEADER]: this.#orchestratorCredential }
+            : {}),
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch {
+      if (isAborted(options.signal)) {
+        throw new GatewayClientError("aborted", "the gateway request was aborted");
+      }
+      if (isAborted(timeout)) {
+        throw new GatewayClientError("gateway_timeout", "the gateway request timed out");
+      }
+      throw new GatewayClientError("gateway_unavailable", "could not reach the gateway");
+    }
+    let json: unknown;
+    try {
+      json = await response.json();
+    } catch {
+      json = undefined;
+    }
+    if (response.ok) {
+      return isRecord(json) ? json : {};
+    }
+    const errorClass =
+      isRecord(json) && isRecord(json["error"]) && typeof json["error"]["errorClass"] === "string"
+        ? json["error"]["errorClass"]
+        : undefined;
+    throw new GatewayClientError(...runApiRejection(response.status, errorClass));
   }
 
   /** 接続先(表示用。トークンを含まない)。 */
@@ -267,7 +401,13 @@ export class McpGatewayClient implements GatewayClient {
     const client = new Client(ORCHESTRATOR_CLIENT_INFO);
     const transport = new StreamableHTTPClientTransport(this.#url, {
       requestInit: {
-        headers: { Authorization: `Bearer ${this.#sessionToken}` },
+        headers: {
+          Authorization: `Bearer ${this.#sessionToken}`,
+          // runId を申告する tools/call には Orchestrator の資格情報が要る(ADR-019 決定3)
+          ...(this.#orchestratorCredential !== undefined
+            ? { [ORCHESTRATOR_CREDENTIAL_HEADER]: this.#orchestratorCredential }
+            : {}),
+        },
       },
     });
     this.#sdkClient = client;
@@ -361,6 +501,43 @@ function toGatewayClientError(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** signal が中断済みか(型の絞り込みを受けずに実行時の状態を見る)。 */
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal !== undefined && signal.aborted;
+}
+
+/** run API の拒否(HTTP ステータスと errorClass)を固定の分類と文言に写す。 */
+function runApiRejection(
+  status: number,
+  errorClass: string | undefined,
+): [GatewayClientErrorClass, string] {
+  if (status === 401) {
+    return ["unauthenticated", "the gateway rejected the session token (401)"];
+  }
+  switch (errorClass) {
+    case "invalid_run_id":
+      return ["run_not_accepted", "the gateway did not accept the runId"];
+    case "orchestrator_credential_invalid":
+      return ["orchestrator_credential_rejected", "the gateway rejected the orchestrator credential"];
+    case "rate_limited":
+      return ["rate_limited", "the gateway rate limit for run requests was reached"];
+    case "audit_write_failed":
+      return ["audit_write_failed", "the gateway could not persist the run record (fail-closed)"];
+    default:
+      break;
+  }
+  if (status === 429) {
+    return ["rate_limited", "the gateway rate limit for run requests was reached"];
+  }
+  if (status >= 500) {
+    return ["gateway_unavailable", "the gateway is unavailable"];
+  }
+  if (status === 404 || status === 405 || status === 415) {
+    return ["gateway_protocol_error", "the gateway endpoint did not accept the run request"];
+  }
+  return ["gateway_rejected", "the gateway rejected the run request"];
 }
 
 function firstText(result: Record<string, unknown>): string | undefined {

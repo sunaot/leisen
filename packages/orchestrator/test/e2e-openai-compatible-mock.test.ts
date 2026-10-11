@@ -30,7 +30,6 @@ import {
   ALICE_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
-  TEST_DOC_ID_AUDIT,
   TRAVEL_GUIDE,
   startGateway,
   type GatewayHarness,
@@ -89,8 +88,6 @@ async function setup(
     mock,
     orchestrator: new Orchestrator({
       llm,
-      auditLogger: harness.auditLogger,
-      docIdAudit: TEST_DOC_ID_AUDIT,
     }),
   };
 }

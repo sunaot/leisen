@@ -2,27 +2,33 @@
  * 探索ループ(T-007、product-design §4.3、ADR-017)。
  *
  * 1 run の流れ:
- *   runId を採番(Gateway と同じ形式を検証)→ tools/list → 全ソースに describe
- *   (未接続は skippedSources へ)→ describe の結果の `_meta` から Gateway が認証した
- *   userId を得て、AnswerRun(pending)を書く → system prompt(固定部だけ)と最初の
+ *   Gateway の run API に開始を申告して署名付き runId を受け取る(POST /runs。Gateway が
+ *   生クエリ表と pending の AnswerRun を書く。失敗したら LLM を呼ばない)→ tools/list →
+ *   全ソースに describe(未接続は skippedSources へ)→ system prompt(固定部だけ)と最初の
  *   user ターン(ソース一覧・上限・質問)とツール定義を組む → LLM ↔ Gateway のツール
  *   呼び出しを反復 → submit_answer で提出された回答の出典を検証 → 回答本文を無害化
- *   (URL を残さない)→ AnswerRun(最終状態)を書く → Answer を返す
+ *   (URL を残さない)→ 終了を申告する(POST /runs/{runId}/finish。失敗したら回答を
+ *   返さない)→ Answer を返す
  *
- * 利用者の束縛(セキュリティレビュー 2026-09-27 H1): AnswerRun.userId は呼び出し元の
- * 申告ではなく、Gateway がそのリクエストで認証した userId(tools/call の結果の `_meta`)
- * にする。呼び出し元が userId を申告していて一致しなければ fail-closed(run を error、
- * failureReason: user_mismatch、以降 Gateway を呼ばない)。describe フェーズで Gateway が
- * 利用者を確認できない(HTTP の認証失敗・到達不能・報告なし)場合は AnswerRun を書かずに
- * error で終える(確認できない主体で監査レコードを書かない)。run の途中で別の userId が
- * 報告された場合も user_mismatch で止める。
+ * 監査の書き手は Gateway(ADR-019)。Orchestrator は AnswerRun を書かず、run API で申告する
+ * だけで、監査ストアに触れない。AnswerRun.userId は Gateway が認証した値で書かれ、ここから
+ * 指定できない。引用 docId の記録の規則(Slack・プライベートスコープ)も Gateway がかける。
  *
- * 監査の束ね(ADR-011 追記、ADR-001 追補3): runId はここで採番し、Gateway への
+ * 利用者の束縛(セキュリティレビュー 2026-09-27 H1): 呼び出し元が userId を申告していて、
+ * Gateway がそのリクエストで認証した userId(describe の結果の `_meta`)と一致しなければ
+ * fail-closed(run を error、failureReason: user_mismatch、LLM を呼ばない)。describe フェーズで
+ * Gateway が利用者を確認できない(報告なし・食い違い)場合も error で終える。run の途中で別の
+ * userId が報告された場合も user_mismatch で止める。
+ *
+ * 監査の束ね(ADR-011 追記、ADR-001 追補3、ADR-019 決定4): Gateway が発行した runId を
  * 全 tools/call の `_meta` に prefix 付きキーで runId / iteration / 実行区分
- * (human_in_the_loop)/ actor(human)を申告する(`_meta` の組み立ては
- * gateway/meta.ts の buildGatewayMeta に集約)。iteration はツール呼び出しごとに
- * 0 から単調増加(describe を含む。同一ターン内の並列呼び出しは応答内の順に採番)。
+ * (human_in_the_loop)/ actor(human)として申告する(`_meta` の組み立ては
+ * gateway/meta.ts の buildGatewayMeta に集約)。Gateway は署名・本人・actor・期限と
+ * Orchestrator の資格情報を検証し、満たさない呼び出しを拒否する。iteration はツール呼び出し
+ * ごとに 0 から単調増加(describe を含む。同一ターン内の並列呼び出しは応答内の順に採番)。
  * Gateway に送らなかった呼び出し(未接続ソース宛て・上限超過等)は番号を消費しない。
+ * 探索の時間上限(runTimeoutMs)は runId の有効期間(startRun の expiresAt)に収める
+ * (有効期間を過ぎると finish を受けない)。
  *
  * 終了条件:
  * - submit_answer が呼ばれた(同じターンの他のツール呼び出しは実行しない)
@@ -38,10 +44,7 @@
  * 注意を付け、confidence を 0.3 以下に丸める。回答本文からは URL をすべて除去し、
  * 原典へのリンクは citations[].url だけが運ぶ(sanitize.ts、M1。RS-4 / TM-D2)。
  */
-import { randomUUID } from "node:crypto";
 import type Anthropic from "@anthropic-ai/sdk";
-import { type AuditLogger } from "@kp/audit";
-import { isValidRunId } from "@kp/gateway";
 import {
   answerSchema,
   SUBMIT_ANSWER_TOOL_NAME,
@@ -52,13 +55,6 @@ import {
   type SkippedSource,
   type SubmitAnswerInput,
 } from "./answer.js";
-import {
-  citedDocIdAuditProblem,
-  finishedAnswerRun,
-  pendingAnswerRun,
-  type AnswerRunAuditRecord,
-  type CitedDocIdAudit,
-} from "./audit.js";
 import { EvidenceLedger, verifyCitations } from "./citations.js";
 import { failureTextFor } from "./failure-text.js";
 import {
@@ -78,9 +74,11 @@ import {
 } from "./errors.js";
 import { buildGatewayMeta } from "./gateway/meta.js";
 import type {
+  FinishRunInput,
   GatewayClient,
   GatewayToolError,
   GatewayToolSchema,
+  StartRunResult,
 } from "./gateway/types.js";
 import { adaptRequestToCapabilities } from "./llm/capabilities.js";
 import { attemptsOf, type LlmClient, type LlmTurn } from "./llm/types.js";
@@ -141,8 +139,18 @@ const TRANSPORT_ERROR_MESSAGES: Readonly<Record<GatewayClientErrorClass, string>
   gateway_timeout: "Gateway の応答がタイムアウトしました。",
   gateway_protocol_error: "Gateway の応答を解釈できませんでした。",
   gateway_rejected: "Gateway が要求を拒否しました。",
+  run_not_accepted: "Gateway がこの run の runId を受け付けませんでした。",
+  orchestrator_credential_rejected: "Gateway が Orchestrator の資格情報を拒否しました。",
+  rate_limited: "Gateway の要求回数の上限に達しました。",
+  audit_write_failed: "Gateway が監査レコードを記録できませんでした。",
   aborted: "探索の時間上限に達したため中断しました。",
 };
+
+/**
+ * runId の有効期間の終わりから、finish の申告までに残す余裕(ms)。最終ターン
+ * (finalTurnTimeoutMs)と finish の往復がこの中に収まるようにする。
+ */
+const RUN_FINISH_MARGIN_MS = 5_000;
 
 /** ツール呼び出しの件数の上限(m1)を超えた呼び出しに返すエラー(固定文言)。 */
 const TURN_TOOL_CALL_LIMIT_ERROR: ToolErrorForLlm = {
@@ -165,36 +173,25 @@ export type UserFeedback = "resolved" | "unresolved";
 
 export interface OrchestratorOptions {
   readonly llm: LlmClient;
-  /**
-   * AnswerRun の書き込み先。リファレンス構成では Gateway と同じ監査ストアを共有する
-   * (ToolInvocation と runId で束ねる。ADR-017 決定2)
-   */
-  readonly auditLogger: AuditLogger;
-  /**
-   * citedDocIds の記録方針(必須。セキュリティレビュー H2、ADR-013 §2、ADR-017
-   * 確認事項5)。ソースの分類(Slack / プライベートスコープ)と audit.privateScopeDocIds、
-   * hashed のときのデプロイ固有鍵。分類できないソースの docId は記録しない
-   */
-  readonly docIdAudit: CitedDocIdAudit;
   readonly settings?: OrchestratorSettingsInput;
   /** system prompt 固定部の差し替え(評価用)。省略時は prompts/explore.v3.md */
   readonly systemPrompt?: string;
-  /** テスト用の時計・ID 注入(ID は Gateway の runId の形式 [A-Za-z0-9._:-]{1,128}) */
+  /** テスト用の時計 */
   readonly now?: () => number;
-  readonly ids?: () => string;
-  /** recordFeedback のために最終状態を覚えておく run 数(古いものから捨てる) */
-  readonly feedbackWindow?: number;
 }
 
 export interface RunInput {
   readonly question: string;
   /**
    * 呼び出し元(利用者を認証したチャットUIのバックエンド等)が申告する質問者の userId
-   * (任意)。AnswerRun の主体は Gateway が認証した userId に束縛し、申告は照合にだけ
+   * (任意)。AnswerRun の主体は Gateway が認証した userId で書かれ、申告は照合にだけ
    * 使う: 一致しなければ run を error(failureReason: user_mismatch)で終える(H1)
    */
   readonly userId?: string;
-  /** 利用者本人のセッションで Gateway に接続するクライアント */
+  /**
+   * 利用者本人のセッションで Gateway に接続するクライアント(run API と tools/call の両方。
+   * Orchestrator の資格情報を持つこと。ADR-019 決定3)
+   */
   readonly gateway: GatewayClient;
 }
 
@@ -334,42 +331,23 @@ class RunState {
 export class Orchestrator {
   readonly settings: OrchestratorSettings;
   readonly #llm: LlmClient;
-  readonly #auditLogger: AuditLogger;
-  /** hmacKey(秘密情報)を含むため ES の private に持つ(JSON 化・inspect に出さない) */
-  readonly #docIdAudit: CitedDocIdAudit;
   readonly #systemPrompt: string | undefined;
   readonly #now: () => number;
-  readonly #ids: () => string;
-  readonly #feedbackWindow: number;
-  readonly #finished = new Map<string, AnswerRunAuditRecord>();
 
   constructor(options: OrchestratorOptions) {
     this.settings = orchestratorSettingsSchema.parse(options.settings ?? {});
-    const problem = citedDocIdAuditProblem(options.docIdAudit);
-    if (problem !== undefined) {
-      // 鍵の値はメッセージに含めない(citedDocIdAuditProblem は固定文言)
-      throw new OrchestratorError("invalid_configuration", problem);
-    }
-    const { classify, privateScopeDocIds, hmacKey } = options.docIdAudit;
-    this.#docIdAudit = {
-      classify,
-      privateScopeDocIds,
-      ...(hmacKey !== undefined ? { hmacKey } : {}),
-    };
     this.#llm = options.llm;
-    this.#auditLogger = options.auditLogger;
     this.#systemPrompt = options.systemPrompt;
     this.#now = options.now ?? Date.now;
-    this.#ids = options.ids ?? randomUUID;
-    this.#feedbackWindow = options.feedbackWindow ?? 1_000;
   }
 
   /**
-   * 1つの質問について探索し、回答を返す。LLM・Gateway の失敗は outcome: "error" の
-   * Answer で返す。describe フェーズで Gateway が利用者を確認できなかった場合も error の
-   * Answer を返すが、AnswerRun は書かない(recordFeedback の対象にもならない)。
-   * AnswerRun を監査ストアへ書けない場合は OrchestratorError("audit_write_failed")で
-   * 失敗させる(fail-closed、ADR-011 §4)。
+   * 1つの質問について探索し、回答を返す。LLM・Gateway のツール呼び出しの失敗は
+   * outcome: "error" の Answer で返す(run は Gateway に error で記録される)。
+   * run の開始を Gateway に申告できない(POST /runs の失敗)ときは LLM を呼ばず
+   * GatewayClientError で失敗させ、終了を記録できない(finish の失敗)ときは回答を返さずに
+   * 失敗させる(audit_write_failed なら OrchestratorError、それ以外は GatewayClientError。
+   * fail-closed、ADR-011 §4・ADR-019 決定6)。
    */
   async run(input: RunInput): Promise<Answer> {
     return (await this.runDetailed(input)).answer;
@@ -393,87 +371,95 @@ export class Orchestrator {
       throw new OrchestratorError("invalid_input", "userId must not be empty when given");
     }
     const fixedPrompt = this.#systemPrompt ?? (await loadExplorePrompt());
-    const runId = this.#ids();
-    if (!isValidRunId(runId)) {
-      // Gateway は形式外の runId を未申告として別 run に記録する(監査の束ねが黙って
-      // 壊れる)。ids の注入のずれを Gateway にアクセスする前に止める(m5)
-      throw new OrchestratorError(
-        "invalid_configuration",
-        "the generated runId must match [A-Za-z0-9._:-]{1,128}",
-      );
-    }
     const startedMs = this.#now();
+    const deadline = new AbortController();
+    let timer = setTimeout(() => deadline.abort(), this.settings.runTimeoutMs);
+    timer.unref();
+
+    // run の開始を Gateway に申告し、署名付き runId を受け取る(ADR-019 決定3)。Gateway が
+    // 生クエリ表と pending の AnswerRun を書く。失敗したら LLM を呼ばず、Gateway にもそれ以上
+    // アクセスしない(fail-closed)
+    let started: StartRunResult;
+    try {
+      started = await input.gateway.startRun({ question }, { signal: deadline.signal });
+    } catch (error) {
+      clearTimeout(timer);
+      if (deadline.signal.aborted) {
+        throw new GatewayClientError("aborted", "the run timed out before the gateway accepted it");
+      }
+      throw error;
+    }
+    const runId = started.runId;
     // 価格表は LLM バックエンドのプロバイダの表を使う(ADR-017 決定1)
     const state = new RunState(runId, pricingFor(this.settings.pricing, this.#llm.provider));
-    const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), this.settings.runTimeoutMs);
-    timer.unref();
-    let pending: AnswerRunAuditRecord | undefined;
+
+    // 探索の時間上限を runId の有効期間に収める(有効期間を過ぎると Gateway は tools/call も
+    // finish も受けない。ADR-019 決定4)。最終ターンと finish の往復の余裕を残す
+    const elapsedMs = this.#now() - startedMs;
+    const remainingMs = Math.max(0, this.settings.runTimeoutMs - elapsedMs);
+    const budgetMs =
+      Date.parse(started.expiresAt) -
+      this.#now() -
+      this.settings.finalTurnTimeoutMs -
+      RUN_FINISH_MARGIN_MS;
+    if (Number.isFinite(budgetMs) && budgetMs < remainingMs) {
+      clearTimeout(timer);
+      timer = setTimeout(() => deadline.abort(), Math.max(0, budgetMs));
+      timer.unref();
+      state.warn(
+        `探索の時間上限を runId の有効期間に合わせて短くしました(runTimeoutMs=${this.settings.runTimeoutMs} より短い)。Gateway の gateway.runs.ttlSec を確認してください。`,
+      );
+    }
+
     let closed = false;
     try {
       const discovery = await this.#discover(input.gateway, state, deadline.signal);
+      let result: RunOutcome;
       if (discovery.kind === "unbound") {
-        // 確認できない主体で AnswerRun を書かない(H1)。回答は error で返す
-        return {
-          answer: this.#assemble(failure(discovery.reason), state),
-          failureReason: discovery.reason,
-        };
+        // 利用者を確認できない・ソースがない: 探索せず error で終える(run は Gateway に残る)
+        result = failure(discovery.reason);
+      } else if (declaredUserId !== undefined && declaredUserId !== discovery.userId) {
+        result = failure("user_mismatch");
+      } else {
+        result = await this.#explore(
+          {
+            question,
+            gateway: input.gateway,
+            fixedPrompt,
+            startedMs,
+            discovery,
+          },
+          state,
+          deadline.signal,
+        );
       }
-      pending = pendingAnswerRun({
-        runId,
-        userId: discovery.userId,
-        startedAt: new Date(startedMs).toISOString(),
-        question,
-      });
-      // 開始を記録できなければ LLM を呼ばず、以降 Gateway にもアクセスしない(fail-closed)
-      await this.#writeAudit(pending);
-
-      const result =
-        declaredUserId !== undefined && declaredUserId !== discovery.userId
-          ? failure("user_mismatch")
-          : await this.#explore(
-              {
-                question,
-                gateway: input.gateway,
-                fixedPrompt,
-                startedMs,
-                discovery,
-              },
-              state,
-              deadline.signal,
-            );
       const answer = this.#assemble(result, state);
-      const finished = finishedAnswerRun(
-        pending,
-        {
-          endedAt: new Date(this.#now()).toISOString(),
-          outcome: answer.outcome,
-          confidence: answer.confidence,
-          searchedSources: answer.searchedSources,
-          // 監査の docId 分類には台帳の結果ごとの領域を添える(ADR-016 追補2 決定5)。
-          // scope は Answer の citations には載せない
-          citations: answer.citations.map((citation) => ({
-            sourceId: citation.sourceId,
-            documentId: citation.documentId,
-            scope: state.ledger.scopeOf(citation.sourceId, citation.documentId),
-          })),
-          failureReason: result.failureReason,
-        },
-        this.#docIdAudit,
-      );
-      await this.#writeAudit(finished);
+      // 終了を記録できなければ回答を返さない(fail-closed、ADR-017 決定2・ADR-019 決定6)
+      await this.#finishRun(input.gateway, runId, {
+        outcome: answer.outcome,
+        confidence: answer.confidence,
+        searchedSources: answer.searchedSources,
+        citations: answer.citations.map((citation) => ({
+          sourceId: citation.sourceId,
+          documentId: citation.documentId,
+        })),
+        failureReason: result.failureReason,
+      });
       closed = true;
-      this.#remember(finished);
       return { answer, failureReason: result.failureReason };
     } catch (error) {
-      if (pending !== undefined && !closed) {
-        // 想定外の失敗(実装の不具合・監査の書き込み失敗)。AnswerRun を pending の
-        // まま残さないよう error で閉じてから元の例外を投げ直す(m6)
-        await this.#closeWithError(
-          pending,
-          state,
-          error instanceof OrchestratorError ? error.errorClass : "internal_error",
-        );
+      if (!closed) {
+        // 想定外の失敗(実装の不具合・終了の記録の失敗)。run を pending のまま残さないよう
+        // error で閉じてから元の例外を投げ直す(m6)。閉じられなくても元の例外を優先する
+        await input.gateway
+          .finishRun(runId, {
+            outcome: "error",
+            confidence: 0,
+            searchedSources: this.#searchedSources(state),
+            citations: [],
+            failureReason: failureReasonOf(error),
+          })
+          .catch(() => undefined);
       }
       throw error;
     } finally {
@@ -481,43 +467,19 @@ export class Orchestrator {
     }
   }
 
-  /**
-   * 利用者フィードバック(解決した / しない)で AnswerRun の userFeedback を更新し、
-   * 同じ runId で再書き込みする(受け入れ条件3)。options.userId(必須)が run の
-   * 利用者(Gateway が認証した userId)と一致しないフィードバックは拒否する(他人の
-   * run への書き込みで集計を汚させない。セキュリティレビュー m4)。
-   */
-  async recordFeedback(
-    runId: string,
-    feedback: UserFeedback,
-    options: { readonly userId: string },
-  ): Promise<void> {
-    if (feedback !== "resolved" && feedback !== "unresolved") {
-      throw new OrchestratorError("invalid_input", "feedback must be resolved or unresolved");
+  /** 終了の申告(finish)。監査ストアの失敗は OrchestratorError(audit_write_failed)に写す。 */
+  async #finishRun(gateway: GatewayClient, runId: string, input: FinishRunInput): Promise<void> {
+    try {
+      await gateway.finishRun(runId, input);
+    } catch (error) {
+      if (error instanceof GatewayClientError && error.errorClass === "audit_write_failed") {
+        throw new OrchestratorError(
+          "audit_write_failed",
+          "the gateway could not persist the run result (fail-closed, ADR-011 §4)",
+        );
+      }
+      throw error;
     }
-    const userId: unknown = options?.userId;
-    if (typeof userId !== "string" || userId.trim() === "") {
-      throw new OrchestratorError(
-        "invalid_input",
-        "userId of the user giving the feedback is required",
-      );
-    }
-    const record = this.#finished.get(runId);
-    if (record === undefined) {
-      throw new OrchestratorError(
-        "run_not_found",
-        "the run is unknown, unfinished, or no longer kept for feedback",
-      );
-    }
-    if (userId !== record.userId) {
-      throw new OrchestratorError(
-        "feedback_forbidden",
-        "feedback must come from the user who asked the question",
-      );
-    }
-    const updated: AnswerRunAuditRecord = { ...record, userFeedback: feedback };
-    await this.#writeAudit(updated);
-    this.#finished.set(runId, updated);
   }
 
   // -------------------------------------------------------------------------
@@ -1081,67 +1043,29 @@ export class Orchestrator {
       text: finalTurnInstruction(limit, this.settings.maxIterations),
     };
   }
-
-  /** 想定外の失敗で終わる run の AnswerRun を error で閉じる(書けなくても元の例外を優先)。 */
-  async #closeWithError(
-    pending: AnswerRunAuditRecord,
-    state: RunState,
-    failureReason: string,
-  ): Promise<void> {
-    let failed: AnswerRunAuditRecord;
-    try {
-      failed = finishedAnswerRun(
-        pending,
-        {
-          endedAt: new Date(this.#now()).toISOString(),
-          outcome: "error",
-          confidence: 0,
-          searchedSources: this.#searchedSources(state),
-          citations: [],
-          failureReason,
-        },
-        this.#docIdAudit,
-      );
-    } catch {
-      return;
-    }
-    const written = await this.#writeAudit(failed).then(
-      () => true,
-      () => false,
-    );
-    if (written) {
-      this.#remember(failed);
-    }
-  }
-
-  async #writeAudit(record: AnswerRunAuditRecord): Promise<void> {
-    try {
-      await this.#auditLogger.log(record);
-    } catch {
-      // シンク由来の生エラーは載せない(TM-A2)
-      throw new OrchestratorError(
-        "audit_write_failed",
-        "the AnswerRun audit record could not be persisted (fail-closed, ADR-011)",
-      );
-    }
-  }
-
-  #remember(record: AnswerRunAuditRecord): void {
-    this.#finished.delete(record.runId);
-    this.#finished.set(record.runId, record);
-    while (this.#finished.size > this.#feedbackWindow) {
-      const oldest = this.#finished.keys().next();
-      if (oldest.done === true) {
-        break;
-      }
-      this.#finished.delete(oldest.value);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
 // ヘルパー
 // ---------------------------------------------------------------------------
+
+/** 例外を run の失敗の正規化コードに写す(想定外の失敗で run を閉じるときの failureReason)。 */
+function failureReasonOf(error: unknown): string {
+  if (error instanceof OrchestratorError || error instanceof LlmError) {
+    return error.errorClass;
+  }
+  if (error instanceof GatewayClientError) {
+    switch (error.errorClass) {
+      case "unauthenticated":
+        return "gateway_unauthenticated";
+      case "aborted":
+        return "run_timeout";
+      default:
+        return error.errorClass;
+    }
+  }
+  return "internal_error";
+}
 
 function interpretTurn(message: Anthropic.Message): TurnAction {
   const uses = message.content.filter(

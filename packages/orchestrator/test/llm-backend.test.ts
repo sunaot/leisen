@@ -27,7 +27,6 @@ import {
 import {
   CorpusConnector,
   EXPENSE_POLICY,
-  TEST_DOC_ID_AUDIT,
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
@@ -66,7 +65,7 @@ describe("能力フラグ: Orchestrator は対応している機能だけを要�
       () => scriptedSubmit({ answer: "不明です。", citations: [], confidence: 0 }),
     ]);
 
-    await new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT }).run({
+    await new Orchestrator({ llm }).run({
       question: "経費精算の締め日は?",
       userId: "alice",
       gateway: harness.client(),
@@ -86,7 +85,7 @@ describe("能力フラグ: Orchestrator は対応している機能だけを要�
       { provider: "openai_compatible", capabilities: OPENAI_COMPATIBLE_BASE_CAPABILITIES },
     );
 
-    await new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT }).run({
+    await new Orchestrator({ llm }).run({
       question: "経費精算の締め日は?",
       userId: "alice",
       gateway: harness.client(),
@@ -177,7 +176,7 @@ describe("価格表: プロバイダ+モデルで引く", () => {
       { provider: "openai_compatible", capabilities: OPENAI_COMPATIBLE_BASE_CAPABILITIES },
     );
 
-    const answer = await new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT }).run({
+    const answer = await new Orchestrator({ llm }).run({
       question: "経費精算の締め日は?",
       userId: "alice",
       gateway: harness.client(),
@@ -203,8 +202,6 @@ describe("価格表: プロバイダ+モデルで引く", () => {
 
     const answer = await new Orchestrator({
       llm,
-      auditLogger: harness.auditLogger,
-      docIdAudit: TEST_DOC_ID_AUDIT,
       settings: { costLimitPerQuery: 1 },
     }).run({ question: "経費精算の締め日は?", userId: "alice", gateway: harness.client() });
 
@@ -221,8 +218,6 @@ describe("価格表: プロバイダ+モデルで引く", () => {
 
     const answer = await new Orchestrator({
       llm,
-      auditLogger: harness.auditLogger,
-      docIdAudit: TEST_DOC_ID_AUDIT,
       settings: { pricing: { openai_compatible: { "hosted-model": PRICE } } },
     }).run({ question: "経費精算の締め日は?", userId: "alice", gateway: harness.client() });
 

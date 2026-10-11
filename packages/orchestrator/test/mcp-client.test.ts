@@ -17,7 +17,6 @@ import { GATEWAY_RESULT_META_KEYS, IdpError } from "@kp/gateway";
 import {
   GatewayClientError,
   McpGatewayClient,
-  buildGatewayMeta,
   normalizeCallResult,
 } from "../src/index.js";
 import {
@@ -53,7 +52,12 @@ async function setup(notConnected: string[] = []): Promise<GatewayHarness> {
   return harness;
 }
 
-const META = buildGatewayMeta({ runId: "run-mcp-client", iteration: 0 });
+/**
+ * 旧キー(裸の runId / iteration)の `_meta`。名前空間付きの runId は Gateway が発行した署名付きの
+ * 値でなければ拒否されるため(ADR-019 決定4。run API 経由の申告は run-id.test.ts)、ここでは
+ * トランスポートの検証に移行期間の裸キーを使う(Gateway は単発 run として記録する)
+ */
+const META = { runId: "run-mcp-client", iteration: 0 };
 
 async function rejectionOf(promise: Promise<unknown>): Promise<GatewayClientError> {
   const error = await promise.then(

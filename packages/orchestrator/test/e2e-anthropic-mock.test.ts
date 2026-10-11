@@ -22,7 +22,6 @@ import {
   CorpusConnector,
   EXPENSE_POLICY,
   TRAVEL_GUIDE,
-  TEST_DOC_ID_AUDIT,
   startGateway,
   type GatewayHarness,
   type GatewayHarnessOptions,
@@ -68,8 +67,6 @@ async function setup(
     mock,
     orchestrator: new Orchestrator({
       llm,
-      auditLogger: harness.auditLogger,
-      docIdAudit: TEST_DOC_ID_AUDIT,
     }),
   };
 }

@@ -1,19 +1,17 @@
 /**
- * 受け入れ条件3: 監査ログの AnswerRun(finalOutcome, userFeedback)が利用者フィードバックで
- * 更新できる。あわせて AnswerRun の書き方(describe フェーズの後に pending → 最終状態、
- * runId で上書き)、書き込み失敗時の fail-closed(ADR-011 §4)、終了処理の例外でも
- * AnswerRun を error で閉じること(セキュリティレビュー m6)、フィードバックの利用者照合が
- * 必須であること(m4)を検証する。
+ * 受け入れ条件3(改訂、ADR-019): AnswerRun は Gateway の run API が書く。
+ * - run の開始(POST /runs)で Gateway が pending を書き(userId は認証値、質問は digest)、終了
+ *   (POST /runs/{runId}/finish)で部分レコード answer_run_finish が追記される。Orchestrator は
+ *   監査ストアに触れない
+ * - 開始を申告できなければ LLM を呼ばず、Gateway にもそれ以上アクセスしない(fail-closed)
+ * - 終了を記録できなければ回答を返さない(audit_write_failed)。想定外の失敗でも run を error で閉じる
+ * - フィードバックは本人のトークンで POST /runs/{runId}/feedback に申告し、Gateway が runId の署名で
+ *   本人を検証する(他人・未知の runId は拒否)。finish の再送でフィードバックは消えない
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { digestQuery, type AuditRecord, type AuditSink } from "@kp/audit";
 import {
-  AuditLogger,
-  BufferedAuditSink,
-  InMemoryAuditStore,
-  type AuditRecord,
-  type AuditSink,
-} from "@kp/audit";
-import {
+  GatewayClientError,
   Orchestrator,
   OrchestratorError,
   ScriptedLlmClient,
@@ -21,11 +19,13 @@ import {
   scriptedToolUse,
 } from "../src/index.js";
 import {
+  ALICE_TOKEN,
+  BOB_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
   startGateway,
   type GatewayHarness,
-  TEST_DOC_ID_AUDIT,
+  type GatewayHarnessOptions,
 } from "./helpers/harness.js";
 import { firstHit } from "./helpers/script.js";
 
@@ -36,9 +36,10 @@ afterEach(async () => {
   }
 });
 
-async function setup(): Promise<GatewayHarness> {
+async function setup(options: Partial<GatewayHarnessOptions> = {}): Promise<GatewayHarness> {
   const harness = await startGateway({
     connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
+    ...options,
   });
   harnesses.push(harness);
   return harness;
@@ -58,33 +59,43 @@ function resolvingScript(): ScriptedLlmClient {
   ]);
 }
 
-/** 書き込まれた AnswerRun を順に記録しつつストアへ流すシンク。 */
-class TappingSink implements AuditSink {
+/** Gateway の監査シンクの書き込みを記録し、失敗を注入できる装飾(ストアには通したものだけが残る)。 */
+class Tap {
   readonly written: AuditRecord[] = [];
   failWrites = false;
 
-  constructor(private readonly inner: AuditSink) {}
-
-  async write(record: AuditRecord): Promise<void> {
-    if (this.failWrites) {
-      throw new Error("injected audit failure: dev-only-sink-detail");
-    }
-    this.written.push(record);
-    await this.inner.write(record);
+  wrap(inner: AuditSink): AuditSink {
+    return {
+      write: async (record: AuditRecord) => {
+        if (this.failWrites) {
+          throw new Error("injected audit failure: dev-only-sink-detail");
+        }
+        this.written.push(record);
+        await inner.write(record);
+      },
+    };
   }
 }
 
-describe("AnswerRun の書き方", () => {
-  it("開始時に pending、終了時に同じ runId で最終状態を書く(ストアは runId で上書き)", async () => {
-    const harness = await setup();
-    const store = new InMemoryAuditStore();
-    const sink = new TappingSink(new BufferedAuditSink(store));
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: new AuditLogger(sink),
-      now: () => Date.parse("2026-09-27T09:00:00.000Z"),
-    });
+function tapped(): { sink: Tap; wrapSink: (inner: AuditSink) => AuditSink } {
+  const sink = new Tap();
+  return { sink, wrapSink: (inner) => sink.wrap(inner) };
+}
+
+async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(
+    () => {
+      throw new Error("expected the run to fail");
+    },
+    (e: unknown) => e,
+  );
+}
+
+describe("AnswerRun の書き方(Gateway の run API)", () => {
+  it("開始時に Gateway が pending を書き、終了時に同じ runId の answer_run_finish が追記される(Orchestrator は書かない)", async () => {
+    const { sink, wrapSink } = tapped();
+    const harness = await setup({ wrapSink });
+    const orchestrator = new Orchestrator({ llm: resolvingScript() });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -92,208 +103,180 @@ describe("AnswerRun の書き方", () => {
       gateway: harness.client(),
     });
 
-    expect(sink.written.map((r) => r.recordType === "answer_run" && r.finalOutcome)).toEqual([
-      "pending",
-      "resolved",
-    ]);
-    expect(sink.written[0]).toMatchObject({
+    expect(answer.outcome).toBe("resolved");
+    expect(answer.runId).toMatch(/^r1\.t1\.[A-Za-z0-9_-]{38}\.[A-Za-z0-9_-]{43}$/);
+    const runRecords = sink.written.filter((r) => r.recordType !== "tool_invocation");
+    expect(runRecords.map((r) => r.recordType)).toEqual(["answer_run", "answer_run_finish"]);
+    expect(runRecords[0]).toMatchObject({
       runId: answer.runId,
+      userId: "alice",
+      actor: { kind: "human" },
+      finalOutcome: "pending",
+      finalQueryDigest: digestQuery("経費精算の締め日は?"),
       endedAt: null,
       confidence: null,
       searchedSources: [],
       citedDocIds: [],
     });
-    // 質問は digest のみ(原文を監査に載せない)
-    expect(JSON.stringify(sink.written)).not.toContain("締め日は?");
-    expect(store.records()).toHaveLength(1);
-    expect(store.records()[0]).toMatchObject({
+    expect(runRecords[1]).toMatchObject({
       runId: answer.runId,
+      userId: "alice",
       finalOutcome: "resolved",
-      startedAt: "2026-09-27T09:00:00.000Z",
-      endedAt: "2026-09-27T09:00:00.000Z",
+      confidence: 0.9,
+      searchedSources: ["alpha"],
+      citedDocIds: ["alpha:doc-expense-policy"],
+      failureReason: null,
     });
+    // 質問の原文・回答本文は監査レコードに載らない(原文は生クエリ表)
+    expect(JSON.stringify(runRecords)).not.toContain("締め日は?");
+    expect(JSON.stringify(runRecords)).not.toContain("毎月25日");
+    // pending は最初のツール呼び出し(describe)より前に書かれる
+    const firstTool = sink.written.findIndex((r) => r.recordType === "tool_invocation");
+    expect(firstTool).toBeGreaterThan(0);
+    expect(sink.written[0]?.recordType).toBe("answer_run");
+    // 統合すると最終状態
+    expect(harness.answerRuns()).toEqual([
+      expect.objectContaining({ runId: answer.runId, finalOutcome: "resolved", userFeedback: null }),
+    ]);
   });
 
-  it("pending を書けなければ LLM を呼ばず、describe より後の Gateway 呼び出しもせずに失敗する(fail-closed)", async () => {
-    const harness = await setup();
-    const sink = new TappingSink(new BufferedAuditSink(new InMemoryAuditStore()));
+  it("開始を申告できなければ(監査ストアに書けない)LLM を呼ばず、Gateway にもそれ以上アクセスしない(fail-closed)", async () => {
+    const { sink, wrapSink } = tapped();
     sink.failWrites = true;
+    const harness = await setup({ wrapSink });
     const llm = resolvingScript();
-    const orchestrator = new Orchestrator({ llm, auditLogger: new AuditLogger(sink), docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
-    const error = await orchestrator
-      .run({ question: "経費精算の締め日は?", userId: "alice", gateway: harness.client() })
-      .then(
-        () => undefined,
-        (e: unknown) => e,
-      );
+    const error = await rejectionOf(
+      orchestrator.run({ question: "経費精算の締め日は?", gateway: harness.client() }),
+    );
+
+    expect(error).toBeInstanceOf(GatewayClientError);
+    expect(error).toMatchObject({ errorClass: "audit_write_failed" });
+    expect(String(error)).not.toContain("dev-only-sink-detail");
+    expect(llm.requests).toHaveLength(0);
+    expect(harness.toolInvocations()).toEqual([]);
+    expect(sink.written).toEqual([]);
+  });
+
+  it("Orchestrator の資格情報が Gateway と一致しなければ run を始められない(orchestrator_credential_rejected)", async () => {
+    const harness = await setup();
+    const llm = resolvingScript();
+    const orchestrator = new Orchestrator({ llm });
+
+    const error = await rejectionOf(
+      orchestrator.run({
+        question: "経費精算の締め日は?",
+        gateway: harness.client(ALICE_TOKEN, "wrong-orchestrator-credential-0"),
+      }),
+    );
+
+    expect(error).toMatchObject({ errorClass: "orchestrator_credential_rejected" });
+    expect(llm.requests).toHaveLength(0);
+    expect(harness.answerRuns()).toEqual([]);
+  });
+
+  it("終了を記録できなければ回答を返さない(audit_write_failed、fail-closed)", async () => {
+    const { sink, wrapSink } = tapped();
+    const harness = await setup({ wrapSink });
+    const llm = new ScriptedLlmClient([
+      () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      (context) => {
+        // 最終状態を書く直前に監査ストアを壊す
+        sink.failWrites = true;
+        const hit = firstHit(context);
+        return scriptedSubmit({
+          answer: "経費精算の締め日は毎月25日です。",
+          citations: [{ documentId: hit.documentId, sourceId: hit.source }],
+          confidence: 0.9,
+        });
+      },
+    ]);
+    const orchestrator = new Orchestrator({ llm });
+
+    const error = await rejectionOf(
+      orchestrator.run({ question: "経費精算の締め日は?", gateway: harness.client() }),
+    );
 
     expect(error).toBeInstanceOf(OrchestratorError);
     expect(error).toMatchObject({ errorClass: "audit_write_failed" });
-    expect(String((error as Error).message)).not.toContain("dev-only-sink-detail");
-    expect(llm.requests).toHaveLength(0);
-    // pending は利用者の確認(describe の結果の `_meta`)の後に書くため、describe だけは
-    // Gateway に届いて監査されている(H1)。検索・取得には進まない
-    expect(harness.toolInvocations().map((r) => r.tool)).toEqual(["describe"]);
+    expect(String(error)).not.toContain("dev-only-sink-detail");
+    // pending は残り、finish は書けていない
+    expect(sink.written.map((r) => r.recordType)).toEqual(["answer_run", "tool_invocation", "tool_invocation"]);
   });
 
-  it("終了処理(Answer の組み立て・最終状態の記録)で例外が起きても AnswerRun を error で閉じる(m6)", async () => {
-    const harness = await setup();
-    const times = [
-      Date.parse("2026-09-27T09:00:00.000Z"), // run 開始
-      Number.NaN, // 最終状態の endedAt(toISOString が RangeError を投げる)
-      Date.parse("2026-09-27T09:00:05.000Z"), // error で閉じる記録の endedAt
-    ];
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: harness.auditLogger,
-      now: () => times.shift() ?? Date.now(),
-    });
-
-    await expect(
-      orchestrator.run({ question: "経費精算の締め日は?", gateway: harness.client() }),
-    ).rejects.toBeInstanceOf(RangeError);
-
-    const runs = harness.answerRuns();
-    expect(runs).toHaveLength(1);
-    expect(runs[0]).toMatchObject({
-      userId: "alice",
-      finalOutcome: "error",
-      failureReason: "internal_error",
-      startedAt: "2026-09-27T09:00:00.000Z",
-      endedAt: "2026-09-27T09:00:05.000Z",
-    });
-  });
-
-  it("最終状態を書けなければ回答を返さない(fail-closed)", async () => {
-    const harness = await setup();
-    const sink = new TappingSink(new BufferedAuditSink(new InMemoryAuditStore()));
-    const scripted = resolvingScript();
-    const llm = {
-      provider: scripted.provider,
-      capabilities: scripted.capabilities,
-      complete: async (...args: Parameters<ScriptedLlmClient["complete"]>) => {
-        const turn = await scripted.complete(...args);
-        if (scripted.requests.length === 2) {
-          sink.failWrites = true; // submit_answer の直後から書き込みに失敗させる
-        }
-        return turn;
+  it("探索中の想定外の例外でも run を error で閉じてから投げ直す(m6)", async () => {
+    const { sink, wrapSink } = tapped();
+    const harness = await setup({ wrapSink });
+    const llm = new ScriptedLlmClient([
+      () => {
+        throw new TypeError("dev-only implementation bug");
       },
-    };
-    const orchestrator = new Orchestrator({ llm, auditLogger: new AuditLogger(sink), docIdAudit: TEST_DOC_ID_AUDIT });
+    ]);
+    const orchestrator = new Orchestrator({ llm });
 
-    await expect(
-      orchestrator.run({ question: "経費精算の締め日は?", userId: "alice", gateway: harness.client() }),
-    ).rejects.toMatchObject({ errorClass: "audit_write_failed" });
+    const error = await rejectionOf(
+      orchestrator.run({ question: "経費精算の締め日は?", gateway: harness.client() }),
+    );
+
+    expect(error).toBeInstanceOf(TypeError);
+    const finishes = sink.written.filter((r) => r.recordType === "answer_run_finish");
+    expect(finishes).toEqual([
+      expect.objectContaining({ finalOutcome: "error", failureReason: "internal_error", confidence: null }),
+    ]);
+    expect(harness.answerRuns()).toEqual([
+      expect.objectContaining({ finalOutcome: "error", failureReason: "internal_error" }),
+    ]);
   });
 });
 
-describe("受け入れ条件3: recordFeedback による userFeedback の更新", () => {
-  it("利用者フィードバックで AnswerRun の userFeedback を更新し、監査ストアから読み戻せる", async () => {
+describe("受け入れ条件3: フィードバック(POST /runs/{runId}/feedback)", () => {
+  it("本人のトークンで申告すると answer_run_feedback が追記され、統合した AnswerRun の userFeedback になる", async () => {
     const harness = await setup();
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: harness.auditLogger,
-    });
-    const answer = await orchestrator.run({
+    const answer = await new Orchestrator({ llm: resolvingScript() }).run({
       question: "経費精算の締め日は?",
-      userId: "alice",
-      gateway: harness.client(),
+      gateway: harness.client(ALICE_TOKEN),
     });
-    const before = harness.answerRuns().find((r) => r.runId === answer.runId);
-    expect(before).toMatchObject({ finalOutcome: "resolved", userFeedback: null });
 
-    await orchestrator.recordFeedback(answer.runId, "unresolved", { userId: "alice" });
-    const after = harness.answerRuns().filter((r) => r.runId === answer.runId);
-    expect(after).toHaveLength(1);
-    // userFeedback 以外(finalOutcome を含む)は変わらない
-    expect(after[0]).toEqual({ ...before, userFeedback: "unresolved" });
+    await harness.client(ALICE_TOKEN).feedbackRun(answer.runId, "resolved");
 
-    // 付け直し(最後の値が残る)
-    await orchestrator.recordFeedback(answer.runId, "resolved", { userId: "alice" });
-    expect(harness.answerRuns().find((r) => r.runId === answer.runId)?.userFeedback).toBe(
-      "resolved",
-    );
+    const feedbacks = harness.records().filter((r) => r.recordType === "answer_run_feedback");
+    expect(feedbacks).toEqual([
+      expect.objectContaining({ runId: answer.runId, userId: "alice", userFeedback: "resolved" }),
+    ]);
+    expect(harness.answerRuns()).toEqual([
+      expect.objectContaining({ runId: answer.runId, finalOutcome: "resolved", userFeedback: "resolved" }),
+    ]);
+    // 付け直せる(最新が採られる)。finish の再送でも消えない
+    await harness.client(ALICE_TOKEN).feedbackRun(answer.runId, "unresolved");
+    await harness.client(ALICE_TOKEN).finishRun(answer.runId, {
+      outcome: "resolved",
+      confidence: 0.9,
+      searchedSources: ["alpha"],
+      citations: [],
+      failureReason: null,
+    });
+    expect(harness.answerRuns()[0]).toMatchObject({ finalOutcome: "resolved", userFeedback: "unresolved" });
   });
 
-  it("未知の runId・質問者以外のフィードバックは拒否し、AnswerRun を変えない", async () => {
+  it("他人の runId・未知の runId・資格情報なしのフィードバックは拒否し、記録を変えない(理由は区別しない)", async () => {
     const harness = await setup();
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: harness.auditLogger,
-    });
-    const answer = await orchestrator.run({
+    const answer = await new Orchestrator({ llm: resolvingScript() }).run({
       question: "経費精算の締め日は?",
-      userId: "alice",
-      gateway: harness.client(),
+      gateway: harness.client(ALICE_TOKEN),
     });
+    const before = harness.records().length;
 
-    await expect(
-      orchestrator.recordFeedback("run-unknown", "resolved", { userId: "alice" }),
-    ).rejects.toMatchObject({ errorClass: "run_not_found" });
-    await expect(
-      orchestrator.recordFeedback(answer.runId, "unresolved", { userId: "bob" }),
-    ).rejects.toMatchObject({ errorClass: "feedback_forbidden" });
-    expect(harness.answerRuns().find((r) => r.runId === answer.runId)?.userFeedback).toBeNull();
-  });
-
-  it("フィードバックには利用者の userId が必須(省略・空文字は拒否。m4)", async () => {
-    const harness = await setup();
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: harness.auditLogger,
-    });
-    const answer = await orchestrator.run({
-      question: "経費精算の締め日は?",
-      gateway: harness.client(),
-    });
-
-    // 型では必須だが、JS からの呼び出し・any 経由の省略も実行時に拒否する
-    const recordWithout = orchestrator.recordFeedback.bind(orchestrator) as (
-      runId: string,
-      feedback: "resolved" | "unresolved",
-      options?: { userId?: string },
-    ) => Promise<void>;
-    await expect(recordWithout(answer.runId, "resolved")).rejects.toMatchObject({
-      errorClass: "invalid_input",
-    });
-    await expect(recordWithout(answer.runId, "resolved", {})).rejects.toMatchObject({
-      errorClass: "invalid_input",
+    await expect(harness.client(BOB_TOKEN).feedbackRun(answer.runId, "resolved")).rejects.toMatchObject({
+      errorClass: "run_not_accepted",
     });
     await expect(
-      orchestrator.recordFeedback(answer.runId, "resolved", { userId: " " }),
-    ).rejects.toMatchObject({ errorClass: "invalid_input" });
-    expect(harness.answerRuns().find((r) => r.runId === answer.runId)?.userFeedback).toBeNull();
-
-    // 照合先は Gateway が認証した userId(申告を省略した run でも alice に束縛されている)
-    await orchestrator.recordFeedback(answer.runId, "resolved", { userId: "alice" });
-    expect(harness.answerRuns().find((r) => r.runId === answer.runId)?.userFeedback).toBe(
-      "resolved",
-    );
-  });
-
-  it("保持する run 数(feedbackWindow)を超えた古い run は run_not_found になる", async () => {
-    const harness = await setup();
-    let counter = 0;
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: new ScriptedLlmClient(() =>
-        scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
-      ),
-      auditLogger: harness.auditLogger,
-      feedbackWindow: 1,
-      ids: () => `run-${++counter}`,
+      harness.client(ALICE_TOKEN).feedbackRun("8b3c7c1e-7e0d-4a4f-9d4e-0d7b3f1f3a2a", "resolved"),
+    ).rejects.toMatchObject({ errorClass: "run_not_accepted" });
+    await expect(harness.client(ALICE_TOKEN, null).feedbackRun(answer.runId, "resolved")).rejects.toMatchObject({
+      errorClass: "orchestrator_credential_rejected",
     });
-    const first = await orchestrator.run({ question: "q1", userId: "alice", gateway: harness.client() });
-    const second = await orchestrator.run({ question: "q2", userId: "alice", gateway: harness.client() });
-
-    await expect(
-      orchestrator.recordFeedback(first.runId, "resolved", { userId: "alice" }),
-    ).rejects.toMatchObject({ errorClass: "run_not_found" });
-    await orchestrator.recordFeedback(second.runId, "unresolved", { userId: "alice" });
+    expect(harness.records()).toHaveLength(before);
+    expect(harness.answerRuns()[0]).toMatchObject({ userFeedback: null });
   });
 });

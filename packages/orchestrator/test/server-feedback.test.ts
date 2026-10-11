@@ -1,23 +1,20 @@
 /**
- * T-021 受け入れ条件3: feedback は run の利用者本人だけが更新でき、他人の run は拒否される。
+ * T-021 受け入れ条件3(ADR-019 で改訂): feedback は run の利用者本人だけが記録でき、他人の run は拒否される。
  *
- * - 本人確認: Gateway の tools/list の最初のソースに describe を1回呼び、結果の `_meta` の
- *   userId(Gateway が認証した利用者)で recordFeedback する。監査に describe が1件残る
- *   (feedback 用に別に採番した runId。対象 run の ToolInvocation には混ぜない)
- * - alice の run に alice のトークン → 更新(JSONL に userFeedback 付きの行が追記される)
- * - bob のトークン → feedback_forbidden(JSONL は変わらない)
- * - 未知の runId → run_not_found、不正な引数 → invalid_request、利用者を確認できない → user_unverified
- * - 本人確認の往復(Gateway の tools/list と describe)には期限がある。応答しない Gateway でも
- *   期限で user_unverified を返し、同時実行の枠を返す(セキュリティレビュー m2 の枠を抱え続けない)
- * - エラーの文言は固定文言で、入力(runId)をエコーしない
+ * - 本人確認は Gateway が runId の署名で行う(POST /runs/{runId}/feedback。Orchestrator は run を
+ *   覚えず、describe も呼ばない)。記録は Gateway の監査に answer_run_feedback として残る
+ * - alice の run に alice のトークン → 記録(統合した AnswerRun の userFeedback になる)
+ * - bob のトークン・未知の runId → run_not_accepted(理由は区別しない。runId をエコーしない)
+ * - 不正な引数 → invalid_request(Gateway に問い合わせない)
+ * - Gateway の run API が応答しなければ期限(feedbackTimeoutMs)で失敗を返し、同時実行の枠を返す
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  FEEDBACK_VERIFICATION_TIMEOUT_MS,
+  FEEDBACK_NOT_ACCEPTED_TEXT,
+  FEEDBACK_TIMEOUT_MS,
   McpGatewayClient,
   ScriptedLlmClient,
-  USER_UNVERIFIED_TEXT,
   type GatewayClientFactory,
 } from "../src/index.js";
 import {
@@ -46,11 +43,9 @@ async function setup(
 ): Promise<{ gateway: GatewayHarness; server: OrchestratorServerHarness }> {
   const gateway = await startGateway({ connectors });
   cleanups.push(() => gateway.close());
-  let counter = 0;
   const server = await startOrchestratorServer({
     gatewayUrl: gateway.url,
     llm: new ScriptedLlmClient(searchThenSubmit()),
-    newVerificationRunId: () => `feedback-check-${(counter += 1)}`,
   });
   cleanups.push(() => server.close());
   return { gateway, server };
@@ -80,8 +75,16 @@ async function askAs(server: OrchestratorServerHarness, token: string): Promise<
   return structured["runId"] as string;
 }
 
-describe("feedback: 本人だけが更新できる", () => {
-  it("alice の run に alice のトークン → userFeedback 付きの AnswerRun を JSONL に追記する", async () => {
+function feedbackRecords(gateway: GatewayHarness, runId: string) {
+  return gateway
+    .records()
+    .flatMap((record) =>
+      record.recordType === "answer_run_feedback" && record.runId === runId ? [record] : [],
+    );
+}
+
+describe("feedback: 本人だけが記録できる(Gateway が runId の署名で検証する)", () => {
+  it("alice の run に alice のトークン → answer_run_feedback が Gateway の監査に残り、統合した AnswerRun の userFeedback になる", async () => {
     const { gateway, server } = await setup();
     const runId = await askAs(server, ALICE_TOKEN);
     const client = await server.connect(ALICE_TOKEN);
@@ -93,59 +96,48 @@ describe("feedback: 本人だけが更新できる", () => {
       text: "フィードバック(解決した)を記録しました。",
       structured: { runId, outcome: "resolved" },
     });
-    const runs = (await server.answerRunLines()).filter((record) => record.runId === runId);
-    expect(runs.map((record) => [record.finalOutcome, record.userFeedback])).toEqual([
-      ["pending", null],
-      ["resolved", null],
-      ["resolved", "resolved"],
+    expect(feedbackRecords(gateway, runId)).toEqual([
+      expect.objectContaining({ userId: "alice", userFeedback: "resolved" }),
     ]);
-    expect(runs.at(-1)?.userId).toBe("alice");
-    // 本人確認の describe は feedback 用の runId で1件。対象 run の ToolInvocation は増えない
-    expect(gateway.toolInvocations("feedback-check-1")).toEqual([
-      expect.objectContaining({ tool: "describe", sourceId: "alpha", userId: "alice", iteration: 0 }),
-    ]);
-    expect(gateway.toolInvocations(runId).map((record) => record.tool)).toEqual([
-      "describe",
-      "search",
-    ]);
+    expect(gateway.answerRuns().find((run) => run.runId === runId)).toMatchObject({
+      finalOutcome: "resolved",
+      userFeedback: "resolved",
+    });
+    // 本人確認のための describe は呼ばない(ToolInvocation は run のものだけ)
+    expect(gateway.toolInvocations().map((record) => record.tool)).toEqual(["describe", "search"]);
 
-    // 同じ利用者は評価を付け直せる(後の行が採られる)
+    // 同じ利用者は評価を付け直せる(最新が採られる)
     const again = await call(client, "feedback", { runId, outcome: "unresolved" });
     expect(again.text).toBe("フィードバック(解決しなかった)を記録しました。");
-    expect((await server.answerRunLines()).at(-1)).toMatchObject({
-      runId,
-      userFeedback: "unresolved",
-    });
+    expect(gateway.answerRuns().find((run) => run.runId === runId)).toMatchObject({ userFeedback: "unresolved" });
   });
 
-  it("bob のトークンで alice の run に feedback すると feedback_forbidden(JSONL は変わらない)", async () => {
-    const { server } = await setup();
+  it("bob のトークンで alice の run に feedback すると run_not_accepted(記録は変わらない)", async () => {
+    const { gateway, server } = await setup();
     const runId = await askAs(server, ALICE_TOKEN);
-    const before = await server.answerRunLines();
+    const before = gateway.records().length;
     const bob = await server.connect(BOB_TOKEN);
 
     const result = await call(bob, "feedback", { runId, outcome: "unresolved" });
 
     expect(result.isError).toBe(true);
-    expect(result.structured).toEqual({ errorClass: "feedback_forbidden" });
-    expect(result.text).toBe(
-      "この回答にはフィードバックを記録できません(質問した本人だけが記録できます)。",
-    );
+    expect(result.structured).toEqual({ errorClass: "run_not_accepted" });
+    expect(result.text).toBe(FEEDBACK_NOT_ACCEPTED_TEXT);
     expect(result.text).not.toContain(runId);
-    expect(await server.answerRunLines()).toEqual(before);
+    expect(gateway.records()).toHaveLength(before);
   });
 
-  it("未知の runId は run_not_found(runId をエコーしない)", async () => {
-    const { server } = await setup();
+  it("未知の runId は run_not_accepted(runId をエコーしない)", async () => {
+    const { gateway, server } = await setup();
     const client = await server.connect(ALICE_TOKEN);
     const unknown = "dev-only-unknown-run";
 
     const result = await call(client, "feedback", { runId: unknown, outcome: "resolved" });
 
     expect(result.isError).toBe(true);
-    expect(result.structured).toEqual({ errorClass: "run_not_found" });
+    expect(result.structured).toEqual({ errorClass: "run_not_accepted" });
     expect(result.text).not.toContain(unknown);
-    expect(await server.answerRunLines()).toEqual([]);
+    expect(gateway.answerRuns()).toEqual([]);
   });
 
   it.each([
@@ -162,22 +154,23 @@ describe("feedback: 本人だけが更新できる", () => {
     expect(result.isError).toBe(true);
     expect(result.structured).toEqual({ errorClass: "invalid_request" });
     expect(gateway.toolInvocations()).toEqual([]);
+    expect(gateway.records()).toEqual([]);
   });
 
-  it("本人確認の describe に Gateway が応答しなければ、期限(verificationTimeoutMs)で user_unverified を返して枠を返す", async () => {
+  it("Gateway の run API が応答しなければ、期限(feedbackTimeoutMs)で失敗を返して枠を返す", async () => {
     const gateway = await startGateway({
       connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
     });
     cleanups.push(() => gateway.close());
-    // tools/list は実 Gateway、describe は応答しない(signal にも従わない)クライアント
+    // tools/list は実 Gateway、feedback の申告は応答しない(signal にも従わない)クライアント
     const factory: GatewayClientFactory = (options) => {
       const inner = new McpGatewayClient(options);
       return {
         listTools: (callOptions) => inner.listTools(callOptions),
-        callTool: (name, args, meta, callOptions) =>
-          name === "describe"
-            ? new Promise(() => undefined)
-            : inner.callTool(name, args, meta, callOptions),
+        callTool: (name, args, meta, callOptions) => inner.callTool(name, args, meta, callOptions),
+        startRun: (input, callOptions) => inner.startRun(input, callOptions),
+        finishRun: (runId, input, callOptions) => inner.finishRun(runId, input, callOptions),
+        feedbackRun: () => new Promise(() => undefined),
         close: () => inner.close(),
       };
     };
@@ -185,7 +178,7 @@ describe("feedback: 本人だけが更新できる", () => {
       gatewayUrl: gateway.url,
       llm: new ScriptedLlmClient(searchThenSubmit()),
       createGatewayClient: factory,
-      verificationTimeoutMs: 200,
+      feedbackTimeoutMs: 200,
     });
     cleanups.push(() => server.close());
     const client = await server.connect(ALICE_TOKEN);
@@ -193,24 +186,12 @@ describe("feedback: 本人だけが更新できる", () => {
     const started = Date.now();
     const result = await call(client, "feedback", { runId: "dev-only-run", outcome: "resolved" });
 
-    expect(result).toEqual({
-      isError: true,
-      text: USER_UNVERIFIED_TEXT,
-      structured: { errorClass: "user_unverified" },
-    });
-    expect(Date.now() - started).toBeLessThan(3_000);
-    expect(FEEDBACK_VERIFICATION_TIMEOUT_MS).toBe(10_000);
-    expect(server.limits.feedback.active).toBe(0);
-    expect(await server.answerRunLines()).toEqual([]);
-  });
-
-  it("Gateway に検索できるソースがなく利用者を確認できなければ user_unverified", async () => {
-    const { server } = await setup([]);
-    const client = await server.connect(ALICE_TOKEN);
-
-    const result = await call(client, "feedback", { runId: "r-1", outcome: "resolved" });
-
     expect(result.isError).toBe(true);
-    expect(result.structured).toEqual({ errorClass: "user_unverified" });
+    expect(result.structured).toEqual({ errorClass: "gateway_timeout" });
+    expect(result.text).toBe("フィードバックを記録できませんでした。時間をおいて再度お試しください。");
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(FEEDBACK_TIMEOUT_MS).toBe(10_000);
+    expect(server.limits.feedback.active).toBe(0);
+    expect(gateway.records()).toEqual([]);
   });
 });

@@ -1,38 +1,33 @@
 /**
  * AnswerRun の主体を Gateway が認証した userId に束縛する(T-007 セキュリティレビュー
- * 2026-09-27 H1)。
- * - describe の結果の `_meta`(GATEWAY_RESULT_META_KEYS.userId)から利用者を得て、AnswerRun
- *   (pending)はその後に書く。startedAt は run の開始時刻
- * - 呼び出し元の申告(RunInput.userId)が食い違えば fail-closed: run を error
- *   (failureReason: user_mismatch)で閉じ、LLM・検索に進まない
+ * 2026-09-27 H1。ADR-019 で Gateway が書くことにより構造的に成り立つ)。
+ * - AnswerRun(pending)は run の開始(POST /runs)で Gateway が認証値の userId で書く。
+ *   Orchestrator からは指定できない。startedAt は Gateway の時刻
+ * - 呼び出し元の申告(RunInput.userId)が describe の結果の `_meta` の userId と食い違えば
+ *   fail-closed: run を error(failureReason: user_mismatch)で閉じ、LLM・検索に進まない
  * - describe フェーズで利用者を確認できなければ(報告なし・食い違い・HTTP の認証失敗)
- *   AnswerRun を書かずに error で終える
+ *   探索せず error で閉じる(run は Gateway に認証値で残る)
  * - run の途中で別の利用者が報告されたら user_mismatch で止める
  */
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  AuditLogger,
-  BufferedAuditSink,
-  InMemoryAuditStore,
-  type AuditRecord,
-  type AuditSink,
-} from "@kp/audit";
 import {
   Orchestrator,
   OrchestratorError,
   ScriptedLlmClient,
   scriptedSubmit,
   scriptedToolUse,
+  type FinishRunInput,
   type GatewayCallOptions,
   type GatewayCallOutcome,
   type GatewayClient,
   type GatewayToolSchema,
+  type StartRunResult,
 } from "../src/index.js";
 import {
+  ALICE_TOKEN,
   BOB_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
-  TEST_DOC_ID_AUDIT,
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
@@ -46,9 +41,10 @@ afterEach(async () => {
   }
 });
 
-async function setup(): Promise<GatewayHarness> {
+async function setup(now?: () => number): Promise<GatewayHarness> {
   const harness = await startGateway({
     connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
+    ...(now !== undefined ? { now } : {}),
   });
   harnesses.push(harness);
   return harness;
@@ -68,18 +64,10 @@ function resolvingScript(): ScriptedLlmClient {
   ]);
 }
 
-function answerRunsIn(store: InMemoryAuditStore) {
-  return store.records().flatMap((r) => (r.recordType === "answer_run" ? [r] : []));
-}
-
 describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
-  it("申告がなければ Gateway が認証した userId を記録する(ToolInvocation と runId・userId で結合できる)", async () => {
+  it("申告がなければ Gateway が認証した userId で記録される(ToolInvocation と runId・userId で結合できる)", async () => {
     const harness = await setup();
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: harness.auditLogger,
-    });
+    const orchestrator = new Orchestrator({ llm: resolvingScript() });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -98,11 +86,7 @@ describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
   it("申告が Gateway の認証と食い違えば fail-closed(error・user_mismatch。LLM を呼ばず、describe より後の Gateway 呼び出しもしない)", async () => {
     const harness = await setup();
     const llm = resolvingScript();
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm,
-      auditLogger: harness.auditLogger,
-    });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -115,7 +99,7 @@ describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
     expect(answer.citations).toEqual([]);
     expect(llm.requests).toHaveLength(0);
     expect(harness.toolInvocations(answer.runId).map((r) => r.tool)).toEqual(["describe"]);
-    // 記録する主体は申告(alice)ではなく Gateway が認証した bob
+    // 記録する主体は申告(alice)ではなく Gateway が認証した bob(Gateway が書く)
     expect(harness.answerRuns()).toEqual([
       expect.objectContaining({
         runId: answer.runId,
@@ -124,15 +108,20 @@ describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
         failureReason: "user_mismatch",
       }),
     ]);
-    // 申告した利用者(alice)は、この run にフィードバックできない
+    // 申告した利用者(alice)は、この run にフィードバックできない(runId は bob に束縛)
     await expect(
-      orchestrator.recordFeedback(answer.runId, "resolved", { userId: "alice" }),
-    ).rejects.toMatchObject({ errorClass: "feedback_forbidden" });
+      harness.client(ALICE_TOKEN).feedbackRun(answer.runId, "resolved"),
+    ).rejects.toMatchObject({ errorClass: "run_not_accepted" });
   });
 
-  it("AnswerRun(pending)は describe の後に書き、startedAt は run の開始時刻", async () => {
-    const harness = await setup();
+  it("AnswerRun(pending)は run の開始(describe より前)に Gateway が書き、startedAt は Gateway の時刻", async () => {
     const events: string[] = [];
+    // Gateway の時計: 最初のツール呼び出しが届くまでは 09:00:00(run の開始)、以降は 09:00:07
+    const harness = await setup(() =>
+      events.includes("gateway:describe")
+        ? Date.parse("2026-09-27T09:00:07.000Z")
+        : Date.parse("2026-09-27T09:00:00.000Z"),
+    );
     const inner = harness.client();
     const gateway: GatewayClient = {
       listTools: (options?: GatewayCallOptions): Promise<readonly GatewayToolSchema[]> =>
@@ -141,35 +130,28 @@ describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
         events.push(`gateway:${name}`);
         return inner.callTool(name, args, meta, options);
       },
+      startRun: (input, options): Promise<StartRunResult> => {
+        events.push("run:start");
+        return inner.startRun(input, options);
+      },
+      finishRun: (runId, input: FinishRunInput, options) => {
+        events.push(`run:finish:${input.outcome}`);
+        return inner.finishRun(runId, input, options);
+      },
+      feedbackRun: (runId, outcome, options) => inner.feedbackRun(runId, outcome, options),
       close: () => inner.close(),
     };
-    const store = new InMemoryAuditStore();
-    const buffered = new BufferedAuditSink(store);
-    const sink: AuditSink = {
-      async write(record: AuditRecord) {
-        if (record.recordType === "answer_run") {
-          events.push(`answer_run:${record.finalOutcome}`);
-        }
-        await buffered.write(record);
-      },
-    };
-    const times = [Date.parse("2026-09-27T09:00:00.000Z")];
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: resolvingScript(),
-      auditLogger: new AuditLogger(sink),
-      now: () => times.shift() ?? Date.parse("2026-09-27T09:00:07.000Z"),
+
+    // Orchestrator の時計も Gateway と同じ日付にそろえる(runId の有効期間の判定に使う)
+    await new Orchestrator({ llm: resolvingScript(), now: () => Date.parse("2026-09-27T09:00:00.000Z") }).run({
+      question: "経費精算の締め日は?",
+      userId: "alice",
+      gateway,
     });
 
-    await orchestrator.run({ question: "経費精算の締め日は?", userId: "alice", gateway });
-
-    expect(events).toEqual([
-      "gateway:describe",
-      "answer_run:pending",
-      "gateway:search",
-      "answer_run:resolved",
-    ]);
-    expect(answerRunsIn(store)[0]).toMatchObject({
+    expect(events).toEqual(["run:start", "gateway:describe", "gateway:search", "run:finish:resolved"]);
+    expect(harness.records()[0]?.recordType).toBe("answer_run");
+    expect(harness.answerRuns()[0]).toMatchObject({
       userId: "alice",
       startedAt: "2026-09-27T09:00:00.000Z",
       endedAt: "2026-09-27T09:00:07.000Z",
@@ -178,33 +160,25 @@ describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
 
   it("申告の userId が空文字なら invalid_input(Gateway にアクセスしない)", async () => {
     const gateway = new FakeGatewayClient(["alpha"], () => describeOk("alpha", "alice"));
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm: new ScriptedLlmClient([]),
-      auditLogger: new AuditLogger(new BufferedAuditSink(new InMemoryAuditStore())),
-    });
+    const orchestrator = new Orchestrator({ llm: new ScriptedLlmClient([]) });
     await expect(
       orchestrator.run({ question: "q", userId: "  ", gateway }),
     ).rejects.toBeInstanceOf(OrchestratorError);
     expect(gateway.calls).toEqual([]);
+    expect(gateway.started).toEqual([]);
   });
 });
 
-describe("H1: 利用者を確認できないときは AnswerRun を書かない", () => {
-  function orchestratorWith(store: InMemoryAuditStore, llm = new ScriptedLlmClient([])) {
-    return new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm,
-      auditLogger: new AuditLogger(new BufferedAuditSink(store)),
-    });
+describe("H1: 利用者を確認できないときは探索せず error で閉じる", () => {
+  function finishOf(gateway: FakeGatewayClient) {
+    return gateway.finished.map((f) => [f.input.outcome, f.input.failureReason]);
   }
 
-  it("Gateway が describe の結果で利用者を報告しなければ error(user_unverified)で、申告値でも記録しない", async () => {
-    const store = new InMemoryAuditStore();
+  it("Gateway が describe の結果で利用者を報告しなければ error(user_unverified)。LLM を呼ばず、run は error で閉じる", async () => {
     const llm = new ScriptedLlmClient([]);
     const gateway = new FakeGatewayClient(["alpha"], () => describeOk("alpha"));
 
-    const answer = await orchestratorWith(store, llm).run({
+    const answer = await new Orchestrator({ llm }).run({
       question: "経費精算の締め日は?",
       userId: "alice",
       gateway,
@@ -213,23 +187,23 @@ describe("H1: 利用者を確認できないときは AnswerRun を書かない"
     expect(answer.outcome).toBe("error");
     expect(answer.answer).toContain("user_unverified");
     expect(llm.requests).toHaveLength(0);
-    expect(answerRunsIn(store)).toEqual([]);
+    expect(gateway.started).toHaveLength(1);
+    expect(finishOf(gateway)).toEqual([["error", "user_unverified"]]);
   });
 
-  it("describe の結果の userId が食い違えば AnswerRun を書かない(user_unverified)", async () => {
-    const store = new InMemoryAuditStore();
+  it("describe の結果の userId が食い違えば user_unverified で閉じる", async () => {
     const gateway = new FakeGatewayClient(["alpha", "beta"], (call) =>
       describeOk(String(call.args["source"]), call.args["source"] === "alpha" ? "alice" : "bob"),
     );
 
-    const answer = await orchestratorWith(store).run({ question: "q", gateway });
+    const answer = await new Orchestrator({ llm: new ScriptedLlmClient([]) }).run({ question: "q", gateway });
 
     expect(answer.outcome).toBe("error");
     expect(answer.answer).toContain("user_unverified");
-    expect(answerRunsIn(store)).toEqual([]);
+    expect(finishOf(gateway)).toEqual([["error", "user_unverified"]]);
   });
 
-  it("describe フェーズで HTTP の認証に失敗したら(一部のソースだけでも)AnswerRun を書かない", async () => {
+  it("describe フェーズで HTTP の認証に失敗したら(一部のソースだけでも)探索せず error で閉じる(run は認証済みの利用者で残る)", async () => {
     const harness = await startGateway({
       connectors: [
         new CorpusConnector("alpha", [EXPENSE_POLICY]),
@@ -247,25 +221,24 @@ describe("H1: 利用者を確認できないときは AnswerRun を書かない"
         calls += 1;
         return (calls === 1 ? valid : revoked).callTool(name, args, meta, options);
       },
+      startRun: (input, options) => valid.startRun(input, options),
+      finishRun: (runId, input, options) => valid.finishRun(runId, input, options),
+      feedbackRun: (runId, outcome, options) => valid.feedbackRun(runId, outcome, options),
       close: () => valid.close(),
     };
     const llm = new ScriptedLlmClient([]);
-    const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
-      llm,
-      auditLogger: harness.auditLogger,
-    });
 
-    const answer = await orchestrator.run({ question: "q", gateway });
+    const answer = await new Orchestrator({ llm }).run({ question: "q", gateway });
 
     expect(answer.outcome).toBe("error");
     expect(answer.answer).toContain("gateway_unauthenticated");
     expect(llm.requests).toHaveLength(0);
-    expect(harness.answerRuns()).toEqual([]);
+    expect(harness.answerRuns()).toEqual([
+      expect.objectContaining({ userId: "alice", finalOutcome: "error", failureReason: "gateway_unauthenticated" }),
+    ]);
   });
 
-  it("run の途中で Gateway が別の利用者を報告したら user_mismatch で止める(AnswerRun は認証済みの利用者で error)", async () => {
-    const store = new InMemoryAuditStore();
+  it("run の途中で Gateway が別の利用者を報告したら user_mismatch で止める(run は認証済みの利用者で error)", async () => {
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
       () => scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
@@ -276,14 +249,12 @@ describe("H1: 利用者を確認できないときは AnswerRun を書かない"
         : searchHit("alpha", "doc-1", "mallory"),
     );
 
-    const answer = await orchestratorWith(store, llm).run({ question: "q", gateway });
+    const answer = await new Orchestrator({ llm }).run({ question: "q", gateway });
 
     expect(answer.outcome).toBe("error");
     expect(answer.answer).toContain("user_mismatch");
     // 食い違った結果は台帳に入れず、LLM にも渡さない(2ターン目を呼ばない)
     expect(llm.requests).toHaveLength(1);
-    expect(answerRunsIn(store)).toEqual([
-      expect.objectContaining({ userId: "alice", finalOutcome: "error", failureReason: "user_mismatch" }),
-    ]);
+    expect(finishOf(gateway)).toEqual([["error", "user_mismatch"]]);
   });
 });

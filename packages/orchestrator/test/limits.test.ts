@@ -9,6 +9,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import { AuditLogger } from "@kp/audit";
 import {
+  GatewayClientError,
   LlmError,
   McpGatewayClient,
   NO_CITATION_NOTICE,
@@ -28,7 +29,6 @@ import {
   EXPENSE_POLICY,
   startGateway,
   type GatewayHarness,
-  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { startStalledMcpServer } from "./helpers/mock-http.js";
 import { firstHit, isFinalInstruction, searchHits } from "./helpers/script.js";
@@ -74,9 +74,7 @@ describe("maxIterations", () => {
       ]);
     });
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { maxIterations: 2 },
     });
 
@@ -108,9 +106,7 @@ describe("maxIterations", () => {
       scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
     );
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { maxIterations: 1 },
     });
 
@@ -153,9 +149,7 @@ describe("runTimeoutMs", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { runTimeoutMs: 200 },
     });
 
@@ -188,23 +182,24 @@ describe("runTimeoutMs: Gateway への接続(セキュリティレビュー m1)"
     try {
       const llm = new ScriptedLlmClient(() => scriptedText("呼ばれない"));
       const orchestrator = new Orchestrator({
-        docIdAudit: TEST_DOC_ID_AUDIT,
         llm,
-        // 利用者を確認できないので AnswerRun は書かれない
-        auditLogger: new AuditLogger({ write: async () => undefined }),
         settings: { runTimeoutMs: 200 },
       });
 
       const started = Date.now();
-      const { answer, failureReason } = await orchestrator.runDetailed({
-        question: "経費精算の締め日は?",
-        gateway,
-      });
+      // run の開始の申告(POST /runs)にも run の時間上限が効く。応答しない Gateway では
+      // runId を得られないため、回答(Answer)ではなく中断の失敗で終わる(ADR-019 決定3・6)
+      const error = await orchestrator
+        .runDetailed({ question: "経費精算の締め日は?", gateway })
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
 
       // 1リクエストの期限(既定 60 秒)や、期限のない notifications/initialized の送信を待たない
       expect(Date.now() - started).toBeLessThan(3_000);
-      expect(answer.outcome).toBe("error");
-      expect(failureReason).toBe("run_timeout");
+      expect(error).toBeInstanceOf(GatewayClientError);
+      expect((error as GatewayClientError).errorClass).toMatch(/^(aborted|gateway_timeout|gateway_unavailable|gateway_protocol_error)$/);
       expect(llm.requests).toHaveLength(0);
       expect(stalled.methods).not.toContain("tools/list");
     } finally {
@@ -237,9 +232,7 @@ describe("costLimitPerQuery", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { costLimitPerQuery: 0.01 },
     });
 
@@ -269,9 +262,7 @@ describe("costLimitPerQuery", () => {
       () => scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
     ]);
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { costLimitPerQuery: 1 },
     });
 
@@ -299,7 +290,7 @@ describe("submit_answer の催促", () => {
         return scriptedSubmit({ answer: "不明です。", citations: [], confidence: 0.1 });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -314,7 +305,7 @@ describe("submit_answer の催促", () => {
   it("催促後も提出しなければ unresolved(モデルの自由文は回答にしない)", async () => {
     const harness = await setup();
     const llm = new ScriptedLlmClient(() => scriptedText("締め日は10日です(根拠なし)。"));
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -342,7 +333,7 @@ describe("submit_answer の催促", () => {
           },
         ]),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -365,7 +356,7 @@ describe("失敗時は outcome: error", () => {
         throw new LlmError("llm_rate_limited", "the Claude API rate limit was exceeded");
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -382,27 +373,29 @@ describe("失敗時は outcome: error", () => {
     });
   });
 
-  it("Gateway がセッショントークンを拒否したら LLM を呼ばずに error(利用者を確認できないので AnswerRun も書かない。H1)", async () => {
+  it("Gateway がセッショントークンを拒否したら run を開始できず、LLM を呼ばずに失敗する(AnswerRun は書かれない。H1 / ADR-019)", async () => {
     const harness = await setup();
     const llm = new ScriptedLlmClient([]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
-    const answer = await orchestrator.run({
-      question: "経費精算の締め日は?",
-      userId: "mallory",
-      gateway: harness.client("dev-only-invalid-session"),
-    });
+    const error = await orchestrator
+      .run({
+        question: "経費精算の締め日は?",
+        userId: "mallory",
+        gateway: harness.client("dev-only-invalid-session"),
+      })
+      .then(
+        () => undefined,
+        (e: unknown) => e,
+      );
 
     expect(llm.requests).toHaveLength(0);
-    expect(answer.outcome).toBe("error");
-    expect(answer.answer).toContain("gateway_unauthenticated");
-    expect(answer.answer).not.toContain("dev-only-invalid-session");
-    // 申告の userId(mallory)で監査レコードを書かない
+    expect(error).toBeInstanceOf(GatewayClientError);
+    expect((error as GatewayClientError).errorClass).toBe("unauthenticated");
+    expect(String(error)).not.toContain("dev-only-invalid-session");
+    // 申告の userId(mallory)で監査レコードを書かない。run も始まっていない
     expect(harness.answerRuns()).toEqual([]);
     expect(harness.toolInvocations()).toHaveLength(0);
-    await expect(
-      orchestrator.recordFeedback(answer.runId, "resolved", { userId: "mallory" }),
-    ).rejects.toMatchObject({ errorClass: "run_not_found" });
   });
 
   it("別の利用者のセッションでは、その利用者の資格情報で Gateway が呼ばれる", async () => {
@@ -411,7 +404,7 @@ describe("失敗時は outcome: error", () => {
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
       () => scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -442,9 +435,7 @@ describe("ツール呼び出しの件数の上限(m1)", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { maxToolCallsPerTurn: 3 },
     });
 
@@ -496,9 +487,7 @@ describe("ツール呼び出しの件数の上限(m1)", () => {
       return scriptedSubmit({ answer: "不明", citations: [], confidence: 0 });
     });
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
       settings: { maxToolCallsPerRun: 6 },
     });
 
@@ -529,9 +518,7 @@ describe("ツール呼び出しの件数の上限(m1)", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
     });
 
     await orchestrator.run({ question: "経費精算の締め日は?", gateway: harness.client() });

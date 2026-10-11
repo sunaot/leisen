@@ -4,7 +4,7 @@
  *
  *   kp-ask --gateway http://127.0.0.1:8787/mcp [--token <セッショントークン>]
  *          [--model <モデルID>] [--max-iterations N] [--effort low|medium|high|xhigh|max]
- *          [--user-id <userId>] [--config <deployment.yaml>] [--answer-run-jsonl <path>]
+ *          [--user-id <userId>] [--config <deployment.yaml>]
  *          [--json] "質問文"
  *
  * - セッショントークンは --token か環境変数 KP_SESSION_TOKEN で渡す(--token は
@@ -14,23 +14,19 @@
  *   その旨を表示して終了コード 2
  * - LLM バックエンドは --llm で選ぶ(既定 anthropic。openai-compatible は LM Studio 等の
  *   OpenAI 互換エンドポイント。指定の解釈は bin/llm-options.ts、ADR-017 決定1)
- * - AnswerRun の監査レコードは既定で stderr に JSON 1行で出す(開発用。記録を黙って捨てない
- *   ため)。--answer-run-jsonl <path> を付けるとそのファイルに追記し(kp-ask serve と同じ形式・
- *   同じ規則: 追記のみ、新規作成は 0600、ディレクトリは作らない、Gateway の監査ログと同じファイルは
- *   拒否)、stderr には出さない。この照合のため --answer-run-jsonl には --config が必須(serve と
- *   同じ強さ。--config なしでは Gateway の監査ログかどうかを判定できない)。
- *   環境変数 KP_ANSWER_RUN_JSONL は読まない(serve と同じファイルに2プロセスで書かないため)。
- *   ToolInvocation は Gateway 側の監査に記録される
+ * - run の記録(AnswerRun)は Gateway の run API に申告する(ADR-019)。環境変数
+ *   KP_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
+ *   付ける。未設定なら開発用の既定値(WARNING)、NODE_ENV=production では必須(終了コード 2)。
+ *   AnswerRun も ToolInvocation も Gateway 側の監査に記録され、kp-ask は監査ストアに触れない
  * - --json の出力契約(README「kp-ask の出力契約」): 回答できたとき・run が error で終わったときは
  *   Answer、回答を返せなかったとき(引数・設定・資格情報の不備、実行時の例外)は失敗の表現
  *   { outcome: "error", errorClass, message[, runId] } を stdout に JSON で1つ出す。終了コードは
  *   --json の有無で変わらない
  * - AnswerRun の質問者は Gateway が認証した userId。--user-id(または環境変数 KP_USER_ID)は
  *   照合用の申告で、一致しなければ run は error(user_mismatch)。省略時は照合しない
- * - --config は deployment.yaml(citedDocIds の記録方針: connectors[] の kind / privateScopes
- *   と audit.privateScopeDocIds)。hashed なら環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵が
- *   要る(生成例: openssl rand -hex 32。導入ごとに1回だけ作って同じ値を使う)。--config を
- *   省略すると citedDocIds を記録しない
+ * - --config は deployment.yaml(orchestrator セクションの maxIterations / costLimitPerQuery を
+ *   探索の設定にする。--max-iterations が優先)。省略すると既定の設定で動く。citedDocIds の
+ *   記録方針は Gateway がかける(ADR-019 決定5)ため、ここでは読まない
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
@@ -45,25 +41,14 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
-  AuditLogger,
-  type AuditSink,
-} from "@kp/audit";
-import {
   DeploymentConfigError,
   loadDeploymentConfig,
-  type DeploymentConfig,
 } from "@kp/gateway";
 import type { Answer } from "../answer.js";
 import {
-  docIdAuditFromDeployment,
-  OMIT_ALL_DOC_IDS,
-  StderrDebugAuditSink,
-  type CitedDocIdAudit,
-} from "../audit.js";
-import {
   orchestratorSettingsSchema,
   type LlmBackendConfigInput,
-  type OrchestratorSettings,
+  type OrchestratorSettingsInput,
 } from "../config.js";
 import {
   GatewayClientError,
@@ -83,19 +68,18 @@ import type {
   LlmTurn,
 } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
-import { prepareAnswerRunJsonlSink } from "../server/answer-run-jsonl.js";
+import {
+  ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING,
+  ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
+  resolveOrchestratorCredential,
+} from "./credential-options.js";
 import {
   LLM_USAGE_LINES,
   backendHintFor,
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
-import {
-  AUDIT_HMAC_KEY_REQUIRED_MESSAGE,
-  runServe,
-  waitForTerminationSignal,
-  type ServeEndpoint,
-} from "./serve.js";
+import { runServe, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
 import {
   INSECURE_UPSTREAM_HINT,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -107,14 +91,13 @@ import {
 export const USAGE = [
   "usage: kp-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
   "              [--model <モデルID>] [--max-iterations <N>] [--effort low|medium|high|xhigh|max]",
-  "              [--user-id <userId>] [--config <deployment.yaml>] [--answer-run-jsonl <path>]",
+  "              [--user-id <userId>] [--config <deployment.yaml>]",
   "              [--json] <質問文>",
   "  セッショントークンは環境変数 KP_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
-  "  --user-id は照合用(省略時は Gateway が認証した利用者を記録します)。",
-  "  --config の audit.privateScopeDocIds が hashed なら KP_AUDIT_HMAC_KEY が必要です(生成例: openssl rand -hex 32)。",
-  "  AnswerRun(監査レコード)は既定で stderr に出します。--answer-run-jsonl を付けるとそのファイルに追記します(0600)。",
-  "  --answer-run-jsonl には --config が必要です(Gateway の監査ログと同じファイルでないことを照合するため)。",
+  "  --user-id は照合用(Gateway が認証した利用者と食い違えば run は error になります)。",
+  "  --config の orchestrator セクション(maxIterations / costLimitPerQuery)を探索の設定にします(--max-iterations が優先)。",
+  ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -141,6 +124,8 @@ export interface CliDependencies {
   createGatewayClient(options: {
     readonly url: string;
     readonly sessionToken: string;
+    /** Orchestrator の資格情報(run API と runId を申告する tools/call に付ける。ADR-019 決定3) */
+    readonly orchestratorCredential?: string;
     /** MCP 1リクエストのタイムアウト(ms)。省略時はクライアントの既定 */
     readonly requestTimeoutMs?: number;
     /** ループバック以外の http の Gateway を許す(--allow-insecure-upstream) */
@@ -201,10 +186,12 @@ interface CliArgs {
   /** 照合用の申告(省略時は Gateway が認証した userId をそのまま使う) */
   readonly userId: string | undefined;
   readonly config: string | undefined;
-  /** AnswerRun の追記先(省略時は stderr) */
-  readonly answerRunJsonl: string | undefined;
   readonly json: boolean;
-  readonly settings: OrchestratorSettings;
+  /** --max-iterations(--config の値より優先) */
+  readonly maxIterations: number | undefined;
+  /** Gateway と共有する Orchestrator の資格情報(秘密。表示しない) */
+  readonly orchestratorCredential: string;
+  readonly credentialSource: "env" | "dev-default";
   readonly llm: LlmBackendConfigInput;
   /** --allow-insecure-upstream(Gateway・LLM のループバック以外の http を許す) */
   readonly allowInsecureUpstream: boolean;
@@ -248,12 +235,9 @@ function parseCliArgs(
   let maxIterations: number | undefined;
   if (values["max-iterations"] !== undefined) {
     maxIterations = Number(values["max-iterations"]);
-  }
-  const settings = orchestratorSettingsSchema.safeParse(
-    maxIterations !== undefined ? { maxIterations } : {},
-  );
-  if (!settings.success) {
-    throw new UsageError("--max-iterations は 1〜20 の整数で指定してください。");
+    if (!orchestratorSettingsSchema.safeParse({ maxIterations }).success) {
+      throw new UsageError("--max-iterations は 1〜20 の整数で指定してください。");
+    }
   }
 
   const llm = parseLlmCliOptions(values, env, { allowInsecureHttp: insecure.enabled });
@@ -261,16 +245,10 @@ function parseCliArgs(
     throw new UsageError(llm.message);
   }
 
-  const answerRunJsonl =
-    values["answer-run-jsonl"] !== undefined && values["answer-run-jsonl"].trim() !== ""
-      ? values["answer-run-jsonl"].trim()
-      : undefined;
-  if (answerRunJsonl !== undefined && values.config === undefined) {
-    // Gateway の監査ログ(audit.jsonl.path / rawQueryPath)と同じファイルでないことは --config が
-    // ないと照合できない(kp-ask serve は --config が必須なので常に照合される)
-    throw new UsageError(
-      "--answer-run-jsonl には --config が必要です(Gateway の監査ログと同じファイルでないことを照合するため)。",
-    );
+  // Gateway の run API に付ける Orchestrator の資格情報(本番では必須。値は表示しない)
+  const credential = resolveOrchestratorCredential(env);
+  if (!credential.ok) {
+    throw new UsageError(credential.message);
   }
 
   return {
@@ -279,9 +257,10 @@ function parseCliArgs(
     question,
     userId: values["user-id"] ?? env["KP_USER_ID"],
     config: values.config,
-    answerRunJsonl,
     json: values.json === true,
-    settings: settings.data,
+    maxIterations,
+    orchestratorCredential: credential.credential,
+    credentialSource: credential.source,
     llm: llm.config,
     allowInsecureUpstream: insecure.enabled,
   };
@@ -303,7 +282,6 @@ function parseArgsStrict(argv: readonly string[]) {
       "allow-insecure-upstream": { type: "boolean" },
       "user-id": { type: "string" },
       config: { type: "string" },
-      "answer-run-jsonl": { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -444,6 +422,7 @@ export async function runCli(
     gateway = deps.createGatewayClient({
       url: args.gateway,
       sessionToken: args.token,
+      orchestratorCredential: args.orchestratorCredential,
       ...(args.allowInsecureUpstream ? { allowInsecureHttp: true } : {}),
     });
     llm = new ObservingLlmClient(deps.createLlmClient(args.llm));
@@ -461,14 +440,19 @@ export async function runCli(
         )
       : fail(2, "invalid_configuration", "クライアントを初期化できませんでした。");
   }
+  if (args.credentialSource === "dev-default") {
+    io.stderr(ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING);
+  }
 
-  let deployment: { readonly config: DeploymentConfig; readonly configPath: string } | undefined;
-  let docIdAudit: CitedDocIdAudit = OMIT_ALL_DOC_IDS;
+  // --config の orchestrator セクションを探索の設定にする(--max-iterations が優先)
+  let settings: OrchestratorSettingsInput = {};
   if (args.config !== undefined) {
     try {
-      const config = loadDeploymentConfig(args.config);
-      docIdAudit = docIdAuditFromDeployment(config, deps.env["KP_AUDIT_HMAC_KEY"]);
-      deployment = { config, configPath: resolve(args.config) };
+      const { maxIterations, costLimitPerQuery } = loadDeploymentConfig(resolve(args.config)).orchestrator;
+      settings = {
+        maxIterations,
+        ...(costLimitPerQuery !== undefined ? { costLimitPerQuery } : {}),
+      };
     } catch (error) {
       await gateway.close();
       // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)
@@ -482,35 +466,16 @@ export async function runCli(
     }
   }
 
-  // AnswerRun の書き先: 既定は stderr(開発用。黙って捨てない)。--answer-run-jsonl ならファイル
-  // (kp-ask serve と同じ検査とシンク。--config があれば Gateway の監査ログと同じファイルを拒否する)
-  let sink: AuditSink = new StderrDebugAuditSink((line) => io.stderr(line));
-  if (args.answerRunJsonl !== undefined) {
-    const prepared = await prepareAnswerRunJsonlSink(args.answerRunJsonl, deployment);
-    if (!prepared.ok) {
-      await gateway.close();
-      return fail(2, "invalid_configuration", prepared.message);
-    }
-    sink = prepared.sink;
+  if (args.maxIterations !== undefined) {
+    settings = { ...settings, maxIterations: args.maxIterations };
   }
 
   let orchestrator: Orchestrator;
   try {
-    orchestrator = new Orchestrator({
-      llm,
-      auditLogger: new AuditLogger(sink),
-      docIdAudit,
-      settings: args.settings,
-    });
-  } catch (error) {
+    orchestrator = new Orchestrator({ llm, settings });
+  } catch {
     await gateway.close();
-    return fail(
-      2,
-      "invalid_configuration",
-      error instanceof OrchestratorError && error.errorClass === "invalid_configuration"
-        ? AUDIT_HMAC_KEY_REQUIRED_MESSAGE
-        : "Orchestrator を初期化できませんでした。",
-    );
+    return fail(2, "invalid_configuration", "Orchestrator を初期化できませんでした。");
   }
   try {
     const answer = await orchestrator.run({
@@ -534,9 +499,16 @@ export async function runCli(
     io.stdout(args.json ? JSON.stringify(answer, null, 2) : renderAnswer(answer));
     return answer.outcome === "error" ? 1 : 0;
   } catch (error) {
-    return error instanceof OrchestratorError
-      ? fail(1, error.errorClass, `実行できませんでした(${error.errorClass}): ${error.message}`)
-      : fail(1, "internal_error", "実行できませんでした(内部エラー)。");
+    if (error instanceof OrchestratorError) {
+      return fail(1, error.errorClass, `実行できませんでした(${error.errorClass}): ${error.message}`);
+    }
+    if (error instanceof GatewayClientError) {
+      // run API(開始・終了の申告)の失敗。固定文言(トークン・URL を含まない)
+      const errorClass =
+        error.errorClass === "unauthenticated" ? "gateway_unauthenticated" : error.errorClass;
+      return fail(1, errorClass, `実行できませんでした(${errorClass}): ${error.message}`);
+    }
+    return fail(1, "internal_error", "実行できませんでした(内部エラー)。");
   } finally {
     await gateway.close();
   }

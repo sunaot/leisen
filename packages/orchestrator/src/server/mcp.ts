@@ -46,6 +46,8 @@ export const ORCHESTRATOR_SERVER_INFO = {
 export type GatewayClientFactory = (options: {
   readonly url: string;
   readonly sessionToken: string;
+  /** Orchestrator の資格情報(run API と runId を申告する tools/call に付ける。ADR-019 決定3) */
+  readonly orchestratorCredential?: string;
   /** MCP 1リクエストのタイムアウト(ms)。省略時はクライアントの既定 */
   readonly requestTimeoutMs?: number;
   /** ループバック以外の http の Gateway を許す(kp-ask serve の --allow-insecure-upstream) */
@@ -64,6 +66,11 @@ export interface OrchestratorMcpServerOptions {
    * Orchestrator は検証せず、Gateway への接続にそのまま載せる(ADR-018 決定2)
    */
   readonly sessionToken: string;
+  /**
+   * Orchestrator の資格情報(Gateway と共有する秘密。ADR-019 決定3)。ask の run API と
+   * tools/call、feedback の申告に付ける。省略時は付けない(Gateway は run API を拒否する)
+   */
+  readonly orchestratorCredential?: string;
   readonly limits: ServerLimits;
   /**
    * このリクエストの ask の retentionClass(既定 persistable。ADR-018 決定5。Gateway の
@@ -76,10 +83,8 @@ export interface OrchestratorMcpServerOptions {
    */
   readonly configMismatch?: boolean;
   readonly createGatewayClient?: GatewayClientFactory;
-  /** feedback の本人確認で Gateway に申告する runId の採番(テスト用) */
-  readonly newVerificationRunId?: () => string;
-  /** feedback の本人確認の期限(ms、既定 FEEDBACK_VERIFICATION_TIMEOUT_MS) */
-  readonly verificationTimeoutMs?: number;
+  /** feedback の申告の期限(ms、既定 FEEDBACK_TIMEOUT_MS) */
+  readonly feedbackTimeoutMs?: number;
 }
 
 /** SDK 非依存の結果を MCP の CallToolResult に写す。 */
@@ -97,18 +102,20 @@ function toCallToolResult(outcome: ToolOutcome): CallToolResult {
  */
 export function createOrchestratorMcpServer(options: OrchestratorMcpServerOptions): Server {
   const factory = options.createGatewayClient ?? defaultGatewayClientFactory;
-  const { gatewayUrl, sessionToken } = options;
+  const { gatewayUrl, sessionToken, orchestratorCredential } = options;
   const context: ToolContext = {
     orchestrator: options.orchestrator,
-    createGatewayClient: () => factory({ url: gatewayUrl, sessionToken }),
+    createGatewayClient: () =>
+      factory({
+        url: gatewayUrl,
+        sessionToken,
+        ...(orchestratorCredential !== undefined ? { orchestratorCredential } : {}),
+      }),
     limits: options.limits,
     retentionClass: options.retentionClass ?? "persistable",
     configMismatch: options.configMismatch ?? false,
-    ...(options.newVerificationRunId !== undefined
-      ? { newVerificationRunId: options.newVerificationRunId }
-      : {}),
-    ...(options.verificationTimeoutMs !== undefined
-      ? { verificationTimeoutMs: options.verificationTimeoutMs }
+    ...(options.feedbackTimeoutMs !== undefined
+      ? { feedbackTimeoutMs: options.feedbackTimeoutMs }
       : {}),
   };
   const server = new Server(ORCHESTRATOR_SERVER_INFO, {

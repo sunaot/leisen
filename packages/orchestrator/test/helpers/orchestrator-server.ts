@@ -7,20 +7,12 @@
  * 秘密情報の実値は使わない(ダミーは dev-only-...、不変条件6)。
  */
 import { once } from "node:events";
-import { mkdtemp, readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { AuditRecord } from "@kp/audit";
 import {
-  AuditLogger,
-  parseAuditRecord,
-  type AuditRecord,
-} from "@kp/audit";
-import {
-  AnswerRunJsonlSink,
   McpGatewayClient,
   Orchestrator,
   ServerLimits,
@@ -36,7 +28,7 @@ import {
   type ScriptContext,
   type ServerLimitsInput,
 } from "../../src/index.js";
-import { TEST_DOC_ID_AUDIT } from "./harness.js";
+import { TEST_ORCHESTRATOR_CREDENTIAL } from "./harness.js";
 import { searchHits } from "./script.js";
 
 export type AnswerRunRecord = Extract<AuditRecord, { recordType: "answer_run" }>;
@@ -47,9 +39,10 @@ export interface OrchestratorServerOptions {
   readonly limits?: ServerLimitsInput;
   readonly retentionClass?: RetentionClass;
   readonly createGatewayClient?: GatewayClientFactory;
-  readonly newVerificationRunId?: () => string;
-  /** feedback の本人確認の期限(ms) */
-  readonly verificationTimeoutMs?: number;
+  /** Orchestrator の資格情報(既定 TEST_ORCHESTRATOR_CREDENTIAL。null で付けない) */
+  readonly orchestratorCredential?: string | null;
+  /** feedback の申告の期限(ms) */
+  readonly feedbackTimeoutMs?: number;
   /** Gateway が公開するソースと --config の照合(S6) */
   readonly sourcePolicy?: GatewaySourcePolicy;
   readonly path?: string;
@@ -59,51 +52,43 @@ export interface OrchestratorServerOptions {
   readonly preflightTimeoutMs?: number;
   /** 探索の設定(runTimeoutMs 等) */
   readonly settings?: OrchestratorSettingsInput;
-  /** AnswerRun の JSONL の出力先(既定: 一時ディレクトリの answer-runs.jsonl) */
-  readonly answerRunJsonlPath?: string;
 }
 
 export interface OrchestratorServerHarness {
   /** MCP エンドポイント(http://127.0.0.1:<port>/mcp) */
   readonly url: string;
   readonly origin: string;
-  readonly jsonlPath: string;
   readonly orchestrator: Orchestrator;
   readonly limits: ServerLimits;
   /** SDK の MCP クライアントで接続する(token 省略時は Authorization を付けない) */
   connect(token?: string): Promise<Client>;
-  /** AnswerRun の JSONL を行順に読む(空行は飛ばす) */
-  answerRunLines(): Promise<AnswerRunRecord[]>;
   close(): Promise<void>;
 }
 
 export async function startOrchestratorServer(
   options: OrchestratorServerOptions,
 ): Promise<OrchestratorServerHarness> {
-  const jsonlPath =
-    options.answerRunJsonlPath ??
-    join(await mkdtemp(join(tmpdir(), "t021-answer-runs-")), "answer-runs.jsonl");
   const orchestrator = new Orchestrator({
     llm: options.llm,
-    auditLogger: new AuditLogger(new AnswerRunJsonlSink(jsonlPath)),
-    docIdAudit: TEST_DOC_ID_AUDIT,
     ...(options.settings !== undefined ? { settings: options.settings } : {}),
   });
   const limits = new ServerLimits(options.limits);
+  const credential =
+    options.orchestratorCredential === undefined
+      ? TEST_ORCHESTRATOR_CREDENTIAL
+      : options.orchestratorCredential;
   const server = createOrchestratorHttpServer(
     {
       orchestrator,
       gatewayUrl: options.gatewayUrl,
+      ...(credential !== null ? { orchestratorCredential: credential } : {}),
       limits,
       ...(options.retentionClass !== undefined ? { retentionClass: options.retentionClass } : {}),
       ...(options.createGatewayClient !== undefined
         ? { createGatewayClient: options.createGatewayClient }
         : {}),
-      ...(options.newVerificationRunId !== undefined
-        ? { newVerificationRunId: options.newVerificationRunId }
-        : {}),
-      ...(options.verificationTimeoutMs !== undefined
-        ? { verificationTimeoutMs: options.verificationTimeoutMs }
+      ...(options.feedbackTimeoutMs !== undefined
+        ? { feedbackTimeoutMs: options.feedbackTimeoutMs }
         : {}),
       ...(options.sourcePolicy !== undefined ? { sourcePolicy: options.sourcePolicy } : {}),
     },
@@ -125,31 +110,12 @@ export async function startOrchestratorServer(
   return {
     url,
     origin,
-    jsonlPath,
     orchestrator,
     limits,
     async connect(token) {
       const client = await connectMcpClient(url, token);
       clients.push(client);
       return client;
-    },
-    async answerRunLines() {
-      let text: string;
-      try {
-        text = await readFile(jsonlPath, "utf8");
-      } catch {
-        return [];
-      }
-      return text
-        .split("\n")
-        .filter((line) => line.trim() !== "")
-        .map((line) => {
-          const record = parseAuditRecord(JSON.parse(line));
-          if (record.recordType !== "answer_run") {
-            throw new Error("unexpected record type in the AnswerRun JSONL");
-          }
-          return record;
-        });
     },
     async close() {
       await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
@@ -259,6 +225,9 @@ export function countingGatewayClients(): {
         counts.calledTools.push(name);
         return inner.callTool(name, args, meta, callOptions);
       },
+      startRun: (input, callOptions) => inner.startRun(input, callOptions),
+      finishRun: (runId, input, callOptions) => inner.finishRun(runId, input, callOptions),
+      feedbackRun: (runId, outcome, callOptions) => inner.feedbackRun(runId, outcome, callOptions),
       close: () => inner.close(),
     };
   };
