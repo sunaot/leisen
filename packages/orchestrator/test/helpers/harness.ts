@@ -312,6 +312,8 @@ export interface GatewayHarnessOptions {
   readonly wrapSink?: (inner: AuditSink) => AuditSink;
   /** 生クエリ表(run の質問原文・search のクエリ原文の書き先)。既定はなし(書かない) */
   readonly rawQueryStore?: RawQueryStore;
+  /** MCP エンドポイントのパス(既定 /mcp。run API は同じディレクトリの runs) */
+  readonly httpPath?: string;
   /** 時計の注入 */
   readonly now?: () => number;
 }
@@ -376,11 +378,12 @@ export async function startGateway(options: GatewayHarnessOptions): Promise<Gate
     ...(options.rawQueryStore !== undefined ? { rawQueryStore: options.rawQueryStore } : {}),
     ...(options.now !== undefined ? { now: options.now } : {}),
   });
-  const server = createGatewayHttpServer(gateway);
+  const mcpPath = options.httpPath ?? "/mcp";
+  const server = createGatewayHttpServer(gateway, options.httpPath !== undefined ? { path: options.httpPath } : {});
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
-  const url = `http://127.0.0.1:${port}/mcp`;
+  const url = `http://127.0.0.1:${port}${mcpPath}`;
   const clients: McpGatewayClient[] = [];
 
   return {

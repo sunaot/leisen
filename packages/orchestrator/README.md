@@ -246,7 +246,7 @@ node packages/orchestrator/dist/bin/kp-ask.js \
 | Claude API(`--llm anthropic`) | SDK が環境から解決(`ANTHROPIC_API_KEY` → `ANTHROPIC_AUTH_TOKEN` → `ant auth login` のプロファイル → Workload Identity Federation) | コード・設定ファイルに書かない。無い場合 kp-ask は「Claude API の資格情報が必要です」と表示して終了コード 2 |
 | OpenAI 互換(`--llm openai-compatible`) | 任意。`apiKeyEnv`(`--llm-api-key-env`)で指定した環境変数の値を `Authorization: Bearer` で送る | 設定には環境変数の**名前**だけを書く。キー不要のサーバーでは指定しない。サーバーが 401 を返した場合、キーを送っていなければ「資格情報が必要」、送っていれば「拒否された」と表示して終了コード 2。キー・ベース URL のクエリ・応答本文は例外メッセージに出さない |
 | Gateway | 利用者本人のセッショントークン(`Authorization: Bearer`、毎リクエスト) | ログ・エラー・例外メッセージに出さない。`McpGatewayClient` は private フィールドに保持する |
-| Gateway の run API | Orchestrator の資格情報(環境変数 `KP_ORCHESTRATOR_CREDENTIAL`。HTTP ヘッダ `x-kp-orchestrator-credential`) | Gateway と共有するデプロイ固有の秘密(ADR-019 決定3)。run API と、runId を申告する tools/call に Bearer と併せて送る。未設定なら開発用の既定値(WARNING)、`NODE_ENV=production` では必須。ログ・エラーに出さない |
+| Gateway の run API | Orchestrator の資格情報(環境変数 `KP_ORCHESTRATOR_CREDENTIAL`。HTTP ヘッダ `x-kp-orchestrator-credential`) | Gateway と共有するデプロイ固有の秘密(ADR-019 決定3)。run API と、runId を申告する tools/call に Bearer と併せて送る。未設定なら開発用の既定値(WARNING)、`NODE_ENV=production` では必須。ログ・エラーに出さない。**利用者には配らない**(持つと Orchestrator を通さずに自分の run の記録を偽れる。TM-I5 (f))。接続は Gateway の MCP URL と同じディレクトリの `runs`(`/kp/mcp` → `/kp/runs`)にだけ送り、リダイレクトは追わない |
 
 ソース(Drive・GitHub 等)の本人資格情報は Gateway 側(IdP Adapter / Token Vault)が扱い、Orchestrator は触れない(不変条件1・2)。監査用の鍵(docId の HMAC 鍵 `KP_AUDIT_HMAC_KEY`、runId の署名鍵 `KP_RUN_ID_KEY`)も Gateway だけが持つ(ADR-019 決定1)。
 

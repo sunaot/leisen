@@ -75,6 +75,8 @@ interface HarnessOptions {
   sink?: AuditSink & { records?: AuditRecord[] };
   rawQueryStore?: InMemoryRawQueryStore | undefined;
   docIdHmacKey?: string;
+  /** MCP エンドポイントのパス(既定 /mcp。run API は同じディレクトリの runs) */
+  path?: string;
 }
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -100,7 +102,8 @@ async function startHarness(options: HarnessOptions = {}) {
     ...(options.docIdHmacKey !== undefined ? { docIdHmacKey: options.docIdHmacKey } : {}),
     now: () => clock.nowMs,
   });
-  const server = createGatewayHttpServer(gateway);
+  const mcpPath = options.path ?? "/mcp";
+  const server = createGatewayHttpServer(gateway, options.path !== undefined ? { path: options.path } : {});
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
@@ -134,7 +137,7 @@ async function startHarness(options: HarnessOptions = {}) {
   async function connect(sessionToken: string, credential?: string): Promise<Client> {
     const client = new Client({ name: "test-orchestrator", version: "0.0.1" });
     clients.push(client);
-    const transport = new StreamableHTTPClientTransport(new URL(`${origin}/mcp`), {
+    const transport = new StreamableHTTPClientTransport(new URL(`${origin}${mcpPath}`), {
       requestInit: {
         headers: {
           Authorization: `Bearer ${sessionToken}`,
@@ -349,6 +352,50 @@ describe("tools/call での runId の申告(名前空間付きのキー)", () =>
     const expired = (await client.callTool({ name: "search", arguments: { source: "alpha", query: "q" }, _meta: meta(runId) })) as CallToolResult;
     expect(expired.isError).toBe(true);
     expect(firstText(expired)).toMatchObject({ errorClass: "invalid_run_id" });
+  });
+
+  it("旧キー(裸の runId)に署名付きの形の値を入れても検証と資格情報の要求を受ける(自分の run を Gateway 直接呼び出しで歪められない。TM-I5 (f))", async () => {
+    const { sink, alpha, connect, startRun } = await startHarness();
+    const { runId } = await startRun("session-alice");
+    // Orchestrator の資格情報なしで、UI に出た自分の runId を裸キーに入れて直接呼ぶ
+    const direct = await connect("session-alice");
+    const rejected = (await direct.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: { runId, iteration: 7 },
+    })) as CallToolResult;
+    expect(rejected.isError).toBe(true);
+    expect(firstText(rejected)).toMatchObject({ errorClass: "invalid_run_id" });
+    expect(alpha.calls).toHaveLength(0);
+    const [record] = toolRecords(records(sink));
+    expect(record).toMatchObject({ errorClass: "invalid_run_id", iteration: 0 });
+    expect(record?.runId).not.toBe(runId);
+    // 資格情報があり本人なら、裸キーでも申告として受理される(名前空間付きのキーと同じ扱い)
+    const orchestrator = await connect("session-alice", CREDENTIAL);
+    const accepted = (await orchestrator.callTool({
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      _meta: { runId, iteration: 7 },
+    })) as CallToolResult;
+    expect(accepted.isError).not.toBe(true);
+    expect(toolRecords(records(sink))[1]).toMatchObject({ runId, iteration: 7, errorClass: null });
+  });
+
+  it("run API は MCP のパスと同じディレクトリの runs にある(接頭辞付きの公開でもオリジン直下には出ない)", async () => {
+    const { origin, post, asOrchestrator, connect, startRun, sink } = await startHarness({ path: "/kp/mcp" });
+    const root = await post("/runs", { question: "q" }, asOrchestrator());
+    expect(root.response.status).toBe(404);
+    const prefixed = await post("/kp/runs", { question: "q" }, asOrchestrator());
+    expect(prefixed.response.status).toBe(201);
+    const runId = (prefixed.json as { runId: string }).runId;
+    const finish = await post(`/kp/runs/${runId}/finish`, { outcome: "resolved", confidence: 0.5, searchedSources: ["alpha"], citations: [] }, asOrchestrator());
+    expect(finish.response.status).toBe(200);
+    // 既存の startRun ヘルパーは /runs 固定なので使えない(404)。MCP は /kp/mcp で動く
+    await expect(startRun()).rejects.toThrow();
+    const client = await connect("session-alice", CREDENTIAL);
+    await client.callTool({ name: "search", arguments: { source: "alpha", query: "q" }, _meta: meta(runId) });
+    expect(toolRecords(records(sink))[0]).toMatchObject({ runId, errorClass: null });
+    expect(origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
 
   it("未申告・旧キー(裸の runId)の呼び出しは従来どおり単発 run として記録する", async () => {

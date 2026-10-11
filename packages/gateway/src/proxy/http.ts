@@ -67,6 +67,7 @@ import {
 } from "../config/schema.js";
 import type { Identity } from "../idp/types.js";
 import { isValidRunId } from "../run/runid.js";
+import { runApiPathFor } from "../run/path.js";
 import type { Gateway } from "./gateway.js";
 import { createGatewayMcpServer, gatewayAuthInfo } from "./mcp.js";
 import { ORCHESTRATOR_CREDENTIAL_HEADER, type RunApiResponse } from "./runs.js";
@@ -87,13 +88,13 @@ const REJECTION_MESSAGES: Partial<Record<GatewayErrorClass, string>> = {
   idp_unavailable: "identity provider is unavailable",
   misconfigured: "gateway is misconfigured",
   internal_error: "internal error",
-  invalid_request: "method not allowed",
+  invalid_request: "invalid request",
   not_found: "not found",
   payload_too_large: "request body exceeds the configured limit",
 };
 
 /** run API(ADR-019)のパス。`/runs`、`/runs/{runId}/finish`、`/runs/{runId}/feedback` */
-export const GATEWAY_RUNS_PATH = "/runs";
+export const GATEWAY_RUNS_PATH = runApiPathFor(DEFAULT_GATEWAY_HTTP_PATH);
 
 type RequestAuthentication =
   | { readonly ok: true; readonly identity: Identity }
@@ -179,6 +180,12 @@ function sendRejection(
   errorClass: GatewayErrorClass,
   headers: Readonly<Record<string, string>> = {},
 ): void {
+  const message =
+    status === 405
+      ? "method not allowed"
+      : status === 415
+        ? "unsupported media type"
+        : (REJECTION_MESSAGES[errorClass] ?? "request rejected");
   sendJson(
     res,
     status,
@@ -187,7 +194,7 @@ function sendRejection(
       id: null,
       error: {
         code: GATEWAY_REJECTION_ERROR_CODE,
-        message: REJECTION_MESSAGES[errorClass] ?? "request rejected",
+        message,
         data: { errorClass },
       },
     },
@@ -270,14 +277,18 @@ async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<Bod
   }
 }
 
-/** `/runs` 配下のパスを解釈する。runId は形(文字種・長さ)だけを見る(検証は RunApi)。 */
+/**
+ * run API(runsPath = runApiPathFor(MCP のパス))配下のパスを解釈する。runId は形(文字種・長さ)
+ * だけを見る(検証は RunApi)。
+ */
 function parseRunsPath(
   path: string,
+  runsPath: string,
 ): { readonly kind: "start" } | { readonly kind: "finish" | "feedback"; readonly runId: string } | undefined {
-  if (path === GATEWAY_RUNS_PATH) {
+  if (path === runsPath) {
     return { kind: "start" };
   }
-  const rest = path.startsWith(`${GATEWAY_RUNS_PATH}/`) ? path.slice(GATEWAY_RUNS_PATH.length + 1) : undefined;
+  const rest = path.startsWith(`${runsPath}/`) ? path.slice(runsPath.length + 1) : undefined;
   if (rest === undefined) {
     return undefined;
   }
@@ -307,8 +318,9 @@ async function serveRunsRequest(
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
+  runsPath: string,
 ): Promise<void> {
-  const target = parseRunsPath(path);
+  const target = parseRunsPath(path, runsPath);
   const runs = gateway.runs;
   if (target === undefined || runs === undefined) {
     sendRejection(res, 404, "not_found");
@@ -358,8 +370,10 @@ async function route(
   res: ServerResponse,
 ): Promise<void> {
   const path = requestPath(req.url);
-  if (path === GATEWAY_RUNS_PATH || path.startsWith(`${GATEWAY_RUNS_PATH}/`)) {
-    await serveRunsRequest(gateway, req, res, path);
+  // run API は MCP エンドポイントと同じディレクトリの runs(run/path.ts)。Orchestrator も同じ規則で導く
+  const runsPath = runApiPathFor(mcpPath);
+  if (path === runsPath || path.startsWith(`${runsPath}/`)) {
+    await serveRunsRequest(gateway, req, res, path, runsPath);
     return;
   }
   if (path === mcpPath) {

@@ -122,6 +122,8 @@ describe("deployment config schema rejection", () => {
     ["pathが/で始まらない", "gateway:\n  http:\n    path: mcp\n"],
     ["pathにクエリ文字列", "gateway:\n  http:\n    path: /mcp?x=1\n"],
     ["死活確認の予約パス", "gateway:\n  http:\n    path: /healthz\n"],
+    ["run API の予約パス(ADR-019)", "gateway:\n  http:\n    path: /runs\n"],
+    ["接頭辞付きの run API の予約パス", "gateway:\n  http:\n    path: /kp/runs\n"],
     ["空のhost", "gateway:\n  http:\n    host: ''\n"],
   ])("gateway.httpの不正設定を拒否する: %s", (_label, section) => {
     expect(() => parseDeploymentConfig(MINIMAL_YAML + section)).toThrow(

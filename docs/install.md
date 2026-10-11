@@ -155,13 +155,19 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
     以上。Gateway は run API(`/runs`)と、runId を申告する `tools/call` にこの値のヘッダ
     (`x-kp-orchestrator-credential`)を要求する。利用者本人の Bearer トークンの代わりではなく、追加の条件
     (本人が Orchestrator を通さずに run の結果を偽って申告できないようにする。threat-model TM-I5)。
-    `NODE_ENV=production` では未設定・開発用の既定値(`.env.example` の値)を起動拒否にする。UI(LibreChat)には
-    渡さない
+    `NODE_ENV=production` では未設定・開発用の既定値(`.env.example` の値)を起動拒否にする。16 文字以上の
+    空白を含まない印字可能な ASCII(HTTP ヘッダで運ぶ)。**UI(LibreChat)や利用者には渡さない**: 利用者が
+    この値を持つと、Orchestrator を通さずに自分の run の結果・ToolInvocation を偽って昇格判定の集計を汚せる
+    (他人の run には触れない)。`kp-ask` の 1 問モードを使う運用者・開発者だけに配る
   - `KP_AUDIT_HMAC_KEY`(引用 docId の HMAC 鍵。**Gateway だけが持つ**。`audit.privateScopeDocIds: hashed`):
     run API の `finish` がプライベートスコープを持つソースの引用を不可逆化するのに使う(ADR-019 決定5)。
     導入ごとに1回だけ乱数で生成して秘密ストアに保管し、以後は同じ値を使い続ける(変えると以前に記録した
     `hmac:…` と突き合わせられなくなる)。リファレンス構成の `dev-docs`(`privateScopes: excluded`)だけなら
-    起動に要らないが、プライベートスコープを持つソースを有効にした時点で必須になる(`secret_env_missing`)
+    起動に要らないが、プライベートスコープを持つソースを有効にした時点で必須になる(`secret_env_missing`)。
+    設定するなら 16 文字以上(`doc_id_hmac_key_invalid`)、本番では `dev-only-` で始まる値を拒否する
+
+  3 つの秘密は互いに別の値にする(同じ値があれば `run_secret_reused` で起動拒否。使い回すと Orchestrator が
+  署名鍵を持つのと同じになる)。
 
   `.env.example` の値はいずれも評価用のダミーなので置き換える。生成例:
 
@@ -282,7 +288,8 @@ server {
         proxy_read_timeout    60s;
     }
 
-    # run API(ADR-019)。Orchestrator(kp-ask / kp-ask serve)だけが呼ぶ。利用者本人の Bearer に加えて
+    # run API(ADR-019)。MCP のパスと同じディレクトリの runs(path: /mcp なら /runs、/kp/mcp なら /kp/runs。
+    # Orchestrator も同じ規則で導く)。Orchestrator(kp-ask / kp-ask serve)だけが呼ぶ。利用者本人の Bearer に加えて
     # Orchestrator の資格情報のヘッダが要るため、/mcp と同じ制限で通す(Orchestrator が同じホスト内に
     # あり外部から呼ぶ必要がなければ、この location を置かず 404 のままにしてよい)
     location ~ ^/runs(/|$) {

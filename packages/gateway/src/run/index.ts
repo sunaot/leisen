@@ -11,6 +11,7 @@
  * (userId・actor)と値だけを受け取り、ソースの知識は判定の関数として注入される。
  * 組み立て役(bootstrap / proxy/http.ts)だけがすべてを知る。
  */
+export * from "./path.js";
 export * from "./runid.js";
 export * from "./records.js";
 export * from "./request.js";

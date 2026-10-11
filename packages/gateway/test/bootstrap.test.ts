@@ -1391,6 +1391,68 @@ audit:
     expect(garbage.issues.map((i) => i.code)).toEqual(["run_signing_key_invalid"]);
   });
 
+  it("秘密の使い回し・docId 鍵の形・資格情報の文字種・フィードバックの期間を検査する(値をメッセージに出さない)", async () => {
+    const dir = await prodDir();
+    const key = Buffer.alloc(32, 3).toString("base64url");
+    // 署名鍵と資格情報が同じ値、docId の鍵が資格情報と同じ値
+    const reused = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: key, KP_AUDIT_HMAC_KEY: key },
+      configDir: dir,
+    });
+    expect(reused.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_secret_reused", "gateway.runs"],
+      ["run_secret_reused", "gateway.runs"],
+    ]);
+    expect(reused.message).toContain("KP_RUN_ID_KEY");
+    expect(reused.message).toContain("KP_AUDIT_HMAC_KEY");
+    expect(reused.message).not.toContain(key);
+
+    // 資格情報に空白・非 ASCII、docId の鍵が短い
+    const malformed = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "has a space in the credential", KP_AUDIT_HMAC_KEY: "short-key" },
+      configDir: dir,
+    });
+    expect(malformed.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_orchestrator_credential_invalid", "gateway.runs.orchestratorCredentialEnv"],
+      ["doc_id_hmac_key_invalid", "audit.docIdHmacKeyEnv"],
+    ]);
+    expect(malformed.message).not.toContain("has a space");
+    const nonAscii = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "資格情報は-ascii-でないと-ヘッダに乗らない" },
+      configDir: dir,
+    });
+    expect(nonAscii.issues.map((i) => i.code)).toEqual(["run_orchestrator_credential_invalid"]);
+
+    // 本番では docId の鍵の開発用の値(dev-only-…)を拒否し、本番以外では WARNING
+    vi.stubEnv("NODE_ENV", "production");
+    const devHmac = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1", KP_AUDIT_HMAC_KEY: "dev-only-audit-hmac-key" },
+      configDir: dir,
+    });
+    expect(devHmac.issues.map((i) => [i.code, i.path])).toEqual([["dev_only_in_production", "audit.docIdHmacKeyEnv"]]);
+    vi.stubEnv("NODE_ENV", "test");
+    const warned = await assemble({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1", KP_AUDIT_HMAC_KEY: "dev-only-audit-hmac-key" },
+      configDir: dir,
+    });
+    expect(warned.warnings).toEqual([expect.stringMatching(/^audit: environment variable "KP_AUDIT_HMAC_KEY" holds a development-only value/)]);
+
+    // フィードバックの期間は有効期間より短くできない
+    const shortWindow = await rejection({
+      config: parseDeploymentConfig(PROD_YAML + "gateway:\n  runs:\n    ttlSec: 900\n    feedbackWindowSec: 600\n"),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1" },
+      configDir: dir,
+    });
+    expect(shortWindow.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_feedback_window_too_short", "gateway.runs.feedbackWindowSec"],
+    ]);
+  });
+
   it("本番以外では未設定の鍵は起動ごとの一時鍵、未設定の資格情報は開発用の既定値になり、WARNING に残る", async () => {
     const assembled = await assemble({ config: config(""), env: { KP_MOCK_SESSIONS: "dev-only-session=alice" } });
     expect(assembled.warnings).toEqual([

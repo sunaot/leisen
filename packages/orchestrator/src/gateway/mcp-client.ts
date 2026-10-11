@@ -36,7 +36,7 @@ import {
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { ORCHESTRATOR_CREDENTIAL_HEADER } from "@kp/gateway";
+import { ORCHESTRATOR_CREDENTIAL_HEADER, runApiPathFor } from "@kp/gateway";
 import { GatewayClientError, type GatewayClientErrorClass } from "../errors.js";
 import { gatewayUserIdFromResultMeta } from "./meta.js";
 import type {
@@ -49,8 +49,12 @@ import type {
   StartRunResult,
 } from "./types.js";
 
-/** run API のパス(Gateway の GATEWAY_RUNS_PATH。MCP エンドポイントと同じオリジン)。 */
-const RUNS_PATH = "/runs";
+/**
+ * fetch のリダイレクトは追わない(Node の fetch は別オリジンへの 307 で Authorization を外すが、
+ * Orchestrator の資格情報のヘッダと本文(質問)はそのまま転送する)。Gateway の前段が誤設定・侵害
+ * されてリダイレクトを返しても、資格情報と質問を別オリジンに送らない。
+ */
+const NO_REDIRECT: RequestRedirect = "error";
 
 /** MCP 1リクエストのタイムアウト既定(SDK の DEFAULT_REQUEST_TIMEOUT_MSEC と同じ)。 */
 export const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 60_000;
@@ -193,7 +197,9 @@ export class McpGatewayClient implements GatewayClient {
       throw new GatewayClientError("gateway_protocol_error", "the orchestrator credential is invalid");
     }
     this.#url = url;
-    this.#runsUrl = new URL(RUNS_PATH, url.origin);
+    // run API は MCP エンドポイントと同じディレクトリの runs(Gateway と同じ規則 runApiPathFor。
+    // パスの接頭辞付きで公開した Gateway でも同じホストの別のパスへ送らない)
+    this.#runsUrl = new URL(runApiPathFor(url.pathname), url.origin);
     this.#sessionToken = options.sessionToken;
     this.#orchestratorCredential = options.orchestratorCredential;
     this.#requestTimeoutMs =
@@ -255,7 +261,7 @@ export class McpGatewayClient implements GatewayClient {
       // 形の外の runId を URL に載せない(Gateway も 404 で拒否する)
       throw new GatewayClientError("run_not_accepted", "the runId is not in an acceptable form");
     }
-    return new URL(`${RUNS_PATH}/${runId}/${action}`, this.#url.origin);
+    return new URL(`${this.#runsUrl.pathname}/${runId}/${action}`, this.#url.origin);
   }
 
   /** run API への POST。拒否は固定の分類に写し、応答本文の文言・申告値は流さない。 */
@@ -286,6 +292,7 @@ export class McpGatewayClient implements GatewayClient {
         },
         body: JSON.stringify(body),
         signal,
+        redirect: NO_REDIRECT,
       });
     } catch {
       if (isAborted(options.signal)) {
@@ -401,6 +408,7 @@ export class McpGatewayClient implements GatewayClient {
     const client = new Client(ORCHESTRATOR_CLIENT_INFO);
     const transport = new StreamableHTTPClientTransport(this.#url, {
       requestInit: {
+        redirect: NO_REDIRECT,
         headers: {
           Authorization: `Bearer ${this.#sessionToken}`,
           // runId を申告する tools/call には Orchestrator の資格情報が要る(ADR-019 決定3)

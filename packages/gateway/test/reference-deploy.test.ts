@@ -340,11 +340,13 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
     );
     expect(error).toBeInstanceOf(DeploymentConfigError);
     const issues = (error as DeploymentConfigError).issues;
-    // 開発用の部品に加えて、.env.example の run API の秘密(公開済みの開発用の値)も拒否される
+    // 開発用の部品に加えて、.env.example の秘密(公開済みの開発用の値: 署名鍵・Orchestrator の
+    // 資格情報・docId の HMAC 鍵)も拒否される
     expect(
       issues.filter((i) => i.code === "dev_only_in_production").map((i) => i.path).sort(),
     ).toEqual(
       [
+        "audit.docIdHmacKeyEnv",
         "connectors[0].auth.provider",
         "connectors[0].kind",
         "gateway.runs.signingKeyEnv",

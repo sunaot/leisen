@@ -71,7 +71,8 @@ gateway:
     # runId の有効期間(秒)。tools/call と finish はこの期間内だけ受ける。Orchestrator の run の上限時間
     # (runTimeoutMs)より長くする
     ttlSec: 900
-    # 発行時刻からフィードバックを受ける期間(秒)。既定 7 日
+    # 発行時刻からフィードバックを受ける期間(秒)。既定 7 日。ttlSec より短くはできない
+    # (run_feedback_window_too_short)
     feedbackWindowSec: 604800
     # /runs の 3 経路すべてにかける上限(threat-model TM-I5 (d))
     limits:
@@ -99,7 +100,8 @@ audit:
   failureMode: fail-closed # 監査レコードを書けないツール呼び出しは失敗させる(ADR-011)
   privateScopeDocIds: hashed # プライベートスコープdocIdはHMACで秘匿化して記録(ADR-013 §2)
   # hashed の HMAC 鍵(デプロイ固有の秘密)を持つ環境変数名。Gateway の run API が引用 docId を不可逆化する
-  # のに使う(ADR-019 決定5)。プライベートスコープを持つソースが有効な構成では必須(secret_env_missing)
+  # のに使う(ADR-019 決定5)。プライベートスコープを持つソースが有効な構成では必須(secret_env_missing)。
+  # 16 文字以上、署名鍵・Orchestrator の資格情報とは別の値(run_secret_reused)、本番では dev-only- の値を拒否
   docIdHmacKeyEnv: KP_AUDIT_HMAC_KEY
   retentionDays: 365 # 監査ログ本体の保持(ADR-013 §3)
   rawQueryRetentionDays: 30 # 生クエリの短期保持(ADR-011)

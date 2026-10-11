@@ -37,7 +37,7 @@ T-003(Gateway の HTTP 配線)、T-007(Orchestrator)、T-021(`kp-ask serve`)、T
 - [x] Gateway・Orchestrator・昇格判定レポートを結線したゴールデンテストで、run が集計され(run > 0)、質問原文が表示され、フィードバックがプロセスの再起動後も残り、finish のない期限切れの run が「放棄」と数えられる — `packages/orchestrator/test/promotion-report-golden.test.ts`
 - [x] レポートが「未記録」と「保持期間切れ」を区別して表示する — `packages/promotion-report/test/aggregate.test.ts`「原文のない失敗クエリは …」、`render.test.ts`
 - [x] 脅威モデル TM-I4・TM-I5 の検出手段の欄に、実装したテストの名前を書く — docs/threat-model.md(2026-10-11)
-- [ ] セキュリティレビュー(`.claude/agents/security-reviewer`)を通す
+- [x] セキュリティレビュー(`.claude/agents/security-reviewer`)を通す — 2026-10-11 実施。中: 裸キー `runId` に署名付きの形の値を入れると検証も資格情報もなしに記録される(→ 名前空間付きと同じ検証にかける)、fetch のリダイレクトで資格情報と質問が別オリジンへ転送される(→ `redirect: "error"`)。低: run API のパスのオリジン直下決め打ち(→ MCP のパスと同じディレクトリに導出・予約)、lint の `export * as` と境界ディレクトリ消失の見逃し(→ 修正)、秘密の使い回し・docId 鍵の形・資格情報の文字種・`feedbackWindowSec < ttlSec` の未検査(→ 起動拒否)、400 応答での未知キー名のエコー(→ 固定文言)、415 / 400 の文言(→ 修正)。残した点は ADR-019「実装の記録」
 
 ## 判断が必要な点
 - **既定値**: runId の有効期間(tool 呼び出し・finish)、フィードバックの期間、`/runs` の利用者ごとの頻度の上限。実装時に案を出し、PR で確認する

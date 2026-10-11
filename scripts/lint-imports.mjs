@@ -37,8 +37,8 @@ export const BOUNDARIES = [
 const SPECIFIER_PATTERNS = [
   // import x from "..." / import { x } from "..." / import type { x } from "..." / import "..."
   /\bimport\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?["']([^"']+)["']/g,
-  // export { x } from "..." / export * from "..."
-  /\bexport\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s+["']([^"']+)["']/g,
+  // export { x } from "..." / export * from "..." / export * as ns from "..."
+  /\bexport\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+["']([^"']+)["']/g,
   // import("...")
   /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
 ];
@@ -73,14 +73,19 @@ function isInside(baseDir, target) {
 
 /**
  * 1 つの境界を検査し、違反の一覧を返す。各違反は { file, specifier, reason }。
- * 境界のディレクトリがなければ空配列(段階 2 までの run モジュール)。
+ * 境界のディレクトリがなければ違反(検査対象が消えたのに CI が通らないようにする。改名したら
+ * BOUNDARIES も直す)。
  */
 export async function checkBoundary(root, boundary) {
   const baseDir = resolve(root, boundary.dir);
+  let isDirectory = false;
   try {
-    if (!(await stat(baseDir)).isDirectory()) return [];
+    isDirectory = (await stat(baseDir)).isDirectory();
   } catch {
-    return [];
+    isDirectory = false;
+  }
+  if (!isDirectory) {
+    return [{ file: boundary.dir, specifier: "", reason: "boundary directory does not exist (update BOUNDARIES if it moved)" }];
   }
   const violations = [];
   for (const file of await listTsFiles(baseDir)) {

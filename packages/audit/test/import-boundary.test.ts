@@ -106,10 +106,25 @@ describe("lint-imports: forbidden dependencies are detected", () => {
     );
   });
 
-  it("skips a boundary whose directory does not exist yet", async () => {
+  it("fails when a boundary directory does not exist (a renamed module must not silently drop the check)", async () => {
     const root = await fakeRepo({ "packages/audit/src/index.ts": 'import { z } from "zod";\n' });
-    expect(await checkBoundary(root, runBoundary)).toEqual([]);
-    expect(await checkImports(root)).toEqual([]);
+    expect(await checkBoundary(root, runBoundary)).toEqual([
+      expect.objectContaining({ file: "packages/gateway/src/run", reason: expect.stringContaining("does not exist") }),
+    ]);
+    expect((await checkImports(root)) as Violation[]).toHaveLength(1);
+  });
+
+  it("detects re-exports in every form (export * as ns from, export { x } from, export type)", async () => {
+    const root = await fakeRepo({
+      "packages/audit/src/a.ts": 'export * as sdk from "@modelcontextprotocol/sdk";\n',
+      "packages/audit/src/b.ts": 'export { Server } from "@modelcontextprotocol/sdk/server/index.js";\n',
+      "packages/audit/src/c.ts": 'export type { Connector } from "@kp/connector-sdk";\n',
+      "packages/audit/src/d.ts": 'export * from "zod";\n',
+    });
+    const violations = (await checkBoundary(root, auditBoundary)) as Violation[];
+    expect(violations.map((v) => v.specifier).sort()).toEqual(
+      ["@kp/connector-sdk", "@modelcontextprotocol/sdk", "@modelcontextprotocol/sdk/server/index.js"].sort(),
+    );
   });
 
   it("ignores .d.ts files and reads nested directories", async () => {

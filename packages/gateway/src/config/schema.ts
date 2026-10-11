@@ -18,6 +18,7 @@
  *   設定ファイルの所在ディレクトリを基準に解決する(起動コードの規約。cwd に
  *   依存させない)。
  */
+import { RUN_API_SEGMENT, runApiPathFor } from "../run/path.js";
 import { z } from "zod";
 
 /** 現行スキーマバージョン。構造変更時に増分し、migrate.ts に移行関数を足す。 */
@@ -315,6 +316,11 @@ const gatewayHttpSchema = z.strictObject({
     })
     .refine((path) => path !== GATEWAY_HEALTH_PATH, {
       error: `path "${GATEWAY_HEALTH_PATH}" is reserved for the health check`,
+    })
+    // run API(ADR-019)は MCP のパスと同じディレクトリの runs に置く(run/path.ts)。その位置を
+    // MCP のパスにすると run API に到達できなくなるため予約する
+    .refine((path) => runApiPathFor(path) !== path, {
+      error: `path ending in "/${RUN_API_SEGMENT}" is reserved for the run API (ADR-019)`,
     })
     .default(DEFAULT_GATEWAY_HTTP_PATH),
 });

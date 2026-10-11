@@ -9,11 +9,15 @@
  *   NODE_ENV=production では、未設定・復号不能・短い・開発用の例の値を起動拒否にする。それ以外で
  *   未設定なら起動ごとの一時鍵を使う(WARNING。再起動で期限内の runId が無効になる)
  * - 1 つ前の鍵: 設定があれば同じ規則で読み、現行と kid が違うことを確かめる
- * - Orchestrator の資格情報: 16 文字以上。NODE_ENV=production では未設定・開発用の既定値を起動
- *   拒否にする。それ以外で未設定なら開発用の既定値(DEV_ORCHESTRATOR_CREDENTIAL。WARNING)
+ * - Orchestrator の資格情報: 16 文字以上の、空白を含まない印字可能な ASCII(HTTP ヘッダで運ぶ。
+ *   kp-ask 側の規則と同じ)。NODE_ENV=production では未設定・開発用の既定値を起動拒否にする。
+ *   それ以外で未設定なら開発用の既定値(DEV_ORCHESTRATOR_CREDENTIAL。WARNING)
  * - docId の HMAC 鍵(audit.docIdHmacKeyEnv): privateScopeDocIds が hashed で、プライベート
  *   スコープを持つソースが有効なら必須(secret_env_missing)。run API の finish が引用を不可逆化
- *   するのに使う(決定5)
+ *   するのに使う(決定5)。設定があれば 16 文字以上、本番では dev-only- で始まる値を拒否する
+ * - 3 つの秘密(署名鍵・1 つ前の鍵・Orchestrator の資格情報・docId の鍵)は互いに別の値であること
+ *   (run_secret_reused)。同じ値を使い回すと Orchestrator が署名鍵を持つのと同じになる
+ * - フィードバックの期間は runId の有効期間より短くできない(run_feedback_window_too_short)
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { ConfigIssue } from "../config/validate.js";
@@ -33,6 +37,12 @@ export const DEV_ORCHESTRATOR_CREDENTIAL = "dev-only-orchestrator-credential";
  * NODE_ENV=production では拒否される(dev_only_in_production)。
  */
 export const DEV_RUN_ID_KEY_EXAMPLE = "dev-only-run-id-signing-key-not-for-production-00001";
+
+/** 開発用のダミー秘密の接頭辞(deploy/compose/.env.example の規約)。本番では docId の鍵にも使えない。 */
+export const DEV_SECRET_PREFIX = "dev-only-";
+
+/** docId の HMAC 鍵の最小長(文字)。 */
+export const MIN_DOC_ID_HMAC_KEY_CHARS = 16;
 
 export interface ResolvedRunRuntime {
   readonly runtime: RunRuntime;
@@ -145,11 +155,11 @@ function orchestratorCredentialFromEnv(
     );
     return { credential: DEV_ORCHESTRATOR_CREDENTIAL, source: "dev-default" };
   }
-  if (value.length < MIN_ORCHESTRATOR_CREDENTIAL_CHARS) {
+  if (value.length < MIN_ORCHESTRATOR_CREDENTIAL_CHARS || !/^[\x21-\x7e]+$/.test(value)) {
     issues.push({
       code: "run_orchestrator_credential_invalid",
       path,
-      message: `environment variable "${envName}" must hold at least ${MIN_ORCHESTRATOR_CREDENTIAL_CHARS} characters`,
+      message: `environment variable "${envName}" must hold at least ${MIN_ORCHESTRATOR_CREDENTIAL_CHARS} printable ASCII characters without whitespace (it is sent as an HTTP header)`,
     });
     return undefined;
   }
@@ -224,6 +234,61 @@ export function resolveRunRuntime(
       code: "secret_env_missing",
       path: "audit.docIdHmacKeyEnv",
       message: `environment variable "${config.audit.docIdHmacKeyEnv}" is not set; it is required to hash cited document IDs of private-scope sources (audit.privateScopeDocIds: hashed, ADR-019 決定5)`,
+    });
+  }
+  if (docIdHmacKey !== undefined) {
+    if (docIdHmacKey.length < MIN_DOC_ID_HMAC_KEY_CHARS) {
+      issues.push({
+        code: "doc_id_hmac_key_invalid",
+        path: "audit.docIdHmacKeyEnv",
+        message: `environment variable "${config.audit.docIdHmacKeyEnv}" must hold at least ${MIN_DOC_ID_HMAC_KEY_CHARS} characters (e.g. openssl rand -hex 32)`,
+      });
+    } else if (docIdHmacKey.startsWith(DEV_SECRET_PREFIX)) {
+      if (isProduction()) {
+        issues.push({
+          code: "dev_only_in_production",
+          path: "audit.docIdHmacKeyEnv",
+          message: `environment variable "${config.audit.docIdHmacKeyEnv}" holds a development-only value (${DEV_SECRET_PREFIX}…); it is disabled in production builds (NODE_ENV=production)`,
+        });
+      } else {
+        warnings.push(
+          `audit: environment variable "${config.audit.docIdHmacKeyEnv}" holds a development-only value (${DEV_SECRET_PREFIX}…); generate a deployment-specific key before exposing the gateway`,
+        );
+      }
+    }
+  }
+
+  // 秘密の使い回し: 署名鍵・1 つ前の鍵・Orchestrator の資格情報・docId の鍵は互いに別の値(値そのものは
+  // 比べるだけで、メッセージには環境変数名だけを出す)
+  const secretEnvNames = [
+    runs.signingKeyEnv,
+    runs.previousSigningKeyEnv,
+    runs.orchestratorCredentialEnv,
+    config.audit.docIdHmacKeyEnv,
+  ];
+  const seen = new Map<string, string>();
+  for (const envName of secretEnvNames) {
+    const value = env[envName];
+    if (value === undefined || value.trim() === "") continue;
+    const other = seen.get(value.trim());
+    const isKeyRotationPair =
+      (other === runs.signingKeyEnv && envName === runs.previousSigningKeyEnv) ||
+      (other === runs.previousSigningKeyEnv && envName === runs.signingKeyEnv);
+    // 現行と 1 つ前の鍵が同じ場合は上の kid の検査(run_signing_key_invalid)が報告する
+    if (other !== undefined && other !== envName && !isKeyRotationPair) {
+      issues.push({
+        code: "run_secret_reused",
+        path: "gateway.runs",
+        message: `environment variables "${other}" and "${envName}" hold the same value; the runId signing key, the orchestrator credential and the docId HMAC key must be distinct secrets (ADR-019)`,
+      });
+    }
+    seen.set(value.trim(), envName);
+  }
+  if (runs.feedbackWindowSec < runs.ttlSec) {
+    issues.push({
+      code: "run_feedback_window_too_short",
+      path: "gateway.runs.feedbackWindowSec",
+      message: `feedbackWindowSec (${runs.feedbackWindowSec}) must not be shorter than ttlSec (${runs.ttlSec}); feedback is accepted from issuance for the whole run lifetime`,
     });
   }
 

@@ -43,7 +43,7 @@
  *   不正値は既定値に丸めず invalid_request で拒否する(区分による拒否を
  *   誤記で迂回させない)
  */
-import { isValidRunId } from "../run/runid.js";
+import { isSignedRunIdFormat, isValidRunId } from "../run/runid.js";
 import { isValidIteration, parseActor, parseExecutionClass } from "./session.js";
 import {
   GatewayError,
@@ -184,7 +184,11 @@ function readCallContextValue(
  * - 名前空間付きのキーの runId は検証の対象(declaredRunId。ADR-019 決定4): 値をそのまま
  *   Gateway コアに渡し、署名・本人・actor・期限と Orchestrator の資格情報を満たさなければ
  *   呼び出しが拒否される(「不正値は未申告扱い」は名前空間付きのキーには適用しない)
- * - 裸キー(移行期間)の runId は従来どおり形だけを見て、不正値は未申告扱い(単発 run)
+ * - 裸キー(移行期間)の runId は従来どおり形だけを見て、不正値は未申告扱い(単発 run)。ただし
+ *   署名付きの形(`r1.…`)の値は名前空間付きのキーと同じく検証の対象にする(declaredRunId)。
+ *   そうしないと、利用者が UI に出た自分の runId を裸キーに入れて Gateway を直接呼び、検証も
+ *   Orchestrator の資格情報もなしに自分の run の記録(再検索回数・searchedSources)を歪められる
+ *   (ADR-019 決定3、TM-I5 (f))
  * - iteration は不正値を未申告扱い(どちらのキーでも同じ)
  */
 export function callContextFromMeta(meta: unknown): CallContext {
@@ -197,6 +201,9 @@ export function callContextFromMeta(meta: unknown): CallContext {
     return { declaredRunId: record[GATEWAY_META_KEYS.runId], ...iterationPart };
   }
   const runId = readCallContextValue(record, "runId", legacyAllowed);
+  if (isSignedRunIdFormat(runId)) {
+    return { declaredRunId: runId, ...iterationPart };
+  }
   return {
     ...(isValidRunId(runId) ? { runId } : {}),
     ...iterationPart,

@@ -89,5 +89,7 @@ export function parseRunRequest<S extends z.ZodType>(
   }
   const issue = parsed.error.issues[0];
   const at = issue && issue.path.length > 0 ? ` at ${issue.path.join(".")}` : "";
-  return { ok: false, message: `invalid run request${at}: ${issue?.message ?? "unknown"}` };
+  // zod の unrecognized_keys の文言は申告されたキー名を含むため固定文言に写す(申告値をエコーしない)
+  const detail = issue === undefined ? "unknown" : issue.code === "unrecognized_keys" ? "unknown field" : issue.message;
+  return { ok: false, message: `invalid run request${at}: ${detail}` };
 }

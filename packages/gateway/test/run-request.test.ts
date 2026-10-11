@@ -30,6 +30,9 @@ describe("POST /runs の本文", () => {
     ).toMatchObject({ ok: true });
     expect(parseRunRequest(schema, { question: "q", userId: "bob" })).toMatchObject({ ok: false });
     expect(parseRunRequest(schema, { question: "q", runId: "r1.k1.x.y" })).toMatchObject({ ok: false });
+    // 未知キーの名前(攻撃者が選べる文字列)を応答にエコーしない
+    const unknownKey = parseRunRequest(schema, { question: "q", "https://attacker.example/x": 1 });
+    expect(unknownKey).toMatchObject({ ok: false, message: "invalid run request: unknown field" });
   });
 });
 

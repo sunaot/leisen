@@ -157,6 +157,36 @@ describe("feedback: 本人だけが記録できる(Gateway が runId の署名�
     expect(gateway.records()).toEqual([]);
   });
 
+  it("Gateway が監査ストアに書けない(503 audit_write_failed)ときは利用者にエラーで返り、上流の文言を載せない", async () => {
+    let failWrites = false;
+    const gateway = await startGateway({
+      connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
+      wrapSink: (inner) => ({
+        write: async (record) => {
+          if (failWrites) throw new Error("injected audit failure: dev-only-sink-detail");
+          await inner.write(record);
+        },
+      }),
+    });
+    cleanups.push(() => gateway.close());
+    const server = await startOrchestratorServer({
+      gatewayUrl: gateway.url,
+      llm: new ScriptedLlmClient(searchThenSubmit()),
+    });
+    cleanups.push(() => server.close());
+    const runId = await askAs(server, ALICE_TOKEN);
+    const client = await server.connect(ALICE_TOKEN);
+    failWrites = true;
+
+    const result = await call(client, "feedback", { runId, outcome: "resolved" });
+
+    expect(result.isError).toBe(true);
+    expect(result.structured).toEqual({ errorClass: "audit_write_failed" });
+    expect(result.text).not.toContain("dev-only-sink-detail");
+    expect(result.text).not.toContain(runId);
+    expect(feedbackRecords(gateway, runId)).toEqual([]);
+  });
+
   it("Gateway の run API が応答しなければ、期限(feedbackTimeoutMs)で失敗を返して枠を返す", async () => {
     const gateway = await startGateway({
       connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],

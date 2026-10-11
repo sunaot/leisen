@@ -42,8 +42,14 @@ export type ConfigIssueCode =
   | "run_signing_key_invalid"
   /** run API: Orchestrator の資格情報の環境変数が本番で未設定 */
   | "run_orchestrator_credential_missing"
-  /** run API: Orchestrator の資格情報が短すぎる */
+  /** run API: Orchestrator の資格情報が短い・空白や印字できない文字を含む */
   | "run_orchestrator_credential_invalid"
+  /** run API: 署名鍵・Orchestrator の資格情報・docId の HMAC 鍵に同じ値が使われている */
+  | "run_secret_reused"
+  /** run API: フィードバックの期間が runId の有効期間より短い */
+  | "run_feedback_window_too_short"
+  /** audit.docIdHmacKeyEnv の値が短い、または本番で開発用の値 */
+  | "doc_id_hmac_key_invalid"
   /** audit.sink: jsonl に audit.jsonl.path がない(静的検証) */
   | "audit_sink_options_missing"
   // --- 以下は起動コード(bootstrap/)が出す ---
