@@ -149,6 +149,7 @@ A はどれも解いておらず、同一運用者の前提で C4 を受け入�
 ## 実装の記録(T-023、2026-10-11)
 - 段階 1 を T-023 で実装した。`@kp/audit`(`packages/audit`)、run モジュール(`packages/gateway/src/run/`。import 境界は `scripts/lint-imports.mjs`)、run API(`packages/gateway/src/proxy/runs.ts`、`http.ts` の `/runs`)、tools/call の名前空間付き runId の検証(`proxy/gateway.ts`)、設定(`gateway.runs`、`audit.docIdHmacKeyEnv`。`examples/deployment.yaml`)、起動コード(`bootstrap/runs.ts`: 署名鍵・Orchestrator の資格情報の解決と production の拒否)、Orchestrator の移行(`startRun` / `finishRun` / `feedbackRun`、`KP_ORCHESTRATOR_CREDENTIAL`)、リファレンス構成(`kp-answer-runs` と orchestrator の `KP_AUDIT_HMAC_KEY` を廃止。gateway に `KP_RUN_ID_KEY` / `KP_ORCHESTRATOR_CREDENTIAL` / `KP_AUDIT_HMAC_KEY`、orchestrator に `KP_ORCHESTRATOR_CREDENTIAL`)
 - 決めた既定値: runId の有効期間 900 秒、フィードバックの期間 7 日、本文 64 KiB、質問 4,000 字、利用者ごとの頻度 60 回 / 分(3 経路の合計)、引用 50 件、searchedSources 50 件、ID 512 文字。Orchestrator の資格情報は共有秘密(16 文字以上)を HTTP ヘッダ `x-kp-orchestrator-credential` で渡し、SHA-256 のダイジェストどうしを定数時間で比べる
+- 昇格判定レポート(`packages/promotion-report`)は runId ごとに pending + 最新の finish + 最新の feedback を統合し(userId が一致するものだけ。pending のない部分レコードは「孤立」)、有効期間(署名付き runId の payload。旧形式は `--run-ttl-sec`)を過ぎて finish のない pending を「放棄」と数える。失敗クエリの原文の「保持期間切れ」と「未記録」(Slack 有効時の非記録・書き込み失敗)を分けて表示する。Gateway・Orchestrator・レポートを結線したゴールデンテスト `packages/orchestrator/test/promotion-report-golden.test.ts`
 - 帰結に書いた「tools/call の結果の `_meta` に userId を載せる必要が残るか」は未着手(Orchestrator は describe の結果の userId を申告との照合に使い続けている)。確認事項 1〜4 は安全側の既定のまま
 
 ## 図

@@ -209,11 +209,11 @@ describe("kp-promotion-report CLI", () => {
   });
 });
 
-describe("--audit の複数指定(Gateway の JSONL と Orchestrator の AnswerRun の JSONL、T-021)", () => {
+describe("--audit の複数指定(ADR-019 より前の構成: Gateway の JSONL と Orchestrator の AnswerRun の JSONL、T-021)", () => {
   /**
-   * リファレンス構成(ADR-018 決定4)の2ファイル: Gateway の監査 JSONL には ToolInvocation
-   * (とメタ監査)、kp-ask serve の JSONL には AnswerRun(同じ runId の pending → 最終状態 →
-   * フィードバックの行が並ぶ)。
+   * ADR-019 より前のリファレンス構成(ADR-018 決定4)の2ファイル: Gateway の監査 JSONL には
+   * ToolInvocation(とメタ監査)、kp-ask serve の JSONL には AnswerRun(同じ runId の pending →
+   * 最終状態 → フィードバックの行が並ぶ)。過去の記録を集計するために複数指定を残している(T-023)。
    */
   async function writeSplitFiles(dir: string): Promise<{ gateway: string; answerRuns: string }> {
     const records = fixtureRecords();
@@ -285,7 +285,7 @@ describe("--audit の複数指定(Gateway の JSONL と Orchestrator の AnswerR
     );
   });
 
-  it("Gateway の JSONL だけでは run を数えられない(AnswerRun が Orchestrator 側にあるため)", async () => {
+  it("旧構成の Gateway の JSONL だけでは run を数えられない(AnswerRun が Orchestrator 側のファイルにあるため)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t021-"));
     const files = await writeFixtureFiles(dir);
     const split = await writeSplitFiles(dir);
@@ -321,6 +321,32 @@ describe("--audit の複数指定(Gateway の JSONL と Orchestrator の AnswerR
 
     expect(result.code).toBe(1);
     expect(result.err.join("\n")).toMatch(/answer-runs\.jsonl:1: /);
+  });
+
+  it("--run-ttl-sec / --raw-query-retention-days は正の整数だけを受け、集計に渡る", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "t023-"));
+    const files = await writeFixtureFiles(dir);
+    for (const bad of [["--run-ttl-sec", "abc"], ["--raw-query-retention-days", "0"], ["--run-ttl-sec", "-5"]]) {
+      const { err, io } = capture();
+      expect(
+        await runCli(
+          ["--audit", files.audit, "--sources", files.sources, "--accessor", "u", "--meta-audit-out", files.metaOut, ...bad],
+          io,
+        ),
+      ).toBe(2);
+      expect(err.join("\n")).toContain(`${bad[0]} must be a positive integer`);
+    }
+    // 旧形式の runId の pending(run-4)は既定の 900 秒では放棄、十分長くすれば放棄にならない
+    const base = ["--audit", files.audit, "--sources", files.sources, "--accessor", "u", "--meta-audit-out", files.metaOut, "--format", "json"];
+    const short = capture();
+    expect(await runCli(base, short.io)).toBe(0);
+    expect(JSON.parse(short.out.join("\n"))["abandonedRuns"]).toBe(1);
+    const long = capture();
+    expect(await runCli([...base, "--run-ttl-sec", String(10 * 365 * 24 * 3600)], long.io)).toBe(0);
+    expect(JSON.parse(long.out.join("\n"))["abandonedRuns"]).toBe(0);
+    expect(HELP).toContain("--run-ttl-sec");
+    expect(HELP).toContain("--raw-query-retention-days");
+    expect(HELP).not.toContain("--answer-run-jsonl");
   });
 
   it("--audit が1つもなければ usage エラー", async () => {

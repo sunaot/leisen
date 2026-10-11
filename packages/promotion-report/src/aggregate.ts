@@ -7,19 +7,31 @@
  * この集計は表示(render.ts / cli.ts)から分離した純粋関数にする。
  *
  * 入力の重複と更新: 監査 JSONL は at-least-once で同じレコードが複数行に現れうるため、
- * 冪等キー(requestId / runId / accessId / purgeId)で1件にまとめてから集計する
+ * 冪等キー(requestId / runId / recordId / accessId / purgeId)で1件にまとめてから集計する
  * (dedupeAuditRecords)。同じキーで内容も同じ行は「重複」(再送)、内容が変わった行は
- * 「更新」(AnswerRun の pending → 最終状態 → フィードバック。issue #38)として別に数え、
- * 後のレコードを採る。ただし AnswerRun の pending は確定済み(pending 以外)の状態を置き換えない
- * (--audit のファイルの順序が前後しても、集計は最終状態を使う)。
+ * 「更新」(ADR-019 より前の構成で Orchestrator が書き直した AnswerRun の pending → 最終状態 →
+ * フィードバック。issue #38)として別に数え、後のレコードを採る。ただし AnswerRun の pending は
+ * 確定済み(pending 以外)の状態を置き換えない(--audit のファイルの順序が前後しても、集計は
+ * 最終状態を使う)。
+ *
+ * run の統合(ADR-019 決定3・8、T-023): Gateway は run を書き直さず追記する — 開始時に pending の
+ * `answer_run`、終了時に `answer_run_finish`、フィードバック時に `answer_run_feedback`(部分レコード。
+ * 冪等キーは recordId)。runId ごとに pending を土台に、recordedAt の最新(同時刻は recordId)の
+ * finish と feedback をフィールド単位で重ねる(mergeAnswerRunRecords)。userId が pending と
+ * 一致する部分レコードだけを統合し、pending のない部分レコードは「孤立」、userId の違うものは
+ * 「不一致」として件数だけを警告に出す。より新しい部分レコードに置き換えられた古いもの(finish の
+ * 再送など)は「更新」に数える。finish を再送しても feedback は別レコードなので消えない。
+ * 有効期間(署名付き runId の payload。署名のない旧形式は runTtlSeconds)を過ぎても finish のない
+ * pending の run は「放棄」と数える(finish を送らずに unresolved を隠せないようにする)。
  *
  * AnswerRun と ToolInvocation の結合は (runId, userId)(docs/audit-queries.md §0)。
- * runId は呼び出し元の申告で Gateway は認証しないため、runId だけで結合すると、別の
- * 利用者が同じ runId を申告した呼び出しを他人の run に混ぜうる。同じ runId の AnswerRun が
- * あるのに userId が一致しない ToolInvocation は、どの run の呼び出しか確定できないので
- * 集計(ソース別・再検索回数)から除外し、run ごとの件数だけを警告(userMismatchWarnings)に
- * 出す。警告に userId・文書ID・クエリは出さない。AnswerRun のない runId の ToolInvocation
- * (runId 未申告の単発呼び出し等)は不一致ではなく、ソース別の呼び出し数にだけ数える。
+ * runId を申告する tools/call は Gateway が署名・本人・actor・期限を検証する(ADR-019)が、
+ * 旧形式の runId の申告は検証されないため、runId だけで結合すると、別の利用者が同じ runId を
+ * 申告した呼び出しを他人の run に混ぜうる。同じ runId の AnswerRun があるのに userId が一致しない
+ * ToolInvocation は、どの run の呼び出しか確定できないので集計(ソース別・再検索回数)から除外し、
+ * run ごとの件数だけを警告(userMismatchWarnings)に出す。警告に userId・文書ID・クエリは
+ * 出さない。AnswerRun のない runId の ToolInvocation(runId 未申告の単発呼び出し、拒否された申告の
+ * `invalid_run_id` の単発 run 等)は不一致ではなく、ソース別の呼び出し数にだけ数える。
  *
  * iteration(ADR-011 追記、ADR-017 決定2)は run 内のツール呼び出しの通番(0 始まり。
  * describe / search / fetch / list をすべて含み、並列呼び出しも個別に採番)であり、run 内の
@@ -40,12 +52,15 @@
 import { randomUUID } from "node:crypto";
 import {
   auditRecordIdempotencyKey,
+  type AnswerRunFeedbackRecord,
+  type AnswerRunFinishRecord,
   type AnswerRunRecord,
   type AuditAccessRecord,
   type AuditRecord,
   type RawQueryRecord,
   type ToolInvocationRecord,
 } from "@kp/audit";
+import { DEFAULT_RUN_ID_TTL_SEC, decodeRunIdPayload } from "@kp/gateway";
 import {
   classifySource,
   type PromotionEligibility,
@@ -97,16 +112,28 @@ export interface UserMismatchWarning {
   invocations: number;
 }
 
+/**
+ * 失敗クエリの原文の有無。
+ * - available: 生クエリ表に原文がある
+ * - expired: 原文がなく、run の開始が生クエリ表の保持期間(rawQueryRetentionDays)より前。
+ *   保持期間切れ(短期保持の設計どおり。issue #18)
+ * - not_recorded: 原文がなく、run の開始が保持期間内。書かれなかった(永続化不可のソースが
+ *   有効な構成では質問原文を生クエリ表に書かない。ADR-019 決定7)か、書き込みに失敗した
+ * - not_loaded: 生クエリ表を渡していない(rawQueries 未指定)
+ * - no_digest: AnswerRun に最終質問の digest がない
+ */
+export type FailedQueryStatus = "available" | "expired" | "not_recorded" | "not_loaded" | "no_digest";
+
 export interface FailedQuery {
   runId: string;
   startedAt: string;
   finalQueryDigest: string | null;
   /**
    * 生クエリ原文。rawQueryテーブル(短期保持、既定30日 — ADR-013 §3)に
-   * 残っている場合のみ。保持期間切れは null + status: "expired_or_missing"。
+   * 残っている場合のみ(status: "available")。それ以外は null で、理由は status。
    */
   rawQuery: string | null;
-  status: "available" | "expired_or_missing" | "no_digest";
+  status: FailedQueryStatus;
   failureReason: string | null;
   searchedSources: readonly string[];
 }
@@ -122,16 +149,31 @@ export interface PromotionReport {
    */
   duplicateRecordCount: number;
   /**
-   * 更新として後のレコードに置き換えたレコード数(同じ冪等キーで内容が変わった行。AnswerRun の
-   * pending → 最終状態 → フィードバック)。重複ではない。inputRecordCount = 集計した件数 +
-   * duplicateRecordCount + updatedRecordCount
+   * 更新として後のレコードに置き換えたレコード数: 同じ冪等キーで内容が変わった行(ADR-019 より前の
+   * 構成の AnswerRun の pending → 最終状態 → フィードバック)と、同じ runId のより新しい部分レコード
+   * (finish / feedback)に置き換えられた古い部分レコード(再送)。重複ではない。
+   * inputRecordCount = 集計した件数 + duplicateRecordCount + updatedRecordCount
    */
   updatedRecordCount: number;
+  /**
+   * 統合できなかった部分レコード(answer_run_finish / answer_run_feedback)の件数。孤立 = 同じ runId の
+   * pending の AnswerRun がない(pending の書き込み失敗・別ファイル・保持期間切れ)、不一致 = pending は
+   * あるが userId が違う(Gateway は認証値で書くので、起きれば実装の不具合か署名鍵の問題)。
+   * どちらも集計に入れない
+   */
+  orphanPartialRecordCount: number;
+  userMismatchPartialRecordCount: number;
   totalRuns: number;
   resolvedRuns: number;
   unresolvedRuns: number;
-  /** finalOutcome が pending / error のrun。率の分母に入れない */
+  /** finalOutcome が pending / error のrun。率の分母に入れない(abandonedRuns を含む) */
   undecidedRuns: number;
+  /**
+   * 放棄: runId の有効期間(署名付き runId の payload。旧形式は runTtlSeconds)を過ぎても finish のない
+   * pending の run(undecidedRuns の内数)。Orchestrator が finish を送れずに終わった(停止・障害)か、
+   * 送らずに unresolved を隠した(ADR-019 帰結)
+   */
+  abandonedRuns: number;
   /** shareOfUnresolved 降順(判定対象外・未分類は後方) */
   sourceStats: SourceStat[];
   /**
@@ -167,10 +209,132 @@ export interface PromotionReportInput {
   accessorUserId: string;
   /** テスト用に注入可能な現在時刻 */
   now?: Date;
+  /**
+   * 署名のない旧形式の runId(ADR-019 より前の構成)の pending の run を「放棄」と判定する有効期間
+   * (秒)。署名付き runId は payload の有効期間を使う。既定は Gateway の既定(gateway.runs.ttlSec)
+   */
+  runTtlSeconds?: number;
+  /**
+   * 生クエリ表の保持期間(日。deployment.yaml の audit.rawQueryRetentionDays)。原文のない失敗クエリを
+   * 「保持期間切れ」と「未記録」に分けるのに使う。既定 30
+   */
+  rawQueryRetentionDays?: number;
 }
 
+/** 生クエリ表の保持期間の既定(日。ADR-013 §3、設定スキーマの既定と同じ)。 */
+export const DEFAULT_RAW_QUERY_RETENTION_DAYS = 30;
+
 type AnswerRun = AnswerRunRecord & { recordType: "answer_run" };
+type AnswerRunFinish = AnswerRunFinishRecord & { recordType: "answer_run_finish" };
+type AnswerRunFeedback = AnswerRunFeedbackRecord & { recordType: "answer_run_feedback" };
 type ToolInvocation = ToolInvocationRecord & { recordType: "tool_invocation" };
+
+/** mergeAnswerRunRecords の結果。 */
+export interface MergedAnswerRuns {
+  /** runId ごとに統合した AnswerRun(pending の AnswerRun の出現順) */
+  runs: AnswerRun[];
+  /** 同じ runId の pending の AnswerRun がない部分レコードの数 */
+  orphans: number;
+  /** pending はあるが userId が違う部分レコードの数 */
+  userMismatches: number;
+  /** 同じ runId のより新しい部分レコードに置き換えられた古い部分レコードの数(再送・更新) */
+  superseded: number;
+}
+
+/** a が b より新しいか(recordedAt。同時刻は recordId の文字列順)。 */
+function isNewerPartial(
+  a: AnswerRunFinish | AnswerRunFeedback,
+  b: AnswerRunFinish | AnswerRunFeedback,
+): boolean {
+  const at = Date.parse(a.recordedAt);
+  const bt = Date.parse(b.recordedAt);
+  if (at !== bt) return at > bt;
+  return a.recordId > b.recordId;
+}
+
+/**
+ * run の記録を runId ごとに統合する(ADR-019 決定3・8)。重複除去済みのレコードを渡すこと。
+ * pending の AnswerRun(または ADR-019 より前の構成の完全な AnswerRun)を土台に、userId が一致する
+ * 部分レコードのうち recordedAt の最新(同時刻は recordId)の finish(結果の欄)と feedback
+ * (userFeedback)を重ねる。finish を再送しても feedback は別レコードなので消えない。
+ */
+export function mergeAnswerRunRecords(records: readonly AuditRecord[]): MergedAnswerRuns {
+  const baseById = new Map<string, AnswerRun>();
+  for (const record of records) {
+    if (record.recordType === "answer_run") {
+      baseById.set(record.runId, record);
+    }
+  }
+  const latestFinish = new Map<string, AnswerRunFinish>();
+  const latestFeedback = new Map<string, AnswerRunFeedback>();
+  let orphans = 0;
+  let userMismatches = 0;
+  let superseded = 0;
+  for (const record of records) {
+    if (record.recordType !== "answer_run_finish" && record.recordType !== "answer_run_feedback") {
+      continue;
+    }
+    const base = baseById.get(record.runId);
+    if (base === undefined) {
+      orphans += 1;
+      continue;
+    }
+    if (base.userId !== record.userId) {
+      userMismatches += 1;
+      continue;
+    }
+    if (record.recordType === "answer_run_finish") {
+      const current = latestFinish.get(record.runId);
+      if (current === undefined || isNewerPartial(record, current)) {
+        latestFinish.set(record.runId, record);
+      }
+      if (current !== undefined) superseded += 1;
+    } else {
+      const current = latestFeedback.get(record.runId);
+      if (current === undefined || isNewerPartial(record, current)) {
+        latestFeedback.set(record.runId, record);
+      }
+      if (current !== undefined) superseded += 1;
+    }
+  }
+  const runs: AnswerRun[] = [];
+  for (const base of baseById.values()) {
+    const finish = latestFinish.get(base.runId);
+    const feedback = latestFeedback.get(base.runId);
+    runs.push({
+      ...base,
+      ...(finish !== undefined
+        ? {
+            endedAt: finish.endedAt,
+            finalOutcome: finish.finalOutcome,
+            confidence: finish.confidence,
+            searchedSources: finish.searchedSources,
+            citedDocIds: finish.citedDocIds,
+            failureReason: finish.failureReason,
+          }
+        : {}),
+      ...(feedback !== undefined ? { userFeedback: feedback.userFeedback } : {}),
+    });
+  }
+  return { runs, orphans, userMismatches, superseded };
+}
+
+/**
+ * run の有効期限(ms)。署名付き runId は payload の発行時刻 + 有効期間(Gateway が tools/call と
+ * finish を受ける期限と同じ)、旧形式は開始時刻 + fallbackTtlSeconds。
+ */
+export function runExpiryMs(run: Pick<AnswerRun, "runId" | "startedAt">, fallbackTtlSeconds: number): number {
+  const payload = decodeRunIdPayload(run.runId);
+  if (payload !== undefined) {
+    return (payload.issuedAt + payload.ttlSeconds) * 1000;
+  }
+  return Date.parse(run.startedAt) + fallbackTtlSeconds * 1000;
+}
+
+/** 放棄: 有効期限を過ぎても finish のない pending の run。 */
+function isAbandoned(run: AnswerRun, nowMs: number, fallbackTtlSeconds: number): boolean {
+  return run.finalOutcome === "pending" && runExpiryMs(run, fallbackTtlSeconds) <= nowMs;
+}
 
 function isDecided(run: AnswerRun): boolean {
   return run.finalOutcome === "resolved" || run.finalOutcome === "unresolved";
@@ -246,11 +410,12 @@ export interface DedupedAuditRecords {
 }
 
 /**
- * 冪等キー(gateway の auditRecordIdempotencyKey: requestId / runId / accessId /
+ * 冪等キー(@kp/audit の auditRecordIdempotencyKey: requestId / runId / recordId / accessId /
  * purgeId)で1件にまとめ、重複(同じ内容の再送)と更新(内容が変わった後の行)を分けて数える。
  * 監査 JSONL は at-least-once で、書き込みの成否が確定しない失敗の再送により同じレコードが
- * 複数行に現れうる(gateway の audit/jsonl.ts)。AnswerRun は同じ runId で pending → 最終状態
- * → フィードバックの行が並ぶ(orchestrator の AnswerRunJsonlSink)。
+ * 複数行に現れうる(@kp/audit の jsonl.ts)。ADR-019 より前の構成の AnswerRun は同じ runId で
+ * pending → 最終状態 → フィードバックの行が並ぶ(書き直し)。Gateway の run API の部分レコードは
+ * recordId ごとに別のキーなので、ここでは束ねず mergeAnswerRunRecords で統合する。
  */
 export function dedupeAuditRecordsDetailed(records: readonly AuditRecord[]): DedupedAuditRecords {
   const byKey = new Map<string, AuditRecord>();
@@ -309,25 +474,35 @@ export function aggregatePromotionReport(
   input: PromotionReportInput,
 ): PromotionReport {
   const now = input.now ?? new Date();
+  const nowMs = now.getTime();
+  const runTtlSeconds = input.runTtlSeconds ?? DEFAULT_RUN_ID_TTL_SEC;
+  const rawQueryRetentionDays = input.rawQueryRetentionDays ?? DEFAULT_RAW_QUERY_RETENTION_DAYS;
   if (!input.accessorUserId) {
     throw new Error("accessorUserId is required (meta audit, ADR-013 §3)");
+  }
+  if (!Number.isInteger(runTtlSeconds) || runTtlSeconds < 1) {
+    throw new Error("runTtlSeconds must be a positive integer");
+  }
+  if (!Number.isInteger(rawQueryRetentionDays) || rawQueryRetentionDays < 1) {
+    throw new Error("rawQueryRetentionDays must be a positive integer");
   }
 
   // at-least-once の重複行を除き、更新(pending → 最終状態など)は後の状態にまとめてから数える
   // (二重計上しない)
   const { records, duplicates, updates } = dedupeAuditRecordsDetailed(input.records);
 
+  // run の記録を runId ごとに統合する(pending + 最新の finish + 最新の feedback。ADR-019)。
   // メタ監査(audit_access / retention_purge)レコードは集計対象のrunデータではない
-  const answerRuns = records.filter(
-    (r): r is AnswerRun => r.recordType === "answer_run",
-  );
+  const merged = mergeAnswerRunRecords(records);
+  const answerRuns = merged.runs;
   const invocations = records.filter(
     (r): r is ToolInvocation => r.recordType === "tool_invocation",
   );
 
-  // 重複除去後は runId ごとに AnswerRun が1件(同じ runId は後のレコード)
+  // 統合後は runId ごとに AnswerRun が1件
   const runById = new Map(answerRuns.map((r) => [r.runId, r]));
   const decidedRuns = answerRuns.filter(isDecided);
+  const abandonedRuns = answerRuns.filter((r) => isAbandoned(r, nowMs, runTtlSeconds)).length;
   const unresolvedTotal = decidedRuns.filter(
     (r) => r.finalOutcome === "unresolved",
   ).length;
@@ -422,16 +597,26 @@ export function aggregatePromotionReport(
     // 同一digestが複数ユーザーに存在しうるため userId も結合キーに含める
     rawByKey.set(`${rq.queryDigest}\u0000${rq.userId}`, rq.rawQuery);
   }
+  const retentionMs = rawQueryRetentionDays * 24 * 3600 * 1000;
   const failedQueries: FailedQuery[] = answerRuns
     .filter((r) => r.finalOutcome === "unresolved")
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt) || b.runId.localeCompare(a.runId))
     .map((run) => {
       let rawQuery: string | null = null;
-      let status: FailedQuery["status"] = "no_digest";
+      let status: FailedQueryStatus = "no_digest";
       if (run.finalQueryDigest) {
-        rawQuery =
-          rawByKey.get(`${run.finalQueryDigest}\u0000${run.userId}`) ?? null;
-        status = rawQuery !== null ? "available" : "expired_or_missing";
+        if (input.rawQueries === undefined) {
+          status = "not_loaded";
+        } else {
+          rawQuery = rawByKey.get(`${run.finalQueryDigest}\u0000${run.userId}`) ?? null;
+          if (rawQuery !== null) {
+            status = "available";
+          } else {
+            // 原文がない理由を run の開始時刻で分ける: 保持期間より前なら期限切れ(正常系)、
+            // 期間内なら書かれなかった(Slack 有効時の非記録・書き込み失敗。issue #18)
+            status = Date.parse(run.startedAt) + retentionMs <= nowMs ? "expired" : "not_recorded";
+          }
+        }
       }
       return {
         runId: run.runId,
@@ -459,11 +644,14 @@ export function aggregatePromotionReport(
     generatedAt: timestamp,
     inputRecordCount: input.records.length,
     duplicateRecordCount: duplicates,
-    updatedRecordCount: updates,
+    updatedRecordCount: updates + merged.superseded,
+    orphanPartialRecordCount: merged.orphans,
+    userMismatchPartialRecordCount: merged.userMismatches,
     totalRuns: answerRuns.length,
     resolvedRuns: decidedRuns.length - unresolvedTotal,
     unresolvedRuns: unresolvedTotal,
     undecidedRuns: answerRuns.length - decidedRuns.length,
+    abandonedRuns,
     sourceStats,
     searchCountDistribution,
     failedQueries,

@@ -42,7 +42,7 @@ describe("renderPromotionReportText", () => {
         "",
         "生成時刻: 2026-07-12T09:00:00.000Z",
         "入力レコード数: 0",
-        "run数: 0(resolved=0 unresolved=0 未確定=0)",
+        "run数: 0(resolved=0 unresolved=0 未確定=0 放棄=0)",
         "",
         "## ソース別未解決率(AnswerRun単位)",
         "",
@@ -106,11 +106,63 @@ describe("renderPromotionReportText", () => {
     expect(text.indexOf("## 警告")).toBeLessThan(text.indexOf("## ソース別未解決率"));
   });
 
-  it("失敗クエリ: 保持期間内は原文、期限切れはdigestのみ+期限切れ表示", () => {
+  it("失敗クエリ: 保持期間内は原文、期限切れはdigestのみ+期限切れ表示、期間内の未記録は別の表示(issue #18)", () => {
     const text = renderedFixture();
     expect(text).toContain('"経費精算の締め日はいつ?"');
     expect(text).toContain("(原文は保持期間切れ: digest=");
     expect(text).toContain("(最終質問が記録されていません)");
+    expect(text).not.toContain("原文は未記録");
+
+    const noRaw = renderPromotionReportText(
+      aggregatePromotionReport({
+        records: fixtureRecords(),
+        sources: fixtureSources(),
+        rawQueries: [],
+        accessorUserId: "auditor-1",
+        now: FIXED_NOW,
+      }),
+    );
+    expect(noRaw).toContain("(原文は未記録: digest=");
+    expect(noRaw).toContain("(原文は保持期間切れ: digest=");
+    const notLoaded = renderPromotionReportText(
+      aggregatePromotionReport({
+        records: fixtureRecords(),
+        sources: fixtureSources(),
+        accessorUserId: "auditor-1",
+        now: FIXED_NOW,
+      }),
+    );
+    expect(notLoaded).toContain("(原文は参照していません: --raw-queries 未指定。digest=");
+  });
+
+  it("放棄した run の数を run数の行に出し、統合できない部分レコードがあれば警告節を出す(件数だけ)", () => {
+    const records: AuditRecord[] = [
+      ...fixtureRecords(),
+      {
+        recordType: "answer_run_finish",
+        recordId: "f-orphan",
+        runId: "run-missing",
+        userId: "u9",
+        recordedAt: "2026-07-11T10:00:20Z",
+        endedAt: "2026-07-11T10:00:20Z",
+        finalOutcome: "resolved",
+        confidence: 0.5,
+        searchedSources: ["gdrive"],
+        citedDocIds: [],
+        failureReason: null,
+      },
+    ];
+    const text = renderPromotionReportText(
+      aggregatePromotionReport({ records, sources: fixtureSources(), accessorUserId: "auditor-1", now: FIXED_NOW }),
+    );
+    // run-4(pending、2026-07-11T12:00、旧形式の runId)は FIXED_NOW には有効期間(既定 900 秒)を過ぎている
+    expect(text).toContain("run数: 6(resolved=2 unresolved=3 未確定=1 放棄=1)");
+    expect(text).toContain("## 警告: 統合できない run の部分レコード(finish / feedback。集計から除外)");
+    expect(text).toContain("孤立(同じ runId の pending の AnswerRun がない)= 1 件");
+    expect(text).not.toContain("u9");
+    expect(text).not.toContain("run-missing");
+    expect(renderedFixture()).not.toContain("## 警告: 統合できない");
+    expect(renderedFixture()).toContain("「放棄」は runId の有効期間を過ぎても終了(finish)の記録がない run");
   });
 
   it("判定ガイドに5.1の基準・Slack対象外・index-required適用外・保持期間の注意を含む", () => {

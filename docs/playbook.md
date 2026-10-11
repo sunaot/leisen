@@ -51,7 +51,17 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
    - 使い方は `kp-promotion-report --help`。入力の不備はファイル名・行番号(sources.json は
      `sources.json(<パス>): <場所>: <説明>`)で示す。監査レコードでない行は、渡すべき形式の案内付きで拒否する
    - 冒頭の「入力レコード数」には、除いた重複(同じ内容の再送)と、後の状態にまとめた更新
-     (AnswerRun の pending → 最終状態 → フィードバック。重複ではない)を分けて添える
+     (finish / feedback の再送で置き換えた古い部分レコード、旧構成の AnswerRun の書き直し。重複では
+     ない)を分けて添える。「run数」には放棄(runId の有効期間を過ぎても finish のない pending の run。
+     Orchestrator の停止・障害か、終了を申告せずに unresolved を隠した可能性。ADR-019)を添える。
+     統合できない部分レコード(孤立 = pending のない finish / feedback、不一致 = userId が違う)が
+     あれば件数だけを警告に出す。放棄・孤立・不一致が多ければ判定の前に原因を調べる
+   - 失敗クエリの原文がない理由は 2 つに分けて表示する: 保持期間切れ(run の開始が
+     `--raw-query-retention-days`、既定 30 日より前。定期実行が遅れた)と未記録(期間内なのに原文がない。
+     永続化不可のソースが有効な構成では質問原文を書かない — ADR-019 決定7。それ以外なら書き込み失敗)
+   - `--run-ttl-sec`(既定 900)は署名のない旧形式の runId の pending を放棄と判定する有効期間。署名付きの
+     runId は payload の有効期間で判定する。Gateway の `gateway.runs.ttlSec` と `audit.rawQueryRetentionDays`
+     を変えているなら、同じ値を渡す
    - `sources.json` は sourceId → `{ nativeSearch, slack }` の分類メタ。コネクタ実装の
      ConnectorCapabilities と一致させる
    - 監査ログの閲覧はメタ監査の対象(ADR-013 §3)。`--meta-audit-out` に出力される

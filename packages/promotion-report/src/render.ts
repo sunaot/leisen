@@ -71,6 +71,15 @@ function renderUserMismatchWarnings(
   ];
 }
 
+/** 原文のない失敗クエリの表示(理由ごと。issue #18: 保持期間切れと未記録を分ける)。 */
+const FAILED_QUERY_STATUS_TEXT: Record<Exclude<FailedQuery["status"], "available">, (digest: string) => string> = {
+  expired: (digest) => `(原文は保持期間切れ: digest=${digest})`,
+  not_recorded: (digest) =>
+    `(原文は未記録: digest=${digest}。永続化不可のソースが有効な構成では質問原文を書かない。それ以外なら書き込み失敗を疑う)`,
+  not_loaded: (digest) => `(原文は参照していません: --raw-queries 未指定。digest=${digest})`,
+  no_digest: () => "(最終質問が記録されていません)",
+};
+
 function renderFailedQuery(f: FailedQuery): string {
   const digest = f.finalQueryDigest
     ? `${f.finalQueryDigest.slice(0, 12)}…`
@@ -78,9 +87,7 @@ function renderFailedQuery(f: FailedQuery): string {
   const query =
     f.status === "available"
       ? JSON.stringify(f.rawQuery)
-      : f.status === "expired_or_missing"
-        ? `(原文は保持期間切れ: digest=${digest})`
-        : "(最終質問が記録されていません)";
+      : FAILED_QUERY_STATUS_TEXT[f.status](digest);
   const reason = f.failureReason ? `  reason=${f.failureReason}` : "";
   const sources =
     f.searchedSources.length > 0 ? f.searchedSources.join(",") : "-";
@@ -108,7 +115,10 @@ export function renderJudgmentGuide(): string {
     "- post-filtering前の候補件数・分離テレメトリは本レポートでは扱わない(ADR-011/012)",
     "- 失敗クエリの原文はrawQueryテーブルの保持期間内(既定30日、ADR-013 §3)のみ",
     "  表示される。期限切れはdigestのみとなり判定材料にならないため、",
-    "  レポートは保持期間内に定期実行すること",
+    "  レポートは保持期間内に定期実行すること。保持期間内なのに原文がない(未記録)のは、",
+    "  永続化不可のソースが有効な構成(質問原文を書かない。ADR-019 決定7)か書き込み失敗",
+    "- 「放棄」は runId の有効期間を過ぎても終了(finish)の記録がない run。Orchestrator の停止・",
+    "  障害か、終了を申告せずに unresolved を隠した可能性がある(ADR-019)。多ければ原因を調べる",
     "- 有効化の操作は deployment.yaml の connectors[].searchLayer.enabled(T-010)",
   ].join("\n");
 }
@@ -130,14 +140,34 @@ function renderInputCount(report: PromotionReport): string {
   return `入力レコード数: ${report.inputRecordCount}${notes.length > 0 ? `(${notes.join("。")})` : ""}`;
 }
 
+/**
+ * 統合できない部分レコード(finish / feedback)の警告。件数だけを出す(runId・userId は出さない)。
+ * なければ節ごと出さない。
+ */
+function renderPartialRecordWarnings(report: PromotionReport): string[] {
+  if (report.orphanPartialRecordCount === 0 && report.userMismatchPartialRecordCount === 0) {
+    return [];
+  }
+  return [
+    "## 警告: 統合できない run の部分レコード(finish / feedback。集計から除外)",
+    "",
+    `  孤立(同じ runId の pending の AnswerRun がない)= ${report.orphanPartialRecordCount} 件、`,
+    `  不一致(pending はあるが userId が違う)= ${report.userMismatchPartialRecordCount} 件。`,
+    "  孤立は pending の書き込み失敗・別ファイル・保持期間切れ、不一致は実装の不具合か署名鍵の問題が",
+    "  考えられます。docs/audit-queries.md §0 を参照してください。",
+    "",
+  ];
+}
+
 export function renderPromotionReportText(report: PromotionReport): string {
   const lines: string[] = [
     "# 昇格判定レポート(T-014)",
     "",
     `生成時刻: ${report.generatedAt}`,
     renderInputCount(report),
-    `run数: ${report.totalRuns}(resolved=${report.resolvedRuns} unresolved=${report.unresolvedRuns} 未確定=${report.undecidedRuns})`,
+    `run数: ${report.totalRuns}(resolved=${report.resolvedRuns} unresolved=${report.unresolvedRuns} 未確定=${report.undecidedRuns} 放棄=${report.abandonedRuns})`,
     "",
+    ...renderPartialRecordWarnings(report),
     ...renderUserMismatchWarnings(report.userMismatchWarnings),
     "## ソース別未解決率(AnswerRun単位)",
     "",

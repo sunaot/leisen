@@ -5,11 +5,14 @@ import {
   type AuditRecord,
   type RawQueryRecord,
 } from "@kp/audit";
+import { createRunIdKeyRing, issueRunId } from "@kp/gateway";
 import {
   aggregatePromotionReport,
   dedupeAuditRecords,
   dedupeAuditRecordsDetailed,
   generatePromotionReport,
+  mergeAnswerRunRecords,
+  runExpiryMs,
   type PromotionReportInput,
 } from "../src/aggregate.js";
 import {
@@ -248,8 +251,8 @@ describe("aggregatePromotionReport(合成2層ログのゴールデンテスト)"
 
     expect(report.failedQueries.map((f) => [f.runId, f.status])).toEqual([
       ["run-5", "no_digest"],
-      ["run-3", "expired_or_missing"],
       ["run-1", "available"],
+      ["run-3", "expired"],
     ]);
     const available = report.failedQueries.find((f) => f.runId === "run-1");
     expect(available?.rawQuery).toBe("経費精算の締め日はいつ?");
@@ -270,8 +273,28 @@ describe("aggregatePromotionReport(合成2層ログのゴールデンテスト)"
     input.rawQueries = [foreign];
     const report = aggregatePromotionReport(input);
     const f = report.failedQueries.find((x) => x.runId === "run-1");
-    expect(f?.status).toBe("expired_or_missing");
+    // run-1 は保持期間内なので「未記録」(期限切れではない)
+    expect(f?.status).toBe("not_recorded");
     expect(f?.rawQuery).toBeNull();
+  });
+
+  it("原文のない失敗クエリは、run の開始が保持期間より前なら expired、期間内なら not_recorded(issue #18)", () => {
+    const input = baseInput();
+    input.rawQueries = [];
+    expect(
+      aggregatePromotionReport(input).failedQueries.map((f) => [f.runId, f.status]),
+    ).toEqual([
+      ["run-5", "no_digest"],
+      ["run-1", "not_recorded"], // 2026-07-10(2 日前)
+      ["run-3", "expired"], // 2026-06-01(41 日前)
+    ]);
+    // 保持期間を長くすれば run-3 も未記録になる
+    expect(
+      aggregatePromotionReport({ ...input, rawQueryRetentionDays: 60 }).failedQueries.map((f) => f.status),
+    ).toEqual(["no_digest", "not_recorded", "not_recorded"]);
+    expect(() => aggregatePromotionReport({ ...input, rawQueryRetentionDays: 0 })).toThrow(
+      /rawQueryRetentionDays/,
+    );
   });
 
   it("audit_access / retention_purge レコードはrun集計に影響しない", () => {
@@ -315,11 +338,11 @@ describe("aggregatePromotionReport(合成2層ログのゴールデンテスト)"
       report.metaAuditRecords[0]?.recordType === "audit_access" &&
         report.metaAuditRecords[0].target,
     ).toBe("audit_log");
-    // rawQueryを見ていないので全件 期限切れ/未保持 扱い
+    // rawQueryを見ていないので digest のあるものは全件「参照していない」
     expect(
       report.failedQueries
         .filter((f) => f.finalQueryDigest !== null)
-        .every((f) => f.status === "expired_or_missing"),
+        .every((f) => f.status === "not_loaded"),
     ).toBe(true);
   });
 
@@ -438,6 +461,218 @@ describe("aggregatePromotionReport(合成2層ログのゴールデンテスト)"
 
   it("post-filtering前候補件数に相当するフィールドを出力に含めない(ADR-011/012)", () => {
     const report = aggregatePromotionReport(baseInput());
+    const banned = new Set(["hitCount", "candidateCount", "preFilterCount", "totalCount"]);
+    const scan = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(scan);
+      if (value === null || typeof value !== "object") return;
+      for (const [key, nested] of Object.entries(value)) {
+        expect(banned.has(key), `forbidden key in report: ${key}`).toBe(false);
+        scan(nested);
+      }
+    };
+    scan(report);
+  });
+});
+
+/**
+ * Gateway の run API が書く形(ADR-019、T-023): 開始時の pending の AnswerRun と、終了・フィードバック
+ * の部分レコード(recordId が冪等キー、recordedAt が Gateway の時刻)。
+ */
+function pending(runId: string, userId: string, startedAt: string, digest: string | null): AuditRecord {
+  return answerRun(runId, userId, startedAt, "pending", [], digest);
+}
+
+function finish(
+  recordId: string,
+  runId: string,
+  userId: string,
+  recordedAt: string,
+  outcome: "resolved" | "unresolved" | "error",
+  searchedSources: string[],
+  failureReason: string | null = null,
+): AuditRecord {
+  return {
+    recordType: "answer_run_finish",
+    recordId,
+    runId,
+    userId,
+    recordedAt,
+    endedAt: recordedAt,
+    finalOutcome: outcome,
+    confidence: outcome === "error" ? null : 0.8,
+    searchedSources,
+    citedDocIds: outcome === "resolved" ? [`${searchedSources[0] ?? "x"}:doc-1`] : [],
+    failureReason,
+  };
+}
+
+function feedback(
+  recordId: string,
+  runId: string,
+  userId: string,
+  recordedAt: string,
+  userFeedback: "resolved" | "unresolved",
+): AuditRecord {
+  return { recordType: "answer_run_feedback", recordId, runId, userId, recordedAt, userFeedback };
+}
+
+describe("run の部分レコードの統合(ADR-019 決定3・8、T-023)", () => {
+  const startedAt = "2026-07-11T10:00:00Z";
+  const q = digestQuery("経費精算の締め日はいつ?");
+
+  function reportOf(records: AuditRecord[], now: Date = FIXED_NOW) {
+    return aggregatePromotionReport({
+      records,
+      sources: fixtureSources(),
+      rawQueries: fixtureRawQueries(),
+      accessorUserId: "auditor-1",
+      now,
+    });
+  }
+
+  it("pending + 最新の finish + 最新の feedback をフィールド単位で統合する(recordedAt の最新。同時刻は recordId)", () => {
+    const records = [
+      pending("run-g", "u1", startedAt, q),
+      finish("f-1", "run-g", "u1", "2026-07-11T10:00:20Z", "unresolved", ["gdrive"], "not_found_in_sources"),
+      // 再送(後から届いた古い finish は採らない)
+      finish("f-0", "run-g", "u1", "2026-07-11T10:00:10Z", "error", [], "run_timeout"),
+      feedback("b-1", "run-g", "u1", "2026-07-11T10:05:00Z", "unresolved"),
+      // 同時刻の feedback は recordId の大きいほう
+      feedback("b-2", "run-g", "u1", "2026-07-11T10:05:00Z", "resolved"),
+      feedback("b-0", "run-g", "u1", "2026-07-11T10:05:00Z", "unresolved"),
+    ];
+    const merged = mergeAnswerRunRecords(records);
+    expect(merged.runs).toEqual([
+      expect.objectContaining({
+        runId: "run-g",
+        userId: "u1",
+        startedAt,
+        finalQueryDigest: q,
+        finalOutcome: "unresolved",
+        endedAt: "2026-07-11T10:00:20Z",
+        confidence: 0.8,
+        searchedSources: ["gdrive"],
+        failureReason: "not_found_in_sources",
+        userFeedback: "resolved",
+      }),
+    ]);
+    expect(merged).toMatchObject({ orphans: 0, userMismatches: 0, superseded: 3 });
+
+    const report = reportOf([...records, ...runInvocations("run-g", "u1", startedAt, [["search", "gdrive"]])]);
+    expect(report).toMatchObject({
+      totalRuns: 1,
+      unresolvedRuns: 1,
+      undecidedRuns: 0,
+      abandonedRuns: 0,
+      // 置き換えられた部分レコード 3 件は「更新」(重複ではない)
+      duplicateRecordCount: 0,
+      updatedRecordCount: 3,
+      orphanPartialRecordCount: 0,
+      userMismatchPartialRecordCount: 0,
+    });
+    expect(report.failedQueries).toEqual([
+      expect.objectContaining({ runId: "run-g", status: "available", rawQuery: "経費精算の締め日はいつ?" }),
+    ]);
+    expect(report.sourceStats.find((s) => s.sourceId === "gdrive")).toMatchObject({ runs: 1, unresolvedRuns: 1 });
+  });
+
+  it("finish を再送しても feedback は消えない(別レコード)。ファイルの順序にも依らない", () => {
+    const records = [
+      pending("run-k", "u1", startedAt, q),
+      finish("f-1", "run-k", "u1", "2026-07-11T10:00:20Z", "resolved", ["gdrive"]),
+      feedback("b-1", "run-k", "u1", "2026-07-11T10:05:00Z", "unresolved"),
+      // プロセスの再起動後の finish の再送(feedback より後)
+      finish("f-2", "run-k", "u1", "2026-07-11T10:10:00Z", "resolved", ["gdrive"]),
+    ];
+    const forward = mergeAnswerRunRecords(records).runs[0];
+    const reversed = mergeAnswerRunRecords([...records].reverse()).runs[0];
+    expect(forward).toMatchObject({ finalOutcome: "resolved", userFeedback: "unresolved" });
+    expect(reversed).toEqual(forward);
+  });
+
+  it("userId が pending と違う部分レコードは統合せず、pending のない部分レコードは孤立として数える", () => {
+    const records = [
+      pending("run-m", "u1", startedAt, q),
+      finish("f-x", "run-m", "u-other", "2026-07-11T10:00:20Z", "resolved", ["gdrive"]),
+      feedback("b-x", "run-m", "u-other", "2026-07-11T10:05:00Z", "resolved"),
+      finish("f-o", "run-missing", "u1", "2026-07-11T10:00:20Z", "resolved", ["gdrive"]),
+    ];
+    const merged = mergeAnswerRunRecords(records);
+    expect(merged.runs[0]).toMatchObject({ runId: "run-m", finalOutcome: "pending", userFeedback: null });
+    expect(merged).toMatchObject({ orphans: 1, userMismatches: 2, superseded: 0 });
+
+    const report = reportOf(records);
+    expect(report).toMatchObject({
+      totalRuns: 1,
+      undecidedRuns: 1,
+      orphanPartialRecordCount: 1,
+      userMismatchPartialRecordCount: 2,
+      updatedRecordCount: 0,
+    });
+    // 警告に userId・runId の中身は含めない(件数だけ)
+    expect(JSON.stringify(report)).not.toContain("u-other");
+  });
+
+  it("有効期間を過ぎても finish のない pending の run は放棄と数える(署名付き runId は payload の期限、旧形式は runTtlSeconds)", () => {
+    const keys = createRunIdKeyRing({ current: { kid: "t1", key: Buffer.alloc(32, 9) } });
+    const issuedMs = Date.parse(startedAt);
+    const signed = issueRunId(keys, {
+      subject: { userId: "u1", actor: { kind: "human" } },
+      ttlSeconds: 600,
+      nowMs: issuedMs,
+    });
+    expect(runExpiryMs({ runId: signed.runId, startedAt }, 1)).toBe((signed.issuedAt + 600) * 1000);
+    expect(runExpiryMs({ runId: "run-legacy", startedAt }, 900)).toBe(issuedMs + 900 * 1000);
+
+    const records = [
+      pending(signed.runId, "u1", startedAt, q),
+      pending("run-legacy", "u1", startedAt, q),
+      // finish 済みの run は期限を過ぎても放棄ではない
+      pending("run-done", "u1", startedAt, q),
+      finish("f-d", "run-done", "u1", "2026-07-11T10:00:30Z", "resolved", ["gdrive"]),
+    ];
+    // 開始から 5 分: どちらも期限内
+    const early = reportOf(records, new Date(issuedMs + 5 * 60 * 1000));
+    expect(early).toMatchObject({ totalRuns: 3, undecidedRuns: 2, abandonedRuns: 0 });
+    // 開始から 12 分: 署名付き(600 秒)は放棄、旧形式(既定 900 秒)はまだ
+    const mid = reportOf(records, new Date(issuedMs + 12 * 60 * 1000));
+    expect(mid).toMatchObject({ undecidedRuns: 2, abandonedRuns: 1 });
+    // 開始から 1 日(FIXED_NOW): 両方放棄。旧形式の期間を長くすれば旧形式は放棄にならない
+    expect(reportOf(records)).toMatchObject({ undecidedRuns: 2, abandonedRuns: 2 });
+    expect(
+      aggregatePromotionReport({
+        records,
+        sources: fixtureSources(),
+        accessorUserId: "auditor-1",
+        now: FIXED_NOW,
+        runTtlSeconds: 2 * 24 * 3600,
+      }),
+    ).toMatchObject({ abandonedRuns: 1 });
+    expect(() =>
+      aggregatePromotionReport({ records, sources: {}, accessorUserId: "a", runTtlSeconds: 0 }),
+    ).toThrow(/runTtlSeconds/);
+  });
+
+  it("ADR-019 より前の構成の完全な AnswerRun(書き直し)と、Gateway の部分レコードを同じ入力で読める", () => {
+    const legacy = answerRun("run-old", "u2", "2026-07-10T09:00:00Z", "resolved", ["wiki"], digestQuery("会議室"));
+    const records = [
+      ...fixtureRecords(),
+      legacy,
+      pending("run-new", "u1", startedAt, q),
+      finish("f-n", "run-new", "u1", "2026-07-11T10:00:20Z", "resolved", ["gdrive"]),
+    ];
+    const report = reportOf(records);
+    expect(report.totalRuns).toBe(8);
+    expect(report.resolvedRuns).toBe(4);
+  });
+
+  it("部分レコードを統合したレポートにも post-filtering 前の候補件数に相当するフィールドを含めない(ADR-011/012)", () => {
+    const report = reportOf([
+      ...fixtureRecords(),
+      pending("run-p", "u1", startedAt, q),
+      finish("f-p", "run-p", "u1", "2026-07-11T10:00:20Z", "resolved", ["gdrive"]),
+      feedback("b-p", "run-p", "u1", "2026-07-11T10:05:00Z", "resolved"),
+    ]);
     const banned = new Set(["hitCount", "candidateCount", "preFilterCount", "totalCount"]);
     const scan = (value: unknown): void => {
       if (Array.isArray(value)) return value.forEach(scan);

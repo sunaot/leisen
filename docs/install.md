@@ -353,7 +353,10 @@ server {
 - **監査ストアに書くのは Gateway だけ**(ADR-019)。Orchestrator(`kp-ask` / `kp-ask serve`)の run
   (AnswerRun)も Gateway の run API(`/runs`)が `audit.jsonl` に記録する: run の開始で `answer_run`
   (pending)、終了で `answer_run_finish`、フィードバックで `answer_run_feedback` を追記する(部分レコード。
-  書き直さない)。読み手は同じ `runId` の 3 種を結合して最終状態を得る(docs/audit-queries.md §0)。
+  書き直さない)。読み手は同じ `runId` の 3 種を結合して最終状態を得る(docs/audit-queries.md §0。昇格判定
+  レポートは統合して集計し、有効期間を過ぎて finish のない run を「放棄」、pending のない部分レコードを
+  「孤立」と数える。`gateway.runs.ttlSec` / `audit.rawQueryRetentionDays` を既定から変えたら
+  `--run-ttl-sec` / `--raw-query-retention-days` に同じ値を渡す)。
   orchestrator のコンテナは監査ボリュームを一切マウントしない(Gateway の監査ログ `kp-audit`・生クエリ原文
   `kp-rawquery` も、以前の `kp-answer-runs` も)。Orchestrator は Gateway が信頼しない側(threat-model §1 の
   TB2)にあり、侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない。ADR-018 決定4 の別ボリューム

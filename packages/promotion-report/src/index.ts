@@ -13,8 +13,13 @@
  * 集計だけの関数は意図的に公開しない。
  */
 export {
+  DEFAULT_RAW_QUERY_RETENTION_DAYS,
   generatePromotionReport,
+  mergeAnswerRunRecords,
+  runExpiryMs,
   type FailedQuery,
+  type FailedQueryStatus,
+  type MergedAnswerRuns,
   type PromotionReport,
   type PromotionReportInput,
   type SearchCountBucket,

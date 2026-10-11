@@ -7,19 +7,26 @@
  *
  * 使い方:
  *   kp-promotion-report \
- *     --audit audit-records.jsonl [--audit answer-runs.jsonl ...] \
+ *     --audit audit-records.jsonl [--audit more.jsonl ...] \
  *     --sources sources.json \
  *     --accessor <監査閲覧担当のuserId> \
  *     --meta-audit-out meta-audit.jsonl \
  *     [--raw-queries raw-queries.jsonl] [--format text|json]
+ *     [--run-ttl-sec 900] [--raw-query-retention-days 30]
  *   kp-promotion-report --help(-h)で使い方を表示する(終了コード 0)
  *
- * - --audit は複数回指定できる(T-021、ADR-018 決定4)。Gateway の監査 JSONL(ToolInvocation
- *   等)と Orchestrator サービス(kp-ask serve)の AnswerRun の JSONL を別ファイルで渡し、
- *   全ファイルのレコードを結合してから集計する(順序はファイル順・行順。重複行は冪等キーで
- *   除く)。メタ監査の audit_log アクセスは結合した入力全体で1件
+ * - --audit は Gateway の監査 JSONL 1 つでよい(ADR-019: ToolInvocation も run の記録 — pending の
+ *   AnswerRun と部分レコード answer_run_finish / answer_run_feedback — も Gateway が同じファイルに
+ *   書く)。複数回の指定は、ADR-019 より前の構成(ADR-018 決定4)で Orchestrator が別ファイルに
+ *   書いた AnswerRun を含めて集計するために残す。全ファイルのレコードを結合してから集計する
+ *   (順序はファイル順・行順。重複行は冪等キーで除く)。メタ監査の audit_log アクセスは結合した
+ *   入力全体で1件
  * - --audit の行は Gateway の audit.sink: jsonl の形(ラッパーなし)と、audit.sink: stdout の形
- *   ({"kind":"audit", ...record}。kp-ask の stderr も同じ)のどちらも読む(input.ts。issue #38)
+ *   ({"kind":"audit", ...record})のどちらも読む(input.ts。issue #38)
+ * - --run-ttl-sec: 署名のない旧形式の runId の pending の run を「放棄」と判定する有効期間(秒)。
+ *   署名付き runId は payload の有効期間で判定する。既定は Gateway の既定(gateway.runs.ttlSec)
+ * - --raw-query-retention-days: 生クエリ表の保持期間(日。audit.rawQueryRetentionDays)。原文のない
+ *   失敗クエリを「保持期間切れ」と「未記録」に分ける(issue #18)。既定 30
  * - sources.json: { "<sourceId>": { "nativeSearch": "full|degraded|none", "slack": bool } }。
  *   不備は「sources.json(<パス>): <場所>: <説明>」の形で1件1行(zod の生の JSON を出さない)
  * - 監査ログの閲覧はメタ監査の対象(ADR-013 §3)。本CLIは audit_access
@@ -36,7 +43,8 @@ import {
   type AuditRecord,
   type RawQueryRecord,
 } from "@kp/audit";
-import { generatePromotionReport } from "./aggregate.js";
+import { DEFAULT_RUN_ID_TTL_SEC } from "@kp/gateway";
+import { DEFAULT_RAW_QUERY_RETENTION_DAYS, generatePromotionReport } from "./aggregate.js";
 import {
   InputError,
   parseAuditJsonl,
@@ -50,7 +58,8 @@ import type { SourcesMeta } from "./sources.js";
 const USAGE =
   "usage: kp-promotion-report --audit <records.jsonl> [--audit <more.jsonl> ...] " +
   "--sources <sources.json> --accessor <userId> --meta-audit-out <meta.jsonl> " +
-  "[--raw-queries <raw.jsonl>] [--format text|json]";
+  "[--raw-queries <raw.jsonl>] [--format text|json] " +
+  "[--run-ttl-sec <N>] [--raw-query-retention-days <N>]";
 
 /** --help の表示(使い方と各オプションの説明)。 */
 export const HELP = [
@@ -59,14 +68,19 @@ export const HELP = [
   "昇格判定レポート(T-014、ADR-006): 監査ログからソース別未解決率・再検索回数分布・失敗クエリを集計します。",
   "",
   "options:",
-  "  --audit <path>           監査レコードの JSONL(必須。複数回指定でき、全ファイルを結合して集計)。",
-  "                           Gateway の audit.sink: jsonl のファイル、audit.sink: stdout の標準出力",
-  '                           ({"kind":"audit", …} の行)、kp-ask / kp-ask serve の --answer-run-jsonl のファイル',
+  "  --audit <path>           監査レコードの JSONL(必須)。Gateway の audit.sink: jsonl のファイル(ToolInvocation と",
+  "                           run の記録を含む)か、audit.sink: stdout の標準出力({\"kind\":\"audit\", …} の行)。",
+  "                           複数回指定すると全ファイルを結合して集計する(ADR-019 より前の構成で Orchestrator が",
+  "                           別ファイルに書いた AnswerRun を含めるとき)",
   '  --sources <path>         sources.json(必須): { "<sourceId>": { "nativeSearch": "full|degraded|none", "slack": true|false } }',
   "  --accessor <userId>      レポートを実行する監査閲覧担当の userId(必須。メタ監査に記録)",
   "  --meta-audit-out <path>  メタ監査(audit_access)レコードの追記先(必須)。監査ストアへ取り込むこと",
   "  --raw-queries <path>     生クエリ原文の JSONL(Gateway の audit.jsonl.rawQueryPath)。省略時は失敗クエリの原文を出さない",
   "  --format text|json       出力形式(既定 text。json はメタ監査レコードを除いた集計本体)",
+  `  --run-ttl-sec <N>        署名のない旧形式の runId の pending の run を「放棄」と判定する有効期間(秒。既定 ${DEFAULT_RUN_ID_TTL_SEC}、`,
+  "                           Gateway の gateway.runs.ttlSec に合わせる)。署名付き runId は payload の有効期間で判定する",
+  `  --raw-query-retention-days <N>  生クエリ表の保持期間(日。既定 ${DEFAULT_RAW_QUERY_RETENTION_DAYS}、audit.rawQueryRetentionDays に合わせる)。`,
+  "                           原文のない失敗クエリを「保持期間切れ」と「未記録」に分ける",
   "  -h, --help               この使い方を表示する",
   "",
   "レポート本文には失敗クエリの原文(機密を含みうる)が出ます。監査統制外の場所へ保存・転記しないでください(docs/playbook.md)。",
@@ -86,6 +100,19 @@ interface CliArgs {
   metaAuditOut: string;
   rawQueries?: string;
   format: "text" | "json";
+  runTtlSeconds: number;
+  rawQueryRetentionDays: number;
+}
+
+/** 正の整数のオプション(既定あり)。 */
+function positiveInteger(values: ReadonlyMap<string, string>, name: string, fallback: number): number {
+  const raw = values.get(name);
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
+    throw new UsageError(`--${name} must be a positive integer, got: ${raw}`);
+  }
+  return value;
 }
 
 function parseArgs(argv: readonly string[]): CliArgs | "help" {
@@ -126,6 +153,8 @@ function parseArgs(argv: readonly string[]): CliArgs | "help" {
     "meta-audit-out",
     "raw-queries",
     "format",
+    "run-ttl-sec",
+    "raw-query-retention-days",
   ]);
   for (const key of values.keys()) {
     if (!known.has(key)) throw new UsageError(`unknown option: --${key}`);
@@ -138,6 +167,12 @@ function parseArgs(argv: readonly string[]): CliArgs | "help" {
     metaAuditOut: required("meta-audit-out"),
     ...(rawQueries !== undefined ? { rawQueries } : {}),
     format,
+    runTtlSeconds: positiveInteger(values, "run-ttl-sec", DEFAULT_RUN_ID_TTL_SEC),
+    rawQueryRetentionDays: positiveInteger(
+      values,
+      "raw-query-retention-days",
+      DEFAULT_RAW_QUERY_RETENTION_DAYS,
+    ),
   };
 }
 
@@ -196,6 +231,8 @@ export async function runCli(
         sources,
         ...(rawQueries !== undefined ? { rawQueries } : {}),
         accessorUserId: args.accessor,
+        runTtlSeconds: args.runTtlSeconds,
+        rawQueryRetentionDays: args.rawQueryRetentionDays,
       },
       async (metaAuditRecords) => {
         for (const record of metaAuditRecords) validateRecord(record);

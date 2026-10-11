@@ -36,6 +36,7 @@ import {
   type AnswerRunRecord,
   type AuditRecord,
   type AuditSink,
+  type RawQueryStore,
 } from "@kp/audit";
 import {
   DEV_ORCHESTRATOR_CREDENTIAL,
@@ -309,6 +310,8 @@ export interface GatewayHarnessOptions {
    * BufferedAuditSink)を受け取り、Gateway に渡す sink を返す。store にはこの sink 経由で届いた分だけが残る
    */
   readonly wrapSink?: (inner: AuditSink) => AuditSink;
+  /** 生クエリ表(run の質問原文・search のクエリ原文の書き先)。既定はなし(書かない) */
+  readonly rawQueryStore?: RawQueryStore;
   /** 時計の注入 */
   readonly now?: () => number;
 }
@@ -370,6 +373,7 @@ export async function startGateway(options: GatewayHarnessOptions): Promise<Gate
     connectors: options.connectors,
     auditLogger,
     ...(runs !== undefined ? { runs, docIdHmacKey: TEST_DOC_ID_HMAC_KEY } : {}),
+    ...(options.rawQueryStore !== undefined ? { rawQueryStore: options.rawQueryStore } : {}),
     ...(options.now !== undefined ? { now: options.now } : {}),
   });
   const server = createGatewayHttpServer(gateway);

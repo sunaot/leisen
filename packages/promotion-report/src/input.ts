@@ -33,9 +33,9 @@ export class InputError extends Error {
 
 /** --audit に渡すべき形式の案内(監査レコードでない行を拒否するときに添える)。 */
 export const AUDIT_INPUT_FORMAT_HINT =
-  "--audit には監査レコードの JSONL(1行1レコード)を渡してください: Gateway の audit.sink: jsonl のファイル、" +
-  "audit.sink: stdout の標準出力({\"kind\":\"audit\", …} の行)、kp-ask / kp-ask serve の --answer-run-jsonl のファイル" +
-  "(kp-ask の stderr を取り込む場合は {\"kind\":\"audit\" で始まる行だけを渡す)";
+  "--audit には監査レコードの JSONL(1行1レコード)を渡してください: Gateway の audit.sink: jsonl のファイル" +
+  "(ToolInvocation と run の記録を含む)、または audit.sink: stdout の標準出力({\"kind\":\"audit\", …} の行。" +
+  "{\"kind\":\"audit\" で始まる行だけを渡す)";
 
 type Issue = z.core.$ZodIssue;
 
