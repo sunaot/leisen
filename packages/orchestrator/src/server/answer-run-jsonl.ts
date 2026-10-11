@@ -31,8 +31,8 @@ import {
   validateRecord,
   type AuditRecord,
   type AuditSink,
-  type DeploymentConfig,
-} from "@kp/gateway";
+} from "@kp/audit";
+import { type DeploymentConfig } from "@kp/gateway";
 
 /** 新規作成するファイルのモード(所有者のみ読み書き)。 */
 const FILE_MODE = 0o600;

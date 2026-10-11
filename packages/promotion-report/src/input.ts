@@ -19,7 +19,7 @@ import {
   validateRawQueryRecord,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/gateway";
+} from "@kp/audit";
 import type { z } from "zod";
 import { sourcesMetaSchema, type SourcesMeta } from "./sources.js";
 

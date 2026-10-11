@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseAuditRecord } from "@kp/gateway";
+import { parseAuditRecord } from "@kp/audit";
 import {
   McpGatewayClient,
   createLlmClient,

@@ -4,7 +4,7 @@ import {
   validateRecord,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/gateway";
+} from "@kp/audit";
 import {
   aggregatePromotionReport,
   dedupeAuditRecords,

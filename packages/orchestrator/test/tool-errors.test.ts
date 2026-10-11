@@ -12,7 +12,7 @@ import {
   AuditLogger,
   BufferedAuditSink,
   InMemoryAuditStore,
-} from "@kp/gateway";
+} from "@kp/audit";
 import {
   Orchestrator,
   ScriptedLlmClient,

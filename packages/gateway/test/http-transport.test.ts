@@ -28,6 +28,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AuthContext } from "@kp/connector-sdk";
 import {
   AuditLogger,
+  digestQuery,
+  type AuditRecord,
+} from "@kp/audit";
+import {
   GATEWAY_META_KEYS,
   GATEWAY_REJECTION_ERROR_CODE,
   GATEWAY_RESULT_META_KEYS,
@@ -35,8 +39,6 @@ import {
   IdpError,
   META_KEY_PREFIX,
   createGatewayHttpServer,
-  digestQuery,
-  type AuditRecord,
   type CredentialProvider,
   type DeploymentConfig,
   type Identity,

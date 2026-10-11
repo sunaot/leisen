@@ -119,6 +119,7 @@ KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/
 ## 構成
 
 - `packages/connector-sdk` — コネクタ共通IF(v0.4。ADR-016 追補2: 結果ごとのプライベート領域の分類 `scope`、能力 `privateScopeHandling`、factory への方針 `policy`)
+- `packages/audit` — 監査ログの共通モジュール(ADR-011 の 2 層モデル。Gateway が書き、Orchestrator が申告し、昇格判定レポートが読む型と実装。ADR-019 決定10 で Gateway から切り出した。依存は zod と Node 標準のみ)
 - `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP。HTTPトランスポートは配線済みで `kp-gateway serve` で起動する)と起動コード(`kp-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
 - `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded、privateScopeHandling: classified。GitHub App は組織にだけインストールする前提)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち

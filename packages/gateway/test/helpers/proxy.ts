@@ -19,11 +19,9 @@ import type {
   SearchResult,
   SourceDescription,
 } from "@kp/connector-sdk";
+import { validateRecord, type AuditRecord, type AuditSink } from "@kp/audit";
 import {
   MockIdpAdapter,
-  validateRecord,
-  type AuditRecord,
-  type AuditSink,
   type CredentialProvider,
   type Identity,
   IdpError,

@@ -4,7 +4,7 @@ import {
   redactDocIdForAudit,
   redactDocIdsForAudit,
   type DocIdAuditConfig,
-} from "../src/audit/index.js";
+} from "../src/index.js";
 
 const hashedConfig: DocIdAuditConfig = {
   privateScopeDocIds: "hashed",

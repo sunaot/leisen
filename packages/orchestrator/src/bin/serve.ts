@@ -46,10 +46,12 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   AuditLogger,
+  type AuditSink,
+} from "@kp/audit";
+import {
   DeploymentConfigError,
   isLoopbackHost,
   loadDeploymentConfig,
-  type AuditSink,
   type DeploymentConfig,
 } from "@kp/gateway";
 import { docIdAuditFromDeployment, isSlackKind, StderrDebugAuditSink } from "../audit.js";

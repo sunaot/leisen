@@ -8,7 +8,11 @@
  * - run の結果(Gateway の接続先の誤り・403・5xx、LLM の分類)が対応する分類の文言になる
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLogger, BufferedAuditSink, InMemoryAuditStore } from "@kp/gateway";
+import {
+  AuditLogger,
+  BufferedAuditSink,
+  InMemoryAuditStore,
+} from "@kp/audit";
 import {
   failureCategoryOf,
   failureTextFor,

@@ -18,8 +18,8 @@ import {
   AuditLogger,
   BufferedAuditSink,
   InMemoryAuditStore,
-  deploymentConfigSchema,
-} from "@kp/gateway";
+} from "@kp/audit";
+import { deploymentConfigSchema } from "@kp/gateway";
 import {
   OMIT_ALL_DOC_IDS,
   Orchestrator,

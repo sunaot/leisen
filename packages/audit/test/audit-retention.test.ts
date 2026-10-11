@@ -9,7 +9,7 @@ import {
   retentionCutoffIso,
   runRetentionPurge,
   type AuditRecord,
-} from "../src/audit/index.js";
+} from "../src/index.js";
 
 const NOW = new Date("2026-07-09T00:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -7,7 +7,7 @@
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLogger } from "@kp/gateway";
+import { AuditLogger } from "@kp/audit";
 import {
   LlmError,
   McpGatewayClient,

@@ -16,7 +16,7 @@ import {
   InMemoryAuditStore,
   type AuditRecord,
   type AuditSink,
-} from "@kp/gateway";
+} from "@kp/audit";
 import {
   Orchestrator,
   OrchestratorError,

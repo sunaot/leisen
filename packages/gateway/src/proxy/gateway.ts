@@ -43,9 +43,12 @@ import {
   type SearchResult,
   type SourceDescription,
 } from "@kp/connector-sdk";
-import { digestQuery, type ToolInvocationRecord } from "../audit/schema.js";
-import type { AuditLogger } from "../audit/sink.js";
-import type { RawQueryStore } from "../audit/rawquery.js";
+import {
+  digestQuery,
+  type AuditLogger,
+  type RawQueryStore,
+  type ToolInvocationRecord,
+} from "@kp/audit";
 import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
 import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";

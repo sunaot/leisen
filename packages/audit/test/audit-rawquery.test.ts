@@ -4,7 +4,7 @@ import {
   digestQuery,
   validateRawQueryRecord,
   type RawQueryRecord,
-} from "../src/audit/index.js";
+} from "../src/index.js";
 
 function record(rawQuery: string, timestamp: string): RawQueryRecord {
   return {

@@ -31,8 +31,7 @@
 import type { Server as HttpServer } from "node:http";
 import { resolve } from "node:path";
 import type { Connector } from "@kp/connector-sdk";
-import type { RawQueryStore } from "../audit/rawquery.js";
-import { AuditLogger } from "../audit/sink.js";
+import { AuditLogger, type RawQueryStore } from "@kp/audit";
 import { resolveIdpAdapterConfig } from "../config/loader.js";
 import {
   AUDIT_SINK_STDOUT,

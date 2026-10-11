@@ -17,7 +17,7 @@ import type {
   SearchResult,
   SourceDescription,
 } from "@kp/connector-sdk";
-import type { Actor } from "../audit/schema.js";
+import type { Actor } from "@kp/audit";
 import type { Identity } from "../idp/types.js";
 
 /** 実行区分(ADR-015)。Phase 1では human_in_the_loop 以外を既定拒否する。 */

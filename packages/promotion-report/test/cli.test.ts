@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseAuditRecord } from "@kp/gateway";
+import { parseAuditRecord } from "@kp/audit";
 import { HELP, isMainModule, runCli } from "../src/cli.js";
 import { AUDIT_INPUT_FORMAT_HINT } from "../src/input.js";
 import {

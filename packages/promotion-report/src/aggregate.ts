@@ -45,7 +45,7 @@ import {
   type AuditRecord,
   type RawQueryRecord,
   type ToolInvocationRecord,
-} from "@kp/gateway";
+} from "@kp/audit";
 import {
   classifySource,
   type PromotionEligibility,

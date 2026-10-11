@@ -13,7 +13,10 @@ import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseAuditRecord, type AuditRecord } from "@kp/gateway";
+import {
+  parseAuditRecord,
+  type AuditRecord,
+} from "@kp/audit";
 import {
   ANSWER_RUN_JSONL_SAME_AS_GATEWAY_AUDIT,
   AnswerRunJsonlSink,

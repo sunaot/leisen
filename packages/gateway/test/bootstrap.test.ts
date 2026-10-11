@@ -28,15 +28,17 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { ConnectorError } from "@kp/connector-sdk";
 import {
+  digestQuery,
+  parseAuditRecord,
+} from "@kp/audit";
+import {
   assembleGateway,
   createDevFixtureConnector,
   DeploymentConfigError,
-  digestQuery,
   KEYCLOAK_ANY_CLIENT_WARNING,
   loadDeploymentConfig,
   MOCK_IDP_NO_SESSIONS_REJECTED,
   MOCK_IDP_NO_SESSIONS_WARNING,
-  parseAuditRecord,
   parseDeploymentConfig,
   type AssembleGatewayOptions,
   type AssembledGateway,

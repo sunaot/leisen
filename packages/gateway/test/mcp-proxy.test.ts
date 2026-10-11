@@ -34,6 +34,10 @@ import {
 } from "@kp/connector-sdk";
 import {
   AuditLogger,
+  digestQuery,
+  type AuditRecord,
+} from "@kp/audit";
+import {
   GATEWAY_AUTH_INFO_TOKEN,
   GATEWAY_META_KEYS,
   GATEWAY_REJECTION_ERROR_CODE,
@@ -41,9 +45,7 @@ import {
   Gateway,
   META_KEY_PREFIX,
   createGatewayMcpServer,
-  digestQuery,
   gatewayAuthInfo,
-  type AuditRecord,
 } from "../src/index.js";
 import {
   CollectingAuditSink,

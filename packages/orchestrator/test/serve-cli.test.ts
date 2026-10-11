@@ -15,7 +15,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { parseAuditRecord } from "@kp/gateway";
+import { parseAuditRecord } from "@kp/audit";
 import {
   McpGatewayClient,
   ScriptedLlmClient,

@@ -5,7 +5,7 @@ import {
   digestQuery,
   type AuditRecord,
   type AuditStoreWriter,
-} from "../src/audit/index.js";
+} from "../src/index.js";
 
 function invocation(requestId: string): AuditRecord {
   return {
@@ -119,7 +119,7 @@ describe("BufferedAuditSink (ADR-011 §4)", () => {
   });
 
   it("StdoutDebugAuditSink validates records before writing", async () => {
-    const { StdoutDebugAuditSink } = await import("../src/audit/index.js");
+    const { StdoutDebugAuditSink } = await import("../src/index.js");
     const sink = new StdoutDebugAuditSink();
     const bad = { ...invocation("req-1"), snippet: "本文断片" } as AuditRecord;
     await expect(sink.write(bad)).rejects.toThrow(/forbidden/);

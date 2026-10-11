@@ -14,7 +14,11 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { AuditLogger, parseAuditRecord, type AuditRecord } from "@kp/gateway";
+import {
+  AuditLogger,
+  parseAuditRecord,
+  type AuditRecord,
+} from "@kp/audit";
 import {
   AnswerRunJsonlSink,
   McpGatewayClient,

@@ -29,8 +29,8 @@ import {
   type SearchResult,
   type SourceDescription,
 } from "@kp/connector-sdk";
+import { AuditLogger } from "@kp/audit";
 import {
-  AuditLogger,
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
   Gateway,

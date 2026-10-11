@@ -30,13 +30,15 @@ import {
 import {
   AuditLogger,
   BufferedAuditSink,
+  InMemoryAuditStore,
+  type AuditRecord,
+} from "@kp/audit";
+import {
   Gateway,
   IdpError,
-  InMemoryAuditStore,
   MockIdpAdapter,
   createGatewayHttpServer,
   deploymentConfigSchema,
-  type AuditRecord,
   type CredentialProvider,
   type Identity,
   type IdpAdapter,

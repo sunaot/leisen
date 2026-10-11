@@ -31,7 +31,11 @@
 import { realpathSync } from "node:fs";
 import { appendFile, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { validateRecord, type AuditRecord, type RawQueryRecord } from "@kp/gateway";
+import {
+  validateRecord,
+  type AuditRecord,
+  type RawQueryRecord,
+} from "@kp/audit";
 import { generatePromotionReport } from "./aggregate.js";
 import {
   InputError,

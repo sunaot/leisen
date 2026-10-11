@@ -22,16 +22,15 @@
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { JsonlAuditStore, JsonlRawQueryStore } from "../audit/jsonl.js";
-import {
-  InMemoryRawQueryStore,
-  type RawQueryStore,
-} from "../audit/rawquery.js";
 import {
   BufferedAuditSink,
+  InMemoryRawQueryStore,
+  JsonlAuditStore,
+  JsonlRawQueryStore,
   StdoutDebugAuditSink,
   type AuditSink,
-} from "../audit/sink.js";
+  type RawQueryStore,
+} from "@kp/audit";
 import {
   AUDIT_SINK_JSONL,
   AUDIT_SINK_STDOUT,

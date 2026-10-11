@@ -13,13 +13,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { type Actor } from "@kp/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
   META_KEY_PREFIX,
   callContextFromMeta,
   declarationFromMeta,
-  type Actor,
 } from "@kp/gateway";
 import { buildGatewayMeta, gatewayUserIdFromResultMeta } from "../src/index.js";
 import {

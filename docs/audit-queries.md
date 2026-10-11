@@ -6,7 +6,7 @@ rawQueryテーブルの digest 結合の例を示す。
 
 前提: 監査レコードが `audit_records`、生クエリが `raw_queries` という
 テーブル/ビューに格納されている(構造化JSONをロードした列指向ストア等。
-永続ストアの選定はT-003/T-012)。列名は `packages/gateway/src/audit/schema.ts`
+永続ストアの選定はT-003/T-012)。列名は `packages/audit/src/schema.ts`
 のフィールド名と一致する。
 
 ## 0. AnswerRun と ToolInvocation の結合は (runId, userId)

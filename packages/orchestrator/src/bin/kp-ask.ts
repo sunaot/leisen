@@ -46,9 +46,11 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   AuditLogger,
+  type AuditSink,
+} from "@kp/audit";
+import {
   DeploymentConfigError,
   loadDeploymentConfig,
-  type AuditSink,
   type DeploymentConfig,
 } from "@kp/gateway";
 import type { Answer } from "../answer.js";

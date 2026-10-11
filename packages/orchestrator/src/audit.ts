@@ -34,9 +34,11 @@ import {
   type AnswerRunRecord,
   type AuditRecord,
   type AuditSink,
+  type DocIdAuditConfig,
+} from "@kp/audit";
+import {
   type ConnectorConfig,
   type DeploymentConfig,
-  type DocIdAuditConfig,
 } from "@kp/gateway";
 import type { AnswerOutcome } from "./answer.js";
 

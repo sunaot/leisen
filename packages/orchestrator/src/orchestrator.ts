@@ -40,7 +40,8 @@
  */
 import { randomUUID } from "node:crypto";
 import type Anthropic from "@anthropic-ai/sdk";
-import { isValidRunId, type AuditLogger } from "@kp/gateway";
+import { type AuditLogger } from "@kp/audit";
+import { isValidRunId } from "@kp/gateway";
 import {
   answerSchema,
   SUBMIT_ANSWER_TOOL_NAME,
