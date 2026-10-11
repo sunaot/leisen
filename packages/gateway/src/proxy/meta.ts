@@ -40,12 +40,8 @@
  *   不正値は既定値に丸めず invalid_request で拒否する(区分による拒否を
  *   誤記で迂回させない)
  */
-import {
-  isValidIteration,
-  isValidRunId,
-  parseActor,
-  parseExecutionClass,
-} from "./session.js";
+import { isValidRunId } from "../run/runid.js";
+import { isValidIteration, parseActor, parseExecutionClass } from "./session.js";
 import {
   GatewayError,
   type CallContext,

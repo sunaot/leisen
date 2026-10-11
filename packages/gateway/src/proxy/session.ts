@@ -14,6 +14,7 @@
  */
 import { actorSchema, type Actor } from "@kp/audit";
 import type { Identity } from "../idp/types.js";
+import { isValidRunId } from "../run/runid.js";
 import {
   GatewayError,
   type CallContext,
@@ -32,17 +33,8 @@ const EXECUTION_CLASSES: readonly ExecutionClass[] = [
 const DEFAULT_EXECUTION_CLASS: ExecutionClass = "human_in_the_loop";
 const HUMAN_ACTOR: Actor = { kind: "human" };
 
-/**
- * 申告された runId として受け付ける形(文字種と長さの上限)。runId はクライアント
- * (Orchestrator)が申告してそのまま監査レコードに残るため、任意文字列・長大な値を
- * 受け付けない。UUID や "run-42" 形式は通る。不適合は未申告として扱う(単発run)。
- */
-const RUN_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
-
-/** 申告 runId の検証(文字種 [A-Za-z0-9._:-]、1〜128文字)。 */
-export function isValidRunId(value: unknown): value is string {
-  return typeof value === "string" && RUN_ID_PATTERN.test(value);
-}
+// 申告 runId の形の検証は run モジュール(run/runid.ts)が持つ(ADR-019 決定10)。
+// 公開は src/index.ts の run モジュールのエクスポート経由
 
 /** 申告 iteration の検証(0以上の安全な整数)。 */
 export function isValidIteration(value: unknown): value is number {

@@ -475,7 +475,7 @@ describe("使い方・入力の不備の表示(issue #38)", () => {
     await writeFile(files.audit, JSON.stringify({ recordType: "answer_runs" }) + "\n");
     const unknownType = await run(args(files));
     expect(unknownType.err).toEqual([
-      `${files.audit}:1: レコードが不正です: recordType: answer_run / tool_invocation / audit_access / retention_purge のいずれかにしてください`,
+      `${files.audit}:1: レコードが不正です: recordType: answer_run / tool_invocation / answer_run_finish / answer_run_feedback / audit_access / retention_purge のいずれかにしてください`,
     ]);
   });
 });
