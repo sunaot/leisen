@@ -25,10 +25,12 @@ Status: v0(T-021)/ Date: 2026-09-28
 - **不変条件7 は起動時に守る**(決定5)。汎用 UI は会話履歴を保存するため、deployment.yaml で永続化
   できないソース(Slack、kind が `slack` / `slack-*`)が有効なら `kp-ask serve` は起動を拒否する
   (解除の条件は [1.4](#14-履歴の保持と不変条件7))
-- AnswerRun は Orchestrator が Gateway の監査ボリュームとは別のボリューム(`kp-answer-runs`)の
-  `answer-runs.jsonl` に追記する(決定4)。Orchestrator のコンテナは Gateway の監査ログ・生クエリ原文の
-  ボリュームをマウントしない(読めない・書けない)。昇格判定レポートは両方のボリュームを読めるようにして
-  `--audit` を 2 回指定する([1.7](#17-answerrun-と昇格判定レポート)、docs/install.md §7)
+- **監査ストアに書くのは Gateway だけ**(ADR-019。ADR-018 決定4 の別ボリュームは廃止)。Orchestrator は run の
+  開始・結果・フィードバック(AnswerRun)を Gateway の run API(`/runs`)に申告し、Gateway が署名付きの
+  runId で本人・期限を確かめて `audit.jsonl` に記録する。Orchestrator のコンテナは監査ボリュームを一切マウント
+  しない(読めない・書けない)。run API には利用者本人のトークンに加えて Gateway と共有する Orchestrator の
+  資格情報(`KP_ORCHESTRATOR_CREDENTIAL`)が要る([1.7](#17-run-の記録answerrunと昇格判定レポート)、
+  docs/install.md §5・§7)
 - リファレンス構成は**評価用**(開発用の部品・ローカル専用のダミー秘密・開発モードの Keycloak)。
   限界は docs/install.md §0 と同じ
 
@@ -133,13 +135,15 @@ LibreChat での操作(UI の表記は版によって異なる):
    Markdown の自動リンク)と `runId` が付く。本文の URL は除去済みで、原典へのリンクは出典欄だけが運ぶ
    (ADR-018 決定6)
 7. フィードバック: 回答で解決したかどうかを会話で伝える(例: 「今の回答で解決した。feedback して」)。
-   UI 側の LLM が `feedback({ runId, outcome: "resolved" | "unresolved" })` を呼び、AnswerRun に記録される。
-   記録できるのは質問した本人の run だけ。LibreChat の 👍👎 とは連携しない(未実装)
+   UI 側の LLM が `feedback({ runId, outcome: "resolved" | "unresolved" })` を呼び、Orchestrator が Gateway の
+   run API に本人のトークンで申告して AnswerRun に記録される。記録できるのは質問した本人の run だけで、
+   回答から 7 日(Gateway の `gateway.runs.feedbackWindowSec`)を過ぎた runId は受け付けない。LibreChat の
+   👍👎 とは連携しない(未実装)
 8. ユーザーを切り替えるときはログアウトする(Keycloak のセッションも終わる。`OPENID_USE_END_SESSION_ENDPOINT`)
 
 停止は `docker compose -f docker-compose.yml -f docker-compose.librechat.yml down`。`down -v` は会話履歴
-(MongoDB)・監査ログ・AnswerRun・ローカル CA のボリュームも消す(評価以外では監査ログの削除は ADR-013 §3 に
-従う)。
+(MongoDB)・監査ログ(AnswerRun を含む)・ローカル CA のボリュームも消す(評価以外では監査ログの削除は
+ADR-013 §3 に従う)。
 
 ### 1.3 keycloak.localhost と証明書
 
@@ -298,38 +302,28 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
 | 400 / 413 で失敗する | JSON-RPC のバッチ(配列)は受け付けない(400)。本文は 64 KiB まで(413)。質問は 4,000 字まで(`--max-question-chars`) |
 | UI の LLM が ask を呼ばない | ツール呼び出しに対応していないモデル。対応モデルに替え、MCP サーバー Leisen が選ばれているか確かめる |
 | LM Studio に届かない | orchestrator から確かめる: `docker compose exec orchestrator node -e "fetch(process.env.KP_LLM_BASE_URL+'/models').then(r=>console.log(r.status),e=>console.log(e.cause?.code))"`。Linux はローカルネットワークでの待ち受けが要る([1.1](#11-前提)) |
-| orchestrator が起動しない | `docker compose logs orchestrator`。Slack のソースが有効([1.4](#14-履歴の保持と不変条件7))、`KP_AUDIT_HMAC_KEY` / `KP_LLM_MODEL` の未設定、引数の誤りは起動ログに固定文言で出る。`NODE_ENV=production` では `--answer-run-jsonl` と https の上流が必須(評価用構成の overlay は development) |
+| orchestrator が起動しない | `docker compose logs orchestrator`。Slack のソースが有効([1.4](#14-履歴の保持と不変条件7))、`KP_LLM_MODEL` の未設定、引数の誤りは起動ログに固定文言で出る。`NODE_ENV=production` では `KP_ORCHESTRATOR_CREDENTIAL` と https の上流が必須(評価用構成の overlay は development) |
+| `ask` が `run_not_accepted` / `orchestrator_credential_rejected` で失敗する | Gateway が run の開始を拒否した。`KP_ORCHESTRATOR_CREDENTIAL` が gateway と orchestrator で同じ値か(`.env` を変えたら両方を作り直す)、Gateway の起動ログの `run api:` 行を確かめる。`invalid_run_id` が Gateway の監査に続くなら、Gateway の署名鍵(`KP_RUN_ID_KEY`)を run の途中で変えた・再起動で一時鍵が替わった(未設定時の WARNING)可能性がある |
+| `feedback` が「受け付けられなかった」で失敗する | 質問した本人以外の runId、または回答から 7 日を過ぎた runId(`gateway.runs.feedbackWindowSec`)。runId は `ask` の結果のものをそのまま使う |
 | LibreChat が起動しない | `docker compose logs librechat`。`librechat.yaml` が不正だと `Invalid custom config file` を出して終了する(MCP サーバーの `title` は英数字と空白だけ)。正常なら設定の読み込み・`OpenID Connect configured successfully`・待ち受けの順にログが出る |
 | MongoDB が起動直後に落ちる | CPU が MongoDB 8 の要件(x86-64 は AVX)を満たさない。LibreChat の Docker 手順の注意に従い、override で古い版のイメージに替える |
 
-### 1.7 AnswerRun と昇格判定レポート
+### 1.7 run の記録(AnswerRun)と昇格判定レポート
 
-orchestrator は AnswerRun を Gateway の監査ボリューム(`kp-audit`)とは別のボリューム `kp-answer-runs` の
-`/var/lib/kp/answer-runs/answer-runs.jsonl` に追記する(ADR-018 決定4)。orchestrator のコンテナは Gateway の
-監査ログ・生クエリ原文のボリュームをマウントしないため、Orchestrator から Gateway の監査ログは読めず、書き換え
-られない(threat-model TM-I4)。
+orchestrator は監査ストアに書かない(ADR-019)。`ask` の run は、開始時に Gateway の run API(`POST /runs`)で
+署名付きの runId を受け取り、Gateway がその時点で AnswerRun(pending)を `kp-audit` の `audit.jsonl` に書く。
+以降の `tools/call` はこの runId を申告し、終了時の `finish`、`feedback` ツールの `feedback` も同じ runId で
+Gateway に申告する。Gateway は runId の署名で発行元・本人・期限を確かめてから部分レコード
+(`answer_run_finish` / `answer_run_feedback`)を追記する。orchestrator のコンテナは監査ボリュームを一切マウント
+しないため、Orchestrator から Gateway の監査ログは読めず、書き換えられない(threat-model TM-I4)。
 
-昇格判定レポート(docs/install.md §7、docs/playbook.md「有効化判定」)は、Gateway の監査ボリュームに加えて
-AnswerRun のボリュームを読み取り専用で見せ、`--audit` を 2 回指定して実行する(`deploy/compose` で。
-名前付きボリュームの実名は compose の project 名 `kp-reference` + `_kp-answer-runs`):
+run API を呼べるのは、利用者本人のトークンに加えて Orchestrator の資格情報(`KP_ORCHESTRATOR_CREDENTIAL`。
+`.env` で gateway と orchestrator に同じ値)を持つプロセスだけ。LibreChat にはこの値を渡さない。
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.librechat.yml run --rm --no-deps \
-  -v kp-reference_kp-answer-runs:/var/lib/kp/answer-runs:ro \
-  -v "$PWD/sources.json:/tmp/sources.json:ro" \
-  --entrypoint node gateway packages/promotion-report/dist/cli.js \
-  --audit /var/lib/kp/audit/audit.jsonl \
-  --audit /var/lib/kp/answer-runs/answer-runs.jsonl \
-  --raw-queries /var/lib/kp/rawquery/raw-queries.jsonl \
-  --sources /tmp/sources.json \
-  --accessor <監査閲覧担当のuserId> \
-  --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
-```
-
-レポートの実行自体がメタ監査の対象(`--meta-audit-out` のファイルを監査ストアに残す)。`sources.json` の形式は
-docs/playbook.md を参照。以前の overlay(AnswerRun を `/var/lib/kp/audit/answer-runs.jsonl` に書いていた版)を
-動かしたことがある場合、それまでの AnswerRun は `kp-audit` に残っている。集計に含めるときは
-`--audit /var/lib/kp/audit/answer-runs.jsonl` も足す。
+昇格判定レポート(docs/install.md §7、docs/playbook.md「有効化判定」)は Gateway の監査ボリュームだけを読む
+(`--audit` は 1 つ)。コマンドは docs/install.md §7 のとおりで、LibreChat overlay でも変わらない。ADR-019 より
+前の overlay(AnswerRun を `kp-answer-runs` の `answer-runs.jsonl` に書いていた版)を動かした期間を含めるときだけ、
+そのボリュームを読み取り専用で見せて `--audit` を足す(手順は docs/install.md §7)。
 
 ## 2. MCP クライアントの場合
 
@@ -388,8 +382,10 @@ kp_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feedback
   (`X-OpenWebUI-User-*`、`{{LIBRECHAT_USER_*}}` など)を信頼する: 本人のトークンではなく UI の主張に
   認可を乗せることになり、UI の侵害が全利用者の権限に直結する
 - UI から Gateway に直接 MCP で接続する(Orchestrator を通さない): 出典の検証・本文の URL 除去・
-  AnswerRun の記録が抜ける
-- Orchestrator に IdP の検証を複製する、Gateway に run 登録の口を作る: 検証ロジックと信頼境界が分かれる
+  run の記録(AnswerRun)が抜ける(Gateway の run API は Orchestrator の資格情報を要求するため、UI からは
+  呼べない)
+- Orchestrator に IdP の検証を複製する: 検証ロジックと信頼境界が分かれる(Gateway に run の口を作る案は
+  ADR-019 で run API として採った)
 
 ## 未実装・制約
 
@@ -410,6 +406,10 @@ kp_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feedback
   overlay と同じ引数(`--confirm-exposed-host`・`--allow-insecure-upstream` を含む)で動かした kp-ask serve と
   Gateway(モック IdP)に対する `orchestrator-smoke.sh`、[2](#2-mcp-クライアントの場合) の curl の手順
   (LLM はモック)までを確認した)
+- ADR-019(T-023、2026-10-11)の反映(orchestrator から AnswerRun のボリュームと `KP_AUDIT_HMAC_KEY` を外し、
+  `KP_ORCHESTRATOR_CREDENTIAL` を足す。`feedback` は Gateway の run API へ)は、`packages/gateway/test/reference-deploy.test.ts`
+  と Orchestrator の結線テスト(`packages/orchestrator/test/`、実 Gateway を起動する)で確かめた。コンテナでの
+  起動とスモークは CI の `reference-deploy`
 - セキュリティレビューの反映(2026-09-28: MCP の接続先の制限・エージェントの機能の制限・AnswerRun の
   ボリューム分離・MongoDB の内部ネットワーク・realm のリダイレクト先の完全一致と PKCE)は、Docker デーモンの
   ない環境で `docker compose config`、LibreChat v0.8.7 の設定スキーマでの `librechat.yaml` の検証、v0.8.7 の

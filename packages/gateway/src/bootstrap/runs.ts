@@ -28,10 +28,11 @@ import { MIN_ORCHESTRATOR_CREDENTIAL_CHARS, type RunRuntime } from "../proxy/run
 export const DEV_ORCHESTRATOR_CREDENTIAL = "dev-only-orchestrator-credential";
 
 /**
- * 開発用の runId 署名鍵の例(deploy/compose/.env.example の値。32 バイトの base64)。
- * 公開済みの値なので NODE_ENV=production では拒否される(dev_only_in_production)。
+ * 開発用の runId 署名鍵の例(deploy/compose/.env.example の値)。base64url として復号できる
+ * 52 文字(39 バイト)で、他のダミー秘密と同じく dev-only- で始める。公開済みの値なので
+ * NODE_ENV=production では拒否される(dev_only_in_production)。
  */
-export const DEV_RUN_ID_KEY_EXAMPLE = "ZGV2LW9ubHktcnVuLWlkLXNpZ25pbmcta2V5LTAwMDE=";
+export const DEV_RUN_ID_KEY_EXAMPLE = "dev-only-run-id-signing-key-not-for-production-00001";
 
 export interface ResolvedRunRuntime {
   readonly runtime: RunRuntime;

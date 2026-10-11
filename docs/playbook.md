@@ -33,19 +33,21 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
    ```
    kp-promotion-report \
      --audit audit-records.jsonl \
-     --audit answer-runs.jsonl \
      --sources sources.json \
      --raw-queries raw-queries.jsonl \
      --accessor <監査閲覧担当のuserId> \
      --meta-audit-out meta-audit.jsonl
    ```
 
-   - `--audit` は複数回指定できる。Gateway の監査ログ(ToolInvocation)と、Orchestrator を
-     MCP サーバーとして動かす構成(ADR-018)で別ファイルに書かれる AnswerRun
-     (`answer-runs.jsonl`)を両方渡す。kp-ask を単発で使う場合は `--answer-run-jsonl <path>` で
-     AnswerRun をファイルに追記しておく(省略時は stderr に `{"kind":"audit", …}` の行で出るので、
-     その行だけをファイルに取り込んでもよい)。開発用の `audit.sink: stdout` の標準出力も同じ形で読める。
-     stderr や標準出力を保存したファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う
+   - `--audit` は Gateway の監査ログ 1 つでよい。ToolInvocation も、Orchestrator の run(AnswerRun の
+     pending と部分レコード `answer_run_finish` / `answer_run_feedback`)も Gateway が同じファイルに書く
+     (ADR-019。kp-ask / kp-ask serve は監査ストアに書かない)。複数回の指定は、ADR-019 より前の構成
+     (ADR-018 決定4)で Orchestrator が別ファイルに書いた AnswerRun(`answer-runs.jsonl`)を含めて
+     集計するために残している。開発用の `audit.sink: stdout` の標準出力も同じ形で読める。標準出力を
+     保存したファイルは `umask 077` で作り、監査ログと同じ保持・閲覧の規程(ADR-013 §3)に従う
+   - `audit.failureMode` は run API の 3 経路(開始・finish・feedback)にも及ぶ。既定の fail-closed では
+     監査を書けない run は始まらず(回答が返らない)、集計から欠けない。`fail-open` にすると ToolInvocation
+     だけでなく run の記録も欠けうるため、レポートの母数が実際の利用より少なくなる(docs/install.md §10)
    - 使い方は `kp-promotion-report --help`。入力の不備はファイル名・行番号(sources.json は
      `sources.json(<パス>): <場所>: <説明>`)で示す。監査レコードでない行は、渡すべき形式の案内付きで拒否する
    - 冒頭の「入力レコード数」には、除いた重複(同じ内容の再送)と、後の状態にまとめた更新

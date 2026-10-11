@@ -21,6 +21,8 @@ import YAML from "yaml";
 import {
   assembleGateway,
   DeploymentConfigError,
+  DEV_ORCHESTRATOR_CREDENTIAL,
+  DEV_RUN_ID_KEY_EXAMPLE,
   loadDeploymentConfig,
   mockTokenEnvVar,
   parseDeploymentConfig,
@@ -338,10 +340,17 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
     );
     expect(error).toBeInstanceOf(DeploymentConfigError);
     const issues = (error as DeploymentConfigError).issues;
-    expect(issues.filter((i) => i.code === "dev_only_in_production").map((i) => i.path)).toEqual([
-      "connectors[0].auth.provider",
-      "connectors[0].kind",
-    ]);
+    // 開発用の部品に加えて、.env.example の run API の秘密(公開済みの開発用の値)も拒否される
+    expect(
+      issues.filter((i) => i.code === "dev_only_in_production").map((i) => i.path).sort(),
+    ).toEqual(
+      [
+        "connectors[0].auth.provider",
+        "connectors[0].kind",
+        "gateway.runs.signingKeyEnv",
+        "gateway.runs.orchestratorCredentialEnv",
+      ].sort(),
+    );
   });
 });
 
@@ -376,12 +385,41 @@ describe("deploy/ の各ファイルの整合", () => {
     const gateway = (await composeServices())["gateway"] as ComposeService;
     const clientSecretEnv =
       config.idp.adapter.kind === "keycloak" ? config.idp.adapter.clientSecretEnv : "";
+    // run API(ADR-019)の署名鍵・Orchestrator の資格情報・docId の HMAC 鍵は deployment.yaml が
+    // 参照する環境変数名(既定)で渡す
     expect(Object.keys(gateway.environment ?? {}).sort()).toEqual(
-      ["NODE_ENV", clientSecretEnv, mockTokenEnvVar("dev-docs")].sort(),
+      [
+        "NODE_ENV",
+        clientSecretEnv,
+        mockTokenEnvVar("dev-docs"),
+        config.gateway.runs.signingKeyEnv,
+        config.gateway.runs.orchestratorCredentialEnv,
+        config.audit.docIdHmacKeyEnv,
+      ].sort(),
     );
     expect(gateway.environment?.["NODE_ENV"]).toBe("development");
-    // 秘密は .env からの変数展開のみ(値を compose に書かない)
+    // 秘密は .env からの変数展開のみ(値を compose に書かない。未設定なら起動前に止まる)
     expect(gateway.environment?.[clientSecretEnv]).toMatch(/^\$\{KP_KEYCLOAK_CLIENT_SECRET:\?/);
+    for (const name of [
+      config.gateway.runs.signingKeyEnv,
+      config.gateway.runs.orchestratorCredentialEnv,
+      config.audit.docIdHmacKeyEnv,
+    ]) {
+      expect(gateway.environment?.[name], name).toBe(
+        `\${${name}:?set it in deploy/compose/.env (cp .env.example .env)}`,
+      );
+    }
+  });
+
+  it(".env.example の run API の秘密は公開済みの開発用の値で、NODE_ENV=production では起動を拒否される値そのもの", async () => {
+    const config = referenceConfig();
+    const env = await envExample();
+    // 雛形の値をそのまま本番に持ち込めないよう、起動コードが知っている開発用の値と一致させる
+    // (一致しない任意の値だと production で拒否できない)
+    expect(env[config.gateway.runs.signingKeyEnv]).toBe(DEV_RUN_ID_KEY_EXAMPLE);
+    expect(env[config.gateway.runs.orchestratorCredentialEnv]).toBe(DEV_ORCHESTRATOR_CREDENTIAL);
+    // 署名鍵の例は base64url として復号でき、下限(32 バイト)を満たす
+    expect(Buffer.from(DEV_RUN_ID_KEY_EXAMPLE, "base64url").byteLength).toBeGreaterThanOrEqual(32);
   });
 
   it("ホストへの公開はループバック(127.0.0.1)だけ(LibreChat overlay を含む)", async () => {
@@ -455,30 +493,26 @@ describe("deploy/ の各ファイルの整合", () => {
     ]);
   });
 
-  it("Dockerfile の既定の設定パス・監査ボリューム(AnswerRun を含む)・待ち受けポートが deployment.yaml と overlay に一致する", async () => {
+  it("Dockerfile の既定の設定パス・監査ボリューム・待ち受けポートが deployment.yaml に一致する(AnswerRun のボリュームは持たない)", async () => {
     const dockerfile = await readFile(DOCKERFILE, "utf8");
     const config = referenceConfig();
     expect(dockerfile).toContain(`KP_DEPLOYMENT_CONFIG=${CONTAINER_CONFIG_PATH}`);
     expect(dockerfile).toContain(
       `KP_HEALTHCHECK_URL=http://127.0.0.1:${config.gateway.http.port}/healthz`,
     );
-    // 監査ログ本体・生クエリ原文(Gateway)と AnswerRun(LibreChat overlay の orchestrator)は
-    // それぞれ別ボリューム(ADR-011 §3、ADR-018 決定4)
-    const orchestrator = await overlayService("orchestrator");
-    const answerRunsDir = posix.dirname(
-      flagValue(orchestrator.command ?? [], "--answer-run-jsonl") ?? "",
-    );
+    // 監査ログ本体・生クエリ原文は別ボリューム(ADR-011 §3)。監査ストアに書くのは Gateway だけ
+    // (ADR-019)なので、Orchestrator 用の AnswerRun のボリュームはイメージにない
     const volume = /^VOLUME \[(.+)\]$/m.exec(dockerfile)?.[1] ?? "";
     const volumes = volume.split(",").map((v) => JSON.parse(v.trim()) as string);
     expect(volumes.sort()).toEqual(
       [
         posix.dirname(config.audit.jsonl?.path ?? ""),
         posix.dirname(config.audit.jsonl?.rawQueryPath ?? ""),
-        answerRunsDir,
       ].sort(),
     );
-    // 各ディレクトリは実行ユーザー所有・0700 でイメージが用意する(Gateway も kp-ask serve も
-    // ディレクトリを作らない。空の名前付きボリュームは初回マウント時に所有者・権限を引き継ぐ)
+    expect(dockerfile).not.toContain("answer-runs");
+    // 各ディレクトリは実行ユーザー所有・0700 でイメージが用意する(Gateway はディレクトリを
+    // 作らない。空の名前付きボリュームは初回マウント時に所有者・権限を引き継ぐ)
     const prepare =
       /^RUN mkdir -p (.+?) \\\n\s+&& chown 1000:1000 (.+?) \\\n\s+&& chmod 0700 (.+?)$/m.exec(
         dockerfile,
@@ -547,7 +581,7 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     await expect(readFile(source, "utf8")).resolves.toContain("serve");
   });
 
-  it("orchestrator は gateway と同じイメージを kp-ask serve で動かし、設定は Gateway と同じ・AnswerRun は Gateway の監査ボリュームとは別のボリュームに書く", async () => {
+  it("orchestrator は gateway と同じイメージを kp-ask serve で動かし、設定は Gateway と同じ・監査ストアには書かない(run は Gateway の run API に申告する)", async () => {
     const config = referenceConfig();
     const gateway = (await composeServices())["gateway"] as ComposeService;
     const orchestrator = await overlayService("orchestrator");
@@ -570,34 +604,26 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
       readOnly: true,
     });
 
-    // AnswerRun は Gateway の監査ボリュームとは別のボリュームの別ファイル(ADR-018 決定4)。
-    // orchestrator がマウントするのは設定(読み取り専用)と AnswerRun のボリュームだけで、Gateway の
-    // 監査ログ・生クエリ原文のボリュームはマウントしない(Orchestrator は TB2 で信頼しない側。
-    // 侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない。threat-model TM-I4)
-    const answerRuns = flagValue(command, "--answer-run-jsonl") ?? "";
-    const answerRunsDir = posix.dirname(answerRuns);
+    // 監査ストアに書くのは Gateway だけ(ADR-019)。orchestrator がマウントするのは設定(読み取り
+    // 専用)だけで、Gateway の監査ログ・生クエリ原文のボリュームも、AnswerRun 用のボリュームも
+    // マウントしない(Orchestrator は TB2 で信頼しない側。侵害・誤動作しても Gateway の監査ログを
+    // 読めない・書き換えられない。threat-model TM-I4)
+    expect(command).not.toContain("--answer-run-jsonl");
+    const orchestratorMounts = mounts(orchestrator);
+    expect([...orchestratorMounts.keys()]).toEqual([CONTAINER_CONFIG_PATH]);
     const gatewayAuditDirs = [
       posix.dirname(config.audit.jsonl?.path ?? ""),
       posix.dirname(config.audit.jsonl?.rawQueryPath ?? ""),
     ];
-    expect(answerRuns).toMatch(/^\/.+\.jsonl$/);
-    expect(gatewayAuditDirs).not.toContain(answerRunsDir);
-    const orchestratorMounts = mounts(orchestrator);
-    expect([...orchestratorMounts.keys()].sort()).toEqual(
-      [CONTAINER_CONFIG_PATH, answerRunsDir].sort(),
-    );
-    const answerRunsMount = orchestratorMounts.get(answerRunsDir);
-    expect(answerRunsMount?.readOnly).toBe(false);
-    const gatewaySources = [...mounts(gateway).values()].map((m) => m.source);
     for (const dir of gatewayAuditDirs) {
       const gatewayVolume = mounts(gateway).get(dir)?.source;
       expect(gatewayVolume).toBeDefined();
       expect([...orchestratorMounts.values()].map((m) => m.source)).not.toContain(gatewayVolume);
     }
-    // AnswerRun のボリュームは overlay で定義した名前付きボリュームで、Gateway はマウントしない
+    // overlay は AnswerRun のボリュームを定義しない
     const overlay = await composeDocument(LIBRECHAT_COMPOSE_FILE);
-    expect(Object.keys(overlay.volumes ?? {})).toContain(answerRunsMount?.source);
-    expect(gatewaySources).not.toContain(answerRunsMount?.source);
+    expect(Object.keys(overlay.volumes ?? {})).not.toContain("kp-answer-runs");
+    expect(await readFile(LIBRECHAT_COMPOSE_FILE, "utf8")).not.toContain("answer-runs");
 
     // 待ち受けはコンテナ内の全インターフェース → 確認フラグが要る。公開・healthcheck と同じポート
     const [listenHost, listenPort] = (flagValue(command, "--listen") ?? "").split(":");
@@ -620,8 +646,19 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
 
     // 秘密は .env からの変数展開のみ。開発用の部品を含む評価用構成なので development
     expect(orchestrator.environment?.["NODE_ENV"]).toBe("development");
-    expect(orchestrator.environment?.["KP_AUDIT_HMAC_KEY"]).toMatch(/^\$\{KP_AUDIT_HMAC_KEY:\?/);
     expect(orchestrator.environment?.["KP_LLM_MODEL"]).toMatch(/^\$\{KP_LLM_MODEL:\?/);
+    // Orchestrator の資格情報は gateway と同じ変数(同じ値)を両方に渡す。runId の署名鍵と docId の
+    // HMAC 鍵は Gateway だけが持ち、orchestrator には渡さない(ADR-019)
+    const credentialEnv = config.gateway.runs.orchestratorCredentialEnv;
+    expect(orchestrator.environment?.[credentialEnv]).toMatch(/^\$\{KP_ORCHESTRATOR_CREDENTIAL:\?/);
+    expect(orchestrator.environment?.[credentialEnv]).toBe(gateway.environment?.[credentialEnv]);
+    expect(orchestrator.environment).not.toHaveProperty(config.gateway.runs.signingKeyEnv);
+    expect(orchestrator.environment).not.toHaveProperty(config.gateway.runs.previousSigningKeyEnv);
+    expect(orchestrator.environment).not.toHaveProperty(config.audit.docIdHmacKeyEnv);
+    // LibreChat(UI)は Orchestrator の資格情報を持たない(持つのは kp-ask serve だけ)
+    const librechat = await overlayService("librechat");
+    expect(librechat.environment).not.toHaveProperty(credentialEnv);
+    expect(await envFile(LIBRECHAT_ENV_EXAMPLE)).not.toHaveProperty(credentialEnv);
     // Gateway と同じ実行時の制限(コアダンプにトークンを残さない等)
     expect(orchestrator.ulimits?.["core"]).toBe(0);
     expect(orchestrator.cap_drop).toEqual(["ALL"]);

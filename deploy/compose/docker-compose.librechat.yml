@@ -37,8 +37,11 @@
 #   プロキシ経由にする(docs/install.md §6、docs/ui-librechat.md「セキュリティ上の注意」)
 # - deployment.yaml に永続化できないソース(Slack)が有効なら orchestrator は起動を拒否する
 #   (不変条件7、ADR-018 決定5)
-# - orchestrator は AnswerRun を専用のボリューム kp-answer-runs に書き、Gateway の監査ログ・
-#   生クエリ原文のボリューム(kp-audit / kp-rawquery)はマウントしない(ADR-018 決定4)
+# - orchestrator は監査ストアに書かない(ADR-019)。run の開始・結果・フィードバック(AnswerRun)は
+#   Gateway の run API(/runs)に申告し、Gateway が kp-audit に記録する。orchestrator がマウントする
+#   のは設定(読み取り専用)だけで、Gateway の監査ログ・生クエリ原文のボリューム(kp-audit /
+#   kp-rawquery)はマウントしない。run API には利用者本人のトークンに加えて、Gateway と共有する
+#   Orchestrator の資格情報(KP_ORCHESTRATOR_CREDENTIAL。.env で両方に同じ値)が要る
 # - LLM は既定でホストの LM Studio(OpenAI 互換 API、http://host.docker.internal:1234/v1)。
 #   UI 側の LLM(LibreChat の会話相手)と Orchestrator の探索ループの両方が使う
 # - orchestrator から上流(Gateway・LLM)へは非ループバックの平文 http のため、
@@ -104,7 +107,9 @@ services:
       # Gateway はネットワーク内のサービス名で呼ぶ(deployment.yaml の gateway.http の port / path)
       - --gateway
       - http://gateway:8787/mcp
-      # 永続化できないソース(Slack)の有効化の判定と、AnswerRun の citedDocIds の記録方針に使う
+      # 永続化できないソース(Slack)の有効化の判定と、Gateway が公開するソースとの照合、orchestrator
+      # セクション(maxIterations / costLimitPerQuery)に使う。citedDocIds の記録方針は Gateway の
+      # run API がかける(ADR-019 決定5)
       - --config
       - /etc/kp/deployment.yaml
       # コンテナ内では全インターフェースで待ち受ける(ホストへの公開は下の ports で 127.0.0.1 に
@@ -115,10 +120,6 @@ services:
       - --path
       - /mcp
       - --confirm-exposed-host
-      # AnswerRun は Gateway の監査ボリュームとは別のボリューム(下の kp-answer-runs)に追記する
-      # (ADR-018 決定4)
-      - --answer-run-jsonl
-      - /var/lib/kp/answer-runs/answer-runs.jsonl
       - --max-concurrent-runs
       - "4"
       - --max-question-chars
@@ -135,8 +136,10 @@ services:
       # 評価用構成(開発用の部品を含む deployment.yaml、--allow-insecure-upstream)は
       # NODE_ENV=production では拒否されるため(gateway と同じ)
       NODE_ENV: development
-      # deployment.yaml の audit.privateScopeDocIds: hashed の HMAC 鍵(デプロイ固有、秘密)
-      KP_AUDIT_HMAC_KEY: ${KP_AUDIT_HMAC_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
+      # Gateway の run API(/runs)と、runId を申告する tools/call に付ける Orchestrator の資格情報。
+      # docker-compose.yml の gateway と同じ変数(同じ値)。runId の署名鍵(KP_RUN_ID_KEY)と
+      # docId の HMAC 鍵(KP_AUDIT_HMAC_KEY)は Gateway だけが持ち、orchestrator には渡さない
+      KP_ORCHESTRATOR_CREDENTIAL: ${KP_ORCHESTRATOR_CREDENTIAL:?set it in deploy/compose/.env (cp .env.example .env)}
       # 既定はホストの LM Studio(extra_hosts の host.docker.internal)
       KP_LLM_BASE_URL: ${KP_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
       # LM Studio でロードしたモデル名(curl http://localhost:1234/v1/models の id)
@@ -147,14 +150,12 @@ services:
       # MCP クライアント(Claude Code・MCP Inspector 等)からの接続用。ループバックのみ
       - "127.0.0.1:8790:8790"
     volumes:
+      # 設定だけ(読み取り専用)。Gateway の監査ログ(kp-audit)・生クエリ原文(kp-rawquery)は
+      # マウントしない。Orchestrator は信頼境界 TB2 の外側にあり(threat-model §1)、侵害・誤動作
+      # しても Gateway の監査ログを読めない・書き換えられないようにする(TM-I4)。AnswerRun は
+      # Gateway が run API で kp-audit に書く(ADR-019)。イメージの VOLUME により /var/lib/kp/audit
+      # 等には空の匿名ボリュームが付くが、Gateway のボリュームとは別物で、何も書かれない
       - ./deployment.yaml:/etc/kp/deployment.yaml:ro
-      # AnswerRun の書き先。orchestrator 専用のボリュームで、Gateway の監査ログ(kp-audit)・
-      # 生クエリ原文(kp-rawquery)はマウントしない。Orchestrator は信頼境界 TB2 の外側に
-      # あり(threat-model §1)、侵害・誤動作しても Gateway の監査ログを読めない・書き換え
-      # られないようにする。昇格判定レポートは両方のボリュームを読めるようにして実行する
-      # (docs/install.md §7)。イメージの VOLUME により /var/lib/kp/audit 等には空の匿名
-      # ボリュームが付くが、Gateway のボリュームとは別物
-      - kp-answer-runs:/var/lib/kp/answer-runs
     healthcheck:
       # イメージの HEALTHCHECK は Gateway の /healthz を見るため、kp-ask serve の /healthz に替える
       test:
@@ -167,7 +168,8 @@ services:
       retries: 12
       start_period: 15s
     # 停止時は受付を止め、処理中のリクエスト(run)の応答を最大 30 秒待ってから終了する。
-    # それより長く取る(短いと SIGKILL で AnswerRun の最終状態を書けずに終わる)
+    # それより長く取る(短いと SIGKILL で run の結果(finish)を Gateway に申告できずに終わり、
+    # その run は昇格判定レポートで「放棄」になる)
     stop_grace_period: 40s
     # コアダンプにメモリ上のトークンを残さない(threat-model TM-C3)
     ulimits:
@@ -253,9 +255,6 @@ volumes:
   kp-caddy-data:
   kp-dev-ca:
   kp-librechat-mongo:
-  # AnswerRun(orchestrator の --answer-run-jsonl)。所有者・権限はイメージの
-  # /var/lib/kp/answer-runs(uid 1000、0700)を初回マウント時に引き継ぐ
-  kp-answer-runs:
 
 networks:
   # mongodb と librechat だけが属する内部ネットワーク(internal: 外部への経路を持たない)

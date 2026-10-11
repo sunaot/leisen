@@ -246,7 +246,7 @@ function parseServeArgs(
   const config = nonEmpty(values.config);
   if (config === undefined) {
     throw new ServeUsageError(
-      "--config に deployment.yaml を指定してください(citedDocIds の記録方針と、永続化不可のソースの判定に使います)。",
+      "--config に deployment.yaml を指定してください(永続化不可のソースの判定と、Gateway が公開するソースとの照合に使います)。",
     );
   }
   const listen = parseListen(values.listen ?? nonEmpty(env["KP_LISTEN"]) ?? DEFAULT_SERVE_LISTEN);

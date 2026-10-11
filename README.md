@@ -84,7 +84,7 @@ export KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"  # 利用者 alice 
 npx kp-gateway auth-check --config examples/deployment.keycloak.yaml --token-env KP_SESSION_TOKEN   # 検証項目ごとの結果を表示
 npx kp-gateway serve --config examples/deployment.keycloak.yaml                                      # http://127.0.0.1:8787/mcp
 
-# 別の端末で(KP_SESSION_TOKEN と KP_AUDIT_HMAC_KEY、LLM の資格情報を設定したうえで。packages/orchestrator/README.md)
+# 別の端末で(KP_SESSION_TOKEN と LLM の資格情報を設定したうえで。packages/orchestrator/README.md)
 npx kp-ask --gateway http://127.0.0.1:8787/mcp --config examples/deployment.keycloak.yaml "VPN の接続手順を教えて"
 ```
 
