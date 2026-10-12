@@ -146,6 +146,13 @@ A はどれも解いておらず、同一運用者の前提で C4 を受け入�
 3. **不変条件2 の文言**: 「全ツール呼び出しを監査ログに記録する」に「run の事象(開始・終了・フィードバック)も Gateway が記録する」を加えるか。CLAUDE.md の不変条件の改訂は人間の判断とし、この ADR では変えていない
 4. **fail-open の適用範囲(決定6)**: 明示的に fail-open にした構成では run API も同じ設定に従う。run API だけは常に fail-closed にする案もある
 
+## 実装の記録(T-023、2026-10-11)
+- 段階 1 を T-023 で実装した。`@kp/audit`(`packages/audit`)、run モジュール(`packages/gateway/src/run/`。import 境界は `scripts/lint-imports.mjs`)、run API(`packages/gateway/src/proxy/runs.ts`、`http.ts` の `/runs`)、tools/call の名前空間付き runId の検証(`proxy/gateway.ts`)、設定(`gateway.runs`、`audit.docIdHmacKeyEnv`。`examples/deployment.yaml`)、起動コード(`bootstrap/runs.ts`: 署名鍵・Orchestrator の資格情報の解決と production の拒否)、Orchestrator の移行(`startRun` / `finishRun` / `feedbackRun`、`KP_ORCHESTRATOR_CREDENTIAL`)、リファレンス構成(`kp-answer-runs` と orchestrator の `KP_AUDIT_HMAC_KEY` を廃止。gateway に `KP_RUN_ID_KEY` / `KP_ORCHESTRATOR_CREDENTIAL` / `KP_AUDIT_HMAC_KEY`、orchestrator に `KP_ORCHESTRATOR_CREDENTIAL`)
+- 決めた既定値: runId の有効期間 900 秒、フィードバックの期間 7 日、本文 64 KiB、質問 4,000 字、利用者ごとの頻度 60 回 / 分(3 経路の合計)、引用 50 件、searchedSources 50 件、ID 512 文字。Orchestrator の資格情報は共有秘密(16 文字以上)を HTTP ヘッダ `x-kp-orchestrator-credential` で渡し、SHA-256 のダイジェストどうしを定数時間で比べる
+- 昇格判定レポート(`packages/promotion-report`)は runId ごとに pending + 最新の finish + 最新の feedback を統合し(userId が一致するものだけ。pending のない部分レコードは「孤立」)、有効期間(署名付き runId の payload。旧形式は `--run-ttl-sec`)を過ぎて finish のない pending を「放棄」と数える。失敗クエリの原文の「保持期間切れ」と「未記録」(Slack 有効時の非記録・書き込み失敗)を分けて表示する。Gateway・Orchestrator・レポートを結線したゴールデンテスト `packages/orchestrator/test/promotion-report-golden.test.ts`
+- セキュリティレビュー(2026-10-11)の反映: 移行期間の裸キー `runId` に署名付きの形の値が入っていれば名前空間付きのキーと同じ検証(署名・本人・actor・期限・Orchestrator の資格情報)にかける(決定4 の「名前空間付きのキーだけ」の例外。利用者が自分の runId で Gateway を直接呼んで自分の run の記録を歪めることを防ぐ。旧形式の値は従来どおり単発 run)。run API のパスは MCP のパスと同じディレクトリの `runs`(`run/path.ts`。`gateway.http.path` に `…/runs` は使えない)。Orchestrator の fetch はリダイレクトを追わない。署名鍵・資格情報・docId の鍵の使い回し、docId の鍵の短い値・本番での開発用の値、`feedbackWindowSec < ttlSec`、資格情報の空白・非 ASCII を起動拒否にする。残した指摘: `/runs` の本文読み込みに期限がない(既知の minor-6 と同じ。前段のリバースプロキシで緩和)、本番以外で非ループバック公開 + 開発用の資格情報を拒否しない(WARNING のみ)、固定窓のレート制限は窓の境目で上限の 2 倍まで通る、tools/call の search のクエリ原文は Slack 有効時も生クエリ表に書かれる(既存の挙動。T-006 の前に決める)
+- 帰結に書いた「tools/call の結果の `_meta` に userId を載せる必要が残るか」は未着手(Orchestrator は describe の結果の userId を申告との照合に使い続けている)。確認事項 1〜4 は安全側の既定のまま
+
 ## 図
 図の元ファイル(SVG)は `docs/adr/figures/ADR-019/` にある。
 - 図1 `fig1-current-structure.svg`: 現状(A)の構造と C1〜C5 の位置

@@ -28,21 +28,25 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { ConnectorError } from "@kp/connector-sdk";
 import {
+  digestQuery,
+  parseAuditRecord,
+} from "@kp/audit";
+import {
   assembleGateway,
   createDevFixtureConnector,
   DeploymentConfigError,
-  digestQuery,
   KEYCLOAK_ANY_CLIENT_WARNING,
   loadDeploymentConfig,
   MOCK_IDP_NO_SESSIONS_REJECTED,
   MOCK_IDP_NO_SESSIONS_WARNING,
-  parseAuditRecord,
   parseDeploymentConfig,
   type AssembleGatewayOptions,
   type AssembledGateway,
   type ConfigIssueCode,
   type ConnectorFactory,
   type DeploymentConfig,
+  DEV_ORCHESTRATOR_CREDENTIAL,
+  DEV_RUN_ID_KEY_EXAMPLE,
 } from "../src/index.js";
 import { MockConnector } from "./helpers/proxy.js";
 
@@ -52,6 +56,17 @@ const DEV_ENV = {
   KP_MOCK_SESSIONS: "dev-token=alice,dev-token-bob=bob",
   KP_MOCK_TOKEN_DEV_DOCS: "dev-only-token",
 };
+
+/** run API(ADR-019)の秘密。本番の組み立てには必須(テスト用の値。32 バイトの base64) */
+const PROD_RUN_ENV = {
+  KP_RUN_ID_KEY: Buffer.alloc(32, 7).toString("base64"),
+  KP_ORCHESTRATOR_CREDENTIAL: "test-orchestrator-credential-0001",
+};
+
+/** run API の一時鍵・開発用資格情報の警告を除く(他の警告の検査用)。 */
+function withoutRunApiWarnings(warnings: readonly string[]): string[] {
+  return warnings.filter((w) => !w.startsWith("run API:"));
+}
 
 const opened: AssembledGateway[] = [];
 const clients: Client[] = [];
@@ -343,17 +358,17 @@ describe("(k) モック IdP のセッション表が空(KP_MOCK_SESSIONS 未設�
 
   it("起動は拒否せず warnings に入れる(セッションがあれば警告しない)", async () => {
     const empty = await assemble({ config: config(""), env: {} });
-    expect(empty.warnings).toEqual([MOCK_IDP_NO_SESSIONS_WARNING]);
+    expect(withoutRunApiWarnings(empty.warnings)).toEqual([MOCK_IDP_NO_SESSIONS_WARNING]);
     expect(MOCK_IDP_NO_SESSIONS_WARNING).toContain("KP_MOCK_SESSIONS");
 
     const blank = await assemble({ config: config(""), env: { KP_MOCK_SESSIONS: "" } });
-    expect(blank.warnings).toEqual([MOCK_IDP_NO_SESSIONS_WARNING]);
+    expect(withoutRunApiWarnings(blank.warnings)).toEqual([MOCK_IDP_NO_SESSIONS_WARNING]);
 
     const configured = await assemble({
       config: config(""),
       env: { KP_MOCK_SESSIONS: "dev-only-session=alice" },
     });
-    expect(configured.warnings).toEqual([]);
+    expect(withoutRunApiWarnings(configured.warnings)).toEqual([]);
   });
 
   it("稼働中は、Bearer トークンを 401 で拒否したときに最初の1回だけ warn を呼ぶ(トークンを含めない)", async () => {
@@ -919,7 +934,11 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
 describe("(h) 本番(NODE_ENV=production)", () => {
   it("開発用の構成(mock IdP / mock_env / dev-fixture / audit.sink: stdout)を全件拒否する", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const error = await rejection({ config: devConfig(), env: DEV_ENV, configDir: EXAMPLES_DIR });
+    const error = await rejection({
+      config: devConfig(),
+      env: { ...DEV_ENV, ...PROD_RUN_ENV },
+      configDir: EXAMPLES_DIR,
+    });
     expect(error.issues.map((i) => [i.code, i.path])).toEqual([
       ["dev_only_in_production", "idp.adapter.kind"],
       ["dev_only_in_production", "connectors[0].auth.provider"],
@@ -947,7 +966,7 @@ connectors:
   - id: parked
     enabled: false
 `),
-      env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" },
+      env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret", ...PROD_RUN_ENV },
     });
     expect(error.issues.map((i) => [i.code, i.path])).toEqual([
       ["dev_only_in_production", "audit.sink"],
@@ -977,7 +996,7 @@ audit:
 `;
     const dir = await mkdtemp(join(tmpdir(), "kp-bootstrap-any-client-"));
     tempDirs.push(dir);
-    const env = { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" };
+    const env = { KP_TEST_CLIENT_SECRET: "dev-only-client-secret", ...PROD_RUN_ENV };
 
     // 開発: 起動するが WARNING("*" が他の項目と混在していても同じ)
     const lenient = await assemble({
@@ -1032,7 +1051,7 @@ audit:
     path: audit.jsonl
     rawQueryPath: raw-queries.jsonl
 `),
-      env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" },
+      env: { KP_TEST_CLIENT_SECRET: "dev-only-client-secret", ...PROD_RUN_ENV },
       configDir: dir,
     });
     expect(assembled.gateway.enabledSourceIds()).toEqual([]);
@@ -1123,17 +1142,25 @@ audit:
     });
     expect(codes(error)).toEqual(["private_scopes_unenforceable"]);
 
-    // included(確認フラグ付き)なら同じプラグインでも起動できる
-    const assembled = await assemble({
-      config: config(`connectors:
+    // included(確認フラグ付き)なら同じプラグインでも起動できる。プライベートスコープを持つ
+    // ソースが有効で privateScopeDocIds: hashed(既定)なら、引用 docId の HMAC 鍵が要る(ADR-019 決定5)
+    const included = config(`connectors:
   - id: legacy
     kind: legacy
     privateScopes: included
     confirmPrivateScopesIncluded: true
     auth:
       provider: mock_env
-`),
+`);
+    const missingKey = await rejection({ config: included, connectorFactories: { legacy: v03 }, env: {} });
+    expect(missingKey.issues.map((i) => [i.code, i.path])).toEqual([
+      ["secret_env_missing", "audit.docIdHmacKeyEnv"],
+    ]);
+    expect(missingKey.message).toContain("KP_AUDIT_HMAC_KEY");
+    const assembled = await assemble({
+      config: included,
       connectorFactories: { legacy: v03 },
+      env: { KP_AUDIT_HMAC_KEY: "dev-only-audit-hmac-key" },
     });
     expect(assembled.gateway.enabledSourceIds()).toEqual(["legacy"]);
   });
@@ -1243,5 +1270,206 @@ audit:
     await Promise.all([assembled.close(), assembled.close()]);
     expect(assembled.httpServer.listening).toBe(false);
     expect((await readFile(join(dir, "audit.jsonl"), "utf8")).trim().split("\n")).toHaveLength(1);
+  });
+});
+
+describe("(l) run API(ADR-019)の署名鍵・Orchestrator の資格情報の解決", () => {
+  const PROD_YAML = `schemaVersion: 1
+deployment:
+  name: prod-like
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: https://idp.example.test
+    realm: kp
+    clientId: kp-gateway
+    clientSecretEnv: KP_TEST_CLIENT_SECRET
+    allowedClients: [chat-ui]
+connectors:
+  - id: parked
+    enabled: false
+audit:
+  sink: jsonl
+  jsonl:
+    path: audit.jsonl
+`;
+  const baseEnv = { KP_TEST_CLIENT_SECRET: "dev-only-client-secret" };
+
+  async function prodDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "kp-bootstrap-runs-"));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  it("本番では署名鍵と Orchestrator の資格情報の環境変数が必須(未設定は起動拒否。鍵の代用はしない)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const error = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: baseEnv,
+      configDir: await prodDir(),
+    });
+    expect(error.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_signing_key_missing", "gateway.runs.signingKeyEnv"],
+      ["run_orchestrator_credential_missing", "gateway.runs.orchestratorCredentialEnv"],
+    ]);
+    expect(error.message).toContain("KP_RUN_ID_KEY");
+    expect(error.message).toContain("KP_ORCHESTRATOR_CREDENTIAL");
+  });
+
+  it("本番では 32 バイト未満の鍵・短い資格情報・開発用の例の値を拒否し、値をメッセージに出さない", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const dir = await prodDir();
+    const short = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: Buffer.alloc(31, 1).toString("hex"), KP_ORCHESTRATOR_CREDENTIAL: "too-short" },
+      configDir: dir,
+    });
+    expect(short.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_signing_key_invalid", "gateway.runs.signingKeyEnv"],
+      ["run_orchestrator_credential_invalid", "gateway.runs.orchestratorCredentialEnv"],
+    ]);
+    expect(short.message).not.toContain(Buffer.alloc(31, 1).toString("hex"));
+    expect(short.message).not.toContain("too-short");
+
+    const dev = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: DEV_RUN_ID_KEY_EXAMPLE, KP_ORCHESTRATOR_CREDENTIAL: DEV_ORCHESTRATOR_CREDENTIAL },
+      configDir: dir,
+    });
+    expect(dev.issues.map((i) => [i.code, i.path])).toEqual([
+      ["dev_only_in_production", "gateway.runs.signingKeyEnv"],
+      ["dev_only_in_production", "gateway.runs.orchestratorCredentialEnv"],
+    ]);
+    expect(dev.message).not.toContain(DEV_RUN_ID_KEY_EXAMPLE);
+    expect(dev.message).not.toContain(DEV_ORCHESTRATOR_CREDENTIAL);
+  });
+
+  it("本番で有効な鍵と資格情報があれば組み立てられ、説明には環境変数名と kid だけが出る(鍵の値は出ない)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const key = Buffer.alloc(32, 9).toString("base64url");
+    const assembled = await assemble({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1" },
+      configDir: await prodDir(),
+    });
+    expect(assembled.warnings).toEqual([]);
+    expect(assembled.runApiDescription).toMatch(
+      /^\/runs \(signing key: env KP_RUN_ID_KEY, kid [0-9a-f]{8}; orchestrator credential: env KP_ORCHESTRATOR_CREDENTIAL; ttl 900s, feedback window 604800s\)$/,
+    );
+    expect(assembled.runApiDescription).not.toContain(key);
+    expect(assembled.runApiDescription).not.toContain("prod-orchestrator-credential-1");
+    expect(assembled.gateway.runs).toBeDefined();
+    expect(assembled.gateway.verifyOrchestratorCredential("prod-orchestrator-credential-1")).toBe(true);
+    expect(assembled.gateway.verifyOrchestratorCredential("prod-orchestrator-credential-2")).toBe(false);
+    expect(assembled.gateway.verifyOrchestratorCredential(undefined)).toBe(false);
+  });
+
+  it("鍵の入れ替え: 1 つ前の鍵も読む。現行と同じ鍵・復号できない鍵は拒否する", async () => {
+    const dir = await prodDir();
+    const current = Buffer.alloc(32, 1).toString("base64");
+    const previous = Buffer.alloc(32, 2).toString("hex");
+    const rotated = await assemble({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: current, KP_RUN_ID_KEY_PREVIOUS: previous, KP_ORCHESTRATOR_CREDENTIAL: "test-orchestrator-credential-0001" },
+      configDir: dir,
+    });
+    expect(rotated.runApiDescription).toMatch(/kid [0-9a-f]{8} \+ previous kid [0-9a-f]{8};/);
+
+    const same = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: current, KP_RUN_ID_KEY_PREVIOUS: current, KP_ORCHESTRATOR_CREDENTIAL: "test-orchestrator-credential-0001" },
+      configDir: dir,
+    });
+    expect(same.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_signing_key_invalid", "gateway.runs.previousSigningKeyEnv"],
+    ]);
+    const garbage = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: "not base64!!", KP_ORCHESTRATOR_CREDENTIAL: "test-orchestrator-credential-0001" },
+      configDir: dir,
+    });
+    expect(garbage.issues.map((i) => i.code)).toEqual(["run_signing_key_invalid"]);
+  });
+
+  it("秘密の使い回し・docId 鍵の形・資格情報の文字種・フィードバックの期間を検査する(値をメッセージに出さない)", async () => {
+    const dir = await prodDir();
+    const key = Buffer.alloc(32, 3).toString("base64url");
+    // 署名鍵と資格情報が同じ値、docId の鍵が資格情報と同じ値
+    const reused = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: key, KP_AUDIT_HMAC_KEY: key },
+      configDir: dir,
+    });
+    expect(reused.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_secret_reused", "gateway.runs"],
+      ["run_secret_reused", "gateway.runs"],
+    ]);
+    expect(reused.message).toContain("KP_RUN_ID_KEY");
+    expect(reused.message).toContain("KP_AUDIT_HMAC_KEY");
+    expect(reused.message).not.toContain(key);
+
+    // 資格情報に空白・非 ASCII、docId の鍵が短い
+    const malformed = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "has a space in the credential", KP_AUDIT_HMAC_KEY: "short-key" },
+      configDir: dir,
+    });
+    expect(malformed.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_orchestrator_credential_invalid", "gateway.runs.orchestratorCredentialEnv"],
+      ["doc_id_hmac_key_invalid", "audit.docIdHmacKeyEnv"],
+    ]);
+    expect(malformed.message).not.toContain("has a space");
+    const nonAscii = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "資格情報は-ascii-でないと-ヘッダに乗らない" },
+      configDir: dir,
+    });
+    expect(nonAscii.issues.map((i) => i.code)).toEqual(["run_orchestrator_credential_invalid"]);
+
+    // 本番では docId の鍵の開発用の値(dev-only-…)を拒否し、本番以外では WARNING
+    vi.stubEnv("NODE_ENV", "production");
+    const devHmac = await rejection({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1", KP_AUDIT_HMAC_KEY: "dev-only-audit-hmac-key" },
+      configDir: dir,
+    });
+    expect(devHmac.issues.map((i) => [i.code, i.path])).toEqual([["dev_only_in_production", "audit.docIdHmacKeyEnv"]]);
+    vi.stubEnv("NODE_ENV", "test");
+    const warned = await assemble({
+      config: parseDeploymentConfig(PROD_YAML),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1", KP_AUDIT_HMAC_KEY: "dev-only-audit-hmac-key" },
+      configDir: dir,
+    });
+    expect(warned.warnings).toEqual([expect.stringMatching(/^audit: environment variable "KP_AUDIT_HMAC_KEY" holds a development-only value/)]);
+
+    // フィードバックの期間は有効期間より短くできない
+    const shortWindow = await rejection({
+      config: parseDeploymentConfig(PROD_YAML + "gateway:\n  runs:\n    ttlSec: 900\n    feedbackWindowSec: 600\n"),
+      env: { ...baseEnv, KP_RUN_ID_KEY: key, KP_ORCHESTRATOR_CREDENTIAL: "prod-orchestrator-credential-1" },
+      configDir: dir,
+    });
+    expect(shortWindow.issues.map((i) => [i.code, i.path])).toEqual([
+      ["run_feedback_window_too_short", "gateway.runs.feedbackWindowSec"],
+    ]);
+  });
+
+  it("本番以外では未設定の鍵は起動ごとの一時鍵、未設定の資格情報は開発用の既定値になり、WARNING に残る", async () => {
+    const assembled = await assemble({ config: config(""), env: { KP_MOCK_SESSIONS: "dev-only-session=alice" } });
+    expect(assembled.warnings).toEqual([
+      expect.stringMatching(/^run API: environment variable "KP_RUN_ID_KEY" is not set; using an ephemeral runId signing key/),
+      expect.stringMatching(/^run API: environment variable "KP_ORCHESTRATOR_CREDENTIAL" is not set; using the development-only orchestrator credential/),
+    ]);
+    expect(assembled.runApiDescription).toMatch(/^\/runs \(signing key: ephemeral, kid [0-9a-f]{8}; orchestrator credential: development default;/);
+    expect(assembled.gateway.verifyOrchestratorCredential(DEV_ORCHESTRATOR_CREDENTIAL)).toBe(true);
+
+    const example = await assemble({
+      config: config(""),
+      env: { KP_MOCK_SESSIONS: "dev-only-session=alice", KP_RUN_ID_KEY: DEV_RUN_ID_KEY_EXAMPLE, KP_ORCHESTRATOR_CREDENTIAL: DEV_ORCHESTRATOR_CREDENTIAL },
+    });
+    expect(example.warnings).toEqual([
+      expect.stringMatching(/^run API: environment variable "KP_RUN_ID_KEY" holds the published development example key/),
+      expect.stringMatching(/^run API: environment variable "KP_ORCHESTRATOR_CREDENTIAL" holds the development-only orchestrator credential/),
+    ]);
+    expect(example.warnings.join("\n")).not.toContain(DEV_RUN_ID_KEY_EXAMPLE);
   });
 });

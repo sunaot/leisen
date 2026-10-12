@@ -19,7 +19,7 @@ HITS=$(grep -rn --include='*.ts' -E '(xoxp-[0-9]|xoxb-[0-9]|(ghp|gho|ghu|ghs|ghr
 # 不変条件3: 監査系コードにpre-filter件数らしきフィールドを入れない(粗い検知)。
 # フィールド宣言(`name:` 型注釈)または代入(`name =` / `name:` オブジェクトリテラル値)
 # のみを対象とし、FORBIDDEN_KEYS等の「禁止リスト定義」行(文字列リテラル)は除外する。
-HITS=$(grep -rn --include='*.ts' -iE '\b(preFilter(ed)?HitCount|candidateCount|rawHitCount)\b[[:space:]]*[:=]' packages/gateway/src/audit 2>/dev/null \
+HITS=$(grep -rn --include='*.ts' -iE '\b(preFilter(ed)?HitCount|candidateCount|rawHitCount)\b[[:space:]]*[:=]' packages/audit/src packages/gateway/src/run 2>/dev/null \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*"' || true)
 [ -n "$HITS" ] && VIOLATIONS="$VIOLATIONS\n[不変条件3/ADR-011] 監査ログにpre-filter候補件数の疑い:\n$HITS"
 

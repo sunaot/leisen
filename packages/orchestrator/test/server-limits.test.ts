@@ -16,7 +16,7 @@ import { EventEmitter } from "node:events";
 import type { ServerResponse } from "node:http";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLogger, GATEWAY_META_KEYS } from "@kp/gateway";
+import { AuditLogger } from "@kp/audit";
 import {
   BUSY_TEXT,
   DEFAULT_MAX_BODY_BYTES,
@@ -39,7 +39,6 @@ import {
   BOB_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
-  TEST_DOC_ID_AUDIT,
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
@@ -135,7 +134,8 @@ describe("同時実行の上限(busy)", () => {
     // 枠が空いたので次の ask は通る
     const third = await askTool(bob, { question: "経費精算の締め日は?" });
     expect(third.structured["outcome"]).toBe("resolved");
-    const users = (await server.answerRunLines())
+    const users = gateway
+      .answerRuns()
       .filter((record) => record.finalOutcome !== "pending")
       .map((record) => record.userId);
     expect(users).toEqual(["alice", "bob"]);
@@ -147,18 +147,20 @@ describe("feedback の同時実行の上限(busy)", () => {
     let gate: Promise<void> | undefined;
     let openGate: () => void = () => undefined;
     let markStarted: () => void = () => undefined;
-    // feedback の本人確認の describe(runId が feedback:…)だけをゲートで止める
+    // feedback の申告(Gateway の run API)だけをゲートで止める
     const factory: GatewayClientFactory = (options) => {
       const inner = new McpGatewayClient(options);
       return {
         listTools: (callOptions) => inner.listTools(callOptions),
-        async callTool(name, args, meta, callOptions) {
-          const runId = String(meta[GATEWAY_META_KEYS.runId]);
-          if (gate !== undefined && name === "describe" && runId.startsWith("feedback:")) {
+        callTool: (name, args, meta, callOptions) => inner.callTool(name, args, meta, callOptions),
+        startRun: (input, callOptions) => inner.startRun(input, callOptions),
+        finishRun: (runId, input, callOptions) => inner.finishRun(runId, input, callOptions),
+        async feedbackRun(runId, outcome, callOptions) {
+          if (gate !== undefined) {
             markStarted();
             await gate;
           }
-          return inner.callTool(name, args, meta, callOptions);
+          return inner.feedbackRun(runId, outcome, callOptions);
         },
         close: () => inner.close(),
       };
@@ -212,10 +214,12 @@ describe("feedback の同時実行の上限(busy)", () => {
       arguments: { runId, outcome: "unresolved" },
     });
     expect(third.structuredContent).toEqual({ runId, outcome: "unresolved" });
-    const feedbacks = (await server.answerRunLines())
-      .filter((record) => record.runId === runId)
-      .map((record) => record.userFeedback);
-    expect(feedbacks).toEqual([null, null, "resolved", "unresolved"]);
+    const feedbacks = gateway
+      .records()
+      .flatMap((record) =>
+        record.recordType === "answer_run_feedback" && record.runId === runId ? [record.userFeedback] : [],
+      );
+    expect(feedbacks).toEqual(["resolved", "unresolved"]);
   });
 });
 
@@ -237,7 +241,7 @@ describe("質問長の上限(question_too_long)", () => {
     expect(result.text).not.toContain(question);
     expect(llm.requests).toHaveLength(0);
     expect(gateway.toolInvocations()).toEqual([]);
-    expect(await server.answerRunLines()).toEqual([]);
+    expect(gateway.answerRuns()).toEqual([]);
   });
 
   it("上限ちょうどの長さ(前後の空白は数えない)は通る", async () => {
@@ -329,7 +333,7 @@ describe("HTTP 層の上限: バッチと本文サイズ(S2)", () => {
     expect(context.gateway.toolInvocations()).toEqual([]);
     expect(context.alpha.calls).toEqual([]);
     expect(context.llm.requests).toHaveLength(0);
-    expect(await context.server.answerRunLines()).toEqual([]);
+    expect(context.gateway.answerRuns()).toEqual([]);
   }
 
   it("100 件のバッチは 400(invalid_request)。Gateway への呼び出しは preflight の tools/list 1回だけで、describe も LLM も起きない", async () => {
@@ -477,12 +481,10 @@ describe("HTTP 層の上限: バッチと本文サイズ(S2)", () => {
     await expectOnlyPreflight(context);
   });
 
-  it("maxBodyBytes / preflightTimeoutMs / verificationTimeoutMs の不正な値は構築時に拒否する", () => {
+  it("maxBodyBytes / preflightTimeoutMs / feedbackTimeoutMs の不正な値は構築時に拒否する", () => {
     const deps = {
       orchestrator: new Orchestrator({
         llm: new ScriptedLlmClient(searchThenSubmit()),
-        auditLogger: new AuditLogger({ write: async () => undefined }),
-        docIdAudit: TEST_DOC_ID_AUDIT,
       }),
       gatewayUrl: "http://127.0.0.1:9/mcp",
       limits: new ServerLimits(),
@@ -491,7 +493,7 @@ describe("HTTP 層の上限: バッチと本文サイズ(S2)", () => {
     expect(() => createOrchestratorHttpServer(deps, { maxBodyBytes: 1.5 })).toThrow(RangeError);
     expect(() => createOrchestratorHttpServer(deps, { preflightTimeoutMs: -1 })).toThrow(RangeError);
     expect(() =>
-      createOrchestratorHttpServer({ ...deps, verificationTimeoutMs: 0 }),
+      createOrchestratorHttpServer({ ...deps, feedbackTimeoutMs: 0 }),
     ).toThrow(RangeError);
   });
 });

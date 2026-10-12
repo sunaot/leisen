@@ -20,8 +20,8 @@ import {
   type SearchResult,
   type SourceDescription,
 } from "@kp/connector-sdk";
+import { AuditLogger } from "@kp/audit";
 import {
-  AuditLogger,
   DeploymentConfigError,
   Gateway,
   GatewayError,

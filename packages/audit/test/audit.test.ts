@@ -14,7 +14,7 @@ import {
   digestQuery,
   parseAuditRecord,
   validateRecord,
-} from "../src/audit/index.js";
+} from "../src/index.js";
 
 function baseInvocation(): AuditRecord {
   const record: ToolInvocationRecord = {

@@ -9,11 +9,6 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  AuditLogger,
-  BufferedAuditSink,
-  InMemoryAuditStore,
-} from "@kp/gateway";
-import {
   Orchestrator,
   ScriptedLlmClient,
   TOOL_ERROR_PREFACE,
@@ -22,15 +17,10 @@ import {
   type GatewayCallOutcome,
   type LlmRequest,
 } from "../src/index.js";
-import { TEST_DOC_ID_AUDIT } from "./helpers/harness.js";
 import { FakeGatewayClient, describeOk, searchHit } from "./helpers/fake-gateway.js";
 
-function newOrchestrator(llm: ScriptedLlmClient, store = new InMemoryAuditStore()) {
-  return new Orchestrator({
-    docIdAudit: TEST_DOC_ID_AUDIT,
-    llm,
-    auditLogger: new AuditLogger(new BufferedAuditSink(store)),
-  });
+function newOrchestrator(llm: ScriptedLlmClient) {
+  return new Orchestrator({ llm });
 }
 
 /** 最後の要求の、最後の user メッセージ(tool_result の並び)。 */
@@ -134,7 +124,6 @@ describe("run の途中で未接続になったソース(m11)", () => {
       }
       return searchHit("beta", "doc-2", "alice");
     });
-    const store = new InMemoryAuditStore();
     const llm = new ScriptedLlmClient([
       () =>
         scriptedToolUse([
@@ -150,12 +139,12 @@ describe("run の途中で未接続になったソース(m11)", () => {
         }),
     ]);
 
-    const answer = await newOrchestrator(llm, store).run({ question: "q", gateway });
+    const answer = await newOrchestrator(llm).run({ question: "q", gateway });
 
     expect(answer.searchedSources).toEqual(["beta"]);
     expect(answer.skippedSources).toEqual([{ sourceId: "alpha", reason: "source_not_connected" }]);
     expect(answer.answer).toContain("未接続のため検索していないソース: alpha");
-    const run = store.records().find((r) => r.recordType === "answer_run");
-    expect(run).toMatchObject({ searchedSources: ["beta"] });
+    // 終了の申告(Gateway が記録する)でも searchedSources から外れている
+    expect(gateway.finished.at(-1)?.input).toMatchObject({ searchedSources: ["beta"] });
   });
 });

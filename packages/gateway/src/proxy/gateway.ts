@@ -43,15 +43,20 @@ import {
   type SearchResult,
   type SourceDescription,
 } from "@kp/connector-sdk";
-import { digestQuery, type ToolInvocationRecord } from "../audit/schema.js";
-import type { AuditLogger } from "../audit/sink.js";
-import type { RawQueryStore } from "../audit/rawquery.js";
+import {
+  digestQuery,
+  type AuditLogger,
+  type RawQueryStore,
+  type ToolInvocationRecord,
+} from "@kp/audit";
 import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
 import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";
 import { SourceRateLimiter } from "./ratelimit.js";
-import { resolveCallContext, validateDeclaration } from "./session.js";
+import { RunApi, type RunRuntime } from "./runs.js";
+import { isValidIteration, resolveCallContext, validateDeclaration } from "./session.js";
 import {
+  EXECUTION_CLASS_CONFIG_KEY,
   GatewayError,
   PRIVATE_SCOPE_EXCLUDED_MESSAGE,
   type CallContext,
@@ -73,6 +78,17 @@ export interface GatewayOptions {
    * (queryDigestのみ監査レコードに残る)。
    */
   rawQueryStore?: RawQueryStore;
+  /**
+   * run API(ADR-019)の実行時の構成(署名鍵・Orchestrator の資格情報・期間・上限)。
+   * 省略時は run API を公開せず、名前空間付きのキーで申告された runId は検証できないため
+   * すべて拒否する(invalid_run_id)。起動コード(bootstrap)は常に渡す
+   */
+  runs?: RunRuntime;
+  /**
+   * audit.privateScopeDocIds: hashed で引用 docId を不可逆化する HMAC 鍵(デプロイ固有の秘密。
+   * ログ・エラーに出さない)。プライベートスコープを持つソースが有効で hashed なら必須
+   */
+  docIdHmacKey?: string;
   /** テスト用の時計・ID注入 */
   now?: () => number;
   ids?: () => string;
@@ -96,14 +112,9 @@ interface RegistryEntry {
  */
 const UNKNOWN_SOURCE_AUDIT_ID = "unknown";
 
-const EXECUTION_CLASS_CONFIG_KEY = {
-  human_in_the_loop: "humanInTheLoop",
-  scheduled: "scheduled",
-  autonomous: "autonomous",
-} as const satisfies Record<
-  ExecutionClass,
-  keyof DeploymentConfig["agentExecution"]
->;
+/** 名前空間付きで申告された runId を拒否するときの固定文言(申告値をエコーしない)。 */
+const RUN_ID_REJECTED_MESSAGE =
+  "the declared runId was not accepted (it must be issued by this gateway for this user and actor, be within its validity period, and be declared by the orchestrator; ADR-019)";
 
 export class Gateway {
   private readonly config: DeploymentConfig;
@@ -114,6 +125,8 @@ export class Gateway {
   private readonly rateLimiter: SourceRateLimiter;
   private readonly now: () => number;
   private readonly ids: () => string;
+  /** run API(ADR-019)。構成がなければ undefined(HTTP 層は 404、申告 runId は全拒否) */
+  readonly runs: RunApi | undefined;
 
   constructor(options: GatewayOptions) {
     this.config = options.config;
@@ -122,6 +135,21 @@ export class Gateway {
     this.rawQueryStore = options.rawQueryStore;
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
+    this.runs =
+      options.runs !== undefined
+        ? new RunApi({
+            config: options.config,
+            runtime: options.runs,
+            auditLogger: options.auditLogger,
+            rawQueryStore: options.rawQueryStore,
+            docIdConfig: {
+              privateScopeDocIds: options.config.audit.privateScopeDocIds,
+              ...(options.docIdHmacKey !== undefined ? { hmacKey: options.docIdHmacKey } : {}),
+            },
+            now: this.now,
+            ids: this.ids,
+          })
+        : undefined;
 
     // コネクタ実体の重複と、設定との突合(危険設定は起動時拒否、ADR-005)
     const capabilities: Record<string, ConnectorCapabilities> = {};
@@ -191,6 +219,14 @@ export class Gateway {
     return { identity: await this.authenticate(sessionToken), ...declared };
   }
 
+  /**
+   * 呼び出し元が Orchestrator の資格情報(共有秘密)を提示したか(ADR-019 決定3)。
+   * run API がない構成では常に false。
+   */
+  verifyOrchestratorCredential(presented: string | string[] | undefined): boolean {
+    return this.runs?.verifyOrchestratorCredential(presented) ?? false;
+  }
+
   /** 有効なソースID一覧(MCPツールスキーマの自己記述用)。 */
   enabledSourceIds(): readonly string[] {
     return [...this.registry.entries()]
@@ -208,16 +244,43 @@ export class Gateway {
     call: GatewayToolCall,
     context: CallContext = {},
   ): Promise<GatewayToolResult> {
-    const { runId, iteration } = resolveCallContext(context, this.ids);
     const requestId = this.ids();
     const startedMs = this.now();
 
     let result: GatewayToolResult | undefined;
     let error: GatewayError | undefined;
-    try {
-      result = await this.execute(session, call);
-    } catch (cause) {
-      error = toGatewayError(cause);
+    let runId: string;
+    let iteration: number;
+    if (context.declaredRunId !== undefined) {
+      // 名前空間付きのキーで申告された runId(ADR-019 決定4): Gateway が発行した署名付きの
+      // 値で、本人・actor・期限を満たし、Orchestrator の資格情報が提示されたときだけ受理する。
+      // 満たさなければ呼び出しを拒否し、申告値ではなく新しい単発 run の runId で記録する
+      // (他人の run に混ぜない。拒否件数は TM-I5 の検出に使う)
+      const accepted =
+        this.runs !== undefined &&
+        context.orchestratorVerified === true &&
+        typeof context.declaredRunId === "string" &&
+        this.runs.acceptsDeclaredRunId(context.declaredRunId, {
+          userId: session.identity.userId,
+          actor: session.actor,
+        });
+      if (accepted) {
+        runId = context.declaredRunId as string;
+        iteration = isValidIteration(context.iteration) ? context.iteration : 0;
+      } else {
+        runId = this.ids();
+        iteration = 0;
+        error = new GatewayError("invalid_run_id", RUN_ID_REJECTED_MESSAGE);
+      }
+    } else {
+      ({ runId, iteration } = resolveCallContext(context, this.ids));
+    }
+    if (error === undefined) {
+      try {
+        result = await this.execute(session, call);
+      } catch (cause) {
+        error = toGatewayError(cause);
+      }
     }
 
     const record: ToolInvocationRecord = {

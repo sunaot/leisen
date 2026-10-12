@@ -83,6 +83,11 @@ export interface OrchestratorHttpDeps {
   readonly orchestrator: OrchestratorPort;
   /** Gateway の MCP エンドポイント(ループバック以外は https。McpGatewayClient の規則) */
   readonly gatewayUrl: string;
+  /**
+   * Orchestrator の資格情報(Gateway と共有する秘密。ADR-019 決定3)。ask / feedback の Gateway
+   * クライアントに付ける(preflight の tools/list には付けない)。省略時は run API が拒否される
+   */
+  readonly orchestratorCredential?: string;
   /** 同時実行・質問長の上限(プロセスで1つ) */
   readonly limits: ServerLimits;
   /** 既定 persistable(ADR-018 決定5) */
@@ -94,10 +99,8 @@ export interface OrchestratorHttpDeps {
   readonly sourcePolicy?: GatewaySourcePolicy;
   /** Gateway への接続を作る(既定 McpGatewayClient) */
   readonly createGatewayClient?: GatewayClientFactory;
-  /** feedback の本人確認で Gateway に申告する runId の採番(テスト用) */
-  readonly newVerificationRunId?: () => string;
-  /** feedback の本人確認の期限(ms、既定 FEEDBACK_VERIFICATION_TIMEOUT_MS) */
-  readonly verificationTimeoutMs?: number;
+  /** feedback の申告の期限(ms、既定 FEEDBACK_TIMEOUT_MS) */
+  readonly feedbackTimeoutMs?: number;
 }
 
 export interface OrchestratorHttpServerOptions {
@@ -378,18 +381,16 @@ async function serveMcpRequest(
     orchestrator: deps.orchestrator,
     gatewayUrl: deps.gatewayUrl,
     sessionToken: token,
+    ...(deps.orchestratorCredential !== undefined
+      ? { orchestratorCredential: deps.orchestratorCredential }
+      : {}),
     limits: deps.limits,
     retentionClass: sources.retentionClass,
     configMismatch: sources.configMismatch,
     ...(deps.createGatewayClient !== undefined
       ? { createGatewayClient: deps.createGatewayClient }
       : {}),
-    ...(deps.newVerificationRunId !== undefined
-      ? { newVerificationRunId: deps.newVerificationRunId }
-      : {}),
-    ...(deps.verificationTimeoutMs !== undefined
-      ? { verificationTimeoutMs: deps.verificationTimeoutMs }
-      : {}),
+    ...(deps.feedbackTimeoutMs !== undefined ? { feedbackTimeoutMs: deps.feedbackTimeoutMs } : {}),
   });
   // sessionIdGenerator を渡さない=ステートレスモード(Mcp-Session-Id を発行・検証しない)
   const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
@@ -509,8 +510,8 @@ export function createOrchestratorRequestListener(
       options.preflightTimeoutMs ?? PREFLIGHT_TIMEOUT_MS,
     ),
   };
-  if (deps.verificationTimeoutMs !== undefined) {
-    positiveInteger("verificationTimeoutMs", deps.verificationTimeoutMs);
+  if (deps.feedbackTimeoutMs !== undefined) {
+    positiveInteger("feedbackTimeoutMs", deps.feedbackTimeoutMs);
   }
   return (req, res) => {
     route(deps, routeOptions, req, res).catch(() => {

@@ -9,6 +9,8 @@
  * - meta.ts      `_meta` の独自申告(名前空間prefix、runId / iteration・
  *                実行区分・actor)
  * - ratelimit.ts ソース別レート制御(上限はdeployment.yamlから注入)
+ * - runs.ts      run API(ADR-019 決定3): POST /runs・finish・feedback の受付、Orchestrator の
+ *                資格情報の検証、run モジュール(../run)への委譲
  * - gateway.ts   コアパイプライン(実行区分照合・資格情報取得・タイムアウト・
  *                snippet truncate・監査fail-closed)
  * - tools.ts     MCPツール面のSDK非依存ロジック(ツール定義・引数検証・
@@ -27,6 +29,7 @@ export * from "./types.js";
 export * from "./session.js";
 export * from "./meta.js";
 export * from "./ratelimit.js";
+export * from "./runs.js";
 export * from "./gateway.js";
 export * from "./tools.js";
 export * from "./mcp.js";

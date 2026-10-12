@@ -4,9 +4,10 @@
  *
  * 受け入れ条件4: Slack kind のソースが有効な deployment.yaml では起動を拒否し(終了コード 1)、
  * --allow-non-persistable-sources で起動する。
- * あわせて: 引数・設定の不備(終了コード 2)、公開境界(--confirm-exposed-host)、AnswerRun の
- * 書き先の検査、起動ログ(秘密情報を出さない)、CLI 経由の ask の e2e、停止時の待ち合わせ。
- * セキュリティレビュー: NODE_ENV=production では --answer-run-jsonl が必須(S5)。Gateway が
+ * あわせて: 引数・設定の不備(終了コード 2)、公開境界(--confirm-exposed-host)、起動ログ
+ * (秘密情報を出さない)、CLI 経由の ask の e2e、停止時の待ち合わせ。
+ * ADR-019: AnswerRun は Gateway の run API が書く。NODE_ENV=production では Orchestrator の資格情報
+ * (KP_ORCHESTRATOR_CREDENTIAL)が必須で、それ以外では開発用の既定値(WARNING)。Gateway が
  * --config で有効でないソースを公開していれば ask は config_mismatch、--allow-non-persistable-sources
  * なら non_persistable で通る(S6)。
  */
@@ -15,7 +16,6 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { parseAuditRecord } from "@kp/gateway";
 import {
   McpGatewayClient,
   ScriptedLlmClient,
@@ -24,8 +24,10 @@ import {
 } from "../src/index.js";
 import { runCli, type CliDependencies } from "../src/bin/kp-ask.js";
 import {
-  ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION,
-  AUDIT_HMAC_KEY_REQUIRED_MESSAGE,
+  ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING,
+  ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION,
+} from "../src/bin/credential-options.js";
+import {
   EXPOSED_HOST_REFUSAL,
   NON_PERSISTABLE_SOURCES_REFUSAL,
   SERVE_USAGE,
@@ -42,7 +44,8 @@ import {
 } from "./helpers/harness.js";
 import { connectMcpClient, rawPost, RAW_BODIES, searchThenSubmit } from "./helpers/orchestrator-server.js";
 
-const HMAC_KEY = "dev-only-serve-hmac-key";
+/** Gateway と共有する Orchestrator の資格情報(テスト用。16 文字以上) */
+const CREDENTIAL = "dev-only-serve-credential-0001";
 /** 起動時には接続しない Gateway の URL(到達不能) */
 const UNREACHABLE_GATEWAY = "http://127.0.0.1:9/mcp";
 
@@ -179,50 +182,51 @@ describe("kp-ask serve: 不変条件7(永続化不可のソース)", () => {
   });
 });
 
-describe("kp-ask serve: 本番では AnswerRun の書き先が必須(S5)", () => {
-  it("NODE_ENV=production で --answer-run-jsonl(KP_ANSWER_RUN_JSONL)がなければ終了コード 2(固定文言、待ち受けない)", async () => {
+describe("kp-ask serve: 本番では Orchestrator の資格情報が必須(ADR-019 決定3)", () => {
+  it("NODE_ENV=production で KP_ORCHESTRATOR_CREDENTIAL がなければ終了コード 2(固定文言、待ち受けない)", async () => {
     const config = await writeYaml(deploymentYaml());
     const { out, err, io } = capture();
-    const d = deps({ env: { NODE_ENV: "production", KP_ANSWER_RUN_JSONL: "  " } });
+    const d = deps({ env: { NODE_ENV: "production" } });
 
     const code = await runCli(serveArgs(config), io, d);
 
     expect(code).toBe(2);
-    expect(err[0]).toBe(`kp-ask serve: ${ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION}`);
-    expect(ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION).toContain("AnswerRun の書き先が必須");
+    expect(err[0]).toBe(`kp-ask serve: ${ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION}`);
+    expect(ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION).toContain("KP_ORCHESTRATOR_CREDENTIAL");
     expect(err.join("\n")).toContain("usage: kp-ask serve");
     expect(err.join("\n")).not.toContain("listening on");
     expect(out).toEqual([]);
     expect(d.endpoints).toEqual([]);
   });
 
-  it("NODE_ENV=production でも --answer-run-jsonl または KP_ANSWER_RUN_JSONL があれば起動する", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
-    const config = await writeYaml(deploymentYaml(), dir);
-    const jsonl = join(dir, "answer-runs.jsonl");
-    for (const [extra, env] of [
-      [["--answer-run-jsonl", jsonl], { NODE_ENV: "production" }],
-      [[], { NODE_ENV: "production", KP_ANSWER_RUN_JSONL: jsonl }],
-    ] as const) {
-      const { err, io } = capture();
-      const d = deps({ env });
-      expect(await runCli(serveArgs(config, ...extra), io, d)).toBe(0);
-      expect(d.endpoints).toHaveLength(1);
-      expect(err).toContain(`kp-ask serve: answer-run sink: jsonl ${jsonl}`);
-      expect(err.join("\n")).not.toContain("WARNING: answer-run sink");
-    }
+  it("NODE_ENV=production でも KP_ORCHESTRATOR_CREDENTIAL があれば起動し、値は起動ログに出ない", async () => {
+    const config = await writeYaml(deploymentYaml());
+    const { err, io } = capture();
+    const d = deps({ env: { NODE_ENV: "production", KP_ORCHESTRATOR_CREDENTIAL: CREDENTIAL } });
+    expect(await runCli(serveArgs(config), io, d)).toBe(0);
+    expect(d.endpoints).toHaveLength(1);
+    expect(err).toContain("kp-ask serve: run api: gateway (orchestrator credential: env KP_ORCHESTRATOR_CREDENTIAL)");
+    expect(err.join("\n")).not.toContain(CREDENTIAL);
+    expect(err.join("\n")).not.toContain("WARNING: 環境変数 KP_ORCHESTRATOR_CREDENTIAL");
+  });
+
+  it("短い資格情報は終了コード 2(値をエコーしない)", async () => {
+    const config = await writeYaml(deploymentYaml());
+    const { err, io } = capture();
+    expect(await runCli(serveArgs(config), io, deps({ env: { KP_ORCHESTRATOR_CREDENTIAL: "short" } }))).toBe(2);
+    expect(err[0]).toContain("16 文字以上");
+    expect(err.join("\n")).not.toContain("short\n");
   });
 
   it.each([["development"], ["test"], [undefined]])(
-    "NODE_ENV=%s では従来どおり stderr に出して起動する(WARNING)",
+    "NODE_ENV=%s では未設定なら開発用の既定値で起動する(WARNING)",
     async (nodeEnv) => {
       const config = await writeYaml(deploymentYaml());
       const { err, io } = capture();
       const d = deps({ env: nodeEnv === undefined ? {} : { NODE_ENV: nodeEnv } });
       expect(await runCli(serveArgs(config), io, d)).toBe(0);
-      expect(err.join("\n")).toContain(
-        "WARNING: answer-run sink: stderr (development only; AnswerRun records are not persisted)",
-      );
+      expect(err).toContain("kp-ask serve: run api: gateway (orchestrator credential: development default)");
+      expect(err).toContain(`kp-ask serve: ${ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING}`);
     },
   );
 });
@@ -306,14 +310,13 @@ describe("kp-ask serve: Gateway のソースと --config の照合(S6)", () => {
 });
 
 describe("kp-ask serve: 起動と停止", () => {
-  it("起動ログ: 待ち受け・Gateway のホストだけ・AnswerRun の書き先・上限・LLM(秘密情報を出さない)", async () => {
+  it("起動ログ: 待ち受け・Gateway のホストだけ・run API・上限・LLM(秘密情報を出さない)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
     const config = await writeYaml(deploymentYaml([], ["orchestrator:", "  maxIterations: 3"]), dir);
-    const jsonl = join(dir, "answer-runs.jsonl");
     const { out, err, io } = capture();
     const d = deps({
       env: {
-        KP_AUDIT_HMAC_KEY: HMAC_KEY,
+        KP_ORCHESTRATOR_CREDENTIAL: CREDENTIAL,
         ANTHROPIC_API_KEY: "dev-only-anthropic-key",
       },
       onListening: async (endpoint) => {
@@ -329,7 +332,6 @@ describe("kp-ask serve: 起動と停止", () => {
         "--gateway", "http://127.0.0.1:9/some/path",
         "--config", config,
         "--listen", "127.0.0.1:0",
-        "--answer-run-jsonl", jsonl,
         "--max-concurrent-runs", "2",
         "--max-question-chars", "500",
       ],
@@ -346,7 +348,7 @@ describe("kp-ask serve: 起動と停止", () => {
       `kp-ask serve: listening on ${endpoint?.url} (health check: ${endpoint?.healthUrl})`,
       "kp-ask serve: deployment: t021-serve",
       "kp-ask serve: gateway: http://127.0.0.1:9",
-      `kp-ask serve: answer-run sink: jsonl ${jsonl}`,
+      "kp-ask serve: run api: gateway (orchestrator credential: env KP_ORCHESTRATOR_CREDENTIAL)",
       "kp-ask serve: limits: max-concurrent-runs=2, max-question-chars=500, max-iterations=3",
       "kp-ask serve: llm: anthropic (model: claude-opus-5, effort: high)",
       "kp-ask serve: test-stop received, shutting down",
@@ -354,35 +356,25 @@ describe("kp-ask serve: 起動と停止", () => {
     ]);
     const log = err.join("\n");
     expect(log).not.toContain("/some/path");
-    expect(log).not.toContain(HMAC_KEY);
+    expect(log).not.toContain(CREDENTIAL);
     expect(log).not.toContain("dev-only-anthropic-key");
   });
 
-  it("--answer-run-jsonl がなければ AnswerRun は stderr(WARNING)。KP_LISTEN / KP_ANSWER_RUN_JSONL も使える", async () => {
+  it("KP_LISTEN で待ち受けを指定できる", async () => {
     const config = await writeYaml(deploymentYaml());
-    const warn = capture();
-    expect(await runCli(serveArgs(config), warn.io, deps())).toBe(0);
-    expect(warn.err.join("\n")).toContain(
-      "WARNING: answer-run sink: stderr (development only; AnswerRun records are not persisted)",
-    );
-
-    const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
-    const jsonl = join(dir, "from-env.jsonl");
     const viaEnv = capture();
-    const d = deps({ env: { KP_LISTEN: "127.0.0.1:0", KP_ANSWER_RUN_JSONL: jsonl } });
+    const d = deps({ env: { KP_LISTEN: "127.0.0.1:0" } });
     expect(
       await runCli(["serve", "--gateway", UNREACHABLE_GATEWAY, "--config", config], viaEnv.io, d),
     ).toBe(0);
     expect(d.endpoints[0]?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
-    expect(viaEnv.err).toContain(`kp-ask serve: answer-run sink: jsonl ${jsonl}`);
   });
 
-  it("CLI 経由の e2e: 実 Gateway に対して ask が回答し、AnswerRun(alice)を JSONL に書く", async () => {
+  it("CLI 経由の e2e: 実 Gateway に対して ask が回答し、AnswerRun(alice)は Gateway の監査に残る", async () => {
     const gateway = await startGateway({ connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])] });
     cleanups.push(() => gateway.close());
     const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
     const config = await writeYaml(deploymentYaml(), dir);
-    const jsonl = join(dir, "answer-runs.jsonl");
     const { io } = capture();
     let text = "";
     const d = deps({
@@ -399,7 +391,7 @@ describe("kp-ask serve: 起動と停止", () => {
     });
 
     const code = await runCli(
-      ["serve", "--gateway", gateway.url, "--config", config, "--listen", "127.0.0.1:0", "--answer-run-jsonl", jsonl],
+      ["serve", "--gateway", gateway.url, "--config", config, "--listen", "127.0.0.1:0"],
       io,
       d,
     );
@@ -407,13 +399,9 @@ describe("kp-ask serve: 起動と停止", () => {
     expect(code).toBe(0);
     expect(text).toContain("経費精算の締め日は毎月25日です。");
     expect(text).toContain("## 出典");
-    const records = (await readFile(jsonl, "utf8"))
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) => parseAuditRecord(JSON.parse(line)));
-    expect(records.map((r) => r.recordType === "answer_run" && [r.finalOutcome, r.userId])).toEqual([
-      ["pending", "alice"],
-      ["resolved", "alice"],
+    expect(gateway.records().map((r) => r.recordType)).toContain("answer_run_finish");
+    expect(gateway.answerRuns()).toEqual([
+      expect.objectContaining({ finalOutcome: "resolved", userId: "alice" }),
     ]);
   });
 
@@ -566,29 +554,6 @@ describe("kp-ask serve: 引数と設定の不備", () => {
     expect(invalid.err.join("\n")).toContain("deployment config rejected");
   });
 
-  it("audit.privateScopeDocIds が hashed で KP_AUDIT_HMAC_KEY がなければ終了コード 2", async () => {
-    const config = await writeYaml([
-      "schemaVersion: 1",
-      "deployment:",
-      "  name: t021-serve",
-      "idp:",
-      "  adapter:",
-      "    kind: mock",
-      "connectors:",
-      "  - id: alpha",
-    ]);
-    const { err, io } = capture();
-    expect(await runCli(serveArgs(config), io, deps())).toBe(2);
-    expect(err.join("\n")).toContain("KP_AUDIT_HMAC_KEY");
-    // 鍵の生成方法を案内する(値は出さない。issue #38)
-    expect(err).toContain(`kp-ask serve: ${AUDIT_HMAC_KEY_REQUIRED_MESSAGE}`);
-    expect(AUDIT_HMAC_KEY_REQUIRED_MESSAGE).toContain("openssl rand -hex 32");
-
-    const withKey = capture();
-    expect(await runCli(serveArgs(config), withKey.io, deps({ env: { KP_AUDIT_HMAC_KEY: HMAC_KEY } }))).toBe(0);
-    expect(withKey.err.join("\n")).not.toContain(HMAC_KEY);
-  });
-
   it("ループバック以外の --listen は --confirm-exposed-host がなければ終了コード 1", async () => {
     const config = await writeYaml(deploymentYaml());
     const refused = capture();
@@ -634,25 +599,6 @@ describe("kp-ask serve: 引数と設定の不備", () => {
     expect(d.endpoints).toEqual([]);
   });
 
-  it("--answer-run-jsonl が Gateway の監査ログと同じファイル・書けない場所なら終了コード 1", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
-    await mkdir(join(dir, "audit"));
-    const config = await writeYaml(
-      deploymentYaml([], ["  sink: jsonl", "  jsonl:", "    path: audit/gateway.jsonl"]),
-      dir,
-    );
-    const same = capture();
-    expect(
-      await runCli(serveArgs(config, "--answer-run-jsonl", join(dir, "audit", "gateway.jsonl")), same.io, deps()),
-    ).toBe(1);
-    expect(same.err.join("\n")).toContain("Gateway の監査ログ");
-
-    const missing = capture();
-    expect(
-      await runCli(serveArgs(config, "--answer-run-jsonl", join(dir, "no-such-dir", "a.jsonl")), missing.io, deps()),
-    ).toBe(1);
-    expect(missing.err.join("\n")).toContain("does not exist or is not writable");
-  });
 });
 
 describe("parseListen", () => {

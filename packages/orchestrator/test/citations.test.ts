@@ -26,7 +26,6 @@ import {
   EXPENSE_POLICY,
   startGateway,
   type GatewayHarness,
-  TEST_DOC_ID_AUDIT,
 } from "./helpers/harness.js";
 import { firstHit } from "./helpers/script.js";
 
@@ -160,7 +159,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
           confidence: 0.95,
         }),
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -198,7 +197,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -258,7 +257,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
         });
       },
     ]);
-    const orchestrator = new Orchestrator({ llm, auditLogger: harness.auditLogger, docIdAudit: TEST_DOC_ID_AUDIT });
+    const orchestrator = new Orchestrator({ llm });
 
     const answer = await orchestrator.run({
       question: "経費精算の締め日は?",
@@ -304,9 +303,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
       },
     ]);
     const orchestrator = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: harness.auditLogger,
     });
 
     const answer = await orchestrator.run({

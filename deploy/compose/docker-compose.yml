@@ -12,6 +12,9 @@
 #   (start-dev、データは永続化しない)。本番の IdP ではない
 # - 秘密情報は .env(git 管理外。compose が自動で読む)から変数展開で渡し、各コンテナには
 #   必要な変数だけを渡す。このファイルと deployment.yaml に値を書かない(不変条件6)
+# - 監査ストア(kp-audit / kp-rawquery)に書くのは Gateway だけ(ADR-019)。Orchestrator の run
+#   (AnswerRun)も Gateway の run API(/runs)が記録する。runId の署名鍵は Gateway だけが持ち、
+#   Orchestrator との間で共有する資格情報(KP_ORCHESTRATOR_CREDENTIAL)で run API を守る
 # - ホストへの公開はループバック(127.0.0.1)に限る。外部への公開は TLS を終端する
 #   リバースプロキシ経由にする(リクエスト期限・接続数上限・Host / Origin の許可リストを
 #   そこで担う。docs/install.md)
@@ -34,6 +37,17 @@ services:
       KP_KEYCLOAK_CLIENT_SECRET: ${KP_KEYCLOAK_CLIENT_SECRET:?set it in deploy/compose/.env (cp .env.example .env)}
       # dev-docs の auth.provider: mock_env が参照する(開発専用のモック)
       KP_MOCK_TOKEN_DEV_DOCS: ${KP_MOCK_TOKEN_DEV_DOCS:?set it in deploy/compose/.env (cp .env.example .env)}
+      # run API(ADR-019)の runId 署名鍵(deployment.yaml の gateway.runs.signingKeyEnv の既定)。
+      # 32 バイト以上の乱数(hex / base64 / base64url)。Gateway だけが持つ(orchestrator には渡さない)
+      KP_RUN_ID_KEY: ${KP_RUN_ID_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
+      # Orchestrator(kp-ask serve)と共有する資格情報(gateway.runs.orchestratorCredentialEnv の既定)。
+      # run API と、runId を申告する tools/call に要る。LibreChat overlay の orchestrator にも同じ値を渡す
+      KP_ORCHESTRATOR_CREDENTIAL: ${KP_ORCHESTRATOR_CREDENTIAL:?set it in deploy/compose/.env (cp .env.example .env)}
+      # audit.privateScopeDocIds: hashed の HMAC 鍵(audit.docIdHmacKeyEnv の既定。デプロイ固有の秘密)。
+      # run API の finish が引用の docId を不可逆化するのに使う(ADR-019 決定5)。この構成の dev-docs は
+      # privateScopes: excluded なので起動には要らないが、プライベートスコープを持つソースを足したときに
+      # 必須になるため最初から渡す
+      KP_AUDIT_HMAC_KEY: ${KP_AUDIT_HMAC_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
     ports:
       # ホストのループバックだけに公開する(コンテナ内の待ち受けは 0.0.0.0)
       - "127.0.0.1:8787:8787"

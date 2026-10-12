@@ -6,24 +6,63 @@ rawQueryテーブルの digest 結合の例を示す。
 
 前提: 監査レコードが `audit_records`、生クエリが `raw_queries` という
 テーブル/ビューに格納されている(構造化JSONをロードした列指向ストア等。
-永続ストアの選定はT-003/T-012)。列名は `packages/gateway/src/audit/schema.ts`
+永続ストアの選定はT-003/T-012)。列名は `packages/audit/src/schema.ts`
 のフィールド名と一致する。
 
 ## 0. AnswerRun と ToolInvocation の結合は (runId, userId)
 
-AnswerRun(Orchestrator が書く)と ToolInvocation(Gateway が書く)は **(runId, userId) の組で
-結合する**。AnswerRun.userId は Gateway が認証した userId(tools/call の結果の `_meta`)に
-束縛されている(T-007 セキュリティレビュー 2026-09-27 H1)ため、正常な run では同じ runId の
-ToolInvocation と userId が一致する。runId は呼び出し元が申告する値で Gateway は認証しない
-ため、runId だけで結合すると、別の利用者が同じ runId を申告した ToolInvocation を他人の run に
-混ぜうる。**不一致は警告として扱い**(集計から外し、次のクエリで定期的に検出して原因 —
-実装の不具合・申告の偽装 — を調べる)、以下の集計はすべて (runId, userId) で結合する。
+AnswerRun と ToolInvocation は **(runId, userId) の組で結合する**。どちらも Gateway が書く(ADR-019。
+AnswerRun は Orchestrator の申告を Gateway が run API で受けて書く)。AnswerRun.userId は Gateway が
+認証した userId で、Orchestrator からは指定できない(T-007 セキュリティレビュー 2026-09-27 H1 は、
+Gateway が書くことで構造的に成り立つ)。runId は Gateway が発行する署名付きの値で、名前空間付きの
+キーで申告された runId は署名・本人・actor・期限を検証してから記録し、満たさない申告は固定文言で
+拒否して **新しい単発 run の runId と `invalid_run_id`** で記録する(申告値は記録しない)。したがって
+正常な run では同じ runId の ToolInvocation と userId は必ず一致する。**それでも不一致は警告として
+扱い**(集計から外し、次のクエリで定期的に検出して原因 — 実装の不具合・署名鍵の漏えい — を調べる)、
+以下の集計はすべて (runId, userId) で結合する。
 
-レコードの所在: Gateway は ToolInvocation を `audit.jsonl` に、Orchestrator を MCP サーバーとして
-動かす構成(`kp-ask serve`、ADR-018 決定4)は AnswerRun を別ファイル `answer-runs.jsonl` に書く
-(同じスキーマ、追記のみ、1 ファイル 1 プロセス)。以下の SQL は両ファイルを 1 つの表
-`audit_records` に取り込んだ前提で書いてある。昇格判定レポートは `--audit` を複数回指定して
-両方を読む。
+レコードの所在と run の 3 種のレコード: Gateway は ToolInvocation(`tool_invocation`)と run の記録を
+同じ `audit.jsonl` に書く。run は書き直さず追記する — 開始時に `answer_run`(pending。`finalOutcome: pending`、
+`endedAt` なし)、終了時に `answer_run_finish`(`finalOutcome` / `confidence` / `searchedSources` /
+`citedDocIds` / `failureReason` / `endedAt`)、フィードバック時に `answer_run_feedback`(`userFeedback`)。
+同じ runId の部分レコードは pending の AnswerRun と **userId が一致するものだけ** を統合し、最新
+(`recordedAt`。同時刻は冪等キー `recordId`)が勝つ。pending のない部分レコードは「孤立」、有効期間
+(`gateway.runs.ttlSec`)を過ぎて finish のない pending は「放棄」(finish を送らずに unresolved を
+隠せないようにする)。以下の SQL はこの 3 種を 1 つの表 `audit_records` に取り込み、ビュー `answer_runs`
+(下)で統合した前提で書いてある。昇格判定レポートも同じ規則で統合する(ADR-019 より前の構成で
+Orchestrator が別ファイルに書いた完全な AnswerRun も `--audit` を足せば読める)。
+
+```sql
+-- run の最終状態(pending + 最新の finish + 最新の feedback。userId が一致するものだけ)
+CREATE VIEW answer_runs AS
+SELECT
+  ar.runId, ar.userId, ar.executionClass, ar.startedAt, ar.finalQueryDigest,
+  COALESCE(f.finalOutcome, 'pending')      AS finalOutcome,
+  f.endedAt, f.confidence, f.searchedSources, f.citedDocIds, f.failureReason,
+  fb.userFeedback
+FROM audit_records ar
+LEFT JOIN (
+  SELECT * FROM audit_records x
+  WHERE x.recordType = 'answer_run_finish'
+    AND NOT EXISTS (SELECT 1 FROM audit_records y
+                    WHERE y.recordType = 'answer_run_finish' AND y.runId = x.runId AND y.userId = x.userId
+                      AND (y.recordedAt > x.recordedAt OR (y.recordedAt = x.recordedAt AND y.recordId > x.recordId)))
+) f  ON f.runId = ar.runId AND f.userId = ar.userId
+LEFT JOIN (
+  SELECT * FROM audit_records x
+  WHERE x.recordType = 'answer_run_feedback'
+    AND NOT EXISTS (SELECT 1 FROM audit_records y
+                    WHERE y.recordType = 'answer_run_feedback' AND y.runId = x.runId AND y.userId = x.userId
+                      AND (y.recordedAt > x.recordedAt OR (y.recordedAt = x.recordedAt AND y.recordId > x.recordId)))
+) fb ON fb.runId = ar.runId AND fb.userId = ar.userId
+WHERE ar.recordType = 'answer_run';
+
+-- 拒否された runId の申告(利用者ごとの件数。多ければ Orchestrator の不具合か署名鍵の問題。TM-I5)
+SELECT userId, COUNT(DISTINCT requestId) AS rejected
+FROM audit_records
+WHERE recordType = 'tool_invocation' AND errorClass = 'invalid_run_id'
+GROUP BY userId;
+```
 
 ```sql
 -- runId は同じだが userId が食い違う ToolInvocation(警告)
@@ -31,18 +70,18 @@ SELECT
   ar.runId,
   ar.userId                      AS answer_run_user,
   ti.userId                      AS tool_invocation_user,
-  COUNT(DISTINCT ti.requestId)   AS invocations   -- 重複行・AnswerRun の書き直しで二重に数えない
-FROM audit_records ar
+  COUNT(DISTINCT ti.requestId)   AS invocations   -- 重複行で二重に数えない
+FROM answer_runs ar
 JOIN audit_records ti
   ON ti.recordType = 'tool_invocation' AND ti.runId = ar.runId
-WHERE ar.recordType = 'answer_run'
-  AND ti.userId <> ar.userId
+WHERE ti.userId <> ar.userId
 GROUP BY ar.runId, ar.userId, ti.userId;
 ```
 
-AnswerRun のない runId の ToolInvocation は、単発の呼び出し(runId 未申告)か、Orchestrator が
-利用者を確認できずに終えた run(describe フェーズで Gateway の認証に失敗した等。AnswerRun は
-書かない)である。不一致ではない。
+AnswerRun のない runId の ToolInvocation は、単発の呼び出し(runId 未申告・旧キーでの申告)か、
+申告を拒否された呼び出し(`invalid_run_id`。新しい単発 run の runId で記録される)である。不一致ではない。
+Orchestrator が利用者を確認できずに終えた run(describe フェーズで Gateway の認証に失敗した等)も、
+run の開始が Gateway に受け付けられていれば AnswerRun(`error`)が残る。
 
 昇格判定レポート(`packages/promotion-report`)も (runId, userId) で結合する。不一致の
 ToolInvocation はソース別未解決率・再検索回数分布の集計から除外し、run ごとの件数を
@@ -153,7 +192,7 @@ ORDER BY ar.startedAt DESC;
 
 ```yaml
 audit:
-  retentionDays: 365          # AnswerRun / ToolInvocation(既定365)
+  retentionDays: 365          # AnswerRun(pending・finish・feedback)/ ToolInvocation(既定365)
   rawQueryRetentionDays: 30   # rawQueryテーブル(既定30)
   telemetryRetentionDays: 14  # 分離テレメトリ(既定14)
   privateScopeDocIds: hashed  # hashed | omitted(既定hashed、ADR-013 §2)

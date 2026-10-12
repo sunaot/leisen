@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import YAML, { YAMLParseError } from "yaml";
 import type { IdpAdapterConfig } from "../idp/factory.js";
-import type { RetentionConfig } from "../audit/retention.js";
+import type { RetentionConfig } from "@kp/audit";
 import { applyMigrations, type MigrateOptions } from "./migrate.js";
 import {
   deploymentConfigSchema,

@@ -13,13 +13,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { type Actor } from "@kp/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
   META_KEY_PREFIX,
   callContextFromMeta,
   declarationFromMeta,
-  type Actor,
 } from "@kp/gateway";
 import { buildGatewayMeta, gatewayUserIdFromResultMeta } from "../src/index.js";
 import {
@@ -70,7 +70,8 @@ describe("buildGatewayMeta", () => {
       executionClass: "human_in_the_loop",
       actor: { kind: "human" },
     });
-    expect(callContextFromMeta(meta)).toEqual({ runId: "run-1", iteration: 3 });
+    // 名前空間付きの runId は Gateway コアで署名・本人・actor・期限を検証する(declaredRunId)
+    expect(callContextFromMeta(meta)).toEqual({ declaredRunId: "run-1", iteration: 3 });
   });
 
   it("結果側の `_meta` から Gateway が認証した userId を読む(名前空間のキーだけ。H1)", () => {
@@ -108,7 +109,7 @@ describe("buildGatewayMeta", () => {
   });
 });
 
-describe("E2E: Orchestrator の MCP クライアント経由の実行区分の申告(ADR-015)", () => {
+describe("E2E: Orchestrator の MCP クライアント経由の実行区分の申告(ADR-015、ADR-019)", () => {
   async function setup(): Promise<{ harness: GatewayHarness; alpha: CorpusConnector }> {
     const alpha = new CorpusConnector("alpha", [EXPENSE_POLICY]);
     const harness = await startGateway({ connectors: [alpha] });
@@ -117,12 +118,14 @@ describe("E2E: Orchestrator の MCP クライアント経由の実行区分の�
   }
 
   it.each(["scheduled", "autonomous"] as const)(
-    "%s を申告すると実 Gateway が execution_class_rejected を返し、監査に1件残る(コネクタは呼ばれない)",
+    "%s を agent actor で申告すると、本人の run の runId でも actor が違うため invalid_run_id で拒否され、単発 run として監査に1件残る(コネクタは呼ばれない)",
     async (executionClass) => {
       const { harness, alpha } = await setup();
-      const runId = `run-${executionClass}-e2e`;
+      const client = harness.client();
+      // 人間の run として開始した runId(actor human に束縛されている)
+      const { runId } = await client.startRun({ question: "経費精算の締め日は?" });
 
-      const outcome = await harness.client().callTool(
+      const outcome = await client.callTool(
         "search",
         { source: "alpha", query: "経費精算" },
         buildGatewayMeta({ runId, iteration: 0, executionClass, actor: BATCH_AGENT }),
@@ -130,29 +133,33 @@ describe("E2E: Orchestrator の MCP クライアント経由の実行区分の�
 
       expect(outcome).toMatchObject({
         ok: false,
-        error: { errorClass: "execution_class_rejected" },
+        error: { errorClass: "invalid_run_id" },
       });
+      expect(JSON.stringify(outcome)).not.toContain(runId);
       expect(alpha.calls).toHaveLength(0);
       const records = harness.toolInvocations();
       expect(records).toHaveLength(1);
       expect(records[0]).toMatchObject({
-        runId,
         iteration: 0,
         userId: "alice",
         tool: "search",
         sourceId: "alpha",
-        errorClass: "execution_class_rejected",
+        errorClass: "invalid_run_id",
       });
+      // 申告した runId(本人の run)には混ぜない
+      expect(records[0]?.runId).not.toBe(runId);
     },
   );
 
-  it("対照: 既定の申告(human_in_the_loop / human)は同じ経路でコネクタまで届き、監査に1件残る", async () => {
+  it("対照: 既定の申告(human_in_the_loop / human)は Gateway が発行した runId でコネクタまで届き、その runId で監査に1件残る", async () => {
     const { harness, alpha } = await setup();
+    const client = harness.client();
+    const { runId } = await client.startRun({ question: "経費精算の締め日は?" });
 
-    const outcome = await harness.client().callTool(
+    const outcome = await client.callTool(
       "search",
       { source: "alpha", query: "経費精算" },
-      buildGatewayMeta({ runId: "run-default-e2e", iteration: 0 }),
+      buildGatewayMeta({ runId, iteration: 0 }),
     );
 
     expect(outcome).toMatchObject({ ok: true });
@@ -160,7 +167,7 @@ describe("E2E: Orchestrator の MCP クライアント経由の実行区分の�
     const records = harness.toolInvocations();
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
-      runId: "run-default-e2e",
+      runId,
       iteration: 0,
       userId: "alice",
       errorClass: null,

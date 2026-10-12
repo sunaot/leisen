@@ -8,8 +8,13 @@
  * - run の結果(Gateway の接続先の誤り・403・5xx、LLM の分類)が対応する分類の文言になる
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLogger, BufferedAuditSink, InMemoryAuditStore } from "@kp/gateway";
 import {
+  AuditLogger,
+  BufferedAuditSink,
+  InMemoryAuditStore,
+} from "@kp/audit";
+import {
+  GatewayClientError,
   failureCategoryOf,
   failureTextFor,
   findUrlLikeSpans,
@@ -24,7 +29,6 @@ import {
   ALICE_TOKEN,
   CorpusConnector,
   EXPENSE_POLICY,
-  TEST_DOC_ID_AUDIT,
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
@@ -131,9 +135,7 @@ function orchestrator(llm: ScriptedLlmClient): { orchestrator: Orchestrator; sto
   return {
     store,
     orchestrator: new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: new AuditLogger(new BufferedAuditSink(store)),
     }),
   };
 }
@@ -160,39 +162,43 @@ function client(url: string): GatewayClient {
 }
 
 describe("run の失敗が分類ごとの文言になる", () => {
-  it("接続先が MCP エンドポイントでない(404)は設定・接続先の誤り(gateway_protocol_error)", async () => {
-    const started = await harness();
+  /** run の開始(POST /runs)の失敗を分類で受ける(回答は返らない。ADR-019 決定3・6)。 */
+  async function startFailure(gateway: GatewayClient): Promise<GatewayClientError> {
     const { orchestrator: o } = orchestrator(new ScriptedLlmClient([]));
+    const error = await o.run({ question: "経費精算の締め日は?", gateway }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(GatewayClientError);
+    return error as GatewayClientError;
+  }
 
-    const answer = await o.run({
-      question: "経費精算の締め日は?",
-      gateway: client(started.url.replace("/mcp", "/not-mcp")),
-    });
-
-    expect(answer.outcome).toBe("error");
-    expect(answer.answer).toBe(failureTextFor("gateway_protocol_error"));
-    expect(answer.answer).not.toContain(RETRY_LATER);
-    expect(answer.answer).not.toContain("127.0.0.1");
+  it("接続先が MCP エンドポイントでない(404)は設定・接続先の誤り(gateway_protocol_error)。run を始められないので回答は返らず、文言は分類で決まる", async () => {
+    const started = await harness();
+    // /runs は同じオリジンの固定パスなので、MCP のパスだけ誤っていると run API は通る。
+    // 別オリジン(応答が MCP でないサーバー)で 404 を返す
+    const notMcp = await statusServer(404);
+    const error = await startFailure(client(`${notMcp.url}/mcp`));
+    expect(error.errorClass).toBe("gateway_protocol_error");
+    expect(failureTextFor(error.errorClass)).not.toContain(RETRY_LATER);
+    expect(failureTextFor(error.errorClass)).not.toContain("127.0.0.1");
+    expect(String(error)).not.toContain("127.0.0.1");
+    expect(started.answerRuns()).toEqual([]);
   });
 
-  it("403 は資格情報(gateway_forbidden)、503 は一時的な障害(gateway_unavailable)。上流の本文を載せない", async () => {
-    const { orchestrator: o } = orchestrator(new ScriptedLlmClient([]));
-
-    const forbidden = await o.run({
-      question: "経費精算の締め日は?",
-      gateway: client(`${(await statusServer(403)).url}/mcp`),
-    });
-    expect(forbidden.outcome).toBe("error");
+  it("403 は資格情報・設定(gateway_rejected)、503 は一時的な障害(gateway_unavailable)。上流の本文を載せない", async () => {
+    const forbidden = await startFailure(client(`${(await statusServer(403)).url}/mcp`));
+    // 本文に errorClass がない 403 は「Gateway が run の要求を拒否した」として受ける
+    expect(forbidden.errorClass).toBe("gateway_rejected");
     expect(failureCategoryOf("gateway_forbidden")).toBe("credentials");
-    expect(forbidden.answer).toBe(failureTextFor("gateway_forbidden"));
+    expect(failureCategoryOf("gateway_rejected")).toBe("configuration");
+    expect(forbidden.message).not.toContain("dev-only upstream detail");
 
-    const unavailable = await o.run({
-      question: "経費精算の締め日は?",
-      gateway: client(`${(await statusServer(503)).url}/mcp`),
-    });
-    expect(unavailable.answer).toBe(failureTextFor("gateway_unavailable"));
-    expect(unavailable.answer).toContain(RETRY_LATER);
-    expect(`${forbidden.answer}${unavailable.answer}`).not.toContain("dev-only upstream detail");
+    const unavailable = await startFailure(client(`${(await statusServer(503)).url}/mcp`));
+    expect(unavailable.errorClass).toBe("gateway_unavailable");
+    expect(failureCategoryOf("gateway_unavailable")).toBe("transient");
+    expect(failureTextFor("gateway_unavailable")).toContain(RETRY_LATER);
+    expect(unavailable.message).not.toContain("dev-only upstream detail");
   });
 
   it("Gateway に検索できるソースがなければ設定の誤り(no_searchable_sources)", async () => {
@@ -220,9 +226,7 @@ describe("run の失敗が分類ごとの文言になる", () => {
       },
     ]);
     const o = new Orchestrator({
-      docIdAudit: TEST_DOC_ID_AUDIT,
       llm,
-      auditLogger: started.auditLogger,
     });
 
     const answer = await o.run({ question: "経費精算の締め日は?", gateway: started.client(ALICE_TOKEN) });

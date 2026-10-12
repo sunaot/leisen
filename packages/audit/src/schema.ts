@@ -5,6 +5,9 @@
  * - AnswerRun(会話/回答単位)と ToolInvocation(ツール呼び出し単位)の2層。
  *   runId で束ね、「ソース別未解決率」「再検索回数分布」(T-014)を集計可能にする。
  *   サンプルクエリは docs/audit-queries.md。
+ * - run API(ADR-019)では AnswerRun を開始時の pending と、終了(answer_run_finish)・
+ *   利用者フィードバック(answer_run_feedback)の部分レコードに分けて追記し、読み手が
+ *   runId ごとにフィールド単位で統合する(Gateway は前の状態を読まない)。
  * - 秘密情報(トークン、認証ヘッダ、文書本文)のフィールドは存在させない。
  * - **post-filtering前の候補件数フィールドは存在させない(ADR-011/012)。**
  *   returnedHitCount は認可済み返却件数のみ。候補件数を追加してはならない
@@ -39,6 +42,9 @@ const reasonCode = z
     /^[a-z][a-z0-9_.]{0,63}$/,
     "must be a normalized reason code (lower snake_case), not raw error text",
   );
+
+/** 正規化済みの理由コード(run API の申告の検証にも使う。ADR-019)。 */
+export const reasonCodeSchema = reasonCode;
 
 /** 呼び出し主体(ADR-015)。agent の場合は on-behalf-of チェーンを記録する。 */
 export const actorSchema = z.discriminatedUnion("kind", [
@@ -159,21 +165,83 @@ export const retentionPurgeRecordSchema = z.strictObject({
   deletedCount: z.number().int().min(0),
 });
 
+/** 終了時に申告できる結果(pending は開始時の AnswerRun だけが持つ)。 */
+export const finishOutcomeSchema = z.enum(["resolved", "unresolved", "error"]);
+
+/** 利用者フィードバック(解決/未解決ボタン)。 */
+export const userFeedbackSchema = z.enum(["resolved", "unresolved"]);
+
+/**
+ * run の終了の部分レコード(ADR-019 決定3)。Gateway が run API の finish を受けて
+ * 追記する。前の状態(pending の AnswerRun)を読まずに書けるよう、結果の欄だけを
+ * 持つ。昇格判定レポートが runId ごとに pending と統合し、同じ runId に複数あれば
+ * recordedAt の最新(同時刻は recordId)を採る。userId は Gateway の認証値で、
+ * pending と一致するものだけを統合する。
+ * citedDocIds は docid.ts の redaction を通した値のみ(AnswerRun と同じ)。
+ */
+export const answerRunFinishRecordSchema = z.strictObject({
+  recordType: z.literal("answer_run_finish"),
+  /** 冪等キー(Gateway が採番) */
+  recordId: identityString("recordId"),
+  runId: identityString("runId"),
+  /** Gateway が認証した利用者(Orchestrator は指定できない) */
+  userId: identityString("userId"),
+  /** Gateway が記録した時刻(ISO 8601)。統合の「最新」を決める */
+  recordedAt: isoTimestamp,
+  /** ISO 8601 */
+  endedAt: isoTimestamp,
+  finalOutcome: finishOutcomeSchema,
+  /** 0..1(Orchestrator申告。error のときは null) */
+  confidence: z.number().min(0).max(1).nullable(),
+  searchedSources: z.array(z.string().min(1)),
+  citedDocIds: z.array(z.string().min(1)),
+  /** 正規化済みコードのみ。生のエラーメッセージ不可(TM-A2) */
+  failureReason: reasonCode.nullable(),
+});
+
+/**
+ * 利用者フィードバックの部分レコード(ADR-019 決定8)。Gateway が run API の
+ * feedback を受けて追記する。finish の再送で消えない(AnswerRun 全体を書き直さない)。
+ */
+export const answerRunFeedbackRecordSchema = z.strictObject({
+  recordType: z.literal("answer_run_feedback"),
+  /** 冪等キー(Gateway が採番) */
+  recordId: identityString("recordId"),
+  runId: identityString("runId"),
+  /** Gateway が認証した利用者 */
+  userId: identityString("userId"),
+  /** Gateway が記録した時刻(ISO 8601) */
+  recordedAt: isoTimestamp,
+  userFeedback: userFeedbackSchema,
+});
+
 export const auditRecordSchema = z.discriminatedUnion("recordType", [
   answerRunRecordSchema,
   toolInvocationRecordSchema,
+  answerRunFinishRecordSchema,
+  answerRunFeedbackRecordSchema,
   auditAccessRecordSchema,
   retentionPurgeRecordSchema,
 ]);
 
 export type Actor = z.infer<typeof actorSchema>;
 export type Outcome = z.infer<typeof outcomeSchema>;
+export type FinishOutcome = z.infer<typeof finishOutcomeSchema>;
+export type UserFeedback = z.infer<typeof userFeedbackSchema>;
 export type AnswerRunRecord = Omit<
   z.infer<typeof answerRunRecordSchema>,
   "recordType"
 >;
 export type ToolInvocationRecord = Omit<
   z.infer<typeof toolInvocationRecordSchema>,
+  "recordType"
+>;
+export type AnswerRunFinishRecord = Omit<
+  z.infer<typeof answerRunFinishRecordSchema>,
+  "recordType"
+>;
+export type AnswerRunFeedbackRecord = Omit<
+  z.infer<typeof answerRunFeedbackRecordSchema>,
   "recordType"
 >;
 export type AuditAccessRecord = Omit<

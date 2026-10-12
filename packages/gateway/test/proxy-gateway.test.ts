@@ -12,12 +12,14 @@ import { describe, expect, it } from "vitest";
 import { ConnectorError, MAX_SNIPPET_CHARS } from "@kp/connector-sdk";
 import {
   AuditLogger,
+  InMemoryRawQueryStore,
+  digestQuery,
+} from "@kp/audit";
+import {
   DeploymentConfigError,
   Gateway,
   GatewayError,
   IdpError,
-  InMemoryRawQueryStore,
-  digestQuery,
   type ExecutionClass,
   type GatewaySession,
   type GatewayToolResult,

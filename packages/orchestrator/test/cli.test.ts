@@ -9,8 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseAuditRecord } from "@kp/gateway";
 import {
+  LlmError,
   McpGatewayClient,
   createLlmClient,
   ScriptedLlmClient,
@@ -27,7 +27,6 @@ import {
   type CliDependencies,
   type CliFailureOutput,
 } from "../src/bin/kp-ask.js";
-import { AUDIT_HMAC_KEY_REQUIRED_MESSAGE } from "../src/bin/serve.js";
 import {
   ALICE_TOKEN,
   BOB_TOKEN,
@@ -142,7 +141,7 @@ describe("kp-ask: 引数", () => {
 });
 
 describe("kp-ask: 実行", () => {
-  it("回答・出典・searchedSources・usage を表示し、AnswerRun を stderr に1行 JSON で出す", async () => {
+  it("回答・出典・searchedSources・usage を表示し、AnswerRun は Gateway の監査に残る(stderr には出さない)", async () => {
     const harness = await setup();
     const { out, err, io } = capture();
 
@@ -159,14 +158,10 @@ describe("kp-ask: 実行", () => {
     expect(text).toContain("検索したソース: alpha");
     expect(text).toContain("結果: resolved");
     expect(text).toContain("LLM 2 ターン、ツール呼び出し 2 回");
-    const audits = err.map((line) => {
-      const { kind, ...record } = JSON.parse(line) as { kind: string };
-      expect(kind).toBe("audit");
-      return parseAuditRecord(record);
-    });
-    expect(audits.map((r) => r.recordType === "answer_run" && r.finalOutcome)).toEqual([
-      "pending",
-      "resolved",
+    // AnswerRun は Gateway の run API が書く(ADR-019)。kp-ask は監査レコードを出力しない
+    expect(err.filter((line) => line.startsWith("{"))).toEqual([]);
+    expect(harness.answerRuns()).toEqual([
+      expect.objectContaining({ userId: "alice", finalOutcome: "resolved", citedDocIds: ["alpha:doc-expense-policy"] }),
     ]);
     expect([...out, ...err].join("\n")).not.toContain(ALICE_TOKEN);
   });
@@ -227,11 +222,8 @@ describe("kp-ask: 実行", () => {
     expect(err).toContain(CREDENTIALS_REQUIRED_MESSAGE);
     expect(out).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
-    const final = err
-      .filter((line) => line.startsWith("{"))
-      .map((line) => JSON.parse(line) as { finalOutcome?: string; failureReason?: string })
-      .at(-1);
-    expect(final).toMatchObject({ finalOutcome: "error", failureReason: "llm_credentials_missing" });
+    // run は Gateway に error で記録される(AnswerRun の書き手は Gateway。ADR-019)
+    expect(harness.answerRuns().at(-1)).toMatchObject({ finalOutcome: "error", failureReason: "llm_credentials_missing" });
     expect([...out, ...err].join("\n")).not.toContain(ALICE_TOKEN);
   });
 
@@ -272,18 +264,16 @@ describe("kp-ask: 実行", () => {
     );
 
     expect(code).toBe(1);
-    expect(out.join("\n")).toContain("gateway_unauthenticated");
+    // run を始められないので回答はなく、失敗の説明は stderr(--json なら失敗の表現を stdout に)
+    expect(err.join("\n")).toContain("gateway_unauthenticated");
+    expect(out).toEqual([]);
     expect([...out, ...err].join("\n")).not.toContain("dev-only-revoked-token");
   });
 });
 
-/** stderr に出た AnswerRun の監査レコード(最後のもの)。 */
-function lastAnswerRun(err: readonly string[]): Record<string, unknown> | undefined {
-  return err
-    .filter((line) => line.startsWith("{"))
-    .map((line) => JSON.parse(line) as Record<string, unknown>)
-    .filter((record) => record["recordType"] === "answer_run")
-    .at(-1);
+/** Gateway の監査に残った AnswerRun(統合済み)の最後のもの。 */
+function lastAnswerRun(harness: GatewayHarness): Record<string, unknown> | undefined {
+  return harness.answerRuns().at(-1) as Record<string, unknown> | undefined;
 }
 
 async function writeDeployment(yaml: string): Promise<string> {
@@ -311,7 +301,7 @@ const DEPLOYMENT_YAML = [
   "",
 ].join("\n");
 
-describe("kp-ask: 利用者の束縛(H1)と citedDocIds の記録方針(H2)", () => {
+describe("kp-ask: 利用者の束縛(H1)と --config", () => {
   it("--user-id を省略すると Gateway が認証した userId を記録する(既定値 cli-user は使わない)", async () => {
     const harness = await setup();
     const { err, io } = capture();
@@ -323,7 +313,7 @@ describe("kp-ask: 利用者の束縛(H1)と citedDocIds の記録方針(H2)", ()
     );
 
     expect(code).toBe(0);
-    expect(lastAnswerRun(err)).toMatchObject({ userId: "bob", finalOutcome: "resolved" });
+    expect(lastAnswerRun(harness)).toMatchObject({ userId: "bob", finalOutcome: "resolved" });
     expect(err.join("\n")).not.toContain("cli-user");
   });
 
@@ -339,16 +329,16 @@ describe("kp-ask: 利用者の束縛(H1)と citedDocIds の記録方針(H2)", ()
 
     expect(code).toBe(1);
     expect(out.join("\n")).toContain("user_mismatch");
-    expect(lastAnswerRun(err)).toMatchObject({
+    expect(lastAnswerRun(harness)).toMatchObject({
       userId: "bob",
       finalOutcome: "error",
       failureReason: "user_mismatch",
     });
   });
 
-  it("--config がなければ citedDocIds を記録しない", async () => {
+  it("citedDocIds は Gateway が構成の規則で記録する(--config は不要)", async () => {
     const harness = await setup();
-    const { err, io } = capture();
+    const { io } = capture();
 
     await runCli(
       ["--gateway", harness.url, "--token", ALICE_TOKEN, "締め日は?"],
@@ -356,45 +346,7 @@ describe("kp-ask: 利用者の束縛(H1)と citedDocIds の記録方針(H2)", ()
       deps(() => resolvingScript()),
     );
 
-    expect(lastAnswerRun(err)).toMatchObject({ finalOutcome: "resolved", citedDocIds: [] });
-  });
-
-  it("--config の connectors[].privateScopes と audit.privateScopeDocIds: hashed に従い、KP_AUDIT_HMAC_KEY の HMAC で記録する", async () => {
-    const harness = await setup();
-    const config = await writeDeployment(DEPLOYMENT_YAML);
-    const { err, io } = capture();
-    const key = "dev-only-hmac-key";
-
-    const code = await runCli(
-      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "締め日は?"],
-      io,
-      deps(() => resolvingScript(), { KP_AUDIT_HMAC_KEY: key }),
-    );
-
-    expect(code).toBe(0);
-    const expected = `hmac:${createHmac("sha256", key)
-      .update("alpha:doc-expense-policy", "utf8")
-      .digest("hex")}`;
-    expect(lastAnswerRun(err)).toMatchObject({ citedDocIds: [expected] });
-    expect(err.join("\n")).not.toContain(key);
-  });
-
-  it("hashed なのに KP_AUDIT_HMAC_KEY がなければ終了コード 2(Gateway にも LLM にもアクセスしない)", async () => {
-    const harness = await setup();
-    const config = await writeDeployment(DEPLOYMENT_YAML);
-    const { err, io } = capture();
-    const llm = resolvingScript();
-
-    const code = await runCli(
-      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "締め日は?"],
-      io,
-      deps(() => llm),
-    );
-
-    expect(code).toBe(2);
-    expect(err.join("\n")).toContain("KP_AUDIT_HMAC_KEY");
-    expect(llm.requests).toHaveLength(0);
-    expect(harness.toolInvocations()).toEqual([]);
+    expect(lastAnswerRun(harness)).toMatchObject({ finalOutcome: "resolved", citedDocIds: ["alpha:doc-expense-policy"] });
   });
 
   it("--config の deployment.yaml が不正なら終了コード 2", async () => {
@@ -479,7 +431,7 @@ describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1�
     expect(JSON.stringify(jsonOutput(out))).not.toContain("gateway.example.test");
   });
 
-  it("--config が不正・hashed なのに鍵がないときは invalid_configuration(鍵の生成方法を案内する)", async () => {
+  it("--config が不正なら invalid_configuration(Gateway にアクセスしない)", async () => {
     const harness = await setup();
     const broken = await writeDeployment("schemaVersion: 1\nconnectors: 3\n");
     const invalid = capture();
@@ -495,23 +447,8 @@ describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1�
       errorClass: "invalid_configuration",
       message: expect.stringContaining("deployment config rejected") as unknown,
     });
-
-    const hashed = await writeDeployment(DEPLOYMENT_YAML);
-    const noKey = capture();
-    expect(
-      await runCli(
-        ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", hashed, "--json", "q"],
-        noKey.io,
-        deps(() => resolvingScript()),
-      ),
-    ).toBe(2);
-    expect(jsonOutput(noKey.out)).toEqual({
-      outcome: "error",
-      errorClass: "invalid_configuration",
-      message: AUDIT_HMAC_KEY_REQUIRED_MESSAGE,
-    });
-    expect(AUDIT_HMAC_KEY_REQUIRED_MESSAGE).toContain("openssl rand -hex 32");
     expect(harness.toolInvocations()).toEqual([]);
+    expect(harness.answerRuns()).toEqual([]);
   });
 
   it("Claude API の資格情報が無ければ llm_credentials_missing と runId(終了コード 2 のまま)", async () => {
@@ -540,7 +477,7 @@ describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1�
     });
     expect(err).toContain(CREDENTIALS_REQUIRED_MESSAGE);
     // runId は AnswerRun(stderr)と突き合わせられる
-    expect(lastAnswerRun(err)).toMatchObject({
+    expect(lastAnswerRun(harness)).toMatchObject({
       runId: output["runId"],
       finalOutcome: "error",
       failureReason: "llm_credentials_missing",
@@ -551,6 +488,30 @@ describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1�
   it("run が error で終わったときは従来どおり Answer(outcome: error)を出す(終了コード 1)", async () => {
     const harness = await setup();
     const { out, io } = capture();
+    // LLM の正規化エラーで run が error で終わる(run は Gateway に error で残る)
+    const llm = new ScriptedLlmClient([
+      () => {
+        throw new LlmError("llm_unavailable", "dev-only upstream detail");
+      },
+    ]);
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--json", "締め日は?"],
+      io,
+      deps(() => llm),
+    );
+
+    expect(code).toBe(1);
+    const answer = answerSchema.parse(jsonOutput(out));
+    expect(answer.outcome).toBe("error");
+    expect(answer.answer).toContain("llm_unavailable");
+    expect(answer.answer).not.toContain("dev-only upstream detail");
+    expect(lastAnswerRun(harness)).toMatchObject({ finalOutcome: "error", failureReason: "llm_unavailable" });
+  });
+
+  it("Gateway がセッションを拒否したら run を始められず、失敗の表現(gateway_unauthenticated)を出す(終了コード 1、トークンをエコーしない)", async () => {
+    const harness = await setup();
+    const { out, err, io } = capture();
 
     const code = await runCli(
       ["--gateway", harness.url, "--token", "dev-only-revoked-token", "--json", "締め日は?"],
@@ -559,32 +520,36 @@ describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1�
     );
 
     expect(code).toBe(1);
-    const answer = answerSchema.parse(jsonOutput(out));
-    expect(answer.outcome).toBe("error");
-    expect(answer.answer).toContain("gateway_unauthenticated");
-    expect(JSON.stringify(answer)).not.toContain("dev-only-revoked-token");
+    expect(jsonOutput(out)).toMatchObject({ outcome: "error", errorClass: "gateway_unauthenticated" });
+    expect([...out, ...err].join("\n")).not.toContain("dev-only-revoked-token");
+    expect(harness.answerRuns()).toEqual([]);
   });
 
-  it("run が例外で終わった(AnswerRun を書けない等)ときは OrchestratorError の分類(終了コード 1)", async () => {
-    const harness = await setup();
-    const dir = await mkdtemp(join(tmpdir(), "kp-ask-runs-"));
-    const subdir = join(dir, "runs");
-    await mkdir(subdir);
-    const config = await writeDeployment(DEPLOYMENT_YAML.replace("  privateScopeDocIds: hashed", "  privateScopeDocIds: omitted"));
-    // pending を書いた後(最初の LLM 呼び出しの時点)に書き先のディレクトリを消し、最終状態を書けなくする
+  it("run が例外で終わった(Gateway が終了を記録できない等)ときは OrchestratorError の分類(終了コード 1)", async () => {
+    // 開始の後(最初の LLM 呼び出しの時点)に Gateway の監査ストアを壊し、finish を書けなくする
+    let failWrites = false;
+    const harness = await startGateway({
+      connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
+      wrapSink: (inner) => ({
+        async write(record) {
+          if (failWrites) {
+            throw new Error("injected audit failure");
+          }
+          await inner.write(record);
+        },
+      }),
+    });
+    harnesses.push(harness);
     const llm = new ScriptedLlmClient([
       () => {
-        rmSync(subdir, { recursive: true });
+        failWrites = true;
         return scriptedSubmit({ answer: "わかりません。", citations: [], confidence: 0 });
       },
     ]);
     const { out, err, io } = capture();
 
     const code = await runCli(
-      [
-        "--gateway", harness.url, "--token", ALICE_TOKEN,
-        "--config", config, "--answer-run-jsonl", join(subdir, "answer-runs.jsonl"), "--json", "締め日は?",
-      ],
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--json", "締め日は?"],
       io,
       deps(() => llm),
     );
@@ -596,109 +561,6 @@ describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1�
       message: expect.stringContaining("実行できませんでした(audit_write_failed)") as unknown,
     });
     expect(err.join("\n")).toContain("実行できませんでした(audit_write_failed)");
-  });
-});
-
-describe("kp-ask --answer-run-jsonl(1問モード、issue #38)", () => {
-  it("AnswerRun をファイルに追記し(0600)、stderr には出さない", async () => {
-    const harness = await setup();
-    const dir = await mkdtemp(join(tmpdir(), "kp-ask-runs-"));
-    const file = join(dir, "answer-runs.jsonl");
-    const config = await writeDeployment(DEPLOYMENT_YAML.replace("  privateScopeDocIds: hashed", "  privateScopeDocIds: omitted"));
-    const { out, err, io } = capture();
-
-    const code = await runCli(
-      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "--answer-run-jsonl", file, "締め日は?"],
-      io,
-      deps(() => resolvingScript()),
-    );
-
-    expect(code).toBe(0);
-    expect(out.join("\n")).toContain("経費精算の締め日は毎月25日です。");
-    expect(err.filter((line) => line.startsWith("{"))).toEqual([]);
-    const records = (await readFile(file, "utf8"))
-      .trim()
-      .split("\n")
-      .map((line) => parseAuditRecord(JSON.parse(line)));
-    expect(records.map((r) => r.recordType === "answer_run" && r.finalOutcome)).toEqual([
-      "pending",
-      "resolved",
-    ]);
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
-    expect(await readFile(file, "utf8")).not.toContain(ALICE_TOKEN);
-
-    // 2回目は同じファイルに追記する
-    const again = capture();
-    expect(
-      await runCli(
-        ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "--answer-run-jsonl", file, "締め日は?"],
-        again.io,
-        deps(() => resolvingScript()),
-      ),
-    ).toBe(0);
-    expect((await readFile(file, "utf8")).trim().split("\n")).toHaveLength(4);
-  });
-
-  it("書けない場所・Gateway の監査ログと同じファイルは終了コード 2(Gateway にも LLM にもアクセスしない)", async () => {
-    const harness = await setup();
-    const dir = await mkdtemp(join(tmpdir(), "kp-ask-runs-"));
-    const llm = resolvingScript();
-    const config0 = await writeDeployment(DEPLOYMENT_YAML.replace("  privateScopeDocIds: hashed", "  privateScopeDocIds: omitted"));
-
-    const missing = capture();
-    expect(
-      await runCli(
-        [
-          "--gateway", harness.url, "--token", ALICE_TOKEN,
-          "--config", config0, "--answer-run-jsonl", join(dir, "no-such-dir", "a.jsonl"), "締め日は?",
-        ],
-        missing.io,
-        deps(() => llm),
-      ),
-    ).toBe(2);
-    expect(missing.err.join("\n")).toContain("--answer-run-jsonl に書き込めません");
-
-    await mkdir(join(dir, "audit"));
-    const config = join(dir, "deployment.yaml");
-    await writeFile(
-      config,
-      DEPLOYMENT_YAML.replace("  privateScopeDocIds: hashed", "  privateScopeDocIds: omitted\n  sink: jsonl\n  jsonl:\n    path: audit/gateway.jsonl"),
-      "utf8",
-    );
-    const same = capture();
-    expect(
-      await runCli(
-        [
-          "--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config,
-          "--answer-run-jsonl", join(dir, "audit", "gateway.jsonl"), "締め日は?",
-        ],
-        same.io,
-        deps(() => llm),
-      ),
-    ).toBe(2);
-    expect(same.err.join("\n")).toContain("Gateway の監査ログ");
-    expect(llm.requests).toHaveLength(0);
-    expect(harness.toolInvocations()).toEqual([]);
-  });
-
-  it("--config なしでは使い方の誤り(終了コード 2)。Gateway にも LLM にもアクセスしない(セキュリティレビュー S2)", async () => {
-    const harness = await setup();
-    const dir = await mkdtemp(join(tmpdir(), "kp-ask-runs-"));
-    const llm = resolvingScript();
-    const { err, io } = capture();
-
-    const code = await runCli(
-      [
-        "--gateway", harness.url, "--token", ALICE_TOKEN,
-        "--answer-run-jsonl", join(dir, "answer-runs.jsonl"), "締め日は?",
-      ],
-      io,
-      deps(() => llm),
-    );
-
-    expect(code).toBe(2);
-    expect(err.join("\n")).toContain("--answer-run-jsonl には --config が必要です");
-    expect(llm.requests).toHaveLength(0);
-    expect(harness.toolInvocations()).toEqual([]);
+    expect(err.join("\n")).not.toContain("injected");
   });
 });

@@ -12,6 +12,8 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
+      # ADR-019 決定10: @kp/audit と Gateway の run モジュールの import 境界(scripts/lint-imports.mjs)
+      - run: npm run lint:imports
       - run: npm test
   # T-002: Keycloak参照実装のE2E。
   # 注意: このE2Eは「Keycloak発行トークンを受けるモックコネクタ」であり、

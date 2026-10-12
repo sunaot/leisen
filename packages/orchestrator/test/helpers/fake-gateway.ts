@@ -5,9 +5,11 @@
  */
 import { toolDefinitions } from "@kp/gateway";
 import type {
+  FinishRunInput,
   GatewayCallOutcome,
   GatewayClient,
   GatewayToolSchema,
+  StartRunResult,
 } from "../../src/index.js";
 
 export interface FakeCall {
@@ -23,11 +25,44 @@ export type FakeHandler = (
 
 export class FakeGatewayClient implements GatewayClient {
   readonly calls: FakeCall[] = [];
+  /** run API への申告(開始・終了・フィードバック)の記録 */
+  readonly started: { readonly question: string }[] = [];
+  readonly finished: { readonly runId: string; readonly input: FinishRunInput }[] = [];
+  readonly feedbacks: { readonly runId: string; readonly outcome: "resolved" | "unresolved" }[] = [];
+  /** startRun / finishRun を失敗させる(テスト用の注入) */
+  startError: Error | undefined;
+  finishError: Error | undefined;
+  /** runId の有効期間(秒)。startRun の expiresAt に使う */
+  ttlSeconds = 600;
 
   constructor(
     private readonly sources: readonly string[],
     private readonly handler: FakeHandler,
   ) {}
+
+  async startRun(input: { readonly question: string }): Promise<StartRunResult> {
+    if (this.startError !== undefined) {
+      throw this.startError;
+    }
+    this.started.push({ question: input.question });
+    const issuedAt = Date.now();
+    return {
+      runId: `fake-run-${this.started.length}`,
+      expiresAt: new Date(issuedAt + this.ttlSeconds * 1000).toISOString(),
+      feedbackUntil: new Date(issuedAt + 7 * 24 * 3600 * 1000).toISOString(),
+    };
+  }
+
+  async finishRun(runId: string, input: FinishRunInput): Promise<void> {
+    if (this.finishError !== undefined) {
+      throw this.finishError;
+    }
+    this.finished.push({ runId, input });
+  }
+
+  async feedbackRun(runId: string, outcome: "resolved" | "unresolved"): Promise<void> {
+    this.feedbacks.push({ runId, outcome });
+  }
 
   async listTools(): Promise<readonly GatewayToolSchema[]> {
     return toolDefinitions(this.sources).map((tool) => ({

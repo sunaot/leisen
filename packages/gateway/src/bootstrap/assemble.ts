@@ -21,6 +21,9 @@
  * - gateway.http.host がループバック以外なら gateway.http.confirmExposedHost: true を
  *   要求する(http_host_exposed_requires_confirmation。TLS 終端・Origin 検証を
  *   前段に委ねる前提の明示、T-012)
+ * - run API(ADR-019)の署名鍵・Orchestrator の資格情報・docId の HMAC 鍵は runs.ts が
+ *   環境変数から解決する(本番では未設定・短い・開発用の値を拒否。それ以外では一時鍵と
+ *   開発用の既定値で動き、warnings に残す)
  * - 環境変数は options.env から読む(秘密情報・開発用モックの注入元)。本番判定の
  *   NODE_ENV だけは安全側に倒すためプロセスの環境(process.env)を見る
  * - 秘密情報(トークン・clientSecret・環境変数の値)と設定オブジェクト全体を
@@ -31,8 +34,7 @@
 import type { Server as HttpServer } from "node:http";
 import { resolve } from "node:path";
 import type { Connector } from "@kp/connector-sdk";
-import type { RawQueryStore } from "../audit/rawquery.js";
-import { AuditLogger } from "../audit/sink.js";
+import { AuditLogger, type RawQueryStore } from "@kp/audit";
 import { resolveIdpAdapterConfig } from "../config/loader.js";
 import {
   AUDIT_SINK_STDOUT,
@@ -61,6 +63,7 @@ import { Gateway } from "../proxy/gateway.js";
 import { createGatewayHttpServer } from "../proxy/http.js";
 import { GatewayError } from "../proxy/types.js";
 import { resolveAuditSink, type ResolvedAuditSink } from "./audit.js";
+import { resolveRunRuntime, type ResolvedRunRuntime } from "./runs.js";
 import {
   buildConnector,
   defaultModuleLoader,
@@ -107,6 +110,8 @@ export interface AssembledGateway {
   readonly httpServer: HttpServer;
   /** 起動ログ用の監査シンクの説明(秘密情報なし) */
   readonly auditSinkDescription: string;
+  /** 起動ログ用の run API(ADR-019)の説明(秘密情報なし。鍵の kid と環境変数名だけ) */
+  readonly runApiDescription: string;
   /**
    * 起動時の警告(起動は拒否しないが、そのままでは動かない可能性が高い構成。秘密情報なし)。
    * 例: モック IdP のセッション表(KP_MOCK_SESSIONS)が空。kp-gateway validate / serve が表示する
@@ -337,7 +342,13 @@ export async function assembleGateway(
     }
   }
 
-  if (issues.length > 0 || idpAdapter === undefined || audit === undefined) {
+  // --- run API(ADR-019): 署名鍵・Orchestrator の資格情報・docId の HMAC 鍵を環境変数から ---
+  const runs: ResolvedRunRuntime | undefined = resolveRunRuntime(config, env, issues);
+  if (runs !== undefined) {
+    warnings.push(...runs.warnings);
+  }
+
+  if (issues.length > 0 || idpAdapter === undefined || audit === undefined || runs === undefined) {
     throw new DeploymentConfigError(issues);
   }
 
@@ -349,6 +360,8 @@ export async function assembleGateway(
     connectors,
     auditLogger,
     rawQueryStore: audit.rawQueryStore,
+    runs: runs.runtime,
+    ...(runs.docIdHmacKey !== undefined ? { docIdHmacKey: runs.docIdHmacKey } : {}),
   });
   const httpServer = createGatewayHttpServer(gateway, {
     path: config.gateway.http.path,
@@ -361,6 +374,7 @@ export async function assembleGateway(
     rawQueryStore: audit.rawQueryStore,
     httpServer,
     auditSinkDescription: audit.description,
+    runApiDescription: runs.description,
     warnings,
     close: () =>
       (closing ??= (async () => {

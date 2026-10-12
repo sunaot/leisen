@@ -2,7 +2,7 @@
  * T-021 受け入れ条件2: 有効な Bearer の ask が実 Gateway 経由で回答する(実 Gateway + 脚本 LLM の e2e)。
  *
  * - AnswerRun.userId は Gateway が認証した userId(alice / bob。呼び出し元の申告ではない)
- * - AnswerRun は --answer-run-jsonl の JSONL に pending → 最終状態の順で追記される
+ * - AnswerRun は Gateway の run API が書く(pending → answer_run_finish。ADR-019)
  * - text は Markdown(本文 + 「## 出典」+ runId)。出典の url は http / https だけを自動リンク
  *   `<…>` で描画する(S1)
  * - structuredContent は Answer + retentionClass(+ resolved 以外は errorClass)で、ツールの
@@ -14,9 +14,6 @@
  *   feedback は config_mismatch。non_persistable の方針(--allow-non-persistable-sources)なら
  *   許して retentionClass を non_persistable にする
  */
-import { mkdtemp, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { afterEach, describe, expect, it } from "vitest";
@@ -40,6 +37,7 @@ import {
   startGateway,
   type CorpusDocument,
   type GatewayHarness,
+  type GatewayHarnessOptions,
 } from "./helpers/harness.js";
 import {
   searchThenSubmit,
@@ -68,10 +66,11 @@ async function setup(
     readonly script?: ScriptStep | readonly ScriptStep[];
     readonly documents?: readonly CorpusDocument[];
     readonly server?: Partial<OrchestratorServerOptions>;
+    readonly gateway?: Partial<GatewayHarnessOptions>;
   } = {},
 ): Promise<Setup> {
   const alpha = new CorpusConnector("alpha", options.documents ?? [EXPENSE_POLICY]);
-  const gateway = await startGateway({ connectors: [alpha] });
+  const gateway = await startGateway({ connectors: [alpha], ...options.gateway });
   cleanups.push(() => gateway.close());
   const llm = new ScriptedLlmClient(options.script ?? searchThenSubmit());
   const server = await startOrchestratorServer({
@@ -124,7 +123,7 @@ function sourcesSection(text: string): string[] {
 }
 
 describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
-  it("回答・出典・runId を Markdown で返し、AnswerRun(userId = alice)を JSONL に pending → resolved で追記する", async () => {
+  it("回答・出典・runId を Markdown で返し、AnswerRun(userId = alice)が Gateway の監査に pending → finish で残る", async () => {
     const { server, gateway, llm } = await setup();
     const client = await server.connect(ALICE_TOKEN);
 
@@ -162,11 +161,12 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     // 利用者のトークンは結果(text・structuredContent)に載らない(不変条件6)
     expect(JSON.stringify({ text, structured })).not.toContain(ALICE_TOKEN);
 
-    // AnswerRun: 同じ runId の pending → resolved(Gateway が認証した alice)
-    const runs = (await server.answerRunLines()).filter((record) => record.runId === runId);
-    expect(runs.map((record) => record.finalOutcome)).toEqual(["pending", "resolved"]);
-    expect(runs.every((record) => record.userId === "alice")).toBe(true);
-    expect(runs.at(-1)).toMatchObject({
+    // AnswerRun: Gateway が pending を書き、finish の部分レコードが続く(Gateway が認証した alice)
+    const runRecords = gateway.records().filter((record) => "runId" in record && record.runId === runId && record.recordType !== "tool_invocation");
+    expect(runRecords.map((record) => record.recordType)).toEqual(["answer_run", "answer_run_finish"]);
+    expect(runRecords.every((record) => "userId" in record && record.userId === "alice")).toBe(true);
+    expect(gateway.answerRuns().find((record) => record.runId === runId)).toMatchObject({
+      finalOutcome: "resolved",
       searchedSources: ["alpha"],
       citedDocIds: ["alpha:doc-expense-policy"],
       userFeedback: null,
@@ -175,24 +175,19 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     const invocations = gateway.toolInvocations(runId);
     expect(invocations.map((record) => record.tool)).toEqual(["describe", "search"]);
     expect(invocations.every((record) => record.userId === "alice")).toBe(true);
-    // JSONL にトークン・質問の原文・回答本文を書かない
-    const jsonl = await readFile(server.jsonlPath, "utf8");
-    expect(jsonl).not.toContain(ALICE_TOKEN);
-    expect(jsonl).not.toContain("経費精算の締め日は?");
-    expect(jsonl).not.toContain("毎月25日");
+    // 監査レコードにトークン・質問の原文・回答本文を書かない
+    const audit = JSON.stringify(gateway.records());
+    expect(audit).not.toContain(ALICE_TOKEN);
+    expect(audit).not.toContain("経費精算の締め日は?");
+    expect(audit).not.toContain("毎月25日");
   });
 
   it("AnswerRun の userId は接続した利用者のトークンで決まる(bob のトークンなら bob)", async () => {
-    const { server } = await setup();
+    const { server, gateway } = await setup();
     const client = await server.connect(BOB_TOKEN);
     const { structured } = await ask(client, "経費精算の締め日は?");
-    const runs = (await server.answerRunLines()).filter(
-      (record) => record.runId === structured["runId"],
-    );
-    expect(runs.map((record) => [record.finalOutcome, record.userId])).toEqual([
-      ["pending", "bob"],
-      ["resolved", "bob"],
-    ]);
+    const runs = gateway.answerRuns().filter((record) => record.runId === structured["runId"]);
+    expect(runs.map((record) => [record.finalOutcome, record.userId])).toEqual([["resolved", "bob"]]);
   });
 
   it("出典の url は http / https だけを描画し、title の制御文字・リンク・HTML を無害化する", async () => {
@@ -296,7 +291,7 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
   });
 
   it("outcome: error(LLM の失敗)は isError で返し、注意書きと errorClass を付ける", async () => {
-    const { server } = await setup({
+    const { server, gateway } = await setup({
       script: [
         () => {
           throw new LlmError("llm_unavailable", "dev-only upstream detail");
@@ -312,16 +307,19 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     expect(text).not.toContain("dev-only upstream detail");
     expect(structured).toMatchObject({ outcome: "error", errorClass: "llm_unavailable" });
     await expectValidAgainstOutputSchema(client, structured);
-    const runs = (await server.answerRunLines()).filter(
-      (record) => record.runId === structured["runId"],
-    );
+    const runs = gateway.answerRuns().filter((record) => record.runId === structured["runId"]);
     expect(runs.at(-1)).toMatchObject({ finalOutcome: "error", failureReason: "llm_unavailable" });
   });
 
-  it("AnswerRun を書けなければ(fail-closed)固定文言の isError で返し、LLM を呼ばない", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "t021-missing-"));
+  it("Gateway が run の開始を記録できなければ(fail-closed)固定文言の isError で返し、LLM を呼ばない", async () => {
     const { server, llm } = await setup({
-      server: { answerRunJsonlPath: join(dir, "no-such-dir", "answer-runs.jsonl") },
+      gateway: {
+        wrapSink: () => ({
+          async write() {
+            throw new Error("injected audit failure: dev-only-detail");
+          },
+        }),
+      },
     });
     const client = await server.connect(ALICE_TOKEN);
 
@@ -330,8 +328,7 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     expect(isError).toBe(true);
     expect(structured).toEqual({ errorClass: "audit_write_failed" });
     expect(text).toContain("監査ログ");
-    expect(text).not.toContain("no-such-dir");
-    expect(text).not.toContain("ENOENT");
+    expect(text).not.toContain("dev-only-detail");
     expect(llm.requests).toHaveLength(0);
   });
 });
@@ -415,7 +412,7 @@ describe("Gateway が公開するソースと --config の照合(S6)", () => {
     expect(alpha.calls).toEqual([]);
     expect(beta.calls).toEqual([]);
     expect(gateway.toolInvocations()).toEqual([]);
-    expect(await server.answerRunLines()).toEqual([]);
+    expect(gateway.answerRuns()).toEqual([]);
   });
 
   it("non_persistable の方針(--allow-non-persistable-sources)なら不一致を許し、retentionClass を non_persistable にする", async () => {

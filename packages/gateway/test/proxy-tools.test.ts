@@ -29,8 +29,8 @@ import {
   type SearchResult,
   type SourceDescription,
 } from "@kp/connector-sdk";
+import { AuditLogger } from "@kp/audit";
 import {
-  AuditLogger,
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
   Gateway,
@@ -203,9 +203,10 @@ describe("callContextFromMeta (runId / iteration)", () => {
     },
   );
 
-  it("reads prefixed keys and falls back to bare keys only when no prefixed key is present", () => {
+  it("passes a prefixed runId through for verification (declaredRunId) and falls back to bare keys only when no prefixed key is present", () => {
+    // 名前空間付きのキーの runId は Gateway コアが署名・本人・actor・期限を検証する(ADR-019 決定4)
     expect(callContextFromMeta({ [K.runId]: "p", [K.iteration]: 1 })).toEqual({
-      runId: "p",
+      declaredRunId: "p",
       iteration: 1,
     });
     expect(callContextFromMeta({ runId: "b", iteration: 2 })).toEqual({
@@ -217,7 +218,7 @@ describe("callContextFromMeta (runId / iteration)", () => {
   it("ignores every bare key once any prefixed key is present (no per-key mixing, minor-8)", () => {
     expect(
       callContextFromMeta({ [K.runId]: "p", runId: "b", iteration: 5 }),
-    ).toEqual({ runId: "p" });
+    ).toEqual({ declaredRunId: "p" });
     expect(callContextFromMeta({ [K.iteration]: 3, runId: "b" })).toEqual({
       iteration: 3,
     });
@@ -235,13 +236,13 @@ describe("callContextFromMeta (runId / iteration)", () => {
     ).toEqual({});
   });
 
-  it("accepts a runId only within [A-Za-z0-9._:-]{1,128} (minor-10)", () => {
+  it("accepts a bare runId only within [A-Za-z0-9._:-]{1,128} (minor-10); a prefixed runId is passed through unchanged for verification", () => {
     for (const runId of [
       "run:2026-09-27_a.b",
       "0f8fad5b-d9cb-469f-a165-70867728950e",
       "r".repeat(128),
     ]) {
-      expect(callContextFromMeta({ [K.runId]: runId })).toEqual({ runId });
+      expect(callContextFromMeta({ runId })).toEqual({ runId });
     }
     for (const runId of [
       "r".repeat(129),
@@ -251,7 +252,10 @@ describe("callContextFromMeta (runId / iteration)", () => {
       "run\n1",
       "ラン-1",
     ]) {
+      expect(callContextFromMeta({ runId, iteration: 2 })).toEqual({ iteration: 2 });
+      // 名前空間付きのキーは形で落とさず、検証(拒否)に回す
       expect(callContextFromMeta({ [K.runId]: runId, [K.iteration]: 2 })).toEqual({
+        declaredRunId: runId,
         iteration: 2,
       });
     }
@@ -273,13 +277,14 @@ describe("callContextFromMeta (runId / iteration)", () => {
     });
   });
 
-  it("drops invalid values per key without falling back to bare keys", () => {
+  it("drops an invalid prefixed iteration without falling back to bare keys; an invalid prefixed runId still goes to verification", () => {
     expect(
       callContextFromMeta({ [K.runId]: "", runId: "b", [K.iteration]: 2.5 }),
-    ).toEqual({});
+    ).toEqual({ declaredRunId: "" });
     expect(callContextFromMeta({ [K.runId]: "p", [K.iteration]: -1 })).toEqual({
-      runId: "p",
+      declaredRunId: "p",
     });
+    expect(callContextFromMeta({ [K.runId]: 42 })).toEqual({ declaredRunId: 42 });
   });
 });
 
@@ -453,7 +458,8 @@ describe("listTools / runToolCall (SDK-independent tool surface)", () => {
       identity,
       name: "search",
       arguments: { source: "alpha", query: "q" },
-      meta: { [K.runId]: "run-unit", [K.iteration]: 1 },
+      // 裸キー(移行期間)。名前空間付きのキーの runId は署名付きでなければ拒否される(下)
+      meta: { runId: "run-unit", iteration: 1 },
     });
     expect(outcome.ok).toBe(true);
     expect(alpha.calls[0]?.auth.userId).toBe("bob");
@@ -462,6 +468,23 @@ describe("listTools / runToolCall (SDK-independent tool surface)", () => {
       runId: "run-unit",
       iteration: 1,
     });
+  });
+
+  it("rejects a prefixed runId without the orchestrator credential as invalid_run_id (recorded as a single-shot run; ADR-019 決定4)", async () => {
+    const { gateway, alpha, sink } = build();
+    const identity: Identity = await gateway.authenticate("session-bob");
+    const outcome = await runToolCall(gateway, {
+      identity,
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      meta: { [K.runId]: "run-unit", [K.iteration]: 1 },
+    });
+    expect(outcome).toMatchObject({ ok: false, error: { errorClass: "invalid_run_id" } });
+    expect(outcome.text).not.toContain("run-unit");
+    expect(alpha.calls).toHaveLength(0);
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]).toMatchObject({ userId: "bob", iteration: 0, errorClass: "invalid_run_id" });
+    expect(sink.records[0]?.recordType === "tool_invocation" ? sink.records[0].runId : "").toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("normalizes argument and declaration errors before dispatch", async () => {
@@ -574,12 +597,16 @@ describe("listTools / runToolCall (SDK-independent tool surface)", () => {
       identity,
       name: "search",
       arguments: { source: "alpha", query: "q" },
-      meta: Object.fromEntries(LEGITIMATE_KEYS),
+      // 名前空間付きの runId は署名付きでなければ拒否される(ADR-019 決定4。誤記の拒否とは別)ため
+      // ここでは外す。残る名前空間付きのキーがあるので裸キーは無視され、単発 run になる
+      meta: Object.fromEntries(LEGITIMATE_KEYS.filter(([key]) => key !== K.runId)),
     });
     expect(outcome.ok).toBe(true);
     expect(alpha.calls).toHaveLength(1);
     expect(sink.records).toHaveLength(1);
-    expect(sink.records[0]).toMatchObject({ runId: "run-1", iteration: 2 });
+    // 単発 run なので iteration も 0(runId と組でだけ意味を持つ)
+    expect(sink.records[0]).toMatchObject({ iteration: 0 });
+    expect(sink.records[0]?.recordType === "tool_invocation" ? sink.records[0].runId : "").toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("keeps rejecting a correctly prefixed scheduled declaration by execution class (audited once)", async () => {
@@ -833,19 +860,31 @@ describe("result serialization inside runToolCall (minor-2)", () => {
 });
 
 describe("client-controlled values in audit records (minor-10)", () => {
-  it("records a 5000-character runId as an undeclared single-shot run", async () => {
+  it("records a 5000-character runId as a single-shot run without echoing it (bare key: undeclared; prefixed key: rejected)", async () => {
     const { gateway, sink } = build();
     const longRunId = "r".repeat(5000);
+    const bare = await runToolCall(gateway, {
+      identity: await gateway.authenticate("session-alice"),
+      name: "search",
+      arguments: { source: "alpha", query: "q" },
+      meta: { runId: longRunId, iteration: 4 },
+    });
+    expect(bare.ok).toBe(true);
+    expect(sink.records).toHaveLength(1);
+    expect(JSON.stringify(sink.records[0])).not.toContain(longRunId);
+    sink.records.length = 0;
+
     const outcome = await runToolCall(gateway, {
       identity: await gateway.authenticate("session-alice"),
       name: "search",
       arguments: { source: "alpha", query: "q" },
       meta: { [K.runId]: longRunId, [K.iteration]: 4 },
     });
-    expect(outcome.ok).toBe(true);
+    expect(outcome).toMatchObject({ ok: false, error: { errorClass: "invalid_run_id" } });
+    expect(outcome.text).not.toContain(longRunId);
     expect(sink.records).toHaveLength(1);
     const [record] = sink.records;
-    expect(record).toMatchObject({ iteration: 0 });
+    expect(record).toMatchObject({ iteration: 0, errorClass: "invalid_run_id" });
     expect(record?.recordType === "tool_invocation" ? record.runId : "").toMatch(
       /^[0-9a-f-]{36}$/,
     );

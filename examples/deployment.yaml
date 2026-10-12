@@ -54,6 +54,35 @@ connectors:
     searchLayer:
       enabled: false # ADR-014: Slackは原則オンデマンド検索のみ。中央インデックス化しない
 
+gateway:
+  # run API(ADR-019)。Orchestrator(kp-ask / kp-ask serve)が run の開始・結果・フィードバックを申告する
+  # /runs と、tools/call で申告された runId の検証の設定。秘密は環境変数名だけを書く(不変条件6)。
+  # すべて既定値があるため、省略すると下の値になる
+  runs:
+    # runId の署名鍵(32 バイト以上の乱数を hex / base64 / base64url で)。Gateway だけが持つ。
+    # NODE_ENV=production では未設定・短い・開発用の例の値を起動拒否にする(run_signing_key_missing /
+    # run_signing_key_invalid / dev_only_in_production)。それ以外では未設定なら起動ごとの一時鍵(WARNING)
+    signingKeyEnv: KP_RUN_ID_KEY
+    # 鍵の入れ替え用の 1 つ前の鍵(任意)。設定があれば現行と並べて検証に使う(kid で見分ける)
+    previousSigningKeyEnv: KP_RUN_ID_KEY_PREVIOUS
+    # Orchestrator と共有する資格情報(16 文字以上)。run API と、runId を申告する tools/call に要る。
+    # NODE_ENV=production では未設定・開発用の既定値を起動拒否にする
+    orchestratorCredentialEnv: KP_ORCHESTRATOR_CREDENTIAL
+    # runId の有効期間(秒)。tools/call と finish はこの期間内だけ受ける。Orchestrator の run の上限時間
+    # (runTimeoutMs)より長くする
+    ttlSec: 900
+    # 発行時刻からフィードバックを受ける期間(秒)。既定 7 日。ttlSec より短くはできない
+    # (run_feedback_window_too_short)
+    feedbackWindowSec: 604800
+    # /runs の 3 経路すべてにかける上限(threat-model TM-I5 (d))
+    limits:
+      maxBodyBytes: 65536 # 本文(バイト)。超えたら 413 payload_too_large
+      maxQuestionChars: 4000 # 質問の長さ(文字)
+      maxCitations: 50 # finish の引用の件数
+      maxSearchedSources: 50 # finish の searchedSources の件数
+      maxIdChars: 512 # sourceId / documentId の長さ
+      maxRequestsPerUserPerMinute: 60 # 利用者ごとの頻度(3 経路の合計)。超えたら 429 rate_limited
+
 orchestrator:
   maxIterations: 6
   costLimitPerQuery: 0.5
@@ -70,6 +99,10 @@ audit:
     rawQueryPath: /var/lib/kp/rawquery/raw-queries.jsonl
   failureMode: fail-closed # 監査レコードを書けないツール呼び出しは失敗させる(ADR-011)
   privateScopeDocIds: hashed # プライベートスコープdocIdはHMACで秘匿化して記録(ADR-013 §2)
+  # hashed の HMAC 鍵(デプロイ固有の秘密)を持つ環境変数名。Gateway の run API が引用 docId を不可逆化する
+  # のに使う(ADR-019 決定5)。プライベートスコープを持つソースが有効な構成では必須(secret_env_missing)。
+  # 16 文字以上、署名鍵・Orchestrator の資格情報とは別の値(run_secret_reused)、本番では dev-only- の値を拒否
+  docIdHmacKeyEnv: KP_AUDIT_HMAC_KEY
   retentionDays: 365 # 監査ログ本体の保持(ADR-013 §3)
   rawQueryRetentionDays: 30 # 生クエリの短期保持(ADR-011)
   telemetryRetentionDays: 14 # 分離テレメトリ(ADR-011)

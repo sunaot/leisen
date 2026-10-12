@@ -139,16 +139,41 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
 - **値は環境変数だけで渡す。** deployment.yaml には環境変数の「名前」だけを書く(`idp.adapter.clientSecretEnv`、
   `connectors[].settings` の `<name>Env`)。スキーマは秘密情報らしいキーを拒否する(不変条件6)
 - compose は `deploy/compose/.env`(git 管理外。`.dockerignore` でイメージにも入らない)を変数展開に使い、
-  各コンテナに必要な変数だけを渡す(gateway: `KP_KEYCLOAK_CLIENT_SECRET` / `KP_MOCK_TOKEN_DEV_DOCS`、
-  keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`。LibreChat overlay の orchestrator: `KP_AUDIT_HMAC_KEY`(AnswerRun の
-  citedDocIds の HMAC 鍵)と LLM の接続先・モデル名)。未設定なら compose が起動前に止まる
-- `KP_AUDIT_HMAC_KEY`(`audit.privateScopeDocIds: hashed` のデプロイ固有鍵。`kp-ask --config` と
-  `kp-ask serve` が要求する)は、導入ごとに1回だけ乱数で生成して秘密ストアに保管し、以後は同じ値を使い続ける
-  (変えると以前に記録した `hmac:…` と突き合わせられなくなる)。`.env.example` の値は評価用のダミーなので
-  置き換える。生成例:
+  各コンテナに必要な変数だけを渡す(gateway: `KP_KEYCLOAK_CLIENT_SECRET` / `KP_MOCK_TOKEN_DEV_DOCS` /
+  `KP_RUN_ID_KEY` / `KP_ORCHESTRATOR_CREDENTIAL` / `KP_AUDIT_HMAC_KEY`、keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`。
+  LibreChat overlay の orchestrator: `KP_ORCHESTRATOR_CREDENTIAL` と LLM の接続先・モデル名)。未設定なら
+  compose が起動前に止まる
+- run API(ADR-019)の秘密は 3 つで、役割ごとに別の値にする(`deployment.yaml` の `gateway.runs.*Env` と
+  `audit.docIdHmacKeyEnv` が環境変数名を決める。既定の名前が下のとおり):
+  - `KP_RUN_ID_KEY`(runId の署名鍵。**Gateway だけが持つ**): 32 バイト以上の乱数を hex / base64 / base64url で。
+    `NODE_ENV=production` では未設定・短い・`.env.example` の例の値を起動拒否にする。入れ替えは
+    `KP_RUN_ID_KEY_PREVIOUS`(`gateway.runs.previousSigningKeyEnv`)に旧鍵を置いて新鍵で再起動し、runId の
+    有効期間(`gateway.runs.ttlSec`、既定 15 分)とフィードバックの期間(`feedbackWindowSec`、既定 7 日)が
+    過ぎたら旧鍵を外す。鍵を変えると(旧鍵を残さない限り)期限内の run の `finish` / `feedback` が
+    `invalid_run_id` で拒否され、その run はレポートで「放棄」になる
+  - `KP_ORCHESTRATOR_CREDENTIAL`(Orchestrator の資格情報。**gateway と orchestrator の両方に同じ値**): 16 文字
+    以上。Gateway は run API(`/runs`)と、runId を申告する `tools/call` にこの値のヘッダ
+    (`x-kp-orchestrator-credential`)を要求する。利用者本人の Bearer トークンの代わりではなく、追加の条件
+    (本人が Orchestrator を通さずに run の結果を偽って申告できないようにする。threat-model TM-I5)。
+    `NODE_ENV=production` では未設定・開発用の既定値(`.env.example` の値)を起動拒否にする。16 文字以上の
+    空白を含まない印字可能な ASCII(HTTP ヘッダで運ぶ)。**UI(LibreChat)や利用者には渡さない**: 利用者が
+    この値を持つと、Orchestrator を通さずに自分の run の結果・ToolInvocation を偽って昇格判定の集計を汚せる
+    (他人の run には触れない)。`kp-ask` の 1 問モードを使う運用者・開発者だけに配る
+  - `KP_AUDIT_HMAC_KEY`(引用 docId の HMAC 鍵。**Gateway だけが持つ**。`audit.privateScopeDocIds: hashed`):
+    run API の `finish` がプライベートスコープを持つソースの引用を不可逆化するのに使う(ADR-019 決定5)。
+    導入ごとに1回だけ乱数で生成して秘密ストアに保管し、以後は同じ値を使い続ける(変えると以前に記録した
+    `hmac:…` と突き合わせられなくなる)。リファレンス構成の `dev-docs`(`privateScopes: excluded`)だけなら
+    起動に要らないが、プライベートスコープを持つソースを有効にした時点で必須になる(`secret_env_missing`)。
+    設定するなら 16 文字以上(`doc_id_hmac_key_invalid`)、本番では `dev-only-` で始まる値を拒否する
+
+  3 つの秘密は互いに別の値にする(同じ値があれば `run_secret_reused` で起動拒否。使い回すと Orchestrator が
+  署名鍵を持つのと同じになる)。
+
+  `.env.example` の値はいずれも評価用のダミーなので置き換える。生成例:
 
   ```bash
-  openssl rand -hex 32
+  openssl rand -base64 32          # KP_RUN_ID_KEY / KP_ORCHESTRATOR_CREDENTIAL
+  openssl rand -hex 32             # KP_AUDIT_HMAC_KEY
   # または Node だけで
   node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
   ```
@@ -263,6 +288,22 @@ server {
         proxy_read_timeout    60s;
     }
 
+    # run API(ADR-019)。MCP のパスと同じディレクトリの runs(path: /mcp なら /runs、/kp/mcp なら /kp/runs。
+    # Orchestrator も同じ規則で導く)。Orchestrator(kp-ask / kp-ask serve)だけが呼ぶ。利用者本人の Bearer に加えて
+    # Orchestrator の資格情報のヘッダが要るため、/mcp と同じ制限で通す(Orchestrator が同じホスト内に
+    # あり外部から呼ぶ必要がなければ、この location を置かず 404 のままにしてよい)
+    location ~ ^/runs(/|$) {
+        proxy_pass http://kp_gateway;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_request_buffering on;
+        # 本文は Gateway 側でも 64 KiB(gateway.runs.limits.maxBodyBytes)で打ち切る
+        client_max_body_size 64k;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout    30s;
+        proxy_read_timeout    30s;
+    }
+
     location = /healthz {
         proxy_pass http://kp_gateway;
     }
@@ -316,13 +357,23 @@ server {
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、
   短くして SIGKILL されるとバッファ内のレコードを失う
 - 1ファイルに書き込むのは1プロセスに限る(Gateway は単一レプリカで動かす)
-- LibreChat overlay の orchestrator(`kp-ask serve`)は、AnswerRun を**別のボリューム** `kp-answer-runs` の
-  `/var/lib/kp/answer-runs/answer-runs.jsonl` に追記する(ADR-018 決定4。同じスキーマ、追記のみ、0600。
-  ディレクトリはイメージが uid 1000・0700 で用意する)。orchestrator のコンテナは Gateway の監査ログ
-  (`kp-audit`)・生クエリ原文(`kp-rawquery`)のボリュームをマウントしない。Orchestrator は Gateway が信頼
-  しない側(threat-model §1 の TB2)にあり、侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない
-  ようにするため。1ファイルに書くのは1プロセスという規則も保たれる(Gateway は `audit.jsonl`、orchestrator は
-  `answer-runs.jsonl`)
+- **監査ストアに書くのは Gateway だけ**(ADR-019)。Orchestrator(`kp-ask` / `kp-ask serve`)の run
+  (AnswerRun)も Gateway の run API(`/runs`)が `audit.jsonl` に記録する: run の開始で `answer_run`
+  (pending)、終了で `answer_run_finish`、フィードバックで `answer_run_feedback` を追記する(部分レコード。
+  書き直さない)。読み手は同じ `runId` の 3 種を結合して最終状態を得る(docs/audit-queries.md §0。昇格判定
+  レポートは統合して集計し、有効期間を過ぎて finish のない run を「放棄」、pending のない部分レコードを
+  「孤立」と数える。`gateway.runs.ttlSec` / `audit.rawQueryRetentionDays` を既定から変えたら
+  `--run-ttl-sec` / `--raw-query-retention-days` に同じ値を渡す)。
+  orchestrator のコンテナは監査ボリュームを一切マウントしない(Gateway の監査ログ `kp-audit`・生クエリ原文
+  `kp-rawquery` も、以前の `kp-answer-runs` も)。Orchestrator は Gateway が信頼しない側(threat-model §1 の
+  TB2)にあり、侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない。ADR-018 決定4 の別ボリューム
+  (`kp-answer-runs`、`answer-runs.jsonl`)は廃止した。以前の overlay で書いた `answer-runs.jsonl` が残って
+  いるなら、その期間の集計には `--audit` を 1 つ足して渡す(下)
+- **監査ボリュームの容量に警報を設ける**(threat-model TM-I5 (d))。run API は本文の大きさ(64 KiB)・質問の長さ
+  (4,000 字)・利用者ごとの頻度(既定 60 回 / 分。`gateway.runs.limits`)に上限をかけるが、期限内の runId
+  での `finish` / `feedback` の再送や単発の `tools/call` でレコードは増え続ける。fail-closed なので容量の枯渇は
+  ツール呼び出し全体の停止になる。`kp-audit` / `kp-rawquery` の空き容量(目安: 残り 20% で警報)と
+  `audit.jsonl` の増加率を監視し、利用者ごとの `invalid_run_id` の件数(docs/audit-queries.md §0)も見る
 - 昇格判定レポートはコンテナ内で監査ボリュームを読んで実行できる(手順と注意は docs/playbook.md
   「有効化判定」。レポートの実行自体がメタ監査の対象で、`--meta-audit-out` のファイルを監査ストアに残す):
 
@@ -336,13 +387,14 @@ server {
     --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
   ```
 
-  LibreChat overlay を使っている場合は、AnswerRun のボリュームも読み取り専用で見せて `--audit` を 2 回指定し、
-  両方を結合して集計する。gateway サービスには Gateway の監査ボリュームがマウントされており、AnswerRun の
-  ボリュームだけを `-v` で足す(名前付きボリュームの実名は compose の project 名 `kp-reference` +
-  `_kp-answer-runs`。`docker volume ls` で確かめられる):
+  LibreChat overlay を使っていても `--audit` は 1 つ(AnswerRun も Gateway の `audit.jsonl` にある)。
+  ADR-019 より前の overlay(orchestrator が `kp-answer-runs` に書いていた版)を動かした期間を含めて集計する
+  ときだけ、残っているボリュームを読み取り専用で見せて `--audit` を足す(名前付きボリュームの実名は compose の
+  project 名 `kp-reference` + `_kp-answer-runs`。`docker volume ls` で確かめられる。集計を終えたら ADR-013 §3 の
+  保持規程に従って削除する):
 
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.librechat.yml run --rm --no-deps \
+  docker compose run --rm --no-deps \
     -v kp-reference_kp-answer-runs:/var/lib/kp/answer-runs:ro \
     -v "$PWD/sources.json:/tmp/sources.json:ro" \
     --entrypoint node gateway packages/promotion-report/dist/cli.js \
@@ -361,10 +413,10 @@ server {
 
 | プロセス | stdout(機械が読む結果) | stderr(人が読むログ) | 監査(ファイル) |
 |---|---|---|---|
-| `kp-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink)、`WARNING`(開発部品の使用・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation 等)と `rawQueryPath`(生クエリ原文) |
+| `kp-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink、`run api: /runs (signing key: env KP_RUN_ID_KEY, kid …; orchestrator credential: env …; ttl …)`)、`WARNING`(開発部品の使用・一時鍵や開発用の資格情報・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation、AnswerRun の `answer_run` / `answer_run_finish` / `answer_run_feedback`)と `rawQueryPath`(生クエリ原文。run の質問原文を含む) |
 | `kp-gateway validate` | `validate: OK` と要約 | 設定の不備(`[code] path: message`)、`WARNING` | 書かない(ファイルも作らない) |
-| `kp-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告・エラー。AnswerRun(既定。開発用) | `--answer-run-jsonl` のファイル(AnswerRun) |
-| `kp-ask serve` | `--help` だけ | 起動ログ・エラー | `--answer-run-jsonl` のファイル(`NODE_ENV=production` では必須) |
+| `kp-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告(開発用の資格情報の使用)・エラー | 書かない(run は Gateway の run API に申告し、Gateway が記録する。ADR-019) |
+| `kp-ask serve` | `--help` だけ | 起動ログ(`run api: gateway (orchestrator credential: …)` を含む)・エラー | 書かない(同上) |
 | compose | コンテナの stdout / stderr は `docker logs` へ。収集は導入先の運用 | 同左 | 名前付きボリューム(§7) |
 
 出さないもの: トークン・API キー・AuthContext(`redactAuthContext` 経由でしか文字列化しない。不変条件 6)、
@@ -385,7 +437,9 @@ server {
   (minor-6 / minor-7 / minor-11): 未実装。リバースプロキシで緩和する(§6)
 - **監査 sink の死活**: `/healthz`(イメージの HEALTHCHECK)は待ち受けの死活だけを示し、監査の書き込み
   状態(バッファの滞留)は反映しない(threat-model TM-E6)。監査ボリュームの空き容量とファイルの更新を
-  別途監視する
+  別途監視する(§7 の容量の警報)
+- **run API の段階 2**(ADR-019 決定11): 引用がその run で返した文書かは Gateway で検証しない(段階 1 は
+  署名で発行元・本人・期限だけを確かめる)。Slack が有効な構成では引用 docId を記録しない(決定5)
 - Keycloak の本番構成(永続 DB、TLS、ホスト名、管理者の扱い)は対象外
 - イメージのレジストリ配布・署名、ベースイメージのダイジェスト固定(`deploy/Dockerfile` の
   `ARG NODE_IMAGE`)は未整備
@@ -395,8 +449,8 @@ server {
 
 ## 9. アップグレード手順(骨子)
 
-1. リリースノートと ADR の変更を確認し、監査ボリューム(`kp-audit` / `kp-rawquery`。LibreChat overlay を
-   使っている場合は AnswerRun の `kp-answer-runs` も)をバックアップする
+1. リリースノートと ADR の変更を確認し、監査ボリューム(`kp-audit` / `kp-rawquery`。ADR-019 より前の
+   overlay で作られた `kp-answer-runs` が残っていればそれも)をバックアップする
 2. 新しいイメージを用意する(イメージタグの差し替え)。現状はソースからビルドする:
    対象のタグを checkout して `docker compose build gateway`。レジストリ配布が整備されたら、
    `image:` を配布タグに差し替えて `build:` を外す
@@ -434,7 +488,7 @@ server {
     チャンネル・個人スコープに分類された結果を検索・一覧から落とし、fetch を `private_scope_excluded` で
     拒否する(ADR-016 追補2 決定3・4、TM-E8)
 - [ ] 監査閲覧担当の指名と閲覧目的の規程化、メタ監査の運用(ADR-013 §3)
-- [ ] `audit.failureMode` は `fail-closed` のまま運用する(`fail-open` はセキュリティポリシーへの明文化と
+- [ ] `audit.failureMode` は `fail-closed` のまま運用する(run API の 3 経路にも同じ設定が及ぶ。`fail-open` はセキュリティポリシーへの明文化と
   確認フラグが必要。ADR-011)
 - [ ] ループバック以外へ公開する前に §6.2 の緩和(TLS 終端、リクエスト期限、接続数上限、Host / Origin の
   許可リスト)をリバースプロキシに入れる

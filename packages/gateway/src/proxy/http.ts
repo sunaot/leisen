@@ -34,6 +34,11 @@
  *   DELETE はセッション終了用だが、ステートレスで終了すべきセッションがない
  *   (仕様上 405 可)。405 はユーザー・ソースの情報を含まないため認証より前に
  *   返し、IdPへの無駄な照会を発生させない
+ * - `POST /runs`・`POST /runs/{runId}/finish`・`POST /runs/{runId}/feedback`: run API
+ *   (ADR-019 決定3、runs.ts)。MCP とは別の JSON の面で、本人の Bearer を `/mcp` と同じ手順で
+ *   検証し、Orchestrator の資格情報(ORCHESTRATOR_CREDENTIAL_HEADER)を求める。本文は
+ *   gateway.runs.limits.maxBodyBytes まで。`/mcp` の tools/call にも同じヘッダの検証結果を
+ *   AuthInfo で渡す(名前空間付きの runId の受理に要る)
  * - `GET /healthz`: 認証不要の死活確認。`{"status":"ok"}` のみを返し、ソース
  *   一覧・利用者情報を出さない
  * - 監査: HTTP層で拒否したリクエストはGatewayコアに到達しないため監査対象外
@@ -61,8 +66,11 @@ import {
   GATEWAY_HEALTH_PATH,
 } from "../config/schema.js";
 import type { Identity } from "../idp/types.js";
+import { isValidRunId } from "../run/runid.js";
+import { runApiPathFor } from "../run/path.js";
 import type { Gateway } from "./gateway.js";
 import { createGatewayMcpServer, gatewayAuthInfo } from "./mcp.js";
+import { ORCHESTRATOR_CREDENTIAL_HEADER, type RunApiResponse } from "./runs.js";
 import {
   GATEWAY_REJECTION_ERROR_CODE,
   GatewayError,
@@ -80,9 +88,13 @@ const REJECTION_MESSAGES: Partial<Record<GatewayErrorClass, string>> = {
   idp_unavailable: "identity provider is unavailable",
   misconfigured: "gateway is misconfigured",
   internal_error: "internal error",
-  invalid_request: "method not allowed",
+  invalid_request: "invalid request",
   not_found: "not found",
+  payload_too_large: "request body exceeds the configured limit",
 };
+
+/** run API(ADR-019)のパス。`/runs`、`/runs/{runId}/finish`、`/runs/{runId}/feedback` */
+export const GATEWAY_RUNS_PATH = runApiPathFor(DEFAULT_GATEWAY_HTTP_PATH);
 
 type RequestAuthentication =
   | { readonly ok: true; readonly identity: Identity }
@@ -168,6 +180,12 @@ function sendRejection(
   errorClass: GatewayErrorClass,
   headers: Readonly<Record<string, string>> = {},
 ): void {
+  const message =
+    status === 405
+      ? "method not allowed"
+      : status === 415
+        ? "unsupported media type"
+        : (REJECTION_MESSAGES[errorClass] ?? "request rejected");
   sendJson(
     res,
     status,
@@ -176,7 +194,7 @@ function sendRejection(
       id: null,
       error: {
         code: GATEWAY_REJECTION_ERROR_CODE,
-        message: REJECTION_MESSAGES[errorClass] ?? "request rejected",
+        message,
         data: { errorClass },
       },
     },
@@ -206,7 +224,13 @@ async function serveMcpRequest(
     // 型だけ合わせる。実体は Transport IF を実装している
     await server.connect(transport as Transport);
     const authenticated: IncomingMessage & { auth?: AuthInfo } = req;
-    authenticated.auth = gatewayAuthInfo(identity);
+    // Orchestrator の資格情報(共有秘密)の検証結果を AuthInfo で渡す。名前空間付きのキーで
+    // runId を申告する tools/call の受理に要る(ADR-019 決定3・4)
+    authenticated.auth = gatewayAuthInfo(identity, {
+      orchestratorVerified: gateway.verifyOrchestratorCredential(
+        req.headers[ORCHESTRATOR_CREDENTIAL_HEADER],
+      ),
+    });
     await transport.handleRequest(authenticated, res);
   } finally {
     // JSON応答モードでは通常 handleRequest の完了=応答の送出完了。取り消し通知を
@@ -222,6 +246,123 @@ function requestPath(url: string | undefined): string {
   return query === -1 ? raw : raw.slice(0, query);
 }
 
+/** run API のリクエスト本文を読む(上限超過は読み捨てて 413)。 */
+type BodyRead =
+  | { readonly ok: true; readonly json: unknown }
+  | { readonly ok: false; readonly status: number; readonly errorClass: GatewayErrorClass };
+
+async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<BodyRead> {
+  const contentType = req.headers["content-type"] ?? "";
+  if (!/^application\/json\b/i.test(contentType)) {
+    return { ok: false, status: 415, errorClass: "invalid_request" };
+  }
+  const declared = Number(req.headers["content-length"]);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    return { ok: false, status: 413, errorClass: "payload_too_large" };
+  }
+  const chunks: Buffer[] = [];
+  let received = 0;
+  for await (const chunk of req) {
+    const buffer = chunk as Buffer;
+    received += buffer.byteLength;
+    if (received > maxBytes) {
+      return { ok: false, status: 413, errorClass: "payload_too_large" };
+    }
+    chunks.push(buffer);
+  }
+  try {
+    return { ok: true, json: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown };
+  } catch {
+    return { ok: false, status: 400, errorClass: "invalid_request" };
+  }
+}
+
+/**
+ * run API(runsPath = runApiPathFor(MCP のパス))配下のパスを解釈する。runId は形(文字種・長さ)
+ * だけを見る(検証は RunApi)。
+ */
+function parseRunsPath(
+  path: string,
+  runsPath: string,
+): { readonly kind: "start" } | { readonly kind: "finish" | "feedback"; readonly runId: string } | undefined {
+  if (path === runsPath) {
+    return { kind: "start" };
+  }
+  const rest = path.startsWith(`${runsPath}/`) ? path.slice(runsPath.length + 1) : undefined;
+  if (rest === undefined) {
+    return undefined;
+  }
+  const segments = rest.split("/");
+  if (segments.length !== 2) {
+    return undefined;
+  }
+  const [runId, action] = segments as [string, string];
+  if (!isValidRunId(runId) || (action !== "finish" && action !== "feedback")) {
+    return undefined;
+  }
+  return { kind: action, runId };
+}
+
+/** run API の応答を書き出す(認証済み応答はキャッシュさせない)。 */
+function sendRunApiResponse(res: ServerResponse, response: RunApiResponse): void {
+  sendJson(res, response.status, response.body, response.headers ?? {});
+}
+
+/**
+ * run API(ADR-019 決定3)。MCP とは別の HTTP + JSON の面。本人の Bearer を `/mcp` と同じ
+ * 手順で検証し、Orchestrator の資格情報の有無は RunApi が判定する(資格情報なしは 403)。
+ * 拒否の応答は `{ error: { errorClass, message } }` の固定文言で、申告値をエコーしない。
+ */
+async function serveRunsRequest(
+  gateway: Gateway,
+  req: IncomingMessage,
+  res: ServerResponse,
+  path: string,
+  runsPath: string,
+): Promise<void> {
+  const target = parseRunsPath(path, runsPath);
+  const runs = gateway.runs;
+  if (target === undefined || runs === undefined) {
+    sendRejection(res, 404, "not_found");
+    return;
+  }
+  if (req.method !== "POST") {
+    sendRejection(res, 405, "invalid_request", { allow: "POST" });
+    return;
+  }
+  const auth = await authenticateRequest(gateway, req.headers.authorization);
+  if (!auth.ok) {
+    sendRejection(res, auth.status, auth.errorClass, auth.headers);
+    return;
+  }
+  const orchestratorVerified = runs.verifyOrchestratorCredential(
+    req.headers[ORCHESTRATOR_CREDENTIAL_HEADER],
+  );
+  const body = await readJsonBody(req, runs.maxBodyBytes);
+  if (!body.ok) {
+    // 上限超過の本文は読み捨てて接続を閉じる(残りを受け続けない)
+    sendRejection(res, body.status, body.errorClass, body.status === 413 ? { connection: "close" } : {});
+    return;
+  }
+  switch (target.kind) {
+    case "start":
+      sendRunApiResponse(res, await runs.start(auth.identity, orchestratorVerified, body.json));
+      return;
+    case "finish":
+      sendRunApiResponse(
+        res,
+        await runs.finish(auth.identity, orchestratorVerified, target.runId, body.json),
+      );
+      return;
+    case "feedback":
+      sendRunApiResponse(
+        res,
+        await runs.feedback(auth.identity, orchestratorVerified, target.runId, body.json),
+      );
+      return;
+  }
+}
+
 async function route(
   gateway: Gateway,
   mcpPath: string,
@@ -229,6 +370,12 @@ async function route(
   res: ServerResponse,
 ): Promise<void> {
   const path = requestPath(req.url);
+  // run API は MCP エンドポイントと同じディレクトリの runs(run/path.ts)。Orchestrator も同じ規則で導く
+  const runsPath = runApiPathFor(mcpPath);
+  if (path === runsPath || path.startsWith(`${runsPath}/`)) {
+    await serveRunsRequest(gateway, req, res, path, runsPath);
+    return;
+  }
   if (path === mcpPath) {
     if (req.method !== "POST") {
       sendRejection(res, 405, "invalid_request", { allow: "POST" });

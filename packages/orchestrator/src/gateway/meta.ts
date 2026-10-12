@@ -19,10 +19,10 @@
  * Gateway が認証した userId で、AnswerRun の主体をこれに束縛する(セキュリティ
  * レビュー 2026-09-27 H1、orchestrator.ts)。
  */
+import { type Actor } from "@kp/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
-  type Actor,
   type ExecutionClass,
 } from "@kp/gateway";
 import { HUMAN_ACTOR } from "../audit.js";

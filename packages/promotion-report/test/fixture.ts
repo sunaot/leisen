@@ -11,7 +11,8 @@
  * - run-1 (u1) unresolved: gdrive+wiki。search 3回(gdrive と wiki を並列 → gdrive を fetch →
  *   wiki を再検索)。rawQuery原文あり(保持期間内)
  * - run-2 (u1) resolved:   gdrive+legacy(未分類ソース)。search 1回 → legacy を fetch
- * - run-3 (u2) unresolved: wiki+slack。search 2回。rawQuery原文なし(保持期間切れ)
+ * - run-3 (u2) unresolved: wiki+slack。search 2回。rawQuery原文なし(開始が FIXED_NOW の 41 日前で
+ *   保持期間(30 日)切れ)
  * - run-4 (u1) pending:    gdrive の search 2回 + fetch。率の分母に入れない
  * - run-5 (u2) unresolved: fileshare(nativeSearch:none)の search 1回。finalQueryDigestなし
  * - run-6 (u2) resolved:   wiki を list → fetch。search 0回(検索なし)
@@ -20,7 +21,7 @@ import {
   digestQuery,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/gateway";
+} from "@kp/audit";
 import type { SourcesMeta } from "../src/index.js";
 
 export const FIXED_NOW = new Date("2026-07-12T09:00:00.000Z");
@@ -158,13 +159,13 @@ export function fixtureRecords(): AuditRecord[] {
     answerRun(
       "run-3",
       "u2",
-      "2026-07-11T09:30:00Z",
+      "2026-06-01T09:30:00Z",
       "unresolved",
       ["wiki", "slack"],
       digestQuery("退職手続きの流れ"),
       "not_found_in_sources",
     ),
-    ...runInvocations("run-3", "u2", "2026-07-11T09:30:00Z", [
+    ...runInvocations("run-3", "u2", "2026-06-01T09:30:00Z", [
       ["search", "wiki"],
       ["search", "slack"],
     ]),

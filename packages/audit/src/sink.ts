@@ -149,7 +149,15 @@ export class BufferedAuditSink implements AuditSink {
 
 /** レコード種別ごとの時刻フィールドを取り出す(保持期限判定用)。 */
 export function recordTimestamp(record: AuditRecord): string {
-  return record.recordType === "answer_run" ? record.startedAt : record.timestamp;
+  switch (record.recordType) {
+    case "answer_run":
+      return record.startedAt;
+    case "answer_run_finish":
+    case "answer_run_feedback":
+      return record.recordedAt;
+    default:
+      return record.timestamp;
+  }
 }
 
 /**
@@ -187,7 +195,8 @@ export class InMemoryAuditStore implements AuditStoreWriter {
 
 /**
  * 監査レコードの冪等キー(レコード種別ごと: tool_invocation は requestId、answer_run は
- * runId、audit_access は accessId、retention_purge は purgeId)。at-least-once の再送で
+ * runId、answer_run_finish / answer_run_feedback は recordId、audit_access は accessId、
+ * retention_purge は purgeId)。at-least-once の再送で
  * 同じレコードが複数回書かれうるため(BufferedAuditSink、JSONL の重複行)、読み手・
  * 受け手はこのキーで重複を除く。同じキーのレコードは後から書かれたものを採る
  * (InMemoryAuditStore、promotion-report の集計)。
@@ -198,6 +207,10 @@ export function auditRecordIdempotencyKey(record: AuditRecord): string {
       return `answer_run:${record.runId}`;
     case "tool_invocation":
       return `tool_invocation:${record.requestId}`;
+    case "answer_run_finish":
+      return `answer_run_finish:${record.recordId}`;
+    case "answer_run_feedback":
+      return `answer_run_feedback:${record.recordId}`;
     case "audit_access":
       return `audit_access:${record.accessId}`;
     case "retention_purge":

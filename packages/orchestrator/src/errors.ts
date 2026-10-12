@@ -86,6 +86,17 @@ export type GatewayClientErrorClass =
   | "gateway_protocol_error"
   /** 上記以外で Gateway が要求を拒否した */
   | "gateway_rejected"
+  /**
+   * run API(ADR-019): runId を Gateway が受け付けなかった(本人・actor の違い、期限切れ、
+   * 発行元の違い。理由は区別されない)
+   */
+  | "run_not_accepted"
+  /** run API: Orchestrator の資格情報(共有秘密)を Gateway が拒否した(設定のずれ) */
+  | "orchestrator_credential_rejected"
+  /** run API: 利用者ごとの頻度上限(429) */
+  | "rate_limited"
+  /** run API: Gateway が監査ストアに書けず fail-closed で拒否した(503) */
+  | "audit_write_failed"
   /** 呼び出し側の AbortSignal による中断 */
   | "aborted";
 
@@ -104,17 +115,13 @@ export class GatewayClientError extends Error {
 export type OrchestratorErrorClass =
   /** 質問・userId の欠落や過大 */
   | "invalid_input"
-  /**
-   * 構築時のオプション・注入物の不備(citedDocIds の記録方針、hashed の鍵の欠落、
-   * 採番した runId の形式違反など。fail-closed で Gateway にアクセスしない)
-   */
+  /** 構築時のオプション・注入物の不備(fail-closed で Gateway にアクセスしない) */
   | "invalid_configuration"
-  /** AnswerRun を監査ストアへ書けない(fail-closed、ADR-011 §4) */
-  | "audit_write_failed"
-  /** recordFeedback の対象 run が見つからない(未完了・保持上限超過を含む) */
-  | "run_not_found"
-  /** recordFeedback の利用者が run の利用者と一致しない */
-  | "feedback_forbidden";
+  /**
+   * run の終了を Gateway に記録できない(run API の finish が audit_write_failed で拒否された。
+   * fail-closed、ADR-011 §4・ADR-019 決定6)。回答は返さない
+   */
+  | "audit_write_failed";
 
 export class OrchestratorError extends Error {
   constructor(

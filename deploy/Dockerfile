@@ -35,7 +35,7 @@
 # その依存が入らずビルドが失敗する(orchestrator の追加時に CI の reference-deploy で
 # 実際に起きた: `Cannot find module '@anthropic-ai/sdk'`)。
 # runtime ステージにはイメージに含める workspace(gateway と、それが読み込む
-# connector-sdk / connector-github、orchestrator、運用 CLI の promotion-report)だけを置く。
+# audit / connector-sdk / connector-github、orchestrator、運用 CLI の promotion-report)だけを置く。
 # orchestrator を含めるため、本番依存に @anthropic-ai/sdk が加わる(ADR-018 帰結)。
 # npm ci は manifest のない workspace を無視するので、runtime の manifest を減らしても
 # lockfile との整合検査は通る(CI で確認済み)。
@@ -62,15 +62,12 @@
 #     docs/install.md「未実装事項」)。イメージに curl がないため node で確認する。
 #     待ち受けのポートを変えたら KP_HEALTHCHECK_URL も合わせる。orchestrator として
 #     起動するコンテナは compose 側で healthcheck を上書きする(kp-ask serve の /healthz)
-#   - orchestrator(kp-ask serve)の AnswerRun は /var/lib/kp/answer-runs(Gateway の監査
-#     ボリュームとは別のボリューム)の answer-runs.jsonl に追記する(ADR-018 決定4)。compose
-#     の overlay は orchestrator にこのボリュームだけを書き込み可能でマウントし、Gateway の
-#     監査ログ・生クエリ原文のボリュームはマウントしない(Orchestrator から Gateway の監査
-#     ログを読めない・書けない)。kp-ask serve はディレクトリを作らないため、ここで用意する
-#     (所有者・権限は監査ボリュームと同じ)。Gateway として起動するコンテナでは使わない。
-#     VOLUME の宣言により、compose がマウントしないパスには空の匿名ボリュームが付く
-#     (gateway の /var/lib/kp/answer-runs、orchestrator の /var/lib/kp/audit 等。どちらも
-#     名前付きボリュームとは別物で、互いのデータは見えない)
+#   - orchestrator(kp-ask serve)は監査ストアに書かない(ADR-019)。run(AnswerRun)は Gateway の
+#     run API に申告し、Gateway が /var/lib/kp/audit に記録する。compose の overlay は orchestrator
+#     に設定だけを読み取り専用でマウントし、Gateway の監査ログ・生クエリ原文のボリュームは
+#     マウントしない(Orchestrator から Gateway の監査ログを読めない・書けない)。VOLUME の
+#     宣言により、orchestrator の /var/lib/kp/audit 等には空の匿名ボリュームが付くが、名前付き
+#     ボリュームとは別物で、何も書かれない
 
 ARG NODE_IMAGE=node:22-bookworm-slim
 
@@ -79,6 +76,7 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/audit/package.json packages/audit/
 COPY packages/connector-sdk/package.json packages/connector-sdk/
 COPY packages/connector-github/package.json packages/connector-github/
 COPY packages/gateway/package.json packages/gateway/
@@ -98,6 +96,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY packages/audit/package.json packages/audit/
 COPY packages/connector-sdk/package.json packages/connector-sdk/
 COPY packages/connector-github/package.json packages/connector-github/
 COPY packages/gateway/package.json packages/gateway/
@@ -107,6 +106,7 @@ COPY packages/promotion-report/package.json packages/promotion-report/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
+COPY --from=build /app/packages/audit/dist packages/audit/dist
 COPY --from=build /app/packages/connector-sdk/dist packages/connector-sdk/dist
 COPY --from=build /app/packages/connector-github/dist packages/connector-github/dist
 COPY --from=build /app/packages/gateway/dist packages/gateway/dist
@@ -115,11 +115,11 @@ COPY --from=build /app/packages/orchestrator/dist packages/orchestrator/dist
 COPY --from=build /app/packages/orchestrator/prompts packages/orchestrator/prompts
 COPY --from=build /app/packages/promotion-report/dist packages/promotion-report/dist
 
-RUN mkdir -p /etc/kp /var/lib/kp/audit /var/lib/kp/rawquery /var/lib/kp/answer-runs \
-    && chown 1000:1000 /var/lib/kp/audit /var/lib/kp/rawquery /var/lib/kp/answer-runs \
-    && chmod 0700 /var/lib/kp/audit /var/lib/kp/rawquery /var/lib/kp/answer-runs
+RUN mkdir -p /etc/kp /var/lib/kp/audit /var/lib/kp/rawquery \
+    && chown 1000:1000 /var/lib/kp/audit /var/lib/kp/rawquery \
+    && chmod 0700 /var/lib/kp/audit /var/lib/kp/rawquery
 # 空の名前付きボリュームは初回マウント時にこのディレクトリの所有者・権限を引き継ぐ
-VOLUME ["/var/lib/kp/audit", "/var/lib/kp/rawquery", "/var/lib/kp/answer-runs"]
+VOLUME ["/var/lib/kp/audit", "/var/lib/kp/rawquery"]
 
 USER 1000:1000
 # 8787: Gateway(既定)、8790: orchestrator(kp-ask serve、compose overlay の --listen)

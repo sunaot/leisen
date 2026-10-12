@@ -3,7 +3,7 @@
  * (T-021、ADR-018)。エントリは kp-ask(bin/kp-ask.ts の runCli が `serve` で振り分ける)。
  *
  *   kp-ask serve --gateway <Gateway の MCP URL> --config <deployment.yaml>
- *                [--listen 127.0.0.1:8790] [--path /mcp] [--answer-run-jsonl <path>]
+ *                [--listen 127.0.0.1:8790] [--path /mcp]
  *                [--max-concurrent-runs 4] [--max-question-chars 4000]
  *                [--confirm-exposed-host] [--allow-non-persistable-sources]
  *                [--allow-insecure-upstream]
@@ -12,8 +12,12 @@
  *
  * - ツールは ask / feedback(server/tools.ts)。利用者の認証は Gateway に委譲する
  *   (server/http.ts の preflight。Orchestrator は IdP を持たず、独自の資格情報も持たない)
- * - --config(必須): citedDocIds の記録方針(docIdAudit)、orchestrator セクション
- *   (maxIterations / costLimitPerQuery)、不変条件7 の判定に使う
+ * - --config(必須): orchestrator セクション(maxIterations / costLimitPerQuery)と不変条件7 の
+ *   判定に使う(citedDocIds の記録方針は Gateway の run API がかける。ADR-019 決定5)
+ * - run の記録(AnswerRun)は Gateway の run API に申告する(ADR-019)。環境変数
+ *   KP_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
+ *   付ける。未設定なら開発用の既定値(WARNING)、NODE_ENV=production では必須(終了コード 2。
+ *   bin/credential-options.ts)。Orchestrator は監査ストアに触れない
  * - 不変条件7(ADR-018 決定5): 永続化不可のソース(kind が slack / slack-*)が有効なら起動を
  *   拒否する(終了コード 1)。--allow-non-persistable-sources で解除できる(UI 側の一時チャット・
  *   保持期間の設定と法務確認が前提。docs/ui-librechat.md)。解除時は ask の retentionClass が
@@ -24,9 +28,6 @@
  *   (KP_ALLOW_INSECURE_UPSTREAM=1)で開発・評価用途に限り非ループバックの http を許す
  *   (NODE_ENV=production では終了コード 2。有効時は平文 http の上流をホスト名で WARNING。
  *   bin/upstream-options.ts)
- * - AnswerRun は --answer-run-jsonl(環境変数 KP_ANSWER_RUN_JSONL)に追記する(決定4。Gateway の
- *   監査 JSONL とは別ファイル)。省略時は stderr に出す(開発用。起動ログに WARNING)。
- *   NODE_ENV=production では省略できない(終了コード 2。セキュリティレビュー S5)
  * - Gateway が公開するソースと --config の照合(S6): --config で有効なコネクタにないソースを
  *   Gateway が公開していれば、そのリクエストの ask / feedback を config_mismatch で拒否する
  *   (不変条件7 と citedDocIds の分類は --config で判定しているため)。
@@ -45,14 +46,12 @@ import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
-  AuditLogger,
   DeploymentConfigError,
   isLoopbackHost,
   loadDeploymentConfig,
-  type AuditSink,
   type DeploymentConfig,
 } from "@kp/gateway";
-import { docIdAuditFromDeployment, isSlackKind, StderrDebugAuditSink } from "../audit.js";
+import { isSlackKind } from "../audit.js";
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL,
@@ -65,7 +64,6 @@ import { parseGatewayUrl, parseInsecureGatewayUrl } from "../gateway/mcp-client.
 import type { LlmClient } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
 import { loadExplorePrompt } from "../prompt.js";
-import { prepareAnswerRunJsonlSink } from "../server/answer-run-jsonl.js";
 import {
   createOrchestratorRequestListener,
   DEFAULT_ORCHESTRATOR_HTTP_PATH,
@@ -78,6 +76,12 @@ import {
   MAX_CONCURRENT_RUNS_LIMIT,
   ServerLimits,
 } from "../server/limits.js";
+import {
+  ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING,
+  ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
+  describeOrchestratorCredential,
+  resolveOrchestratorCredential,
+} from "./credential-options.js";
 import type { CliDependencies, CliIo } from "./kp-ask.js";
 import { LLM_USAGE_LINES, parseLlmCliOptions } from "./llm-options.js";
 import {
@@ -85,7 +89,6 @@ import {
   INSECURE_UPSTREAM_USAGE_LINE,
   insecureUpstreamWarning,
   isInsecureGatewayUrl,
-  isProductionEnv,
   parseInsecureUpstreamOption,
 } from "./upstream-options.js";
 
@@ -98,7 +101,7 @@ const PREFIX = "kp-ask serve";
 
 export const SERVE_USAGE = [
   "usage: kp-ask serve --gateway <Gateway の MCP エンドポイント URL> --config <deployment.yaml>",
-  "                    [--listen <ホスト:ポート>] [--path <パス>] [--answer-run-jsonl <path>]",
+  "                    [--listen <ホスト:ポート>] [--path <パス>]",
   "                    [--max-concurrent-runs <N>] [--max-question-chars <N>]",
   "                    [--confirm-exposed-host] [--allow-non-persistable-sources]",
   "                    [--allow-insecure-upstream] [LLM バックエンドの指定(下記)]",
@@ -106,10 +109,9 @@ export const SERVE_USAGE = [
   "  利用者の認証は Gateway に委譲します(Authorization: Bearer <IdP が利用者に発行したアクセストークン>)。",
   `  --listen の既定は ${DEFAULT_SERVE_LISTEN}(環境変数 KP_LISTEN)。ループバック以外は --confirm-exposed-host が必要です。`,
   `  --path の既定は ${DEFAULT_ORCHESTRATOR_HTTP_PATH}(死活確認は GET ${ORCHESTRATOR_HEALTH_PATH})。`,
-  "  --answer-run-jsonl の既定は環境変数 KP_ANSWER_RUN_JSONL。省略時は AnswerRun を stderr に出します(開発用。NODE_ENV=production では必須)。",
   `  --max-concurrent-runs の既定は ${DEFAULT_MAX_CONCURRENT_RUNS}(1〜${MAX_CONCURRENT_RUNS_LIMIT})、--max-question-chars の既定は ${DEFAULT_MAX_QUESTION_CHARS}(1〜${MAX_QUESTION_CHARS})。`,
   "  永続化不可のソース(Slack)が有効な --config では起動しません(--allow-non-persistable-sources で解除)。",
-  "  --config の audit.privateScopeDocIds が hashed なら環境変数 KP_AUDIT_HMAC_KEY が必要です。",
+  ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
   "  終了コード: 0 正常終了(SIGINT / SIGTERM)、1 起動の拒否・実行時エラー、2 引数・設定の不備",
@@ -119,19 +121,6 @@ export const SERVE_USAGE = [
 export const NON_PERSISTABLE_SOURCES_REFUSAL =
   "永続化不可のソース(Slack)が有効な構成では、履歴を保存する汎用 UI から使えません。" +
   "解除するには --allow-non-persistable-sources を付け、docs/ui-librechat.md の保持設定と法務確認(ADR-014)を行ってください。";
-
-/** NODE_ENV=production で AnswerRun の書き先がないときの文言(セキュリティレビュー S5)。 */
-export const ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION =
-  "NODE_ENV=production では AnswerRun の書き先が必須です。--answer-run-jsonl(または環境変数 KP_ANSWER_RUN_JSONL)を指定してください(stderr への出力は開発用です)。";
-
-/**
- * audit.privateScopeDocIds が hashed なのに KP_AUDIT_HMAC_KEY がないときの文言(kp-ask の1問モードと
- * 共通)。鍵の値は出さない。生成方法を添える(issue #38。鍵は導入ごとに1回だけ作って保管し、同じ値を
- * 使い続ける。変えると以前の hmac 値と突き合わせられなくなる)。
- */
-export const AUDIT_HMAC_KEY_REQUIRED_MESSAGE =
-  "audit.privateScopeDocIds が hashed のため、環境変数 KP_AUDIT_HMAC_KEY にデプロイ固有鍵を設定してください" +
-  "(鍵は導入ごとに1回だけ生成して保管し、毎回同じ値を使います。生成例: openssl rand -hex 32)。";
 
 /** 待ち受けのポートが使用中(EADDRINUSE)のときの案内。 */
 export function servePortInUseMessage(port: number): string {
@@ -158,7 +147,9 @@ interface ServeArgs {
   readonly config: string;
   readonly listen: { readonly host: string; readonly port: number };
   readonly path: string;
-  readonly answerRunJsonl: string | undefined;
+  /** Gateway と共有する Orchestrator の資格情報(秘密。ログに出さない) */
+  readonly orchestratorCredential: string;
+  readonly credentialSource: "env" | "dev-default";
   readonly maxConcurrentRuns: number;
   readonly maxQuestionChars: number;
   readonly confirmExposedHost: boolean;
@@ -207,7 +198,6 @@ function parseServeArgsStrict(argv: readonly string[]) {
       config: { type: "string" },
       listen: { type: "string" },
       path: { type: "string" },
-      "answer-run-jsonl": { type: "string" },
       "max-concurrent-runs": { type: "string" },
       "max-question-chars": { type: "string" },
       "confirm-exposed-host": { type: "boolean" },
@@ -256,7 +246,7 @@ function parseServeArgs(
   const config = nonEmpty(values.config);
   if (config === undefined) {
     throw new ServeUsageError(
-      "--config に deployment.yaml を指定してください(citedDocIds の記録方針と、永続化不可のソースの判定に使います)。",
+      "--config に deployment.yaml を指定してください(永続化不可のソースの判定と、Gateway が公開するソースとの照合に使います)。",
     );
   }
   const listen = parseListen(values.listen ?? nonEmpty(env["KP_LISTEN"]) ?? DEFAULT_SERVE_LISTEN);
@@ -287,18 +277,18 @@ function parseServeArgs(
   if (!llm.ok) {
     throw new ServeUsageError(llm.message);
   }
-  const answerRunJsonl =
-    nonEmpty(values["answer-run-jsonl"]) ?? nonEmpty(env["KP_ANSWER_RUN_JSONL"]);
-  if (answerRunJsonl === undefined && isProductionEnv(env)) {
-    // 本番で AnswerRun を永続化しない構成(stderr のデバッグ出力)にしない(S5)
-    throw new ServeUsageError(ANSWER_RUN_JSONL_REQUIRED_IN_PRODUCTION);
+  // Gateway の run API に付ける Orchestrator の資格情報(本番では必須。値は表示しない)
+  const credential = resolveOrchestratorCredential(env);
+  if (!credential.ok) {
+    throw new ServeUsageError(credential.message);
   }
   return {
     gateway,
     config,
     listen,
     path,
-    answerRunJsonl,
+    orchestratorCredential: credential.credential,
+    credentialSource: credential.source,
     maxConcurrentRuns,
     maxQuestionChars,
     confirmExposedHost: values["confirm-exposed-host"] === true,
@@ -459,22 +449,6 @@ export async function runServe(
     return 1;
   }
 
-  // AnswerRun の書き先(決定4)
-  let sink: AuditSink;
-  let sinkDescription: string | undefined;
-  if (args.answerRunJsonl !== undefined) {
-    // 書き先の検査は1問モード(kp-ask --answer-run-jsonl)と共通
-    const prepared = await prepareAnswerRunJsonlSink(args.answerRunJsonl, { config, configPath });
-    if (!prepared.ok) {
-      io.stderr(`${PREFIX}: ${prepared.message}`);
-      return 1;
-    }
-    sink = prepared.sink;
-    sinkDescription = `jsonl ${prepared.file}`;
-  } else {
-    sink = new StderrDebugAuditSink((line) => io.stderr(line));
-  }
-
   // 探索プロンプト(prompts/)がなければ、どの run も失敗するため起動しない
   try {
     await loadExplorePrompt();
@@ -494,16 +468,11 @@ export async function runServe(
 
   let orchestrator: Orchestrator;
   try {
-    orchestrator = new Orchestrator({
-      llm,
-      auditLogger: new AuditLogger(sink),
-      docIdAudit: docIdAuditFromDeployment(config, deps.env["KP_AUDIT_HMAC_KEY"]),
-      settings: settingsFromDeployment(config),
-    });
+    orchestrator = new Orchestrator({ llm, settings: settingsFromDeployment(config) });
   } catch (error) {
     io.stderr(
-      error instanceof OrchestratorError && error.errorClass === "invalid_configuration"
-        ? `${PREFIX}: ${AUDIT_HMAC_KEY_REQUIRED_MESSAGE}`
+      error instanceof OrchestratorError
+        ? `${PREFIX}: Orchestrator を初期化できませんでした(${error.errorClass})。`
         : `${PREFIX}: Orchestrator を初期化できませんでした。`,
     );
     return 2;
@@ -518,6 +487,8 @@ export async function runServe(
     {
       orchestrator,
       gatewayUrl: gatewayUrl.href,
+      // run API と runId を申告する tools/call に付ける(ADR-019 決定3)
+      orchestratorCredential: args.orchestratorCredential,
       limits,
       retentionClass: nonPersistable.length > 0 ? "non_persistable" : "persistable",
       // Gateway が --config にないソースを公開していれば ask / feedback を断る(S6)。
@@ -565,13 +536,12 @@ export async function runServe(
   io.stderr(`${PREFIX}: deployment: ${config.deployment.name}`);
   // Gateway の URL はホストだけ(パス・クエリは出さない)
   io.stderr(`${PREFIX}: gateway: ${gatewayUrl.protocol}//${gatewayUrl.host}`);
-  if (sinkDescription !== undefined) {
-    io.stderr(`${PREFIX}: answer-run sink: ${sinkDescription}`);
-  } else {
-    io.stderr(
-      `${PREFIX}: WARNING: answer-run sink: stderr (development only; AnswerRun records are not persisted). ` +
-        "Set --answer-run-jsonl or KP_ANSWER_RUN_JSONL",
-    );
+  // run の記録は Gateway の run API(ADR-019)。資格情報の値は出さない
+  io.stderr(
+    `${PREFIX}: run api: gateway (orchestrator credential: ${describeOrchestratorCredential(args.credentialSource)})`,
+  );
+  if (args.credentialSource === "dev-default") {
+    io.stderr(`${PREFIX}: ${ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING}`);
   }
   io.stderr(
     `${PREFIX}: limits: max-concurrent-runs=${limits.runs.maxConcurrentRuns}, ` +

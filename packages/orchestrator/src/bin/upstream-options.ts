@@ -35,7 +35,7 @@ export type InsecureUpstreamOption =
 
 /**
  * NODE_ENV=production か(渡された環境に加えてプロセスの環境も見る。安全側に倒す)。
- * kp-ask serve の --answer-run-jsonl 必須の判定(serve.ts)にも使う。
+ * Orchestrator の資格情報(KP_ORCHESTRATOR_CREDENTIAL)の必須の判定(credential-options.ts)にも使う。
  */
 export function isProductionEnv(env: Env): boolean {
   return env["NODE_ENV"] === "production" || process.env["NODE_ENV"] === "production";
