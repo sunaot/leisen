@@ -32,6 +32,10 @@ idp:
     # 異なる(内部のホスト名で呼ぶ等)ときだけ allowedIssuers: [<公開 URL>/realms/<realm>] を書く
 
 connectors:
+  # kind は省略時 id と同じ。module を省略できるのは公式コネクタの kind(現在は github)だけで、
+  # それ以外は connectors[].module にプラグインのパッケージ名かパスを書く(ADR-021)。
+  # gdrive / slack の公式コネクタはまだないため(T-005 / T-006)、現時点では validate で
+  # unknown_connector_kind が列挙される
   - id: gdrive
     enabled: true
     # ソース別のタイムアウト・レート制御(T-003)。Gatewayが適用する。

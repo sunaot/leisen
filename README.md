@@ -135,7 +135,7 @@ npx leisen-ask --gateway http://127.0.0.1:8787/mcp --config examples/deployment.
 NODE_ENV=production npx leisen-gateway validate --config examples/deployment.dev.yaml   # 4件の不備を列挙して exit 1
 ```
 
-`leisen-gateway validate` は設定の読込からコネクタ・Gateway の組み立てまでを行い(listen しない)、見つかった不備を全件列挙して exit 1、問題がなければ要約を出して exit 0 で終わる。本番構成のサンプル `examples/deployment.yaml` はコネクタのプラグイン(`@leisen/connector-<kind>`)と本人資格情報の取得方式(T-004)がまだないため、現時点では validate で不備が列挙される。
+`leisen-gateway validate` は設定の読込からコネクタ・Gateway の組み立てまでを行い(listen しない)、見つかった不備を全件列挙して exit 1、問題がなければ要約を出して exit 0 で終わる。本番構成のサンプル `examples/deployment.yaml` は Google Drive / Slack のコネクタ(公式コネクタの許可表にまだない。ADR-021)と本人資格情報の取得方式(T-004)がまだないため、現時点では validate で不備が列挙される。
 
 ## Docker Compose で動かす(リファレンスデプロイ)
 

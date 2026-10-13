@@ -39,6 +39,7 @@ import {
   loadDeploymentConfig,
   MOCK_IDP_NO_SESSIONS_REJECTED,
   MOCK_IDP_NO_SESSIONS_WARNING,
+  OFFICIAL_CONNECTOR_PACKAGES,
   parseDeploymentConfig,
   type AssembleGatewayOptions,
   type AssembledGateway,
@@ -583,7 +584,8 @@ describe("(d) 本人資格情報の取得方式(auth.provider)", () => {
 });
 
 describe("(e)(g) コネクタ実装の解決", () => {
-  it("未知の kind は unknown_connector_kind(失敗理由はモジュール指定子のみ)", async () => {
+  it("許可表にない kind で module がなければ、読み込みを試みずに unknown_connector_kind(ADR-021)", async () => {
+    const loadModule = vi.fn(async () => ({}));
     const error = await rejection({
       config: config(`connectors:
   - id: acme
@@ -592,21 +594,25 @@ describe("(e)(g) コネクタ実装の解決", () => {
       provider: mock_env
 `),
       env: DEV_ENV,
+      loadModule,
     });
     expect(error.issues).toEqual([
       expect.objectContaining({
         code: "unknown_connector_kind",
         path: "connectors[0].kind",
-        message: expect.stringContaining('"@leisen/connector-nonexistent-kind"'),
+        message: expect.stringContaining("connectors[0].module"),
       }),
     ]);
+    // 命名規則から導いたパッケージ名(@leisen/connector-nonexistent-kind)を読みに行かない
+    expect(loadModule).not.toHaveBeenCalled();
   });
 
-  it("kind 省略時は id を kind として解決する", async () => {
+  it("公式コネクタの kind は module なしで許可表のパッケージ名に解決する(ADR-021)", async () => {
     const specifiers: string[] = [];
     await assemble({
       config: config(`connectors:
-  - id: acme
+  - id: gh
+    kind: github
     auth:
       provider: mock_env
 `),
@@ -615,7 +621,36 @@ describe("(e)(g) コネクタ実装の解決", () => {
         return { createConnector: ({ sourceId }: { sourceId: string }) => pluginConnector(sourceId) };
       },
     });
-    expect(specifiers).toEqual(["@leisen/connector-acme"]);
+    expect(specifiers).toEqual([OFFICIAL_CONNECTOR_PACKAGES["github"]]);
+    expect(specifiers).toEqual(["@leisen/connector-github"]);
+  });
+
+  it("kind 省略時は id を kind として扱う(公式なら解決し、公式でなければ読み込まずに拒否する)", async () => {
+    const specifiers: string[] = [];
+    const loadModule = async (specifier: string) => {
+      specifiers.push(specifier);
+      return { createConnector: ({ sourceId }: { sourceId: string }) => pluginConnector(sourceId) };
+    };
+    await assemble({
+      config: config(`connectors:
+  - id: github
+    auth:
+      provider: mock_env
+`),
+      loadModule,
+    });
+    expect(specifiers).toEqual(["@leisen/connector-github"]);
+
+    const error = await rejection({
+      config: config(`connectors:
+  - id: acme
+    auth:
+      provider: mock_env
+`),
+      loadModule,
+    });
+    expect(codes(error)).toEqual(["unknown_connector_kind"]);
+    expect(specifiers).toEqual(["@leisen/connector-github"]);
   });
 
   it("名前付き export createConnector を factory として使い、init を渡す", async () => {
@@ -624,6 +659,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
       config: config(`connectors:
   - id: wiki
     kind: acme-wiki
+    module: "@acme/leisen-connector-wiki"
     auth:
       provider: mock_env
     settings:
@@ -657,6 +693,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
       config: config(`connectors:
   - id: wiki
     kind: acme-wiki
+    module: "@acme/leisen-connector-wiki"
     auth:
       provider: mock_env
 `),
@@ -676,6 +713,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
       config: config(`connectors:
   - id: wiki
     kind: acme-wiki
+    module: "@acme/leisen-connector-wiki"
     auth:
       provider: mock_env
 `),
@@ -689,6 +727,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
       config: config(`connectors:
   - id: wiki
     kind: acme-wiki
+    module: "@acme/leisen-connector-wiki"
     auth:
       provider: mock_env
 `),
@@ -697,7 +736,7 @@ describe("(e)(g) コネクタ実装の解決", () => {
       },
     });
     expect(codes(error)).toEqual(["unknown_connector_kind"]);
-    expect(error.message).toContain('"@leisen/connector-acme-wiki"');
+    expect(error.message).toContain('"@acme/leisen-connector-wiki"');
     expect(error.message).not.toContain("dev-only");
   });
 
@@ -899,7 +938,8 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
     expect(created[0]?.calls.map((c) => c.tool)).toEqual(["search"]);
   });
 
-  it("継承プロパティ(constructor 等)を factory と誤認しない", async () => {
+  it("継承プロパティ(constructor 等)を factory とも許可表の行とも誤認しない(ADR-021 決定 6)", async () => {
+    const loadModule = vi.fn(async () => ({}));
     const error = await rejection({
       config: config(`connectors:
   - id: odd
@@ -907,12 +947,29 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
     auth:
       provider: mock_env
 `),
-      loadModule: async () => {
-        throw new Error("not installed");
-      },
+      loadModule,
     });
     expect(codes(error)).toEqual(["unknown_connector_kind"]);
+    expect(loadModule).not.toHaveBeenCalled();
   });
+
+  // kind はスキーマで英小文字に限られるが、kind を省略すると id がそのまま kind になる
+  it.each(["__proto__", "hasOwnProperty", "toString"])(
+    "id から導いた kind %s も許可表の行と誤認せず、読み込まずに拒否する(ADR-021 決定 6)",
+    async (id) => {
+      const loadModule = vi.fn(async () => ({}));
+      const error = await rejection({
+        config: config(`connectors:
+  - id: ${id}
+    auth:
+      provider: mock_env
+`),
+        loadModule,
+      });
+      expect(codes(error)).toEqual(["unknown_connector_kind"]);
+      expect(loadModule).not.toHaveBeenCalled();
+    },
+  );
 
   it("組み込みの dev-fixture を使う場合も factory の契約(init)どおりに構築する", async () => {
     const factory = vi.fn(createDevFixtureConnector);

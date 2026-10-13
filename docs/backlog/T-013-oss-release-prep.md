@@ -16,7 +16,7 @@
 - docs/install.md への同梱コンテナのライセンス注記(MongoDB は SSPL。ADR-004「決定」)。`NOTICE` の著作権者名は個人名で確定済み(2026-10-13 オーナー決定、ADR-004)
 - contrib/ 階層の定義(コア外・ベストエフォート保守)とPRテンプレート(汎用性チェック=2社ルールの確認項目)
 - ~~依存関係の脆弱性自動監査をCIに追加~~(2026-10-13、CI `audit` ジョブ。本番依存の high 以上で失敗する)。vitest系dev依存の既知脆弱性はvitest 4系更新で解消済み(2026-07-05)
-- ~~供給網の手当て(issue #32)~~(2026-10-13): 全 workspace の package.json を `private: true` にした(npm 配布を決めたら対象だけ外す)。CI の Action をコミットの SHA で固定し、Dependabot(`.github/dependabot.yml`、github-actions と npm を週 1 回)を入れた。security updates の有効化と npm の組織 `leisen` の確保はオーナーの作業
+- ~~供給網の手当て(issue #32)~~(2026-10-13): 全 workspace の package.json を `private: true` にした(npm 配布を決めたら対象だけ外す)。CI の Action をコミットの SHA で固定し、Dependabot(`.github/dependabot.yml`、github-actions と npm を週 1 回)を入れた。security updates の有効化と npm の組織 `leisen` の確保はオーナーの作業。コネクタの読み込みは公式の許可表と `module` の明示に限った(ADR-021)
 - **secret scan(gitleaks等)をCIとpre-commitに導入**する。.claude/guardは軽い安全網でありこれの代替ではない(2026-10-13: CI の `secret-scan` ジョブは導入済み。許可は `.gitleaks.toml`。pre-commit は未導入)
 - **ESLint導入時に `no-restricted-syntax` で `JSON.stringify(auth|authContext|credential)` 系を禁止**する(不変条件6を型では防げない分を静的解析で補う)
 - **カナリア文書スイート**(T-000cの設計に基づく): 権限逸脱の常時検証をセキュリティテストスイートとして同梱し、導入プレイブックの標準工程に組み込む

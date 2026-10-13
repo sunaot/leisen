@@ -32,7 +32,7 @@ auth-matrix §4 の結論に従う。
 
 ## deployment.yaml での使い方(Gateway のプラグイン)
 
-Gateway の起動コードは `connectors[].kind: github` をプラグインモジュール `@leisen/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir, policy })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
+`github` は公式コネクタの許可表(ADR-021)に載っているので、Gateway の起動コードは `connectors[].kind: github` を `module` なしでプラグインモジュール `@leisen/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir, policy })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
 
 ```yaml
 connectors:
