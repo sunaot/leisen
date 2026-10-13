@@ -4,7 +4,7 @@
 2026-10-13 オーナー判断で、人手の前提は次の状態になった。
 
 - ~~ライセンス最終決定(ADR-004)~~ → **確定**(Apache-2.0。LICENSE / NOTICE / package.json の `license` は配置済み)
-- ~~プロジェクト名・商標・配布名~~ → **保留**(時期尚早。配布名は当面 `@kp` スコープ・`kp-ask`・`_meta` prefix `io.github.sunaot.leisen/` のまま公開する。確定時に移行期間を置く。issue #32 / #38、ADR-001 追補3 決定4)
+- ~~プロジェクト名・配布名~~ → **確定**(2026-10-13、ADR-020: `leisen` に統一。`@leisen/*`、`leisen-gateway` / `leisen-ask` / `leisen-promotion-report`、`LEISEN_*`)。**商標** は保留(時期尚早)。`_meta` prefix は `io.github.sunaot.leisen/` のまま(最終確定は下記)
 - ~~脆弱性報告窓口の体制~~ → **保留**(時期尚早。SECURITY.md は体制を決めずに書ける範囲、例: GitHub の Private vulnerability reporting を窓口にする、で先行してよい)
 - ~~公開時期の再判断~~ → **決定: すぐに公開する**(v3 §8 の Q2 / Q3 比較は行わない)
 - **Slack導入形態の法務確認(ADR-014)** は未決のまま(T-006 の前提。公開自体は待たない)
@@ -20,6 +20,7 @@
 - **ESLint導入時に `no-restricted-syntax` で `JSON.stringify(auth|authContext|credential)` 系を禁止**する(不変条件6を型では防げない分を静的解析で補う)
 - **カナリア文書スイート**(T-000cの設計に基づく): 権限逸脱の常時検証をセキュリティテストスイートとして同梱し、導入プレイブックの標準工程に組み込む
 - ~~公開リポジトリのREADME(導入ガイド/リファレンスアーキテクチャ/開発ガイドの3部導線)~~(2026-10-13、README「ドキュメント」節)
+- **ADR-020 の一括改名**(`kp` → `leisen`)を 1 本の PR で行う。対象と確認方法は ADR-020 決定 8。npm の組織 `leisen` の確保はオーナーが公開前に行う
 - **MCP `_meta` 名前空間prefixの最終確定**(ADR-001追補3 決定4): 暫定値 `io.github.sunaot.leisen/` を配布名・配布サイトの確定と併せて見直す(2026-10-13: 配布名は保留のため、公開は暫定値のまま行う)。変更する場合はGateway(受け側)とOrchestrator(申告側)を同時に更新し、移行期間中は旧prefixも受ける。確定値をADR-001に追記する
 
 ## 受け入れ条件
