@@ -1,5 +1,5 @@
 /**
- * T-021 受け入れ条件1: Orchestrator の MCP サーバー(kp-ask serve の HTTP 層)の認証の前段。
+ * T-021 受け入れ条件1: Orchestrator の MCP サーバー(leisen-ask serve の HTTP 層)の認証の前段。
  *
  * - Bearer なし・形式不正・無効な Bearer の initialize / tools/list / tools/call は 401
  *   (JSON-RPC のディスパッチ前、固定文言)。IdP 不達(Gateway の 503)と Gateway 不達は 503。
@@ -18,7 +18,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { IdpError } from "@kp/gateway";
+import { IdpError } from "@leisen/gateway";
 import { PREFLIGHT_TIMEOUT_MS, ScriptedLlmClient } from "../src/index.js";
 import {
   ALICE_TOKEN,

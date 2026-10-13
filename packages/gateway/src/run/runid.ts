@@ -30,7 +30,7 @@
  * scripts/lint-imports.mjs が検査する)。認証済みの主体(userId・actor)と値だけを受け取る。
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import type { Actor } from "@kp/audit";
+import type { Actor } from "@leisen/audit";
 
 /** runId の版(符号化の規則を変えるときに上げる)。 */
 export const RUN_ID_VERSION = "r1";

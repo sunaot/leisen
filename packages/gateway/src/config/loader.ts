@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import YAML, { YAMLParseError } from "yaml";
 import type { IdpAdapterConfig } from "../idp/factory.js";
-import type { RetentionConfig } from "@kp/audit";
+import type { RetentionConfig } from "@leisen/audit";
 import { applyMigrations, type MigrateOptions } from "./migrate.js";
 import {
   deploymentConfigSchema,
@@ -39,7 +39,7 @@ export function parseDeploymentConfig(
     raw = YAML.parse(yamlText, { prettyErrors: false });
   } catch (error) {
     // YAML のエラー文は該当行の抜粋やファイル中のトークン(アンカー名・タグ名等)を含みうるため
-    // 載せない。誤って書かれた秘密の値が stderr や kp-ask --json の stdout に出る経路を作らない
+    // 載せない。誤って書かれた秘密の値が stderr や leisen-ask --json の stdout に出る経路を作らない
     // (不変条件6)。位置はエラーコードと行・列だけで示す
     throw new DeploymentConfigError([
       { code: "schema_violation", path: "(file)", message: describeYamlParseError(error, yamlText) },

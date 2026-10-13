@@ -7,7 +7,7 @@ T-007(Orchestrator)、T-012(リファレンスデプロイ)、ADR-018
 なし(手元での実走には LM Studio などの LLM バックエンドが要る。CI は認証と配線の確認まで)
 
 ## 内容
-- `kp-ask serve`: Orchestrator を MCP サーバー(Streamable HTTP、ステートレス)として公開する。ツールは `ask` と `feedback`。全リクエストで Bearer を要求し、有効性は Gateway の `tools/list` で確かめる(ADR-018 決定1〜3)
+- `leisen-ask serve`: Orchestrator を MCP サーバー(Streamable HTTP、ステートレス)として公開する。ツールは `ask` と `feedback`。全リクエストで Bearer を要求し、有効性は Gateway の `tools/list` で確かめる(ADR-018 決定1〜3)
 - AnswerRun は `--answer-run-jsonl` に追記し、昇格判定レポートは `--audit` を複数回受け付ける(決定4)
 - deployment.yaml(`--config`、必須)に Slack kind のソースが有効なら起動を拒否する。`--allow-non-persistable-sources` で解除(決定5)
 - 回答の出力契約: Markdown 本文 + 「出典」節、`structuredContent` に Answer(決定6)
@@ -22,7 +22,7 @@ T-007(Orchestrator)、T-012(リファレンスデプロイ)、ADR-018
 - [x] Slack kind のソースが有効な deployment.yaml では起動を拒否し、`--allow-non-persistable-sources` で起動することがテストされている(`test/serve-cli.test.ts`)
 - [x] 同時実行上限と質問長の上限が固定文言のエラーで効くことがテストされている(`test/server-limits.test.ts`)
 - [x] 昇格判定レポートが Gateway と Orchestrator の 2 つの JSONL を読んで結合できることがテストされている(`packages/promotion-report/test/cli.test.ts`)
-- [x] `docker compose -f docker-compose.yml -f docker-compose.librechat.yml config` が通り、CI で orchestrator が起動して「トークンなしは 401、Keycloak のトークンで `tools/list` が通る(tools: ask, feedback)」ことが確認され、LibreChat コンテナが healthy になり OpenID ログインが `https://keycloak.localhost:8443/realms/kp` へリダイレクトすることが確認された(PR #14 の `reference-deploy`、2026-09-28。6 コンテナすべて healthy)
+- [x] `docker compose -f docker-compose.yml -f docker-compose.librechat.yml config` が通り、CI で orchestrator が起動して「トークンなしは 401、Keycloak のトークンで `tools/list` が通る(tools: ask, feedback)」ことが確認され、LibreChat コンテナが healthy になり OpenID ログインが `https://keycloak.localhost:8443/realms/leisen` へリダイレクトすることが確認された(PR #14 の `reference-deploy`、2026-09-28。6 コンテナすべて healthy)
 - [x] docs/ui-librechat.md に 3 区分の手順があり、LibreChat の場合は `.env` と `librechat.env` の雛形を写すだけで接続できる(ブラウザでの通し確認は人手)
 
 ## 残課題
@@ -31,7 +31,7 @@ T-007(Orchestrator)、T-012(リファレンスデプロイ)、ADR-018
 - UI 経由でも出典が保たれるかを評価ハーネス(T-008)で測る
 
 ## 実装状況(2026-09-28)
-- `kp-ask serve`(`packages/orchestrator/src/server/`、`src/bin/serve.ts`): ツール `ask` / `feedback`、preflight(利用者のトークンで Gateway の `tools/list`)、AnswerRun の JSONL シンク、上限、停止時の待ち合わせ。`--allow-insecure-upstream`(評価用構成。production では拒否)を追加。bin シム `bin/kp-ask.js`
+- `leisen-ask serve`(`packages/orchestrator/src/server/`、`src/bin/serve.ts`): ツール `ask` / `feedback`、preflight(利用者のトークンで Gateway の `tools/list`)、AnswerRun の JSONL シンク、上限、停止時の待ち合わせ。`--allow-insecure-upstream`(評価用構成。production では拒否)を追加。bin シム `bin/leisen-ask.js`
 - promotion-report: `--audit` を複数回受け付ける
 - overlay: `deploy/compose/docker-compose.librechat.yml`(orchestrator / librechat v0.8.7 / mongodb / keycloak-tls)、`deploy/compose/librechat/`(librechat.yaml、librechat.env.example、Caddyfile、keycloak-tls.sh)。LibreChat の OpenID クライアントが https の発行者を要求するため、Keycloak の前段に Caddy の TLS 終端(内部 CA)を置き `https://keycloak.localhost:8443` を発行者にする。realm にクライアント `librechat`(Gateway の audience マッパー付き)
 - CI: `reference-deploy` に overlay の起動と `scripts/smoke/orchestrator-smoke.sh` / `librechat-smoke.sh` を追加

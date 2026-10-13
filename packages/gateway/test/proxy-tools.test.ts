@@ -28,8 +28,8 @@ import {
   type ListResult,
   type SearchResult,
   type SourceDescription,
-} from "@kp/connector-sdk";
-import { AuditLogger } from "@kp/audit";
+} from "@leisen/connector-sdk";
+import { AuditLogger } from "@leisen/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
@@ -97,7 +97,7 @@ const RESIDUAL_MISSPELLINGS: ReadonlyArray<
   ["no '/' after the prefix (actor)", "io.github.sunaot.leisenactor", AGENT_ACTOR],
   ["a misspelled prefix", "io.github.sunaot.leisn/executionClass", "scheduled"],
   ["a truncated prefix", "leisen/executionClass", "scheduled"],
-  ["a package-like prefix", "kp.gateway/executionClass", "autonomous"],
+  ["a package-like prefix", "leisen.gateway/executionClass", "autonomous"],
   ["a space inside the name", "execution class", "scheduled"],
   ["a dot inside the name", "execution.class", "scheduled"],
   ["fullwidth letters in a bare key", fullwidth("executionClass"), "scheduled"],
@@ -376,7 +376,7 @@ describe("declarationFromMeta (execution class / actor)", () => {
 
   // S1: 他社名前空間の executionClass も拒否する(fail-closed 側に倒す)。骨格
   // "comexampleexecutionclass" は "executionclass" で終わり、自社の申告のつもりで
-  // prefix を誤ったキー(実証済みの `kp.gateway/executionClass` / `leisen/executionClass`
+  // prefix を誤ったキー(実証済みの `leisen.gateway/executionClass` / `leisen/executionClass`
   // 等)と区別できないため。以前は他社のキーとして無視していた(=申告なしとして
   // human_in_the_loop で通っていた)。同名キーを付けるクライアントは、Gateway への
   // tools/call ではそのキーを送らないこと(拒否は固定文言の invalid_request で分かる)

@@ -21,7 +21,7 @@ import {
   digestQuery,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/audit";
+} from "@leisen/audit";
 import type { SourcesMeta } from "../src/index.js";
 
 export const FIXED_NOW = new Date("2026-07-12T09:00:00.000Z");

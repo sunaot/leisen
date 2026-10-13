@@ -7,7 +7,7 @@ import {
 
 const BASE_CONFIG: Omit<KeycloakIdpAdapterConfig, "fetchImpl"> = {
   baseUrl: "http://keycloak.test:8080",
-  realm: "kp",
+  realm: "leisen",
   clientId: "gateway",
   clientSecret: "dev-only-secret",
   allowedClients: ["chat-ui"],
@@ -17,7 +17,7 @@ const BASE_CONFIG: Omit<KeycloakIdpAdapterConfig, "fetchImpl"> = {
 const VALID_BODY = {
   active: true,
   sub: "user-uuid-1",
-  iss: "http://keycloak.test:8080/realms/kp",
+  iss: "http://keycloak.test:8080/realms/leisen",
   typ: "Bearer",
   azp: "chat-ui",
   aud: ["gateway", "account"],
@@ -57,7 +57,7 @@ describe("KeycloakIdpAdapter.authenticate", () => {
 
     const identity = await adapter.authenticate("the-access-token");
     expect(requestedUrl).toBe(
-      "http://keycloak.test:8080/realms/kp/protocol/openid-connect/token/introspect",
+      "http://keycloak.test:8080/realms/leisen/protocol/openid-connect/token/introspect",
     );
     expect(sentBody).toContain("token=the-access-token");
     expect(authHeader).toBe(
@@ -167,7 +167,7 @@ describe("KeycloakIdpAdapter: iss / typ / azp / aud の検証(issue #16)", () =>
   it("iss が <baseUrl>/realms/<realm> と異なれば拒否(診断は 'iss mismatch' だけ)", async () => {
     const { diagnosed } = await rejectedWith({
       ...VALID_BODY,
-      iss: "http://other-idp.test/realms/kp",
+      iss: "http://other-idp.test/realms/leisen",
     });
     expectDiagnosisIsClaimOnly(diagnosed);
     expect(diagnosed[0]).toContain("iss mismatch");
@@ -188,10 +188,10 @@ describe("KeycloakIdpAdapter: iss / typ / azp / aud の検証(issue #16)", () =>
   });
 
   it("allowedIssuers を明示すれば baseUrl 由来の既定の iss は受け付けない", async () => {
-    const issuers = { allowedIssuers: ["https://idp.example.test/realms/kp"] };
+    const issuers = { allowedIssuers: ["https://idp.example.test/realms/leisen"] };
     await rejectedWith(VALID_BODY, issuers);
     const adapter = adapterWith(
-      () => jsonResponse({ ...VALID_BODY, iss: "https://idp.example.test/realms/kp" }),
+      () => jsonResponse({ ...VALID_BODY, iss: "https://idp.example.test/realms/leisen" }),
       issuers,
     );
     await expect(adapter.authenticate(TOKEN)).resolves.toMatchObject({ userId: "user-uuid-1" });
@@ -244,10 +244,10 @@ describe("KeycloakIdpAdapter: iss / typ / azp / aud の検証(issue #16)", () =>
   });
 
   it.each([
-    "http://keycloak.test:8080/realms/kp-evil",
-    "http://keycloak.test:8080/realms/kpx",
-    "HTTP://KEYCLOAK.TEST:8080/realms/kp",
-    "http://keycloak.test:8080/realms/kp/",
+    "http://keycloak.test:8080/realms/leisen-evil",
+    "http://keycloak.test:8080/realms/leisenx",
+    "HTTP://KEYCLOAK.TEST:8080/realms/leisen",
+    "http://keycloak.test:8080/realms/leisen/",
   ])("iss の似せ値 %s は受け付けない(前方一致・大文字小文字の緩和をしない。末尾スラッシュだけ同一視)", async (iss) => {
     if (iss.endsWith("/")) {
       const adapter = adapterWith(() => jsonResponse({ ...VALID_BODY, iss }));
@@ -373,7 +373,7 @@ describe("KeycloakIdpAdapter: iss / typ / azp / aud の検証(issue #16)", () =>
 
   it("検証の順序: active → iss → typ → azp → aud(最初の失敗だけを診断する)", async () => {
     const { diagnosed } = await rejectedWith(
-      { ...VALID_BODY, iss: "http://x.test/realms/kp", typ: "Refresh", azp: "rogue" },
+      { ...VALID_BODY, iss: "http://x.test/realms/leisen", typ: "Refresh", azp: "rogue" },
       { requireAudience: true },
     );
     expect(diagnosed).toHaveLength(1);

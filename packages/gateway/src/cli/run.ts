@@ -1,14 +1,14 @@
 /**
- * kp-gateway CLI(起動コード)。エントリは bin/kp-gateway.ts。
+ * leisen-gateway CLI(起動コード)。エントリは bin/leisen-gateway.ts。
  *
- *   kp-gateway serve    --config <deployment.yaml> [--port <n>] [--host <addr>]   Gatewayを起動する
- *   kp-gateway validate --config <deployment.yaml> [--port <n>] [--host <addr>]   設定を検証する(listen しない)
- *   kp-gateway auth-check --config <deployment.yaml> --token-env <VAR>           Keycloak の検証項目を1回試す
+ *   leisen-gateway serve    --config <deployment.yaml> [--port <n>] [--host <addr>]   Gatewayを起動する
+ *   leisen-gateway validate --config <deployment.yaml> [--port <n>] [--host <addr>]   設定を検証する(listen しない)
+ *   leisen-gateway auth-check --config <deployment.yaml> --token-env <VAR>           Keycloak の検証項目を1回試す
  *
  * - auth-check は環境変数 <VAR> のセッショントークンを IdP(kind: keycloak のみ)でイントロスペクションし、
  *   検証項目(active / iss / typ / azp / aud)ごとの pass / fail / skipped と userId を標準出力に出す
  *   (issue #16)。トークンは引数に取らず、出力にも出さない。コネクタは組み立てず listen もしない
- * - --config を省略すると環境変数 KP_DEPLOYMENT_CONFIG を使う
+ * - --config を省略すると環境変数 LEISEN_DEPLOYMENT_CONFIG を使う
  * - --port / --host は deployment.yaml の gateway.http.port / host より優先する(issue #38)。
  *   上書き後の値で公開境界の検査(validateGatewayHttpExposure)を行うため、ループバック以外の
  *   --host には deployment.yaml の gateway.http.confirmExposedHost: true が要る(フラグでは解除できない)
@@ -37,8 +37,8 @@ import { acceptsAnyClient, KeycloakIdpAdapter, type IntrospectionCheck } from ".
 import { IdpError } from "../idp/types.js";
 import { GatewayError } from "../proxy/types.js";
 
-export const CLI_USAGE = `usage: kp-gateway <command> [--config <deployment.yaml>] [--port <n>] [--host <addr>]
-       kp-gateway auth-check --config <deployment.yaml> --token-env <VAR>
+export const CLI_USAGE = `usage: leisen-gateway <command> [--config <deployment.yaml>] [--port <n>] [--host <addr>]
+       leisen-gateway auth-check --config <deployment.yaml> --token-env <VAR>
 
 commands:
   serve       start the gateway (MCP Streamable HTTP) until SIGINT / SIGTERM
@@ -50,7 +50,7 @@ commands:
               never printed. exit 0 when every check passes, 1 otherwise
 
 options:
-  -c, --config <path>  deployment.yaml (default: $KP_DEPLOYMENT_CONFIG)
+  -c, --config <path>  deployment.yaml (default: $LEISEN_DEPLOYMENT_CONFIG)
       --port <n>       listen on this port instead of gateway.http.port (1-65535)
       --host <addr>    listen on this address instead of gateway.http.host; a non-loopback
                        address still requires gateway.http.confirmExposedHost: true
@@ -123,11 +123,11 @@ export function parseCliArgs(
   if (extra.length > 0) {
     return { kind: "usage_error", message: `unexpected argument: ${extra[0]}` };
   }
-  const configPath = parsed.values.config ?? env["KP_DEPLOYMENT_CONFIG"];
+  const configPath = parsed.values.config ?? env["LEISEN_DEPLOYMENT_CONFIG"];
   if (!configPath) {
     return {
       kind: "usage_error",
-      message: "--config <path> is required (or set KP_DEPLOYMENT_CONFIG)",
+      message: "--config <path> is required (or set LEISEN_DEPLOYMENT_CONFIG)",
     };
   }
   if (command === "auth-check") {
@@ -237,13 +237,13 @@ function describeError(error: unknown): string {
 
 function reportError(io: CliIo, context: string, error: unknown): void {
   if (error instanceof DeploymentConfigError) {
-    io.stderr(`kp-gateway: ${context}: ${error.issues.length} issue(s)`);
+    io.stderr(`leisen-gateway: ${context}: ${error.issues.length} issue(s)`);
     for (const issue of error.issues) {
       io.stderr(`  - [${issue.code}] ${issue.path}: ${issue.message}`);
     }
     return;
   }
-  io.stderr(`kp-gateway: ${context}: ${describeError(error)}`);
+  io.stderr(`leisen-gateway: ${context}: ${describeError(error)}`);
 }
 
 function endpointUrl(config: DeploymentConfig, path: string): string {
@@ -293,7 +293,7 @@ function warnDevOnly(io: CliIo, config: DeploymentConfig): void {
   const components = devOnlyComponents(config);
   if (components.length > 0) {
     io.stderr(
-      `kp-gateway: WARNING: development-only components in use (${components.join(", ")}); ` +
+      `leisen-gateway: WARNING: development-only components in use (${components.join(", ")}); ` +
         "they are rejected when NODE_ENV=production",
     );
   }
@@ -302,7 +302,7 @@ function warnDevOnly(io: CliIo, config: DeploymentConfig): void {
 /** 起動時の警告(assembleGateway の warnings。秘密情報なし)を stderr に出す。 */
 function warnAssembly(io: CliIo, assembled: AssembledGateway): void {
   for (const warning of assembled.warnings) {
-    io.stderr(`kp-gateway: WARNING: ${warning}`);
+    io.stderr(`leisen-gateway: WARNING: ${warning}`);
   }
 }
 
@@ -328,7 +328,7 @@ async function loadAndAssemble(
       env: deps.env ?? process.env,
       configDir: dirname(absolute),
       // 稼働中の警告(モック IdP のセッション表が空のままの拒否など)はサーバーログへ
-      warn: (message) => deps.stderr(`kp-gateway: WARNING: ${message}`),
+      warn: (message) => deps.stderr(`leisen-gateway: WARNING: ${message}`),
     });
     return { config, assembled };
   } catch (error) {
@@ -353,7 +353,7 @@ async function validateCommand(
     reportError(deps, "cleanup failed", error);
     return 1;
   }
-  deps.stdout(`kp-gateway validate: OK (${resolve(configPath)})`);
+  deps.stdout(`leisen-gateway validate: OK (${resolve(configPath)})`);
   for (const line of summaryLines(config, assembled, { withEndpoint: true })) {
     deps.stdout(`  ${line}`);
   }
@@ -381,7 +381,7 @@ function listen(server: HttpServer, port: number, host: string): Promise<void> {
 /** EADDRINUSE のときの案内(待ち受けのポートの変え方)。 */
 export function portInUseMessage(port: number): string {
   return (
-    `kp-gateway: ポート ${port} は使用中です。--port <番号> か deployment.yaml の ` +
+    `leisen-gateway: ポート ${port} は使用中です。--port <番号> か deployment.yaml の ` +
     "gateway.http.port で別のポートを指定してください"
   );
 }
@@ -400,7 +400,7 @@ async function serveCommand(
   try {
     await listen(assembled.httpServer, port, host);
   } catch (error) {
-    deps.stderr(`kp-gateway: cannot listen on ${host}:${port}: ${describeError(error)}`);
+    deps.stderr(`leisen-gateway: cannot listen on ${host}:${port}: ${describeError(error)}`);
     if ((error as NodeJS.ErrnoException | undefined)?.code === "EADDRINUSE") {
       deps.stderr(portInUseMessage(port));
     }
@@ -408,28 +408,28 @@ async function serveCommand(
     return 1;
   }
   assembled.httpServer.on("error", (error) => {
-    deps.stderr(`kp-gateway: http server error: ${describeError(error)}`);
+    deps.stderr(`leisen-gateway: http server error: ${describeError(error)}`);
   });
 
   deps.stderr(
-    `kp-gateway: listening on ${endpointUrl(config, config.gateway.http.path)} ` +
+    `leisen-gateway: listening on ${endpointUrl(config, config.gateway.http.path)} ` +
       `(health check: ${endpointUrl(config, "/healthz")})`,
   );
   for (const line of summaryLines(config, assembled, { withEndpoint: false })) {
-    deps.stderr(`kp-gateway: ${line}`);
+    deps.stderr(`leisen-gateway: ${line}`);
   }
   warnDevOnly(deps, config);
   warnAssembly(deps, assembled);
 
   const reason = await (deps.waitForShutdown ?? waitForTerminationSignal)();
-  deps.stderr(`kp-gateway: ${reason} received, shutting down`);
+  deps.stderr(`leisen-gateway: ${reason} received, shutting down`);
   try {
     await assembled.close();
   } catch (error) {
     reportError(deps, "shutdown incomplete", error);
     return 1;
   }
-  deps.stderr("kp-gateway: stopped");
+  deps.stderr("leisen-gateway: stopped");
   return 0;
 }
 
@@ -458,21 +458,21 @@ async function authCheckCommand(
   }
   if (config.idp.adapter.kind !== "keycloak") {
     deps.stderr(
-      `kp-gateway: auth-check applies to idp.adapter.kind: keycloak only ` +
+      `leisen-gateway: auth-check applies to idp.adapter.kind: keycloak only ` +
         `(this deployment uses '${config.idp.adapter.kind}')`,
     );
     return 2;
   }
   const token = env[tokenEnv];
   if (token === undefined || token === "") {
-    deps.stderr(`kp-gateway: environment variable "${tokenEnv}" is not set or empty`);
+    deps.stderr(`leisen-gateway: environment variable "${tokenEnv}" is not set or empty`);
     return 2;
   }
   let adapter: KeycloakIdpAdapter;
   try {
     const resolved = resolveIdpAdapterConfig(config.idp.adapter, env);
     if (resolved.kind !== "keycloak") {
-      deps.stderr("kp-gateway: auth-check applies to idp.adapter.kind: keycloak only");
+      deps.stderr("leisen-gateway: auth-check applies to idp.adapter.kind: keycloak only");
       return 2;
     }
     const { kind: _kind, ...keycloakConfig } = resolved;
@@ -496,11 +496,11 @@ async function authCheckCommand(
       userId = body.sub;
     }
   } catch (error) {
-    deps.stderr(`kp-gateway: auth-check: ${describeError(error)}`);
+    deps.stderr(`leisen-gateway: auth-check: ${describeError(error)}`);
     return 1;
   }
   const failed = checks.filter((check) => check.status === "fail").length;
-  deps.stdout(`kp-gateway auth-check: ${absolute}`);
+  deps.stdout(`leisen-gateway auth-check: ${absolute}`);
   deps.stdout(`  idp: keycloak realm "${config.idp.adapter.realm}" at ${config.idp.adapter.baseUrl}`);
   deps.stdout(`  ${"check".padEnd(7)} ${"result".padEnd(8)} detail`);
   for (const check of checks) {
@@ -528,7 +528,7 @@ export async function runCli(
       deps.stdout(CLI_USAGE);
       return 0;
     case "usage_error":
-      deps.stderr(`kp-gateway: ${command.message}`);
+      deps.stderr(`leisen-gateway: ${command.message}`);
       deps.stderr(CLI_USAGE);
       return 2;
     case "validate":

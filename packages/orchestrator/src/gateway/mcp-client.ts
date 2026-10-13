@@ -11,7 +11,7 @@
  * - 接続先 URL は、ループバック(localhost / 127.0.0.1 / [::1])以外では https 必須。
  *   資格情報・クエリ・フラグメント付きの URL は構築時に拒否する(セッショントークンを
  *   平文で送らない。セキュリティレビュー 2026-09-27 m3)。例外は allowInsecureHttp
- *   (kp-ask の --allow-insecure-upstream。開発・評価用途で、compose のネットワーク内の
+ *   (leisen-ask の --allow-insecure-upstream。開発・評価用途で、compose のネットワーク内の
  *   http://gateway:8787/mcp 等)のときだけで、NODE_ENV=production では構築を拒否する
  * - ツール結果の isError は正規化エラー(本文の JSON の errorClass / message)に写す。
  *   成功・失敗を問わず、結果の `_meta` から Gateway が認証した userId を読む
@@ -36,7 +36,7 @@ import {
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { ORCHESTRATOR_CREDENTIAL_HEADER, runApiPathFor } from "@kp/gateway";
+import { ORCHESTRATOR_CREDENTIAL_HEADER, runApiPathFor } from "@leisen/gateway";
 import { GatewayClientError, type GatewayClientErrorClass } from "../errors.js";
 import { gatewayUserIdFromResultMeta } from "./meta.js";
 import type {
@@ -63,7 +63,7 @@ const NO_REDIRECT: RequestRedirect = "error";
 export const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 60_000;
 
 export const ORCHESTRATOR_CLIENT_INFO = {
-  name: "kp-orchestrator",
+  name: "leisen-orchestrator",
   version: "0.1.0",
 } as const;
 
@@ -101,7 +101,7 @@ const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set([
 
 /**
  * 接続先 URL を検証する(m3)。メッセージは固定文言で、URL の中身をエコーしない
- * (資格情報やトークンを誤って URL に書いた場合にログへ残さない)。kp-ask serve は
+ * (資格情報やトークンを誤って URL に書いた場合にログへ残さない)。leisen-ask serve は
  * 起動時にこれで --gateway を検証する(接続はしない)。
  */
 export function parseGatewayUrl(raw: string | URL): URL {
@@ -181,7 +181,7 @@ export class McpGatewayClient implements GatewayClient {
 
   constructor(options: McpGatewayClientOptions) {
     if (options.allowInsecureHttp === true && process.env["NODE_ENV"] === "production") {
-      // 本番で平文 http の Gateway 接続を許さない(kp-ask の引数の解釈でも拒否する。
+      // 本番で平文 http の Gateway 接続を許さない(leisen-ask の引数の解釈でも拒否する。
       // ライブラリとして直接組んだ場合の防波堤)
       throw new GatewayClientError(
         "gateway_protocol_error",

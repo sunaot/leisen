@@ -1,13 +1,13 @@
 /**
- * Gatewayの組み立て(起動コード。kp-gateway CLI と リファレンスデプロイ T-012 が使う)。
+ * Gatewayの組み立て(起動コード。leisen-gateway CLI と リファレンスデプロイ T-012 が使う)。
  *
  * 検証済みの DeploymentConfig から、コネクタ実体(plugins.ts)→ 本人資格情報の
  * プロバイダ → IdP Adapter → 監査シンク(audit.ts)→ Gateway → HTTPサーバーを
- * 組み立てる。待ち受け(listen)は呼び出し側(kp-gateway serve)が
+ * 組み立てる。待ち受け(listen)は呼び出し側(leisen-gateway serve)が
  * config.gateway.http.host / port で行う。
  *
  * - 起動時の拒否は DeploymentConfigError に集約し、組み立ての各段の不備を
- *   できるだけまとめて返す(kp-gateway validate が全件を列挙できるように)。
+ *   できるだけまとめて返す(leisen-gateway validate が全件を列挙できるように)。
  *   capability 連動の検証は Gateway のコンストラクタが行う
  * - 無効化されたコネクタ(enabled: false)は構築しない(経路を作らない)
  * - 有効なコネクタには本人資格情報の取得方式(auth.provider)を必須とする
@@ -29,12 +29,12 @@
  * - 秘密情報(トークン・clientSecret・環境変数の値)と設定オブジェクト全体を
  *   ログ・エラーに出さない(不変条件6)
  * - 起動は拒否しないが動かない可能性が高い構成は warnings に入れる(モック IdP のセッション表
- *   KP_MOCK_SESSIONS が空など。issue #38)。稼働中の警告は options.warn に渡す
+ *   LEISEN_MOCK_SESSIONS が空など。issue #38)。稼働中の警告は options.warn に渡す
  */
 import type { Server as HttpServer } from "node:http";
 import { resolve } from "node:path";
-import type { Connector } from "@kp/connector-sdk";
-import { AuditLogger, type RawQueryStore } from "@kp/audit";
+import type { Connector } from "@leisen/connector-sdk";
+import { AuditLogger, type RawQueryStore } from "@leisen/audit";
 import { resolveIdpAdapterConfig } from "../config/loader.js";
 import {
   AUDIT_SINK_STDOUT,
@@ -81,8 +81,8 @@ export interface AssembleGatewayOptions {
   /** 検証済みの設定(loadDeploymentConfig / parseDeploymentConfig の結果) */
   readonly config: DeploymentConfig;
   /**
-   * 環境変数(IdP の clientSecretEnv、開発用モックの KP_MOCK_SESSIONS /
-   * KP_MOCK_TOKEN_<SOURCEID>)。既定 process.env
+   * 環境変数(IdP の clientSecretEnv、開発用モックの LEISEN_MOCK_SESSIONS /
+   * LEISEN_MOCK_TOKEN_<SOURCEID>)。既定 process.env
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /**
@@ -95,7 +95,7 @@ export interface AssembleGatewayOptions {
   /** プラグインの読み込み(既定は動的 import) */
   readonly loadModule?: ModuleLoader;
   /**
-   * 稼働中の警告の出力先(秘密情報を含まない1行。kp-gateway serve はサーバーログ=stderr に
+   * 稼働中の警告の出力先(秘密情報を含まない1行。leisen-gateway serve はサーバーログ=stderr に
    * つなぐ)。モック IdP がセッション表の空のまま拒否したときの通知(issue #38)と、Keycloak の
    * 検証で拒否した理由(クレーム名だけ。issue #16)。省略時は出さない
    */
@@ -114,7 +114,7 @@ export interface AssembledGateway {
   readonly runApiDescription: string;
   /**
    * 起動時の警告(起動は拒否しないが、そのままでは動かない可能性が高い構成。秘密情報なし)。
-   * 例: モック IdP のセッション表(KP_MOCK_SESSIONS)が空。kp-gateway validate / serve が表示する
+   * 例: モック IdP のセッション表(LEISEN_MOCK_SESSIONS)が空。leisen-gateway validate / serve が表示する
    */
   readonly warnings: readonly string[];
   /** HTTPサーバーを閉じ(処理中のリクエストは完了を待つ)、監査バッファを flush する */
@@ -300,7 +300,7 @@ export async function assembleGateway(
     try {
       const resolved = resolveIdpAdapterConfig(config.idp.adapter, env);
       if (resolved.kind === "mock") {
-        const sessions = parseMockSessions(env["KP_MOCK_SESSIONS"]);
+        const sessions = parseMockSessions(env["LEISEN_MOCK_SESSIONS"]);
         if (Object.keys(sessions).length === 0) {
           // 開発用の IdP なので拒否はしないが、設定漏れに気づけるようにする(issue #38)
           warnings.push(MOCK_IDP_NO_SESSIONS_WARNING);

@@ -18,20 +18,24 @@ idp:
     # イントロスペクションの往復には clientSecret と利用者のセッショントークンが載る
     baseUrl: https://idp.example.test
     realm: example
-    clientId: kp-gateway
+    clientId: leisen-gateway
     # 秘密情報はこのファイルに書かない(不変条件6)。環境変数名で参照する
-    clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+    clientSecretEnv: LEISEN_KEYCLOAK_CLIENT_SECRET
     # トークンの発行先(azp)として受け入れるクライアント ID の許可リスト(必須。issue #16)。
     # 利用者がログインする UI・MCP クライアントを IdP に登録し、ここに列挙する。
     # ["*"] は azp の検証を外す開発専用の逃げ道(NODE_ENV=production では拒否、それ以外は WARNING)
-    allowedClients: [kp-chat-ui]
-    # aud に clientId(kp-gateway)が含まれることを要求する。IdP 側で Gateway を audience に
+    allowedClients: [leisen-chat-ui]
+    # aud に clientId(leisen-gateway)が含まれることを要求する。IdP 側で Gateway を audience に
     # 加える設定(Keycloak なら audience マッパー)が前提
     requireAudience: true
     # 受け入れる発行者(iss)は既定で <baseUrl>/realms/<realm>。IdP の公開 URL が baseUrl と
     # 異なる(内部のホスト名で呼ぶ等)ときだけ allowedIssuers: [<公開 URL>/realms/<realm>] を書く
 
 connectors:
+  # kind は省略時 id と同じ。module を省略できるのは公式コネクタの kind(現在は github)だけで、
+  # それ以外は connectors[].module にプラグインのパッケージ名かパスを書く(ADR-021)。
+  # gdrive / slack の公式コネクタはまだないため(T-005 / T-006)、現時点では validate で
+  # unknown_connector_kind が列挙される
   - id: gdrive
     enabled: true
     # ソース別のタイムアウト・レート制御(T-003)。Gatewayが適用する。
@@ -55,19 +59,19 @@ connectors:
       enabled: false # ADR-014: Slackは原則オンデマンド検索のみ。中央インデックス化しない
 
 gateway:
-  # run API(ADR-019)。Orchestrator(kp-ask / kp-ask serve)が run の開始・結果・フィードバックを申告する
+  # run API(ADR-019)。Orchestrator(leisen-ask / leisen-ask serve)が run の開始・結果・フィードバックを申告する
   # /runs と、tools/call で申告された runId の検証の設定。秘密は環境変数名だけを書く(不変条件6)。
   # すべて既定値があるため、省略すると下の値になる
   runs:
     # runId の署名鍵(32 バイト以上の乱数を hex / base64 / base64url で)。Gateway だけが持つ。
     # NODE_ENV=production では未設定・短い・開発用の例の値を起動拒否にする(run_signing_key_missing /
     # run_signing_key_invalid / dev_only_in_production)。それ以外では未設定なら起動ごとの一時鍵(WARNING)
-    signingKeyEnv: KP_RUN_ID_KEY
+    signingKeyEnv: LEISEN_RUN_ID_KEY
     # 鍵の入れ替え用の 1 つ前の鍵(任意)。設定があれば現行と並べて検証に使う(kid で見分ける)
-    previousSigningKeyEnv: KP_RUN_ID_KEY_PREVIOUS
+    previousSigningKeyEnv: LEISEN_RUN_ID_KEY_PREVIOUS
     # Orchestrator と共有する資格情報(16 文字以上)。run API と、runId を申告する tools/call に要る。
     # NODE_ENV=production では未設定・開発用の既定値を起動拒否にする
-    orchestratorCredentialEnv: KP_ORCHESTRATOR_CREDENTIAL
+    orchestratorCredentialEnv: LEISEN_ORCHESTRATOR_CREDENTIAL
     # runId の有効期間(秒)。tools/call と finish はこの期間内だけ受ける。Orchestrator の run の上限時間
     # (runTimeoutMs)より長くする
     ttlSec: 900
@@ -94,15 +98,15 @@ audit:
   # 起動を拒否される(issue #17)。開発用の例は deployment.dev.yaml
   sink: jsonl
   jsonl:
-    path: /var/lib/kp/audit/audit.jsonl
+    path: /var/lib/leisen/audit/audit.jsonl
     # 生クエリ原文は保持期間・閲覧経路が異なるため別ファイル(ADR-011 §3)
-    rawQueryPath: /var/lib/kp/rawquery/raw-queries.jsonl
+    rawQueryPath: /var/lib/leisen/rawquery/raw-queries.jsonl
   failureMode: fail-closed # 監査レコードを書けないツール呼び出しは失敗させる(ADR-011)
   privateScopeDocIds: hashed # プライベートスコープdocIdはHMACで秘匿化して記録(ADR-013 §2)
   # hashed の HMAC 鍵(デプロイ固有の秘密)を持つ環境変数名。Gateway の run API が引用 docId を不可逆化する
   # のに使う(ADR-019 決定5)。プライベートスコープを持つソースが有効な構成では必須(secret_env_missing)。
   # 16 文字以上、署名鍵・Orchestrator の資格情報とは別の値(run_secret_reused)、本番では dev-only- の値を拒否
-  docIdHmacKeyEnv: KP_AUDIT_HMAC_KEY
+  docIdHmacKeyEnv: LEISEN_AUDIT_HMAC_KEY
   retentionDays: 365 # 監査ログ本体の保持(ADR-013 §3)
   rawQueryRetentionDays: 30 # 生クエリの短期保持(ADR-011)
   telemetryRetentionDays: 14 # 分離テレメトリ(ADR-011)

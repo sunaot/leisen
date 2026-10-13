@@ -16,7 +16,7 @@ import { EventEmitter } from "node:events";
 import type { ServerResponse } from "node:http";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLogger } from "@kp/audit";
+import { AuditLogger } from "@leisen/audit";
 import {
   BUSY_TEXT,
   DEFAULT_MAX_BODY_BYTES,

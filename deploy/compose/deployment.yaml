@@ -1,9 +1,9 @@
 # deployment.yaml — リファレンスデプロイ(deploy/compose)の設定(T-012、ADR-005)
 #
-# docker-compose.yml がコンテナの /etc/kp/deployment.yaml に読み取り専用でマウントする
-# (イメージの KP_DEPLOYMENT_CONFIG の既定値)。ファイル内のパスはすべてコンテナ内のもの。
+# docker-compose.yml がコンテナの /etc/leisen/deployment.yaml に読み取り専用でマウントする
+# (イメージの LEISEN_DEPLOYMENT_CONFIG の既定値)。ファイル内のパスはすべてコンテナ内のもの。
 # 手順は docs/install.md。スキーマの正は packages/gateway/src/config/schema.ts。
-# LibreChat overlay(docker-compose.librechat.yml)の orchestrator(kp-ask serve)も同じファイルを
+# LibreChat overlay(docker-compose.librechat.yml)の orchestrator(leisen-ask serve)も同じファイルを
 # 読む(永続化できないソースの有効化の判定、AnswerRun の citedDocIds の記録方針。docs/ui-librechat.md)。
 #
 # **評価用構成**: 開発用の部品(auth.provider: mock_env、kind: dev-fixture)を使うため、
@@ -33,9 +33,9 @@ idp:
     # compose のサービス間ネットワークだけを通る前提で受け入れている。Keycloak をホスト外に
     # 置く場合は https にしてこのフラグを外す
     confirmPlainHttp: true
-    realm: kp
+    realm: leisen
     clientId: gateway
-    clientSecretEnv: KP_KEYCLOAK_CLIENT_SECRET
+    clientSecretEnv: LEISEN_KEYCLOAK_CLIENT_SECRET
     # トークンの発行先(azp)として受け入れるクライアント(issue #16)。スモーク・MCP クライアント用の
     # e2e-cli と LibreChat overlay の librechat(いずれも realm に登録済み)。自作の MCP クライアントを
     # 使うときは realm に登録してここに足す。"*" は azp の検証を外す開発専用の逃げ道で、
@@ -48,8 +48,8 @@ idp:
     # http://localhost:8080、LibreChat overlay は https://keycloak.localhost:8443)であり、
     # イントロスペクションに使う上の baseUrl(サービス名)とは異なるため明示する
     allowedIssuers:
-      - http://localhost:8080/realms/kp
-      - https://keycloak.localhost:8443/realms/kp
+      - http://localhost:8080/realms/leisen
+      - https://keycloak.localhost:8443/realms/leisen
 
 gateway:
   http:
@@ -69,11 +69,11 @@ connectors:
     # 組み込みの開発用コネクタ(合成の社内文書。実SaaSには接続しない)
     kind: dev-fixture
     auth:
-      # 本人資格情報のモック(環境変数 KP_MOCK_TOKEN_DEV_DOCS。開発専用)
+      # 本人資格情報のモック(環境変数 LEISEN_MOCK_TOKEN_DEV_DOCS。開発専用)
       provider: mock_env
     settings:
-      # docker-compose.yml が examples/fixtures を /etc/kp/fixtures にマウントする
-      corpusFile: /etc/kp/fixtures/dev-corpus.yaml
+      # docker-compose.yml が examples/fixtures を /etc/leisen/fixtures にマウントする
+      corpusFile: /etc/leisen/fixtures/dev-corpus.yaml
     privateScopes: excluded # ADR-013 §1(既定)
     searchLayer:
       enabled: false # 全導入は検索層OFFで開始する(ADR-006、playbook)
@@ -83,8 +83,8 @@ audit:
   # 監査ログ本体と生クエリ原文は保持期間・閲覧経路が異なるため別ボリューム(ADR-011 §3)
   sink: jsonl
   jsonl:
-    path: /var/lib/kp/audit/audit.jsonl
-    rawQueryPath: /var/lib/kp/rawquery/raw-queries.jsonl
+    path: /var/lib/leisen/audit/audit.jsonl
+    rawQueryPath: /var/lib/leisen/rawquery/raw-queries.jsonl
   failureMode: fail-closed # 監査を書けないツール呼び出しは失敗させる(ADR-011)
   privateScopeDocIds: hashed # ADR-013 §2
   # 保持期間(ADR-013 §3)。期限超過分の定期削除ジョブは未実装(docs/install.md)

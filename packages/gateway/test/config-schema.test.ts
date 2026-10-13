@@ -83,12 +83,12 @@ describe("deployment config schema defaults", () => {
 
   it("gateway.httpの明示値を受け、省略キーは既定で補う", () => {
     const yaml =
-      MINIMAL_YAML + `gateway:\n  http:\n    host: 0.0.0.0\n    path: /kp/mcp\n`;
+      MINIMAL_YAML + `gateway:\n  http:\n    host: 0.0.0.0\n    path: /leisen/mcp\n`;
     const config = parseDeploymentConfig(yaml);
     expect(config.gateway.http).toEqual({
       host: "0.0.0.0",
       port: 8787,
-      path: "/kp/mcp",
+      path: "/leisen/mcp",
     });
   });
 });
@@ -123,7 +123,7 @@ describe("deployment config schema rejection", () => {
     ["pathにクエリ文字列", "gateway:\n  http:\n    path: /mcp?x=1\n"],
     ["死活確認の予約パス", "gateway:\n  http:\n    path: /healthz\n"],
     ["run API の予約パス(ADR-019)", "gateway:\n  http:\n    path: /runs\n"],
-    ["接頭辞付きの run API の予約パス", "gateway:\n  http:\n    path: /kp/runs\n"],
+    ["接頭辞付きの run API の予約パス", "gateway:\n  http:\n    path: /leisen/runs\n"],
     ["空のhost", "gateway:\n  http:\n    host: ''\n"],
   ])("gateway.httpの不正設定を拒否する: %s", (_label, section) => {
     expect(() => parseDeploymentConfig(MINIMAL_YAML + section)).toThrow(
@@ -223,7 +223,7 @@ describe("起動コード向けの項目(connectors[].kind / module / settings /
   });
 
   it("module はパッケージ名(サブパス可)と ./ ../ / で始まるパスを受ける", () => {
-    for (const module of ["@kp/connector-github", "acme-connector/wiki", "../plugins/x.js", "/opt/kp/x.mjs"]) {
+    for (const module of ["@leisen/connector-github", "acme-connector/wiki", "../plugins/x.js", "/opt/leisen/x.mjs"]) {
       // "@" で始まる値は YAML では引用符が必要
       const config = parseDeploymentConfig(connectorYaml(`    module: ${JSON.stringify(module)}\n`));
       expect(config.connectors[0]?.module).toBe(module);
@@ -245,11 +245,11 @@ describe("起動コード向けの項目(connectors[].kind / module / settings /
   it("settings の秘密は環境変数名(*Env)で参照できる。秘密でない token 系のキーは受ける", () => {
     const config = parseDeploymentConfig(
       connectorYaml(
-        "    settings:\n      apiTokenEnv: KP_ACME_API_TOKEN\n      tokenLifetimeMs: 1000\n      maxTokens: 5\n",
+        "    settings:\n      apiTokenEnv: LEISEN_ACME_API_TOKEN\n      tokenLifetimeMs: 1000\n      maxTokens: 5\n",
       ),
     );
     expect(config.connectors[0]?.settings).toEqual({
-      apiTokenEnv: "KP_ACME_API_TOKEN",
+      apiTokenEnv: "LEISEN_ACME_API_TOKEN",
       tokenLifetimeMs: 1000,
       maxTokens: 5,
     });

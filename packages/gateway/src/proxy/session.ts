@@ -12,7 +12,7 @@
  * トークンの失効はIdP側のsemanticsに従い、リクエストごとに再検証されるため
  * IdP側で失効したトークンは次のリクエストから拒否される(TM-C4 / TM-C6)。
  */
-import { actorSchema, type Actor } from "@kp/audit";
+import { actorSchema, type Actor } from "@leisen/audit";
 import type { Identity } from "../idp/types.js";
 import { isValidRunId } from "../run/runid.js";
 import {

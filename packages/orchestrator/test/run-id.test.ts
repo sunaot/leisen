@@ -5,7 +5,7 @@
  * runId は Gateway の run API が発行する署名付きの値(ADR-019 決定4)で、Orchestrator は採番しない。
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { GATEWAY_META_KEYS } from "@kp/gateway";
+import { GATEWAY_META_KEYS } from "@leisen/gateway";
 import {
   Orchestrator,
   ScriptedLlmClient,

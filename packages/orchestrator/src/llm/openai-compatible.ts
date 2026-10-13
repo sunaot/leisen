@@ -181,7 +181,7 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
       this.#settings.allowInsecureHttp === true &&
       (process.env["NODE_ENV"] === "production" || env?.["NODE_ENV"] === "production")
     ) {
-      // 本番で平文 http の LLM 接続を許さない(kp-ask の引数の解釈でも拒否する。ライブラリとして
+      // 本番で平文 http の LLM 接続を許さない(leisen-ask の引数の解釈でも拒否する。ライブラリとして
       // 直接組んだ場合の防波堤)
       throw new OrchestratorError(
         "invalid_configuration",
@@ -652,7 +652,7 @@ function contentBlocksOf(message: ResponseMessage): {
     // id が無い・同じ応答内で重複するサーバーがある。tool_result との対応を保つため振り直す
     let id = typeof call.id === "string" && call.id.trim() !== "" ? call.id : undefined;
     if (id === undefined || seen.has(id)) {
-      id = `call_kp_${randomUUID().replaceAll("-", "")}`;
+      id = `call_leisen_${randomUUID().replaceAll("-", "")}`;
     }
     seen.add(id);
     const input = parseArguments(call.function?.arguments);

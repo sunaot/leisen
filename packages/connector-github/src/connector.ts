@@ -38,7 +38,7 @@ import {
   type SearchOptions,
   type SearchResult,
   type SourceDescription,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   GITHUB_TEXT_MATCH_MEDIA_TYPE,
   GitHubApiClient,

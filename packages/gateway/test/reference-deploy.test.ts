@@ -39,7 +39,7 @@ const ENV_EXAMPLE = join(COMPOSE_DIR, ".env.example");
 const DOCKERFILE = join(REPO_DIR, "deploy", "Dockerfile");
 const DOCKERIGNORE = join(REPO_DIR, ".dockerignore");
 const GITIGNORE = join(REPO_DIR, ".gitignore");
-const REALM_FILE = join(REPO_DIR, "e2e", "keycloak", "realm", "kp-realm.json");
+const REALM_FILE = join(REPO_DIR, "e2e", "keycloak", "realm", "leisen-realm.json");
 const FIXTURES_DIR = join(REPO_DIR, "examples", "fixtures");
 /** LibreChat overlay(T-021) */
 const LIBRECHAT_COMPOSE_FILE = join(COMPOSE_DIR, "docker-compose.librechat.yml");
@@ -55,10 +55,10 @@ const LIBRECHAT_SMOKE = join(REPO_DIR, "scripts", "smoke", "librechat-smoke.sh")
  * .env.example のうち秘密ではない設定値(LLM の接続先・モデル名)。それ以外の値はすべて
  * ローカル専用のダミーの秘密(dev-only-)であること。
  */
-const NON_SECRET_ENV: ReadonlySet<string> = new Set(["KP_LLM_BASE_URL", "KP_LLM_MODEL"]);
+const NON_SECRET_ENV: ReadonlySet<string> = new Set(["LEISEN_LLM_BASE_URL", "LEISEN_LLM_MODEL"]);
 
-/** イメージの KP_DEPLOYMENT_CONFIG と compose のマウント先 */
-const CONTAINER_CONFIG_PATH = "/etc/kp/deployment.yaml";
+/** イメージの LEISEN_DEPLOYMENT_CONFIG と compose のマウント先 */
+const CONTAINER_CONFIG_PATH = "/etc/leisen/deployment.yaml";
 
 const opened: AssembledGateway[] = [];
 const tempDirs: string[] = [];
@@ -257,16 +257,16 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
       baseUrl: "http://keycloak:8080",
       // Gateway → Keycloak の区間が compose のサービス間ネットワークだけを通る平文 http の明示確認(issue #17)
       confirmPlainHttp: true,
-      realm: "kp",
+      realm: "leisen",
       clientId: "gateway",
-      clientSecretEnv: "KP_KEYCLOAK_CLIENT_SECRET",
+      clientSecretEnv: "LEISEN_KEYCLOAK_CLIENT_SECRET",
       // 発行先クライアントの許可リストと aud の要求(issue #16)。スモーク(e2e-cli)と LibreChat overlay
       allowedClients: ["e2e-cli", "librechat"],
       requireAudience: true,
       // iss は Keycloak の KC_HOSTNAME(基本 / overlay)で固定される公開 URL(baseUrl とは異なる)
       allowedIssuers: [
-        "http://localhost:8080/realms/kp",
-        "https://keycloak.localhost:8443/realms/kp",
+        "http://localhost:8080/realms/leisen",
+        "https://keycloak.localhost:8443/realms/leisen",
       ],
     });
     expect(config.gateway.http).toEqual({
@@ -281,7 +281,7 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
         id: "dev-docs",
         kind: "dev-fixture",
         auth: { provider: "mock_env" },
-        settings: { corpusFile: "/etc/kp/fixtures/dev-corpus.yaml" },
+        settings: { corpusFile: "/etc/leisen/fixtures/dev-corpus.yaml" },
         privateScopes: "excluded",
         searchLayer: expect.objectContaining({ enabled: false }),
       }),
@@ -289,8 +289,8 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
     expect(config.audit).toMatchObject({
       sink: "jsonl",
       jsonl: {
-        path: "/var/lib/kp/audit/audit.jsonl",
-        rawQueryPath: "/var/lib/kp/rawquery/raw-queries.jsonl",
+        path: "/var/lib/leisen/audit/audit.jsonl",
+        rawQueryPath: "/var/lib/leisen/rawquery/raw-queries.jsonl",
       },
       failureMode: "fail-closed",
       privateScopeDocIds: "hashed",
@@ -298,11 +298,11 @@ describe("deploy/compose/deployment.yaml(リファレンス設定)", () => {
   });
 
   it("コンテナ内パスを置き換えれば組み立てられ、/healthz に応答する(Keycloak には未接続)", async () => {
-    const root = await mkdtemp(join(tmpdir(), "kp-reference-"));
+    const root = await mkdtemp(join(tmpdir(), "leisen-reference-"));
     tempDirs.push(root);
     const yaml = (await readFile(REFERENCE_CONFIG, "utf8"))
-      .replace("/etc/kp/fixtures/", `${FIXTURES_DIR}/`)
-      .replaceAll("/var/lib/kp/", `${root}/`);
+      .replace("/etc/leisen/fixtures/", `${FIXTURES_DIR}/`)
+      .replaceAll("/var/lib/leisen/", `${root}/`);
     await mkdir(join(root, "audit"));
     await mkdir(join(root, "rawquery"));
     const env = await envExample();
@@ -401,7 +401,7 @@ describe("deploy/ の各ファイルの整合", () => {
     );
     expect(gateway.environment?.["NODE_ENV"]).toBe("development");
     // 秘密は .env からの変数展開のみ(値を compose に書かない。未設定なら起動前に止まる)
-    expect(gateway.environment?.[clientSecretEnv]).toMatch(/^\$\{KP_KEYCLOAK_CLIENT_SECRET:\?/);
+    expect(gateway.environment?.[clientSecretEnv]).toMatch(/^\$\{LEISEN_KEYCLOAK_CLIENT_SECRET:\?/);
     for (const name of [
       config.gateway.runs.signingKeyEnv,
       config.gateway.runs.orchestratorCredentialEnv,
@@ -498,9 +498,9 @@ describe("deploy/ の各ファイルの整合", () => {
   it("Dockerfile の既定の設定パス・監査ボリューム・待ち受けポートが deployment.yaml に一致する(AnswerRun のボリュームは持たない)", async () => {
     const dockerfile = await readFile(DOCKERFILE, "utf8");
     const config = referenceConfig();
-    expect(dockerfile).toContain(`KP_DEPLOYMENT_CONFIG=${CONTAINER_CONFIG_PATH}`);
+    expect(dockerfile).toContain(`LEISEN_DEPLOYMENT_CONFIG=${CONTAINER_CONFIG_PATH}`);
     expect(dockerfile).toContain(
-      `KP_HEALTHCHECK_URL=http://127.0.0.1:${config.gateway.http.port}/healthz`,
+      `LEISEN_HEALTHCHECK_URL=http://127.0.0.1:${config.gateway.http.port}/healthz`,
     );
     // 監査ログ本体・生クエリ原文は別ボリューム(ADR-011 §3)。監査ストアに書くのは Gateway だけ
     // (ADR-019)なので、Orchestrator 用の AnswerRun のボリュームはイメージにない
@@ -562,9 +562,9 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     expect(excludeMarkdown).toBeGreaterThanOrEqual(0);
     expect(includePrompts).toBeGreaterThan(excludeMarkdown);
 
-    // overlay のエントリポイントは kp-ask のビルド成果物(src/bin/kp-ask.ts → dist/bin/kp-ask.js)。
-    // npm の bin シム(bin/kp-ask.js)はイメージに入れないため、dist を直接起動する
-    // (Dockerfile の ENTRYPOINT が packages/gateway/dist/bin/kp-gateway.js を起動するのと同じ)
+    // overlay のエントリポイントは leisen-ask のビルド成果物(src/bin/leisen-ask.ts → dist/bin/leisen-ask.js)。
+    // npm の bin シム(bin/leisen-ask.js)はイメージに入れないため、dist を直接起動する
+    // (Dockerfile の ENTRYPOINT が packages/gateway/dist/bin/leisen-gateway.js を起動するのと同じ)
     const orchestrator = await overlayService("orchestrator");
     const tsconfig = JSON.parse(await readFile(ORCHESTRATOR_TSCONFIG, "utf8")) as {
       compilerOptions?: { outDir?: string; rootDir?: string };
@@ -583,7 +583,7 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     await expect(readFile(source, "utf8")).resolves.toContain("serve");
   });
 
-  it("orchestrator は gateway と同じイメージを kp-ask serve で動かし、設定は Gateway と同じ・監査ストアには書かない(run は Gateway の run API に申告する)", async () => {
+  it("orchestrator は gateway と同じイメージを leisen-ask serve で動かし、設定は Gateway と同じ・監査ストアには書かない(run は Gateway の run API に申告する)", async () => {
     const config = referenceConfig();
     const gateway = (await composeServices())["gateway"] as ComposeService;
     const orchestrator = await overlayService("orchestrator");
@@ -640,7 +640,7 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     // 上流(Gateway と既定の LLM = ホストの LM Studio)は非ループバックの平文 http。評価用に明示で
     // 許可する(このフラグは NODE_ENV=production では拒否される。下の NODE_ENV=development と対)
     const llmBaseUrl = /:-([^}]+)\}$/.exec(
-      orchestrator.environment?.["KP_LLM_BASE_URL"] ?? "",
+      orchestrator.environment?.["LEISEN_LLM_BASE_URL"] ?? "",
     )?.[1];
     expect(new URL(llmBaseUrl ?? "").protocol).toBe("http:");
     expect(new URL(flagValue(command, "--gateway") ?? "").protocol).toBe("http:");
@@ -648,16 +648,16 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
 
     // 秘密は .env からの変数展開のみ。開発用の部品を含む評価用構成なので development
     expect(orchestrator.environment?.["NODE_ENV"]).toBe("development");
-    expect(orchestrator.environment?.["KP_LLM_MODEL"]).toMatch(/^\$\{KP_LLM_MODEL:\?/);
+    expect(orchestrator.environment?.["LEISEN_LLM_MODEL"]).toMatch(/^\$\{LEISEN_LLM_MODEL:\?/);
     // Orchestrator の資格情報は gateway と同じ変数(同じ値)を両方に渡す。runId の署名鍵と docId の
     // HMAC 鍵は Gateway だけが持ち、orchestrator には渡さない(ADR-019)
     const credentialEnv = config.gateway.runs.orchestratorCredentialEnv;
-    expect(orchestrator.environment?.[credentialEnv]).toMatch(/^\$\{KP_ORCHESTRATOR_CREDENTIAL:\?/);
+    expect(orchestrator.environment?.[credentialEnv]).toMatch(/^\$\{LEISEN_ORCHESTRATOR_CREDENTIAL:\?/);
     expect(orchestrator.environment?.[credentialEnv]).toBe(gateway.environment?.[credentialEnv]);
     expect(orchestrator.environment).not.toHaveProperty(config.gateway.runs.signingKeyEnv);
     expect(orchestrator.environment).not.toHaveProperty(config.gateway.runs.previousSigningKeyEnv);
     expect(orchestrator.environment).not.toHaveProperty(config.audit.docIdHmacKeyEnv);
-    // LibreChat(UI)は Orchestrator の資格情報を持たない(持つのは kp-ask serve だけ)
+    // LibreChat(UI)は Orchestrator の資格情報を持たない(持つのは leisen-ask serve だけ)
     const librechat = await overlayService("librechat");
     expect(librechat.environment).not.toHaveProperty(credentialEnv);
     expect(await envFile(LIBRECHAT_ENV_EXAMPLE)).not.toHaveProperty(credentialEnv);
@@ -845,7 +845,7 @@ describe("deploy/compose の LibreChat overlay(T-021、ADR-018)", () => {
     // スモーク(scripts/smoke/librechat-smoke.sh)の既定の認可エンドポイントも同じ発行者
     const smoke = await readFile(LIBRECHAT_SMOKE, "utf8");
     const env = await envFile(LIBRECHAT_ENV_EXAMPLE);
-    expect(/KP_SMOKE_OIDC_AUTH_URL:-([^}]+)\}/.exec(smoke)?.[1]).toBe(
+    expect(/LEISEN_SMOKE_OIDC_AUTH_URL:-([^}]+)\}/.exec(smoke)?.[1]).toBe(
       `${env["OPENID_ISSUER"]}/protocol/openid-connect/auth`,
     );
   });

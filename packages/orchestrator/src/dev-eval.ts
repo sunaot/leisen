@@ -1,7 +1,7 @@
 /**
  * 開発用の簡易評価(合成コーパスに対する質問セットの回帰チェック)。
  *
- * - T-008(評価ハーネス)の前段。kp-ask を `--json` で質問ごとに起動し、結果を期待値と
+ * - T-008(評価ハーネス)の前段。leisen-ask を `--json` で質問ごとに起動し、結果を期待値と
  *   突き合わせて Markdown の表にする(起動は bin/dev-eval.ts)。本モジュールは副作用の
  *   ない部分(質問セットの検証・判定・集計・表)だけを持つ
  * - 対象は合成データ(examples/fixtures/dev-corpus.yaml)だけを想定する。質問文・回答本文は
@@ -77,14 +77,14 @@ export const devEvalQuestionSetSchema = z
   });
 export type DevEvalQuestionSet = z.infer<typeof devEvalQuestionSetSchema>;
 
-/** kp-ask --json の失敗の表現(README「kp-ask の出力契約」) */
+/** leisen-ask --json の失敗の表現(README「leisen-ask の出力契約」) */
 const failureSchema = z.object({
   outcome: z.literal("error"),
   errorClass: z.string(),
   message: z.string().optional(),
 });
 
-/** kp-ask 1 回分の生の結果(bin/dev-eval.ts が集める) */
+/** leisen-ask 1 回分の生の結果(bin/dev-eval.ts が集める) */
 export interface DevEvalRawRun {
   readonly question: DevEvalQuestion;
   /** 何回目か(1 始まり。--repeat) */
@@ -119,7 +119,7 @@ export interface DevEvalResult {
 const URL_PATTERN = /https?:\/\/|www\./iu;
 const LIMIT_WARNING_PATTERN = /上限/u;
 
-/** kp-ask --json の stdout(JSON がちょうど1つ。整形済み)を読む。 */
+/** leisen-ask --json の stdout(JSON がちょうど1つ。整形済み)を読む。 */
 function parseStdout(stdout: string): unknown {
   try {
     return JSON.parse(stdout);
@@ -128,7 +128,7 @@ function parseStdout(stdout: string): unknown {
   }
 }
 
-/** kp-ask 1 回分の結果を判定する。 */
+/** leisen-ask 1 回分の結果を判定する。 */
 export function judgeRun(run: DevEvalRawRun): DevEvalResult {
   const base = {
     id: run.question.id,
@@ -155,8 +155,8 @@ export function judgeRun(run: DevEvalRawRun): DevEvalResult {
       verdict: "error",
       reasons: [
         failure.success
-          ? `kp-ask が回答を返せなかった(${failure.data.errorClass}、終了コード ${String(run.exitCode)})`
-          : `kp-ask の出力を解釈できなかった(終了コード ${String(run.exitCode)})`,
+          ? `leisen-ask が回答を返せなかった(${failure.data.errorClass}、終了コード ${String(run.exitCode)})`
+          : `leisen-ask の出力を解釈できなかった(終了コード ${String(run.exitCode)})`,
       ],
       outcome: "error",
       citedDocIds: [],

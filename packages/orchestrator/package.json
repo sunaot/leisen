@@ -1,12 +1,13 @@
 {
-  "name": "@kp/orchestrator",
+  "name": "@leisen/orchestrator",
+  "private": true,
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "kp-ask": "bin/kp-ask.js"
+    "leisen-ask": "bin/leisen-ask.js"
   },
   "files": [
     "bin",
@@ -20,13 +21,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.128.0",
-    "@kp/audit": "0.1.0",
-    "@kp/connector-sdk": "0.4.0",
-    "@kp/gateway": "0.1.0",
+    "@leisen/audit": "0.1.0",
+    "@leisen/connector-sdk": "0.4.0",
+    "@leisen/gateway": "0.1.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@kp/promotion-report": "0.1.0"
+    "@leisen/promotion-report": "0.1.0"
   }
 }

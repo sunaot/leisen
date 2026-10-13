@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Credential } from "@kp/connector-sdk";
+import type { Credential } from "@leisen/connector-sdk";
 import { CredentialCache } from "../src/idp/index.js";
 
 function bearer(token: string, expiresAt: number): Credential {

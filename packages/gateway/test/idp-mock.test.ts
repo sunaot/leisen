@@ -52,8 +52,8 @@ describe("MockIdpAdapter", () => {
     expect((error as IdpError).message).not.toContain("no-such-token");
   });
 
-  it("KP_MOCK_SESSIONS 環境変数からセッションを注入できる", async () => {
-    vi.stubEnv("KP_MOCK_SESSIONS", "tok-1=carol, tok-2=dave");
+  it("LEISEN_MOCK_SESSIONS 環境変数からセッションを注入できる", async () => {
+    vi.stubEnv("LEISEN_MOCK_SESSIONS", "tok-1=carol, tok-2=dave");
     const adapter = new MockIdpAdapter([]);
     expect((await adapter.authenticate("tok-1")).userId).toBe("carol");
     expect((await adapter.authenticate("tok-2")).userId).toBe("dave");
@@ -124,7 +124,7 @@ describe("MockIdpAdapter", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(MOCK_IDP_NO_SESSIONS_REJECTED);
     expect(MOCK_IDP_NO_SESSIONS_REJECTED).toContain("mock IdP: no sessions configured");
-    expect(MOCK_IDP_NO_SESSIONS_REJECTED).toContain("KP_MOCK_SESSIONS");
+    expect(MOCK_IDP_NO_SESSIONS_REJECTED).toContain("LEISEN_MOCK_SESSIONS");
     expect(JSON.stringify(warn.mock.calls)).not.toContain("dev-only-unknown");
   });
 

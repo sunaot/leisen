@@ -5,7 +5,7 @@
  *
  * ネットワークは 127.0.0.1 のみ。既存のシナリオ(1発ヒット / 再検索 / 未解決 / 未接続
  * ソース)に加え、tool_calls の arguments が壊れた JSON のケース、finish_reason: length、
- * 429 の再試行、資格情報・reasoning_effort の送り方、kp-ask からの実行を通す。
+ * 429 の再試行、資格情報・reasoning_effort の送り方、leisen-ask からの実行を通す。
  * 実モデル(LM Studio + gpt-oss 等)での疎通は未検証(README「LM Studio で使う」)。
  */
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,7 +25,7 @@ import {
   OPENAI_COMPATIBLE_CREDENTIALS_REQUIRED_MESSAGE,
   runCli,
   type CliDependencies,
-} from "../src/bin/kp-ask.js";
+} from "../src/bin/leisen-ask.js";
 import {
   ALICE_TOKEN,
   CorpusConnector,
@@ -447,11 +447,11 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
       { connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])] },
       [() => openAiSubmit({ answer: "不明です。", citations: [], confidence: 0 })],
       {
-        apiKeyEnv: "KP_TEST_LLM_API_KEY",
+        apiKeyEnv: "LEISEN_TEST_LLM_API_KEY",
         reasoningEffort: "low",
-        extraHeaders: { "x-kp-route": "dev-only-route" },
+        extraHeaders: { "x-leisen-route": "dev-only-route" },
       },
-      { env: { KP_TEST_LLM_API_KEY: "dev-only-key" } },
+      { env: { LEISEN_TEST_LLM_API_KEY: "dev-only-key" } },
     );
 
     await ask(context, "経費精算の締め日は?");
@@ -459,7 +459,7 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
     const request = context.mock.requests[0];
     expect(request?.hasAuthorization).toBe(true);
     expect(request?.authorizationScheme).toBe("Bearer");
-    expect(request?.headerNames).toContain("x-kp-route");
+    expect(request?.headerNames).toContain("x-leisen-route");
     expect(request?.body["reasoning_effort"]).toBe("low");
   });
 
@@ -475,7 +475,7 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
   });
 });
 
-describe("kp-ask(OpenAI 互換、モック)", () => {
+describe("leisen-ask(OpenAI 互換、モック)", () => {
   function capture() {
     const out: string[] = [];
     const err: string[] = [];
@@ -522,7 +522,7 @@ describe("kp-ask(OpenAI 互換、モック)", () => {
         "経費精算の締め日は?",
       ],
       io,
-      deps({ KP_SESSION_TOKEN: ALICE_TOKEN }),
+      deps({ LEISEN_SESSION_TOKEN: ALICE_TOKEN }),
     );
 
     expect(mock.scriptErrors).toEqual([]);
@@ -531,7 +531,7 @@ describe("kp-ask(OpenAI 互換、モック)", () => {
     expect(mock.requests[0]?.body["model"]).toBe(MODEL);
   });
 
-  it("環境変数 KP_LLM_PROVIDER / KP_LLM_BASE_URL / KP_LLM_MODEL でも指定できる", async () => {
+  it("環境変数 LEISEN_LLM_PROVIDER / LEISEN_LLM_BASE_URL / LEISEN_LLM_MODEL でも指定できる", async () => {
     const { harness, mock } = await startServers(
       { connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])] },
       resolvingScript(),
@@ -542,10 +542,10 @@ describe("kp-ask(OpenAI 互換、モック)", () => {
       ["--gateway", harness.url, "--user-id", "alice", "--json", "経費精算の締め日は?"],
       io,
       deps({
-        KP_SESSION_TOKEN: ALICE_TOKEN,
-        KP_LLM_PROVIDER: "openai-compatible",
-        KP_LLM_BASE_URL: mock.baseUrl,
-        KP_LLM_MODEL: MODEL,
+        LEISEN_SESSION_TOKEN: ALICE_TOKEN,
+        LEISEN_LLM_PROVIDER: "openai-compatible",
+        LEISEN_LLM_BASE_URL: mock.baseUrl,
+        LEISEN_LLM_MODEL: MODEL,
       }),
     );
 
@@ -567,7 +567,7 @@ describe("kp-ask(OpenAI 互換、モック)", () => {
         "経費精算の締め日は?",
       ],
       io,
-      deps({ KP_SESSION_TOKEN: ALICE_TOKEN }),
+      deps({ LEISEN_SESSION_TOKEN: ALICE_TOKEN }),
     );
 
     expect(code).toBe(2);

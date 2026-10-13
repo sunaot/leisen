@@ -1,5 +1,5 @@
 /**
- * kp-ask serve(Orchestrator の MCP サーバー)の上限(T-021、ADR-018 決定7)。
+ * leisen-ask serve(Orchestrator の MCP サーバー)の上限(T-021、ADR-018 決定7)。
  *
  * - RunLimiter: 同時に実行する run の数の上限。プロセス内のカウンタで、空きがなければ
  *   待たせずに即座に断る(ask は固定文言の busy を返す)。run は LLM・Gateway への呼び出しを

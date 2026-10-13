@@ -10,7 +10,7 @@
  * ツール結果・エラーのJSON直列化もここで行い(SDKには直列化済み文字列を渡す)、
  * 直列化の失敗も正規化エラーにする。
  */
-import type { SearchFilters, SearchOptions } from "@kp/connector-sdk";
+import type { SearchFilters, SearchOptions } from "@leisen/connector-sdk";
 import { z } from "zod";
 import type { Identity } from "../idp/types.js";
 import type { Gateway } from "./gateway.js";

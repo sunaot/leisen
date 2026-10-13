@@ -1,9 +1,9 @@
 /**
  * 脚本で応答する GatewayClient(実 Gateway では作れない応答 — 利用者の報告の欠落・食い違い、
- * run の途中の分類の変化 — を再現するためのテスト用)。ツール定義は @kp/gateway の
+ * run の途中の分類の変化 — を再現するためのテスト用)。ツール定義は @leisen/gateway の
  * toolDefinitions をそのまま使う。
  */
-import { toolDefinitions } from "@kp/gateway";
+import { toolDefinitions } from "@leisen/gateway";
 import type {
   FinishRunInput,
   GatewayCallOutcome,

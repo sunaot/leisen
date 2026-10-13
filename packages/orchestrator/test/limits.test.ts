@@ -7,7 +7,7 @@
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuditLogger } from "@kp/audit";
+import { AuditLogger } from "@leisen/audit";
 import {
   GatewayClientError,
   LlmError,

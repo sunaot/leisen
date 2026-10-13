@@ -17,7 +17,7 @@
  */
 import { readFile } from "node:fs/promises";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { ContainerEntry, SearchFilters } from "@kp/connector-sdk";
+import type { ContainerEntry, SearchFilters } from "@leisen/connector-sdk";
 import { z } from "zod";
 import type { SkippedSource } from "./answer.js";
 

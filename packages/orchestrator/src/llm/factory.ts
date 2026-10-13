@@ -2,7 +2,7 @@
  * LLM クライアントの生成を1か所に集約する(T-007、ADR-017 決定1)。
  *
  * 設定(llmBackendConfigSchema。provider で実装を選ぶ)を zod で検証し、対応する
- * LlmClient を作る。kp-ask・リファレンスデプロイ(T-012)・評価ハーネス(T-008)は
+ * LlmClient を作る。leisen-ask・リファレンスデプロイ(T-012)・評価ハーネス(T-008)は
  * ここを通して作り、実装クラスを直接選ばない。資格情報の値は設定に載らない
  * (Anthropic は SDK が環境から、OpenAI 互換は apiKeyEnv が指す環境変数から読む)。
  */

@@ -11,7 +11,7 @@
  * API パスに入るので、修飾子の混入(空白・コロン)とドットセグメントによる
  * エンドポイントのすり替えを構文で拒否する。
  */
-import { ConnectorError } from "@kp/connector-sdk";
+import { ConnectorError } from "@leisen/connector-sdk";
 
 export type GitHubDocumentRef =
   | {

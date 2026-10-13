@@ -370,8 +370,8 @@ describe("応答の変換(Chat Completions → Anthropic 形式)", () => {
     const ids = turn.message.content.map((block) => (block.type === "tool_use" ? block.id : ""));
     expect(new Set(ids).size).toBe(3);
     expect(ids[1]).toBe("dup");
-    expect(ids[0]).toMatch(/^call_kp_/);
-    expect(ids[2]).toMatch(/^call_kp_/);
+    expect(ids[0]).toMatch(/^call_leisen_/);
+    expect(ids[2]).toMatch(/^call_leisen_/);
   });
 
   it.each([
@@ -508,7 +508,7 @@ describe("HTTP の失敗の分類と再試行", () => {
     );
     const llm = client(fetch, {
       maxRetries: 2,
-      ...(withKey ? { apiKeyEnv: "KP_TEST_KEY", env: { KP_TEST_KEY: "dev-only-key" } } : {}),
+      ...(withKey ? { apiKeyEnv: "LEISEN_TEST_KEY", env: { LEISEN_TEST_KEY: "dev-only-key" } } : {}),
     });
 
     const error = await failureOf(llm.complete(request()));
@@ -590,22 +590,22 @@ describe("資格情報と設定", () => {
   it("apiKeyEnv の環境変数を Authorization: Bearer で送る(前後の空白は除く)", async () => {
     const { fetch, calls } = fakeFetch(() => json(TEXT_REPLY));
     await client(fetch, {
-      apiKeyEnv: "KP_TEST_KEY",
-      env: { KP_TEST_KEY: "  dev-only-key\n" },
-      extraHeaders: { "x-kp-route": "dev-only-route" },
+      apiKeyEnv: "LEISEN_TEST_KEY",
+      env: { LEISEN_TEST_KEY: "  dev-only-key\n" },
+      extraHeaders: { "x-leisen-route": "dev-only-route" },
     }).complete(request());
     expect(calls[0]?.headers["authorization"]).toBe("Bearer dev-only-key");
-    expect(calls[0]?.headers["x-kp-route"]).toBe("dev-only-route");
+    expect(calls[0]?.headers["x-leisen-route"]).toBe("dev-only-route");
   });
 
   it.each([
     ["未設定", {}],
-    ["空", { KP_TEST_KEY: "" }],
-    ["空白を含む", { KP_TEST_KEY: "dev only key" }],
+    ["空", { LEISEN_TEST_KEY: "" }],
+    ["空白を含む", { LEISEN_TEST_KEY: "dev only key" }],
   ])("apiKeyEnv の環境変数が%sなら送信前に llm_credentials_missing", async (_label, env) => {
     const { fetch, calls } = fakeFetch(() => json(TEXT_REPLY));
     const error = await failureOf(
-      client(fetch, { apiKeyEnv: "KP_TEST_KEY", env }).complete(request()),
+      client(fetch, { apiKeyEnv: "LEISEN_TEST_KEY", env }).complete(request()),
     );
     expect(error.errorClass).toBe("llm_credentials_missing");
     expect(calls).toHaveLength(0);
@@ -618,8 +618,8 @@ describe("資格情報と設定", () => {
     const error = await failureOf(
       client(fetch, {
         baseUrl: "http://127.0.0.1:1234/v1?token=dev-only-query-secret",
-        apiKeyEnv: "KP_TEST_KEY",
-        env: { KP_TEST_KEY: "dev-only-key-value" },
+        apiKeyEnv: "LEISEN_TEST_KEY",
+        env: { LEISEN_TEST_KEY: "dev-only-key-value" },
       }).complete(request()),
     );
     const rendered = `${error.message} ${String(error)} ${JSON.stringify(error)}`;
@@ -632,8 +632,8 @@ describe("資格情報と設定", () => {
     ["資格情報付きのベース URL", { baseUrl: "http://user:dev-only-password@127.0.0.1/v1" }],
     ["環境変数名でない apiKeyEnv", { apiKeyEnv: "dev-only-key-value!" }],
     ["Authorization を含む extraHeaders", { extraHeaders: { Authorization: "Bearer dev-only-key" } }],
-    ["改行を含む extraHeaders の値", { extraHeaders: { "x-kp-route": "dev-only\r\nx-injected: 1" } }],
-    ["ASCII 以外の extraHeaders の値", { extraHeaders: { "x-kp-route": "dev-only-経路" } }],
+    ["改行を含む extraHeaders の値", { extraHeaders: { "x-leisen-route": "dev-only\r\nx-injected: 1" } }],
+    ["ASCII 以外の extraHeaders の値", { extraHeaders: { "x-leisen-route": "dev-only-経路" } }],
     ["空のモデル名", { model: "" }],
   ])("設定の検証: %s は拒否(入力値をメッセージに含めない)", (_label, options) => {
     let thrown: unknown;

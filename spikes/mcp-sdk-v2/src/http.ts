@@ -44,7 +44,7 @@ function bearerToken(header: string | undefined): string | undefined {
 function authInfoFor(session: GatewaySession): AuthInfo {
   return {
     token: session.sessionId,
-    clientId: "kp-gateway",
+    clientId: "leisen-gateway",
     scopes: [],
     extra: { [GATEWAY_SESSION_EXTRA_KEY]: session },
   };

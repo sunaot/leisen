@@ -1,9 +1,9 @@
-# @kp/connector-github — GitHub コネクタ(T-019)
+# @leisen/connector-github — GitHub コネクタ(T-019)
 
 connector-sdk v0.4(ADR-016、追補2)の `Connector`(`search` / `fetch` / `list` / `describe`)を GitHub REST API で実装したコネクタ。**全呼び出しを利用者本人の user access token で行い**、認可は GitHub に委譲する(CLAUDE.md 不変条件1、ADR-010、`docs/auth-matrix.md` §4)。
 
 - `capabilities`: `{ nativeSearch: "degraded", ingest: false, privateScopeHandling: "classified" }`(プライベート領域の扱いは下の「プライベート領域」)。コード専用索引(シンボル・AST)はコア外(ADR-008 §5)
-- 外部依存なし(`@kp/connector-sdk` のみ)。HTTP は注入可能な `fetch`(既定はグローバル `fetch`。注入する実装の前提は「リダイレクトの扱い」を参照)
+- 外部依存なし(`@leisen/connector-sdk` のみ)。HTTP は注入可能な `fetch`(既定はグローバル `fetch`。注入する実装の前提は「リダイレクトの扱い」を参照)
 - 公開 API は factory(`createGitHubConnector`、Gateway のプラグイン契約の `createConnector`)と型(`GitHubConnector` / `GitHubConnectorOptions` / `GitHubConnectorFactoryInit` / `FetchLike` / `RateLimitOptions`)のみ。API クライアント・残quota追跡・documentId の符号化は内部実装で公開しない(Gateway を経由せずに GitHub を呼ぶ部品を配らない、不変条件2)
 - **実アカウントでの手動疎通は未実施**(GitHub App の組織承認待ち。T-019 の人手の前提)。現状の検証はフェイク GitHub API(注入 fetch)によるユニットテストのみ
 
@@ -13,7 +13,7 @@ auth-matrix §4 の結論に従う。
 
 | 項目 | 前提 |
 |---|---|
-| 資格情報 | **本番は GitHub App の user access token(user-to-server。web application flow / device flow で本人が認可)に限る**(ADR-010 方式A、auth-matrix §4)。Token Vault によるリフレッシュ・失効管理(TM-C4: 退職・権限剥奪時の revoke)の対象にするため。PAT(本人の fine-grained PAT を含む)は開発時の `MockCredentialProvider` 経由(`KP_MOCK_TOKEN_GITHUB`、下記「ローカル開発」)に限定し、本番の資格情報には使わない(発行・失効が利用者任せになり Token Vault の管理外になる) |
+| 資格情報 | **本番は GitHub App の user access token(user-to-server。web application flow / device flow で本人が認可)に限る**(ADR-010 方式A、auth-matrix §4)。Token Vault によるリフレッシュ・失効管理(TM-C4: 退職・権限剥奪時の revoke)の対象にするため。PAT(本人の fine-grained PAT を含む)は開発時の `MockCredentialProvider` 経由(`LEISEN_MOCK_TOKEN_GITHUB`、下記「ローカル開発」)に限定し、本番の資格情報には使わない(発行・失効が利用者任せになり Token Vault の管理外になる) |
 | 使わないもの | GitHub App の installation access token、サービスアカウント、共有 PAT。app 自身として動作し本人の権限判定にならないため**採用不可**(auth-matrix §4)。コネクタにこれらへのフォールバックはない。多層防御として、installation token(`ghs_`)・refresh token(`ghr_`)の接頭辞を持つトークンは API を呼ぶ前に `invalid_request` で拒否する(資格情報プロバイダの取り違えの検知。メッセージにトークンを含めない) |
 | 資格情報の形式 | `AuthContext.credential.kind === "oauth_bearer"`。`delegated_identity` は `invalid_request` で拒否する |
 | 実効範囲 | GitHub App の user token は「app の権限・インストール範囲」∩「本人の権限」。app を組織にインストールし(対象リポジトリは全て推奨)、本人が認可する |
@@ -26,18 +26,18 @@ auth-matrix §4 の結論に従う。
 
 ### ローカル開発
 
-実 IdP・Token Vault なしで Gateway 経由の動作を確認する場合は、Gateway の `MockCredentialProvider`(開発専用、`NODE_ENV=production` では構築拒否)が環境変数 `KP_MOCK_TOKEN_GITHUB`(ユーザー別に上書きする場合は `KP_MOCK_TOKEN_GITHUB__<USERID>`。`<USERID>` は userId を大文字化し英数字以外を `_` にしたもの)から本人トークンを注入する(sourceId が `github` の場合)。PAT を使ってよいのはこの開発経路のみ。トークンは自分の開発用アカウントのものを使い、**ファイル・コード・テストフィクスチャに書かない**(不変条件6)。
+実 IdP・Token Vault なしで Gateway 経由の動作を確認する場合は、Gateway の `MockCredentialProvider`(開発専用、`NODE_ENV=production` では構築拒否)が環境変数 `LEISEN_MOCK_TOKEN_GITHUB`(ユーザー別に上書きする場合は `LEISEN_MOCK_TOKEN_GITHUB__<USERID>`。`<USERID>` は userId を大文字化し英数字以外を `_` にしたもの)から本人トークンを注入する(sourceId が `github` の場合)。PAT を使ってよいのはこの開発経路のみ。トークンは自分の開発用アカウントのものを使い、**ファイル・コード・テストフィクスチャに書かない**(不変条件6)。
 
-**権限境界の検証ではユーザー別変数を必須とする。** `KP_MOCK_TOKEN_GITHUB` だけを設定すると、全モックユーザーが同じトークン(= 同じ GitHub アカウントの権限)を共有する。この状態では「他人の権限で見えてしまう」逸脱を検出できないため、カナリア検証(threat-model §5)や権限別アイデンティティでのテストでは、各ユーザーに別アカウントのトークンを `KP_MOCK_TOKEN_GITHUB__<USERID>` で設定すること。
+**権限境界の検証ではユーザー別変数を必須とする。** `LEISEN_MOCK_TOKEN_GITHUB` だけを設定すると、全モックユーザーが同じトークン(= 同じ GitHub アカウントの権限)を共有する。この状態では「他人の権限で見えてしまう」逸脱を検出できないため、カナリア検証(threat-model §5)や権限別アイデンティティでのテストでは、各ユーザーに別アカウントのトークンを `LEISEN_MOCK_TOKEN_GITHUB__<USERID>` で設定すること。
 
 ## deployment.yaml での使い方(Gateway のプラグイン)
 
-Gateway の起動コードは `connectors[].kind: github` をプラグインモジュール `@kp/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir, policy })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
+`github` は公式コネクタの許可表(ADR-021)に載っているので、Gateway の起動コードは `connectors[].kind: github` を `module` なしでプラグインモジュール `@leisen/connector-github` として読み込み、名前付き export の `createConnector({ sourceId, settings, configDir, policy })` で Connector を作る(`packages/gateway/src/bootstrap/plugins.ts` の契約)。`sourceId` は `connectors[].id`。
 
 ```yaml
 connectors:
-  - id: github              # Connector.sourceId。mock_env の本人トークンは KP_MOCK_TOKEN_<SOURCEID>(= KP_MOCK_TOKEN_GITHUB)
-    kind: github            # プラグイン @kp/connector-github(createConnector)
+  - id: github              # Connector.sourceId。mock_env の本人トークンは LEISEN_MOCK_TOKEN_<SOURCEID>(= LEISEN_MOCK_TOKEN_GITHUB)
+    kind: github            # プラグイン @leisen/connector-github(createConnector)
     auth:
       provider: mock_env    # 開発時のみ(本人トークンを環境変数から注入。NODE_ENV=production では拒否)
     limits:
@@ -58,7 +58,7 @@ connectors:
 ## 使い方(コードから組み立てる)
 
 ```ts
-import { createGitHubConnector } from "@kp/connector-github";
+import { createGitHubConnector } from "@leisen/connector-github";
 
 const github = createGitHubConnector({
   sourceId: "github", // deployment.yaml の connectors[].id と一致させる
@@ -203,7 +203,7 @@ Gateway は LLM・利用者向けの応答で `permission_denied` と `not_found
 ## テスト
 
 ```bash
-npm test -w @kp/connector-github
+npm test -w @leisen/connector-github
 ```
 
 フェイク GitHub API(注入 fetch)で検証する。Gateway のプラグイン契約(`createConnector` と settings の検証)は `test/plugin.test.ts`。認可分岐(資格情報の前提違反・401/403/404/5xx・本人トークンの付与とユーザー間の非混線・リダイレクト)を `test/auth.test.ts`、残quotaの尊重を `test/ratelimit.test.ts` に置く。フィクスチャのトークンは `dev-only-token-<user>` 形式のダミーのみ(接頭辞による拒否のテストは `ghs_dev-only` / `ghr_dev-only` のような実トークン形式でない短い値を使う)。内部モジュールは相対 import で参照する(公開 API は factory と型のみ)。

@@ -1,20 +1,20 @@
 /**
  * Orchestrator の資格情報(Gateway と共有する秘密。ADR-019 決定3)— 環境変数
- * KP_ORCHESTRATOR_CREDENTIAL。kp-ask(1問)と kp-ask serve の両方で受ける。
+ * LEISEN_ORCHESTRATOR_CREDENTIAL。leisen-ask(1問)と leisen-ask serve の両方で受ける。
  *
  * - Gateway の run API(POST /runs 等)と、runId を申告する tools/call は、利用者本人の Bearer に
  *   加えてこの資格情報を求める(利用者が自分のトークンで run API を直接呼び、AnswerRun を偽る
  *   ことを防ぐ)。Gateway 側は deployment.yaml の gateway.runs.orchestratorCredentialEnv
- *   (既定 KP_ORCHESTRATOR_CREDENTIAL)で同じ値を読む
+ *   (既定 LEISEN_ORCHESTRATOR_CREDENTIAL)で同じ値を読む
  * - 未設定なら、NODE_ENV=production では固定文言で拒否する(終了コード 2)。それ以外では
  *   開発用の既定値(Gateway の DEV_ORCHESTRATOR_CREDENTIAL。Gateway も未設定のときに同じ値を使う)
  *   で動き、WARNING を 1 行出す
  * - 値はログ・エラー・使い方の表示に出さない(不変条件6)
  */
-import { DEV_ORCHESTRATOR_CREDENTIAL, MIN_ORCHESTRATOR_CREDENTIAL_CHARS } from "@kp/gateway";
+import { DEV_ORCHESTRATOR_CREDENTIAL, MIN_ORCHESTRATOR_CREDENTIAL_CHARS } from "@leisen/gateway";
 import { isProductionEnv } from "./upstream-options.js";
 
-export const ORCHESTRATOR_CREDENTIAL_ENV = "KP_ORCHESTRATOR_CREDENTIAL";
+export const ORCHESTRATOR_CREDENTIAL_ENV = "LEISEN_ORCHESTRATOR_CREDENTIAL";
 
 export const ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION =
   `NODE_ENV=production では環境変数 ${ORCHESTRATOR_CREDENTIAL_ENV}(Gateway と共有する Orchestrator の資格情報、` +

@@ -31,12 +31,12 @@ import {
   ConnectorError,
   MAX_SNIPPET_CHARS,
   type SearchResult,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   AuditLogger,
   digestQuery,
   type AuditRecord,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   GATEWAY_AUTH_INFO_TOKEN,
   GATEWAY_META_KEYS,

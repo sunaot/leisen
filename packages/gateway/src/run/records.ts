@@ -26,7 +26,7 @@ import {
   type DocIdAuditConfig,
   type FinishOutcome,
   type UserFeedback,
-} from "@kp/audit";
+} from "@leisen/audit";
 
 /**
  * 構成から注入するソースの判定(ADR-019 決定10)。deployment.yaml の connectors[] から

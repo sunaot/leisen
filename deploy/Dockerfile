@@ -1,12 +1,12 @@
-# kp-gateway のコンテナイメージ(T-012 リファレンスデプロイ、T-021)
+# leisen-gateway のコンテナイメージ(T-012 リファレンスデプロイ、T-021)
 #
-#   docker build -f deploy/Dockerfile -t kp-gateway:local .    # リポジトリルートで実行
+#   docker build -f deploy/Dockerfile -t leisen:local .    # リポジトリルートで実行
 #
 # 1つのイメージに次の3つを含める(いずれも同じ依存・同じビルド成果物から動く):
-#   - Gateway(kp-gateway serve): 既定のエントリポイント
-#   - Orchestrator(kp-ask serve、T-021): 利用者向けの面として MCP サーバーで公開する
+#   - Gateway(leisen-gateway serve): 既定のエントリポイント
+#   - Orchestrator(leisen-ask serve、T-021): 利用者向けの面として MCP サーバーで公開する
 #     (ADR-018)。compose の overlay(deploy/compose/docker-compose.librechat.yml)が
-#     別のエントリポイント(node packages/orchestrator/dist/bin/kp-ask.js)で起動する
+#     別のエントリポイント(node packages/orchestrator/dist/bin/leisen-ask.js)で起動する
 #   - 昇格判定レポート(promotion-report): 運用 CLI(docs/install.md §7)
 #
 # ビルドコンテキストはリポジトリルート(ルートの package-lock.json と npm workspaces を
@@ -22,7 +22,7 @@
 #
 # runtime の node_modules を build からコピーして prune するのではなく、npm ci --omit=dev
 # で作り直す理由:
-#   - @kp/* は npm workspaces のシンボリックリンク(node_modules/@kp/gateway →
+#   - @leisen/* は npm workspaces のシンボリックリンク(node_modules/@leisen/gateway →
 #     ../../packages/gateway)で解決される。作り直せば npm がイメージ内の
 #     /app/packages/* を指す相対リンクとして張るため、リンクが壊れない。dist は
 #     リンク先(packages/<name>/dist)に置くので、パッケージ間の import もそのまま解決する
@@ -49,24 +49,24 @@
 #   - 非 root(uid/gid 1000 = node イメージの node ユーザー)。Kubernetes の runAsNonRoot が
 #     検証できるよう数値で指定する。アプリのファイルは root 所有で、実行ユーザーは
 #     書き換えられない
-#   - 設定は /etc/kp/deployment.yaml(KP_DEPLOYMENT_CONFIG)を読み取り専用で注入する
-#   - 監査ログ(audit.sink: jsonl)は /var/lib/kp/audit、生クエリ原文(audit.jsonl.rawQueryPath)は
-#     /var/lib/kp/rawquery に書く。保持期間・閲覧経路が異なる(ADR-011 §3、ADR-013 §3)ため
+#   - 設定は /etc/leisen/deployment.yaml(LEISEN_DEPLOYMENT_CONFIG)を読み取り専用で注入する
+#   - 監査ログ(audit.sink: jsonl)は /var/lib/leisen/audit、生クエリ原文(audit.jsonl.rawQueryPath)は
+#     /var/lib/leisen/rawquery に書く。保持期間・閲覧経路が異なる(ADR-011 §3、ADR-013 §3)ため
 #     別ボリュームにする。所有者は実行ユーザー、権限 0700(ファイルは 0600 で作られる)
-#   - node が PID 1 で動く。kp-gateway serve は SIGTERM / SIGINT を自分で処理し、処理中の
+#   - node が PID 1 で動く。leisen-gateway serve は SIGTERM / SIGINT を自分で処理し、処理中の
 #     リクエストを待って(最大 10 秒)監査バッファを flush してから終了する。停止猶予は
 #     それより長く取ること(compose の stop_grace_period: 30s)
 #   - NODE_ENV=production では開発用の部品(mock IdP / mock_env / dev-fixture / audit.sink: stdout)が
 #     起動時に拒否される。評価用のリファレンス compose は NODE_ENV=development で上書きしている
 #   - HEALTHCHECK は GET /healthz(待ち受けの死活のみ。監査 sink の状態は含まない —
 #     docs/install.md「未実装事項」)。イメージに curl がないため node で確認する。
-#     待ち受けのポートを変えたら KP_HEALTHCHECK_URL も合わせる。orchestrator として
-#     起動するコンテナは compose 側で healthcheck を上書きする(kp-ask serve の /healthz)
-#   - orchestrator(kp-ask serve)は監査ストアに書かない(ADR-019)。run(AnswerRun)は Gateway の
-#     run API に申告し、Gateway が /var/lib/kp/audit に記録する。compose の overlay は orchestrator
+#     待ち受けのポートを変えたら LEISEN_HEALTHCHECK_URL も合わせる。orchestrator として
+#     起動するコンテナは compose 側で healthcheck を上書きする(leisen-ask serve の /healthz)
+#   - orchestrator(leisen-ask serve)は監査ストアに書かない(ADR-019)。run(AnswerRun)は Gateway の
+#     run API に申告し、Gateway が /var/lib/leisen/audit に記録する。compose の overlay は orchestrator
 #     に設定だけを読み取り専用でマウントし、Gateway の監査ログ・生クエリ原文のボリュームは
 #     マウントしない(Orchestrator から Gateway の監査ログを読めない・書けない)。VOLUME の
-#     宣言により、orchestrator の /var/lib/kp/audit 等には空の匿名ボリュームが付くが、名前付き
+#     宣言により、orchestrator の /var/lib/leisen/audit 等には空の匿名ボリュームが付くが、名前付き
 #     ボリュームとは別物で、何も書かれない
 
 ARG NODE_IMAGE=node:22-bookworm-slim
@@ -91,8 +91,8 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
-    KP_DEPLOYMENT_CONFIG=/etc/kp/deployment.yaml \
-    KP_HEALTHCHECK_URL=http://127.0.0.1:8787/healthz
+    LEISEN_DEPLOYMENT_CONFIG=/etc/leisen/deployment.yaml \
+    LEISEN_HEALTHCHECK_URL=http://127.0.0.1:8787/healthz
 WORKDIR /app
 
 # ライセンス表示(Apache-2.0 §4: 再配布物に License と NOTICE を含める。ADR-004)
@@ -117,17 +117,17 @@ COPY --from=build /app/packages/orchestrator/dist packages/orchestrator/dist
 COPY --from=build /app/packages/orchestrator/prompts packages/orchestrator/prompts
 COPY --from=build /app/packages/promotion-report/dist packages/promotion-report/dist
 
-RUN mkdir -p /etc/kp /var/lib/kp/audit /var/lib/kp/rawquery \
-    && chown 1000:1000 /var/lib/kp/audit /var/lib/kp/rawquery \
-    && chmod 0700 /var/lib/kp/audit /var/lib/kp/rawquery
+RUN mkdir -p /etc/leisen /var/lib/leisen/audit /var/lib/leisen/rawquery \
+    && chown 1000:1000 /var/lib/leisen/audit /var/lib/leisen/rawquery \
+    && chmod 0700 /var/lib/leisen/audit /var/lib/leisen/rawquery
 # 空の名前付きボリュームは初回マウント時にこのディレクトリの所有者・権限を引き継ぐ
-VOLUME ["/var/lib/kp/audit", "/var/lib/kp/rawquery"]
+VOLUME ["/var/lib/leisen/audit", "/var/lib/leisen/rawquery"]
 
 USER 1000:1000
-# 8787: Gateway(既定)、8790: orchestrator(kp-ask serve、compose overlay の --listen)
+# 8787: Gateway(既定)、8790: orchestrator(leisen-ask serve、compose overlay の --listen)
 EXPOSE 8787 8790
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
-    CMD ["node", "-e", "fetch(process.env.KP_HEALTHCHECK_URL,{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"]
+    CMD ["node", "-e", "fetch(process.env.LEISEN_HEALTHCHECK_URL,{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"]
 
-ENTRYPOINT ["node", "packages/gateway/dist/bin/kp-gateway.js"]
+ENTRYPOINT ["node", "packages/gateway/dist/bin/leisen-gateway.js"]
 CMD ["serve"]

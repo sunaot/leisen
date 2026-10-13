@@ -22,7 +22,7 @@ import {
 
 const tempDirs: string[] = [];
 async function tempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "kp-audit-jsonl-"));
+  const dir = await mkdtemp(join(tmpdir(), "leisen-audit-jsonl-"));
   tempDirs.push(dir);
   return dir;
 }

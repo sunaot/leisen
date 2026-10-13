@@ -21,11 +21,11 @@
  *   全角文字・ゼロ幅文字による見た目違いを同じ申告名として照合する。メッセージは
  *   固定文言で、キー名も値もエコーしない
  *   - 他社名前空間の `com.example/executionClass` も (b) で拒否する(自社の申告の
- *     つもりで prefix を誤ったキー — `kp.gateway/` 等 — と区別できないため
+ *     つもりで prefix を誤ったキー — `leisen.gateway/` 等 — と区別できないため
  *     fail-closed に倒す)。`com.example/actor` は骨格が "actor" と一致しないため受ける
  *   - Gatewayでは検知できない残余: `_meta` 以外の場所での申告(`params.meta` 等の
  *     スキーマ外のキーは SDK が取り除く)、申告そのものの省略、名前空間外のキー名
- *     自体の綴り違い(`execClass` 等)、prefix を誤った actor(`kp.gateway/actor`
+ *     自体の綴り違い(`execClass` 等)、prefix を誤った actor(`leisen.gateway/actor`
  *     等。他社名前空間の actor と区別できない)。いずれも既定の human_in_the_loop /
  *     human として扱われる(T-003 H1)
  * - runId / iteration(ADR-011 追記、ADR-019 決定4): Orchestrator(T-007)が申告する監査の

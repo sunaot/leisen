@@ -2,7 +2,7 @@
  * 入力ファイルの読み込みと検証エラーの表示(T-014、issue #38 UX R9)。
  *
  * - 監査 JSONL(--audit): 1行1レコード。Gateway の audit.sink: jsonl のファイル(ラッパーなし)
- *   に加え、audit.sink: stdout の標準出力(と kp-ask の stderr)の `{"kind":"audit", ...record}`
+ *   に加え、audit.sink: stdout の標準出力(と leisen-ask の stderr)の `{"kind":"audit", ...record}`
  *   の行も読む(違いは封筒の `kind` だけ。gateway の StdoutDebugAuditSink /
  *   orchestrator の StderrDebugAuditSink)。封筒を外したレコードは JSONL と同じ検証にかける
  *   (fail-closed。禁止フィールド・型にないキーは拒否)
@@ -19,7 +19,7 @@ import {
   validateRawQueryRecord,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/audit";
+} from "@leisen/audit";
 import type { z } from "zod";
 import { sourcesMetaSchema, type SourcesMeta } from "./sources.js";
 
@@ -255,7 +255,7 @@ export function parseAuditLine(input: unknown): AuditRecord {
         `監査レコードではありません("kind" が "audit" 以外の行)。${AUDIT_INPUT_FORMAT_HINT}`,
       );
     }
-    // audit.sink: stdout(kp-ask の stderr も同じ)の封筒を外す
+    // audit.sink: stdout(leisen-ask の stderr も同じ)の封筒を外す
     const { kind: _envelope, ...rest } = input;
     record = rest;
   }

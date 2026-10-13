@@ -50,7 +50,7 @@
  *   手実装しない(追補3 決定6)
  *
  * 待ち受け(listen)は呼び出し側が deployment.yaml の gateway.http.host / port で
- * 行う(起動コード: bootstrap/assemble.ts の assembleGateway と kp-gateway serve)。
+ * 行う(起動コード: bootstrap/assemble.ts の assembleGateway と leisen-gateway serve)。
  */
 import {
   createServer,

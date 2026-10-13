@@ -1,10 +1,10 @@
 /**
- * T-007 テストハーネス: 実 Gateway(@kp/gateway)を port 0 で listen させ、
+ * T-007 テストハーネス: 実 Gateway(@leisen/gateway)を port 0 で listen させ、
  * McpGatewayClient(Streamable HTTP)で接続する。ネットワークは 127.0.0.1 のみ。
  *
- * gateway の test/helpers は gateway の src を直接 import しており、@kp/gateway
+ * gateway の test/helpers は gateway の src を直接 import しており、@leisen/gateway
  * (dist)と混ぜるとクラスが二重になって instanceof(IdpError 等)の判定が壊れるため、
- * 同等物をここで @kp/gateway だけを使って用意する。
+ * 同等物をここで @leisen/gateway だけを使って用意する。
  *
  * - CorpusConnector: 文書コーパスを持つモックコネクタ(キーワード一致で検索)
  * - StubCredentialProvider: 環境変数に依存しない資格情報スタブ(未接続を注入できる)
@@ -28,7 +28,7 @@ import {
   type SearchOptions,
   type SearchResult,
   type SourceDescription,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   AuditLogger,
   BufferedAuditSink,
@@ -37,7 +37,7 @@ import {
   type AuditRecord,
   type AuditSink,
   type RawQueryStore,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   DEV_ORCHESTRATOR_CREDENTIAL,
   Gateway,
@@ -50,14 +50,14 @@ import {
   type Identity,
   type IdpAdapter,
   type RunRuntime,
-} from "@kp/gateway";
+} from "@leisen/gateway";
 import { McpGatewayClient } from "../../src/index.js";
 
 export const ALICE_TOKEN = "dev-only-session-alice";
 export const BOB_TOKEN = "dev-only-session-bob";
 /**
- * Gateway と Orchestrator が共有する資格情報。開発用の既定値と同じにして、kp-ask の CLI(環境変数
- * KP_ORCHESTRATOR_CREDENTIAL なし → 既定値)からも実 Gateway のハーネスに通るようにする。
+ * Gateway と Orchestrator が共有する資格情報。開発用の既定値と同じにして、leisen-ask の CLI(環境変数
+ * LEISEN_ORCHESTRATOR_CREDENTIAL なし → 既定値)からも実 Gateway のハーネスに通るようにする。
  * 資格情報の不一致は client(token, "wrong-…") で注入する
  */
 export const TEST_ORCHESTRATOR_CREDENTIAL = DEV_ORCHESTRATOR_CREDENTIAL;

@@ -28,7 +28,7 @@ import {
   type AuditLogger,
   type DocIdAuditConfig,
   type RawQueryStore,
-} from "@kp/audit";
+} from "@leisen/audit";
 import { isSlackKind, type DeploymentConfig } from "../config/schema.js";
 import type { Identity } from "../idp/types.js";
 import {
@@ -56,7 +56,7 @@ import {
 } from "./types.js";
 
 /** Orchestrator の資格情報(共有秘密)を送るヘッダ(小文字。node:http はヘッダ名を小文字にする)。 */
-export const ORCHESTRATOR_CREDENTIAL_HEADER = "x-kp-orchestrator-credential";
+export const ORCHESTRATOR_CREDENTIAL_HEADER = "x-leisen-orchestrator-credential";
 
 /** Orchestrator の資格情報の最小長(文字)。 */
 export const MIN_ORCHESTRATOR_CREDENTIAL_CHARS = 16;

@@ -10,7 +10,7 @@ import { BlockList, isIP } from "node:net";
 import {
   privateScopeHandlingOf,
   type ConnectorCapabilities,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import { AUDIT_SINK_JSONL, type DeploymentConfig } from "./schema.js";
 
 /**
@@ -363,7 +363,7 @@ export function validateIdpTransport(config: DeploymentConfig): ConfigIssue[] {
  * gateway.http.confirmExposedHost: true で明示させる。
  *
  * 待ち受けの有無に関わる検査のため、静的検証(validateDeploymentConfig)ではなく
- * 起動コード(bootstrap/assemble.ts の assembleGateway。kp-gateway serve / validate)が
+ * 起動コード(bootstrap/assemble.ts の assembleGateway。leisen-gateway serve / validate)が
  * 適用する(待ち受けないツール用途の設定解析は妨げない)。
  */
 export function validateGatewayHttpExposure(config: DeploymentConfig): ConfigIssue[] {

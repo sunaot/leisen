@@ -13,7 +13,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { inspect } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { GATEWAY_RESULT_META_KEYS, IdpError } from "@kp/gateway";
+import { GATEWAY_RESULT_META_KEYS, IdpError } from "@leisen/gateway";
 import {
   GatewayClientError,
   McpGatewayClient,

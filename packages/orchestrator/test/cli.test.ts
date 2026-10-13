@@ -1,5 +1,5 @@
 /**
- * kp-ask CLI。Gateway は実物(port 0)、LLM は依存注入(脚本 / 偽 fetch の実 SDK)で動かす。
+ * leisen-ask CLI。Gateway は実物(port 0)、LLM は依存注入(脚本 / 偽 fetch の実 SDK)で動かす。
  * Claude API には出ない。
  */
 import { createHmac } from "node:crypto";
@@ -26,7 +26,7 @@ import {
   runCli,
   type CliDependencies,
   type CliFailureOutput,
-} from "../src/bin/kp-ask.js";
+} from "../src/bin/leisen-ask.js";
 import {
   ALICE_TOKEN,
   BOB_TOKEN,
@@ -100,10 +100,10 @@ async function stubNoAnthropicCredentials(): Promise<void> {
   ]) {
     vi.stubEnv(name, undefined);
   }
-  vi.stubEnv("ANTHROPIC_CONFIG_DIR", await mkdtemp(join(tmpdir(), "kp-ask-no-creds-")));
+  vi.stubEnv("ANTHROPIC_CONFIG_DIR", await mkdtemp(join(tmpdir(), "leisen-ask-no-creds-")));
 }
 
-describe("kp-ask: 引数", () => {
+describe("leisen-ask: 引数", () => {
   it("--help で使い方を表示する", async () => {
     const { out, io } = capture();
     expect(await runCli(["--help"], io, deps(() => resolvingScript()))).toBe(0);
@@ -140,7 +140,7 @@ describe("kp-ask: 引数", () => {
   });
 });
 
-describe("kp-ask: 実行", () => {
+describe("leisen-ask: 実行", () => {
   it("回答・出典・searchedSources・usage を表示し、AnswerRun は Gateway の監査に残る(stderr には出さない)", async () => {
     const harness = await setup();
     const { out, err, io } = capture();
@@ -148,7 +148,7 @@ describe("kp-ask: 実行", () => {
     const code = await runCli(
       ["--gateway", harness.url, "--user-id", "alice", "経費精算の締め日は?"],
       io,
-      deps(() => resolvingScript(), { KP_SESSION_TOKEN: ALICE_TOKEN }),
+      deps(() => resolvingScript(), { LEISEN_SESSION_TOKEN: ALICE_TOKEN }),
     );
 
     expect(code).toBe(0);
@@ -158,7 +158,7 @@ describe("kp-ask: 実行", () => {
     expect(text).toContain("検索したソース: alpha");
     expect(text).toContain("結果: resolved");
     expect(text).toContain("LLM 2 ターン、ツール呼び出し 2 回");
-    // AnswerRun は Gateway の run API が書く(ADR-019)。kp-ask は監査レコードを出力しない
+    // AnswerRun は Gateway の run API が書く(ADR-019)。leisen-ask は監査レコードを出力しない
     expect(err.filter((line) => line.startsWith("{"))).toEqual([]);
     expect(harness.answerRuns()).toEqual([
       expect.objectContaining({ userId: "alice", finalOutcome: "resolved", citedDocIds: ["alpha:doc-expense-policy"] }),
@@ -277,7 +277,7 @@ function lastAnswerRun(harness: GatewayHarness): Record<string, unknown> | undef
 }
 
 async function writeDeployment(yaml: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "kp-ask-config-"));
+  const dir = await mkdtemp(join(tmpdir(), "leisen-ask-config-"));
   const path = join(dir, "deployment.yaml");
   await writeFile(path, yaml, "utf8");
   return path;
@@ -286,7 +286,7 @@ async function writeDeployment(yaml: string): Promise<string> {
 const DEPLOYMENT_YAML = [
   "schemaVersion: 1",
   "deployment:",
-  "  name: kp-ask-test",
+  "  name: leisen-ask-test",
   "idp:",
   "  adapter:",
   "    kind: mock",
@@ -301,7 +301,7 @@ const DEPLOYMENT_YAML = [
   "",
 ].join("\n");
 
-describe("kp-ask: 利用者の束縛(H1)と --config", () => {
+describe("leisen-ask: 利用者の束縛(H1)と --config", () => {
   it("--user-id を省略すると Gateway が認証した userId を記録する(既定値 cli-user は使わない)", async () => {
     const harness = await setup();
     const { err, io } = capture();
@@ -393,7 +393,7 @@ function jsonOutput(out: readonly string[]): Record<string, unknown> {
   return JSON.parse(out[0] ?? "") as Record<string, unknown>;
 }
 
-describe("kp-ask --json: 回答を返せない失敗でも stdout に JSON を1つ出す(issue #38)", () => {
+describe("leisen-ask --json: 回答を返せない失敗でも stdout に JSON を1つ出す(issue #38)", () => {
   it.each([
     [["--json", "質問"], "--gateway を指定してください。"],
     [["--gateway", "http://127.0.0.1:1/mcp", "--json", "質問"], "セッショントークン"],

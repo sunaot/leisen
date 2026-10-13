@@ -12,7 +12,7 @@ import {
   type AuthContext,
   type Connector,
   type SearchResult,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   createIdpAdapter,
   IdpError,
@@ -23,10 +23,10 @@ import {
 } from "../../src/idp/index.js";
 
 const BASE_URL = process.env.KEYCLOAK_BASE_URL ?? "http://localhost:8080";
-const REALM = "kp";
+const REALM = "leisen";
 const SOURCE_ID = "mock-source";
 
-/** e2e/keycloak/realm/kp-realm.json と対応する開発専用の固定値。 */
+/** e2e/keycloak/realm/leisen-realm.json と対応する開発専用の固定値。 */
 const GATEWAY_CLIENT = { id: "gateway", secret: "dev-only-gateway-secret" };
 const PASSWORD_GRANT_CLIENT = "e2e-cli";
 const USERS = {

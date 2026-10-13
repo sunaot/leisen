@@ -6,7 +6,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { Actor } from "@kp/audit";
+import type { Actor } from "@leisen/audit";
 import {
   MIN_RUN_ID_KEY_BYTES,
   SIGNED_RUN_ID_MAX_CHARS,

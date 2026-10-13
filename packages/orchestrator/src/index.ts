@@ -1,5 +1,5 @@
 /**
- * @kp/orchestrator — 探索戦略 v1(T-007)。
+ * @leisen/orchestrator — 探索戦略 v1(T-007)。
  *
  * モジュール構成:
  * - orchestrator.ts   探索ループ(runId / iteration の採番、上限、出典検証、AnswerRun)
@@ -21,7 +21,7 @@
  * - server/           MCP サーバー(T-021、ADR-018): ツール ask / feedback(tools.ts、
  *                     SDK 非依存)、回答の Markdown(render.ts)、SDK との接合(mcp.ts)、
  *                     Streamable HTTP と認証の前段 preflight(http.ts)、上限(limits.ts)
- * - bin/kp-ask.ts     CLI(bin/serve.ts: `kp-ask serve`、bin/credential-options.ts: Orchestrator の資格情報)
+ * - bin/leisen-ask.ts     CLI(bin/serve.ts: `leisen-ask serve`、bin/credential-options.ts: Orchestrator の資格情報)
  */
 export * from "./answer.js";
 export * from "./audit.js";

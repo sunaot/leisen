@@ -3,7 +3,7 @@
  * 引用 docId は申告の sourceId に頼らず構成全体で最も厳しい規則を全件にかける。
  */
 import { describe, expect, it } from "vitest";
-import { validateRecord, type Actor, type DocIdAuditConfig } from "@kp/audit";
+import { validateRecord, type Actor, type DocIdAuditConfig } from "@leisen/audit";
 import {
   answerRunFeedbackRecord,
   answerRunFinishRecord,

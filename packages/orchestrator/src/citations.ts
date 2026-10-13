@@ -21,7 +21,7 @@ import {
   type DocumentScope,
   type FetchResult,
   type SearchHit,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import { z } from "zod";
 import type { Citation, SubmitAnswerInput } from "./answer.js";
 

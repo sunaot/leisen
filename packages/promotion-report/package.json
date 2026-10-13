@@ -1,12 +1,13 @@
 {
-  "name": "@kp/promotion-report",
+  "name": "@leisen/promotion-report",
+  "private": true,
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "kp-promotion-report": "bin/kp-promotion-report.js"
+    "leisen-promotion-report": "bin/leisen-promotion-report.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,9 +15,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kp/audit": "0.1.0",
-    "@kp/connector-sdk": "0.4.0",
-    "@kp/gateway": "0.1.0",
+    "@leisen/audit": "0.1.0",
+    "@leisen/connector-sdk": "0.4.0",
+    "@leisen/gateway": "0.1.0",
     "zod": "^4.4.3"
   }
 }

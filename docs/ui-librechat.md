@@ -12,7 +12,7 @@ Status: v0(T-021)/ Date: 2026-09-28
 
 ## 0. 位置づけ
 
-- **Orchestrator を MCP サーバーとして公開する**(ADR-018 決定1)。`kp-ask serve` が Streamable HTTP
+- **Orchestrator を MCP サーバーとして公開する**(ADR-018 決定1)。`leisen-ask serve` が Streamable HTTP
   (ステートレス)で待ち受け、ツールは `ask({ question })` と `feedback({ runId, outcome })` の 2 つだけ。
   `ask` の結果は Markdown(本文 + 末尾の「出典」節 + `runId`)と `structuredContent`(Answer)
 - **認証は Gateway に委譲する**(決定2)。Orchestrator は IdP を持たず、独自の資格情報も持たない。
@@ -23,13 +23,13 @@ Status: v0(T-021)/ Date: 2026-09-28
   本人に発行したアクセストークンを、MCP の `Authorization: Bearer` にそのまま載せる。Gateway の認証・
   監査・射影と、ソースへの本人権限での委譲(不変条件1)がそのまま効く
 - **不変条件7 は起動時に守る**(決定5)。汎用 UI は会話履歴を保存するため、deployment.yaml で永続化
-  できないソース(Slack、kind が `slack` / `slack-*`)が有効なら `kp-ask serve` は起動を拒否する
+  できないソース(Slack、kind が `slack` / `slack-*`)が有効なら `leisen-ask serve` は起動を拒否する
   (解除の条件は [1.4](#14-履歴の保持と不変条件7))
 - **監査ストアに書くのは Gateway だけ**(ADR-019。ADR-018 決定4 の別ボリュームは廃止)。Orchestrator は run の
   開始・結果・フィードバック(AnswerRun)を Gateway の run API(`/runs`)に申告し、Gateway が署名付きの
   runId で本人・期限を確かめて `audit.jsonl` に記録する。Orchestrator のコンテナは監査ボリュームを一切マウント
   しない(読めない・書けない)。run API には利用者本人のトークンに加えて Gateway と共有する Orchestrator の
-  資格情報(`KP_ORCHESTRATOR_CREDENTIAL`)が要る([1.7](#17-run-の記録answerrunと昇格判定レポート)、
+  資格情報(`LEISEN_ORCHESTRATOR_CREDENTIAL`)が要る([1.7](#17-run-の記録answerrunと昇格判定レポート)、
   docs/install.md §5・§7)
 - リファレンス構成は**評価用**(開発用の部品・ローカル専用のダミー秘密・開発モードの Keycloak)。
   限界は docs/install.md §0 と同じ
@@ -39,7 +39,7 @@ Status: v0(T-021)/ Date: 2026-09-28
    │
 LibreChat(http://localhost:3080)… UI 側の LLM(LM Studio)が ask / feedback を呼ぶ
    │  MCP(Streamable HTTP)  Authorization: Bearer <利用者本人のアクセストークン>
-Orchestrator(kp-ask serve、:8790)… 探索ループの LLM(LM Studio)
+Orchestrator(leisen-ask serve、:8790)… 探索ループの LLM(LM Studio)
    │  MCP + 同じ Bearer
 Gateway(:8787)─(イントロスペクション)→ Keycloak(http://keycloak:8080)
    │  本人の資格情報
@@ -53,7 +53,7 @@ Gateway(:8787)─(イントロスペクション)→ Keycloak(http://keycloak:80
 
 | サービス | 内容 |
 |---|---|
-| `orchestrator` | `kp-ask serve`。gateway と同じイメージを別エントリポイントで動かす。`127.0.0.1:8790` |
+| `orchestrator` | `leisen-ask serve`。gateway と同じイメージを別エントリポイントで動かす。`127.0.0.1:8790` |
 | `librechat` | LibreChat v0.8.7(安定版に固定)。`127.0.0.1:3080` |
 | `mongodb` | LibreChat の保存先(会話履歴・利用者)。ホストへは公開せず、librechat と共有する内部ネットワーク `librechat-internal` だけに置く(他のコンテナからは届かない) |
 | `keycloak-tls` | Keycloak の前段の TLS 終端(Caddy のローカル CA)。`127.0.0.1:8443`([1.3](#13-keycloaklocalhost-と証明書)) |
@@ -81,7 +81,7 @@ Gateway(:8787)─(イントロスペクション)→ Keycloak(http://keycloak:80
 
 ```bash
 cd deploy/compose
-cp .env.example .env                                         # KP_LLM_MODEL を LM Studio のモデル名にする
+cp .env.example .env                                         # LEISEN_LLM_MODEL を LM Studio のモデル名にする
 # librechat.env を雛形から作り、LibreChat 自身のセッション・保存時暗号化の鍵を生成した値に置き換える
 # (鍵は画面にもコマンドライン引数にも出さない。ファイルは 0600)
 (
@@ -101,16 +101,16 @@ docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --bui
   なりすまし、会話履歴 = 本人の権限で得た回答を読める)。上のコマンドは `openssl rand -hex 32`(`CREDS_IV`
   だけ `openssl rand -hex 16`)で生成した値に置き換える(bash / zsh。Windows は WSL で実行する)。手で編集する
   場合も同じコマンドで生成して置き換える。雛形を `cp` したまま使うのは CI の `reference-deploy`(使い捨ての
-  ランナー)だけ。`OPENID_CLIENT_SECRET` は realm(`e2e/keycloak/realm/kp-realm.json`)のダミーと対なので、
+  ランナー)だけ。`OPENID_CLIENT_SECRET` は realm(`e2e/keycloak/realm/leisen-realm.json`)のダミーと対なので、
   変えるときは realm も合わせる
-- `.env` の `KP_LLM_MODEL` は LM Studio でロードしたモデル名(`curl http://localhost:1234/v1/models` の
-  `id`)。`KP_LLM_BASE_URL` の既定はホストの LM Studio
+- `.env` の `LEISEN_LLM_MODEL` は LM Studio でロードしたモデル名(`curl http://localhost:1234/v1/models` の
+  `id`)。`LEISEN_LLM_BASE_URL` の既定はホストの LM Studio
 - `-f` を毎回書かない場合は `.env` に `COMPOSE_FILE=docker-compose.yml:docker-compose.librechat.yml` を
   足す(Windows は `;` 区切り)
 - 起動の確認(CI の `reference-deploy` ジョブと同じスモーク。トークン・応答本文は出力しない):
 
   ```bash
-  KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/orchestrator-smoke.sh
+  LEISEN_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/orchestrator-smoke.sh
   ../../scripts/smoke/librechat-smoke.sh
   ```
 
@@ -124,7 +124,7 @@ LibreChat での操作(UI の表記は版によって異なる):
 2. 初回はブラウザが `keycloak.localhost` の証明書の警告を出す(評価用のローカル CA)。続行する
    ([1.3](#13-keycloaklocalhost-と証明書))
 3. Keycloak のログイン画面で `alice` / `dev-only-alice-password`(または `bob` / `dev-only-bob-password`。
-   realm `e2e/keycloak/realm/kp-realm.json` のダミー値)。初回ログインで LibreChat の利用者が作られる
+   realm `e2e/keycloak/realm/leisen-realm.json` のダミー値)。初回ログインで LibreChat の利用者が作られる
 4. エンドポイント「LM Studio」とモデル(ツール呼び出しに対応したもの)を選ぶ
 5. 入力欄の下の MCP サーバーの選択から **Leisen** を選ぶ。起動時には接続しない設定(`startup: false`)の
    ため、初回の選択で接続を初期化する。エージェントで使う場合は、エージェントビルダーの
@@ -151,7 +151,7 @@ ADR-013 §3 に従う)。
   各エンドポイント(認可・トークン・JWKS・userinfo・ログアウト)に https を要求し、http の発行者では
   ログインを構成できない(起動ログに `only requests to HTTPS are allowed`)。overlay は Keycloak
   (開発モード、http)の前段に TLS 終端 `keycloak-tls`(Caddy)を置き、発行者を
-  `https://keycloak.localhost:8443/realms/kp` に固定する(`KC_HOSTNAME`)。証明書は Caddy の内部 CA
+  `https://keycloak.localhost:8443/realms/leisen` に固定する(`KC_HOSTNAME`)。証明書は Caddy の内部 CA
   (ローカル CA)が発行し、LibreChat はそのルート証明書だけを追加で信頼する(`NODE_EXTRA_CA_CERTS`。
   `keycloak-tls.sh` が秘密鍵を含めずに書き出す)
 - **keycloak.localhost という名前の理由**: ブラウザ(ログイン画面へのリダイレクト)とコンテナ(LibreChat の
@@ -166,25 +166,25 @@ ADR-013 §3 に従う)。
 - **CA を信頼させる場合(任意)**: 警告を毎回出したくないときだけ、ルート証明書を取り出して、**ブラウザの
   プロファイル単位か、その利用者だけの信頼ストア(macOS は login キーチェーン)**に入れる。マシン全体の信頼ストア
   (macOS の System キーチェーン、Windows のローカルコンピューターのストア、Linux の
-  `/usr/local/share/ca-certificates` など)には入れない。この CA の秘密鍵はボリューム `kp-caddy-data` にあり、
+  `/usr/local/share/ca-certificates` など)には入れない。この CA の秘密鍵はボリューム `leisen-caddy-data` にあり、
   ボリュームを読める人は、この CA を信頼したブラウザに通用する任意の名前(実在のサイトを含む)の証明書を作れる。
   信頼させる範囲は最小にする:
 
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.librechat.yml cp keycloak-tls:/ca/root.crt ./kp-dev-root.crt
+  docker compose -f docker-compose.yml -f docker-compose.librechat.yml cp keycloak-tls:/ca/root.crt ./leisen-dev-root.crt
   ```
 
   | 環境 | 信頼させる(範囲) | 評価後に削除する |
   |---|---|---|
   | Firefox(OS によらず) | 設定 → プライバシーとセキュリティ → 証明書を表示 → 認証局証明書 → インポート(ウェブサイトの識別を信頼する)。**そのプロファイルだけ** | 同じ画面で削除 |
-  | macOS(Safari / Chrome) | `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db kp-dev-root.crt`(`sudo`・`-d`・System キーチェーンは使わない)。**login キーチェーン = その利用者だけ** | キーチェーンアクセスの「ログイン」から `Caddy Local Authority - <年> ECC Root` を削除 |
-  | Windows(Edge / Chrome) | `certutil -user -addstore Root kp-dev-root.crt`(`-user` を必ず付ける)。**現在のユーザーのストアだけ** | `certmgr.msc`(現在のユーザー)の「信頼されたルート証明機関」から同じ名前の証明書を削除 |
+  | macOS(Safari / Chrome) | `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db leisen-dev-root.crt`(`sudo`・`-d`・System キーチェーンは使わない)。**login キーチェーン = その利用者だけ** | キーチェーンアクセスの「ログイン」から `Caddy Local Authority - <年> ECC Root` を削除 |
+  | Windows(Edge / Chrome) | `certutil -user -addstore Root leisen-dev-root.crt`(`-user` を必ず付ける)。**現在のユーザーのストアだけ** | `certmgr.msc`(現在のユーザー)の「信頼されたルート証明機関」から同じ名前の証明書を削除 |
   | Linux の Chrome | 設定 → プライバシーとセキュリティ → セキュリティ → 証明書の管理 → 認証局 → インポート。**その利用者の NSS データベース(`~/.pki/nssdb`)だけ** | 同じ画面で削除 |
 
   **評価が終わったら必ず削除する**。`down -v` で CA も作り直しになる(次回は新しいルート証明書を入れ直す)
 - Gateway のイントロスペクションは従来どおりネットワーク内の `http://keycloak:8080` を直接呼び、
   スモーク用のトークン取得(`scripts/smoke/keycloak-token.sh`)も `http://localhost:8080` を使う。
-  どちらのトークンも発行者は `https://keycloak.localhost:8443/realms/kp`(`KC_HOSTNAME` で固定)
+  どちらのトークンも発行者は `https://keycloak.localhost:8443/realms/leisen`(`KC_HOSTNAME` で固定)
 - realm のクライアント `librechat` はアクセストークンの有効期間を 15 分にしている(realm 全体は 5 分)。
   ask は数十秒〜数分かかるため、5 分では送信直後に失効して 401 になりやすい。Gateway は毎回
   イントロスペクションで確かめるため、ログアウト・利用者の無効化は有効期間によらず反映される
@@ -295,16 +295,16 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
 | ツールの呼び出しが 503 で失敗する | Orchestrator から Gateway(または Gateway から Keycloak)に届かない。`docker compose ps` で gateway / keycloak が healthy か確かめる |
 | ログインボタンがない・ログイン開始が 500 になる | LibreChat が起動時に OpenID のディスカバリに失敗した(ディスカバリは起動時に1回だけ)。`docker compose logs librechat` の `[openidStrategy]` を見る。多い原因は keycloak-tls の証明書を信頼できない(`NODE_EXTRA_CA_CERTS`)・http の発行者・`OPENID_ISSUER` の誤記。直したら `docker compose restart librechat` |
 | ブラウザで keycloak.localhost が開けない | 名前が解決できない → hosts に `127.0.0.1 keycloak.localhost`。証明書の警告 → [1.3](#13-keycloaklocalhost-と証明書) |
-| ログイン後に invalid issuer 等で失敗する | 発行者の不一致。`librechat.env` の `OPENID_ISSUER` は overlay の `KC_HOSTNAME` + `/realms/kp` と同じにする(`packages/gateway/test/reference-deploy.test.ts` が整合を検査する) |
+| ログイン後に invalid issuer 等で失敗する | 発行者の不一致。`librechat.env` の `OPENID_ISSUER` は overlay の `KC_HOSTNAME` + `/realms/leisen` と同じにする(`packages/gateway/test/reference-deploy.test.ts` が整合を検査する) |
 | Leisen が選べない・接続できない | `docker compose logs orchestrator` と LibreChat のログの `[MCP][leisen]` を見る。`librechat.yaml` の `url` と `mcpSettings.allowedDomains`(`url` の origin)が orchestrator の待ち受けと一致しているか(一致しないと `Domain "…" is not allowed` で拒否される) |
 | Keycloak の画面に `Invalid parameter: redirect_uri` 等が出る | realm のクライアント `librechat` はリダイレクト先・ログアウト後の戻り先を完全一致で照合する。`librechat.env` の `DOMAIN_SERVER` / `DOMAIN_CLIENT` / `OPENID_CALLBACK_URL` を変えたなら realm の `redirectUris` / `post.logout.redirect.uris` も合わせ、keycloak を作り直す(`up -d --force-recreate keycloak`。realm は起動時の import だけで反映される。[1.3](#13-keycloaklocalhost-と証明書)) |
 | ツールの呼び出しが `config_mismatch` で失敗する | Gateway が公開しているソースが、orchestrator に渡した `deployment.yaml` の有効なコネクタにない(設定のずれ)。両方に同じファイルを渡し、gateway と orchestrator を作り直す。永続化できないソース(Slack)を含めて動かすには `--allow-non-persistable-sources`([1.4](#14-履歴の保持と不変条件7)) |
 | ツールの呼び出しが `busy` で失敗する | 同時に走れる run(既定 4)か feedback(既定 4)の上限。しばらく待って送り直す。上限は overlay の `--max-concurrent-runs` |
 | 400 / 413 で失敗する | JSON-RPC のバッチ(配列)は受け付けない(400)。本文は 64 KiB まで(413)。質問は 4,000 字まで(`--max-question-chars`) |
 | UI の LLM が ask を呼ばない | ツール呼び出しに対応していないモデル。対応モデルに替え、MCP サーバー Leisen が選ばれているか確かめる |
-| LM Studio に届かない | orchestrator から確かめる: `docker compose exec orchestrator node -e "fetch(process.env.KP_LLM_BASE_URL+'/models').then(r=>console.log(r.status),e=>console.log(e.cause?.code))"`。Linux はローカルネットワークでの待ち受けが要る([1.1](#11-前提)) |
-| orchestrator が起動しない | `docker compose logs orchestrator`。Slack のソースが有効([1.4](#14-履歴の保持と不変条件7))、`KP_LLM_MODEL` の未設定、引数の誤りは起動ログに固定文言で出る。`NODE_ENV=production` では `KP_ORCHESTRATOR_CREDENTIAL` と https の上流が必須(評価用構成の overlay は development) |
-| `ask` が `run_not_accepted` / `orchestrator_credential_rejected` で失敗する | Gateway が run の開始を拒否した。`KP_ORCHESTRATOR_CREDENTIAL` が gateway と orchestrator で同じ値か(`.env` を変えたら両方を作り直す)、Gateway の起動ログの `run api:` 行を確かめる。`invalid_run_id` が Gateway の監査に続くなら、Gateway の署名鍵(`KP_RUN_ID_KEY`)を run の途中で変えた・再起動で一時鍵が替わった(未設定時の WARNING)可能性がある |
+| LM Studio に届かない | orchestrator から確かめる: `docker compose exec orchestrator node -e "fetch(process.env.LEISEN_LLM_BASE_URL+'/models').then(r=>console.log(r.status),e=>console.log(e.cause?.code))"`。Linux はローカルネットワークでの待ち受けが要る([1.1](#11-前提)) |
+| orchestrator が起動しない | `docker compose logs orchestrator`。Slack のソースが有効([1.4](#14-履歴の保持と不変条件7))、`LEISEN_LLM_MODEL` の未設定、引数の誤りは起動ログに固定文言で出る。`NODE_ENV=production` では `LEISEN_ORCHESTRATOR_CREDENTIAL` と https の上流が必須(評価用構成の overlay は development) |
+| `ask` が `run_not_accepted` / `orchestrator_credential_rejected` で失敗する | Gateway が run の開始を拒否した。`LEISEN_ORCHESTRATOR_CREDENTIAL` が gateway と orchestrator で同じ値か(`.env` を変えたら両方を作り直す)、Gateway の起動ログの `run api:` 行を確かめる。`invalid_run_id` が Gateway の監査に続くなら、Gateway の署名鍵(`LEISEN_RUN_ID_KEY`)を run の途中で変えた・再起動で一時鍵が替わった(未設定時の WARNING)可能性がある |
 | `feedback` が「受け付けられなかった」で失敗する | 質問した本人以外の runId、または回答から 7 日を過ぎた runId(`gateway.runs.feedbackWindowSec`)。runId は `ask` の結果のものをそのまま使う |
 | LibreChat が起動しない | `docker compose logs librechat`。`librechat.yaml` が不正だと `Invalid custom config file` を出して終了する(MCP サーバーの `title` は英数字と空白だけ)。正常なら設定の読み込み・`OpenID Connect configured successfully`・待ち受けの順にログが出る |
 | MongoDB が起動直後に落ちる | CPU が MongoDB 8 の要件(x86-64 は AVX)を満たさない。LibreChat の Docker 手順の注意に従い、override で古い版のイメージに替える |
@@ -312,13 +312,13 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
 ### 1.7 run の記録(AnswerRun)と昇格判定レポート
 
 orchestrator は監査ストアに書かない(ADR-019)。`ask` の run は、開始時に Gateway の run API(`POST /runs`)で
-署名付きの runId を受け取り、Gateway がその時点で AnswerRun(pending)を `kp-audit` の `audit.jsonl` に書く。
+署名付きの runId を受け取り、Gateway がその時点で AnswerRun(pending)を `leisen-audit` の `audit.jsonl` に書く。
 以降の `tools/call` はこの runId を申告し、終了時の `finish`、`feedback` ツールの `feedback` も同じ runId で
 Gateway に申告する。Gateway は runId の署名で発行元・本人・期限を確かめてから部分レコード
 (`answer_run_finish` / `answer_run_feedback`)を追記する。orchestrator のコンテナは監査ボリュームを一切マウント
 しないため、Orchestrator から Gateway の監査ログは読めず、書き換えられない(threat-model TM-I4)。
 
-run API を呼べるのは、利用者本人のトークンに加えて Orchestrator の資格情報(`KP_ORCHESTRATOR_CREDENTIAL`。
+run API を呼べるのは、利用者本人のトークンに加えて Orchestrator の資格情報(`LEISEN_ORCHESTRATOR_CREDENTIAL`。
 `.env` で gateway と orchestrator に同じ値)を持つプロセスだけ。LibreChat にはこの値を渡さない。
 
 昇格判定レポート(docs/install.md §7、docs/playbook.md「有効化判定」)は Gateway の監査ボリュームだけを読む
@@ -343,34 +343,34 @@ Claude Code・MCP Inspector・自作エージェントなども同じ規約で�
   加えるマッパーも付けて)このリストに足す(issue #21 の B)。リファレンス構成は `e2e-cli`(開発・CI 用)と
   `librechat`。開発では `allowedClients: ["*"]` が明示の逃げ道(`azp` の検証だけを省く。起動ログに WARNING、
   `NODE_ENV=production` では起動拒否)。トークンが 401 になる原因の切り分けは
-  `kp-gateway auth-check --config <yaml> --token-env KP_SESSION_TOKEN`
+  `leisen-gateway auth-check --config <yaml> --token-env LEISEN_SESSION_TOKEN`
 
 curl で試す(トークンは環境変数に入れ、コマンドライン引数に載せない。`@<(…)` はヘッダをファイル
 記述子で渡す bash の書き方):
 
 ```bash
-export KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"   # 表示しない。5 分で失効する
-kp_mcp() {
+export LEISEN_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"   # 表示しない。5 分で失効する
+leisen_mcp() {
   curl -s http://127.0.0.1:8790/mcp \
-    -H @<(printf 'Authorization: Bearer %s\n' "$KP_SESSION_TOKEN") \
+    -H @<(printf 'Authorization: Bearer %s\n' "$LEISEN_SESSION_TOKEN") \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
     -H 'mcp-protocol-version: 2025-11-25' \
     -d "$1"
 }
-kp_mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"0.0.0"}}}'
-kp_mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-kp_mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ask","arguments":{"question":"VPN の接続手順を教えて"}}}'
-kp_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feedback","arguments":{"runId":"<ask の結果の runId>","outcome":"resolved"}}}'
+leisen_mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"0.0.0"}}}'
+leisen_mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+leisen_mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ask","arguments":{"question":"VPN の接続手順を教えて"}}}'
+leisen_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feedback","arguments":{"runId":"<ask の結果の runId>","outcome":"resolved"}}}'
 ```
 
 - `initialize` の結果の `instructions`(出典の扱いなど)を、クライアント側の LLM にも渡す
 - `ask` の結果の text は Markdown(本文 + 「出典」節 + `runId`)。`structuredContent` に Answer(`runId`・
   `outcome`・`citations`・`warnings` など)が入る。出典はそのまま提示する
 - MCP Inspector(CLI、**未検証**): `npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8790/mcp
-  --transport http --header "Authorization: Bearer $KP_SESSION_TOKEN" --method tools/list`
+  --transport http --header "Authorization: Bearer $LEISEN_SESSION_TOKEN" --method tools/list`
 - Claude Code(**未検証**): `claude mcp add --transport http leisen http://127.0.0.1:8790/mcp
-  --header "Authorization: Bearer $KP_SESSION_TOKEN"`。ヘッダの値(トークン)は Claude Code の設定
+  --header "Authorization: Bearer $LEISEN_SESSION_TOKEN"`。ヘッダの値(トークン)は Claude Code の設定
   ファイルに平文で保存される。開発用のトークンは 5 分で失効するため、失効したら `claude mcp remove leisen`
   して登録し直す(開発・評価用途に限る)
 - 注意: トークンは環境変数で渡し、ログ・シェルの履歴・チケット等に残さない。共有の端末で使わない
@@ -404,11 +404,11 @@ kp_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feedback
   までの通しは、LM Studio のある手元で人が確かめる(本書の作成時は Docker デーモンのない環境で、
   `docker compose config`・LibreChat v0.8.7 の設定スキーマでの `librechat.yaml` の検証・TLS 終端の
   再現(Caddy のローカル CA と openid-client での https のディスカバリ)と、イメージと同じファイル構成で
-  overlay と同じ引数(`--confirm-exposed-host`・`--allow-insecure-upstream` を含む)で動かした kp-ask serve と
+  overlay と同じ引数(`--confirm-exposed-host`・`--allow-insecure-upstream` を含む)で動かした leisen-ask serve と
   Gateway(モック IdP)に対する `orchestrator-smoke.sh`、[2](#2-mcp-クライアントの場合) の curl の手順
   (LLM はモック)までを確認した)
-- ADR-019(T-023、2026-10-11)の反映(orchestrator から AnswerRun のボリュームと `KP_AUDIT_HMAC_KEY` を外し、
-  `KP_ORCHESTRATOR_CREDENTIAL` を足す。`feedback` は Gateway の run API へ)は、`packages/gateway/test/reference-deploy.test.ts`
+- ADR-019(T-023、2026-10-11)の反映(orchestrator から AnswerRun のボリュームと `LEISEN_AUDIT_HMAC_KEY` を外し、
+  `LEISEN_ORCHESTRATOR_CREDENTIAL` を足す。`feedback` は Gateway の run API へ)は、`packages/gateway/test/reference-deploy.test.ts`
   と Orchestrator の結線テスト(`packages/orchestrator/test/`、実 Gateway を起動する)で確かめた。コンテナでの
   起動とスモークは CI の `reference-deploy`
 - セキュリティレビューの反映(2026-09-28: MCP の接続先の制限・エージェントの機能の制限・AnswerRun の

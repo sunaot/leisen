@@ -21,7 +21,7 @@ Google Drive / Slack 等の実SaaSの認可経路は一切検証しない**(ADR-
 ```sh
 docker compose -f e2e/keycloak/docker-compose.yml up -d
 e2e/keycloak/wait-ready.sh
-KEYCLOAK_E2E=1 npm test -w @kp/gateway
+KEYCLOAK_E2E=1 npm test -w @leisen/gateway
 docker compose -f e2e/keycloak/docker-compose.yml down
 ```
 
@@ -31,7 +31,7 @@ skip され、通常の `npm test` は Docker なしで通る。CI では `keycl
 
 ## 構成
 
-- realm `kp`(`realm/kp-realm.json` から自動import)
+- realm `leisen`(`realm/leisen-realm.json` から自動import)
 - クライアント `gateway`: イントロスペクション用 confidential クライアント
 - クライアント `e2e-cli`: テストがパスワードグラントでユーザートークンを
   得るための public クライアント(direct access grants 有効。開発専用)。

@@ -1,21 +1,21 @@
 /**
- * kp-ask serve — Orchestrator を MCP サーバー(Streamable HTTP、ステートレス)として公開する
- * (T-021、ADR-018)。エントリは kp-ask(bin/kp-ask.ts の runCli が `serve` で振り分ける)。
+ * leisen-ask serve — Orchestrator を MCP サーバー(Streamable HTTP、ステートレス)として公開する
+ * (T-021、ADR-018)。エントリは leisen-ask(bin/leisen-ask.ts の runCli が `serve` で振り分ける)。
  *
- *   kp-ask serve --gateway <Gateway の MCP URL> --config <deployment.yaml>
+ *   leisen-ask serve --gateway <Gateway の MCP URL> --config <deployment.yaml>
  *                [--listen 127.0.0.1:8790] [--path /mcp]
  *                [--max-concurrent-runs 4] [--max-question-chars 4000]
  *                [--confirm-exposed-host] [--allow-non-persistable-sources]
  *                [--allow-insecure-upstream]
  *                [LLM バックエンドの指定: --llm / --model / --effort / --llm-base-url /
- *                 --llm-api-key-env / --reasoning-effort と KP_LLM_*(kp-ask と同じ)]
+ *                 --llm-api-key-env / --reasoning-effort と LEISEN_LLM_*(leisen-ask と同じ)]
  *
  * - ツールは ask / feedback(server/tools.ts)。利用者の認証は Gateway に委譲する
  *   (server/http.ts の preflight。Orchestrator は IdP を持たず、独自の資格情報も持たない)
  * - --config(必須): orchestrator セクション(maxIterations / costLimitPerQuery)と不変条件7 の
  *   判定に使う(citedDocIds の記録方針は Gateway の run API がかける。ADR-019 決定5)
  * - run の記録(AnswerRun)は Gateway の run API に申告する(ADR-019)。環境変数
- *   KP_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
+ *   LEISEN_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
  *   付ける。未設定なら開発用の既定値(WARNING)、NODE_ENV=production では必須(終了コード 2。
  *   bin/credential-options.ts)。Orchestrator は監査ストアに触れない
  * - 不変条件7(ADR-018 決定5): 永続化不可のソース(kind が slack / slack-*)が有効なら起動を
@@ -25,7 +25,7 @@
  * - 公開境界(決定7): ループバック以外で待ち受けるには --confirm-exposed-host が必要
  *   (Gateway の confirmExposedHost と同じ規則。TLS・Host / Origin の検証はリバースプロキシ)
  * - 上流(Gateway・LLM)への接続は既定でループバック以外 https 必須。--allow-insecure-upstream
- *   (KP_ALLOW_INSECURE_UPSTREAM=1)で開発・評価用途に限り非ループバックの http を許す
+ *   (LEISEN_ALLOW_INSECURE_UPSTREAM=1)で開発・評価用途に限り非ループバックの http を許す
  *   (NODE_ENV=production では終了コード 2。有効時は平文 http の上流をホスト名で WARNING。
  *   bin/upstream-options.ts)
  * - Gateway が公開するソースと --config の照合(S6): --config で有効なコネクタにないソースを
@@ -50,7 +50,7 @@ import {
   isLoopbackHost,
   loadDeploymentConfig,
   type DeploymentConfig,
-} from "@kp/gateway";
+} from "@leisen/gateway";
 import { isSlackKind } from "../audit.js";
 import {
   DEFAULT_EFFORT,
@@ -82,7 +82,7 @@ import {
   describeOrchestratorCredential,
   resolveOrchestratorCredential,
 } from "./credential-options.js";
-import type { CliDependencies, CliIo } from "./kp-ask.js";
+import type { CliDependencies, CliIo } from "./leisen-ask.js";
 import { LLM_USAGE_LINES, parseLlmCliOptions } from "./llm-options.js";
 import {
   INSECURE_UPSTREAM_HINT,
@@ -97,17 +97,17 @@ export const DEFAULT_SERVE_LISTEN = "127.0.0.1:8790";
 /** 停止時に進行中のリクエストを待つ上限(ms)。 */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 30_000;
 
-const PREFIX = "kp-ask serve";
+const PREFIX = "leisen-ask serve";
 
 export const SERVE_USAGE = [
-  "usage: kp-ask serve --gateway <Gateway の MCP エンドポイント URL> --config <deployment.yaml>",
+  "usage: leisen-ask serve --gateway <Gateway の MCP エンドポイント URL> --config <deployment.yaml>",
   "                    [--listen <ホスト:ポート>] [--path <パス>]",
   "                    [--max-concurrent-runs <N>] [--max-question-chars <N>]",
   "                    [--confirm-exposed-host] [--allow-non-persistable-sources]",
   "                    [--allow-insecure-upstream] [LLM バックエンドの指定(下記)]",
   "  Orchestrator を MCP サーバー(Streamable HTTP)として公開します(ツール: ask / feedback)。",
   "  利用者の認証は Gateway に委譲します(Authorization: Bearer <IdP が利用者に発行したアクセストークン>)。",
-  `  --listen の既定は ${DEFAULT_SERVE_LISTEN}(環境変数 KP_LISTEN)。ループバック以外は --confirm-exposed-host が必要です。`,
+  `  --listen の既定は ${DEFAULT_SERVE_LISTEN}(環境変数 LEISEN_LISTEN)。ループバック以外は --confirm-exposed-host が必要です。`,
   `  --path の既定は ${DEFAULT_ORCHESTRATOR_HTTP_PATH}(死活確認は GET ${ORCHESTRATOR_HEALTH_PATH})。`,
   `  --max-concurrent-runs の既定は ${DEFAULT_MAX_CONCURRENT_RUNS}(1〜${MAX_CONCURRENT_RUNS_LIMIT})、--max-question-chars の既定は ${DEFAULT_MAX_QUESTION_CHARS}(1〜${MAX_QUESTION_CHARS})。`,
   "  永続化不可のソース(Slack)が有効な --config では起動しません(--allow-non-persistable-sources で解除)。",
@@ -124,7 +124,7 @@ export const NON_PERSISTABLE_SOURCES_REFUSAL =
 
 /** 待ち受けのポートが使用中(EADDRINUSE)のときの案内。 */
 export function servePortInUseMessage(port: number): string {
-  return `ポート ${port} は使用中です。--listen <ホスト:ポート>(または環境変数 KP_LISTEN)で別のポートを指定してください。`;
+  return `ポート ${port} は使用中です。--listen <ホスト:ポート>(または環境変数 LEISEN_LISTEN)で別のポートを指定してください。`;
 }
 
 /** ループバック以外での待ち受けの拒否の文言(ADR-018 決定7)。 */
@@ -249,10 +249,10 @@ function parseServeArgs(
       "--config に deployment.yaml を指定してください(永続化不可のソースの判定と、Gateway が公開するソースとの照合に使います)。",
     );
   }
-  const listen = parseListen(values.listen ?? nonEmpty(env["KP_LISTEN"]) ?? DEFAULT_SERVE_LISTEN);
+  const listen = parseListen(values.listen ?? nonEmpty(env["LEISEN_LISTEN"]) ?? DEFAULT_SERVE_LISTEN);
   if (listen === undefined) {
     throw new ServeUsageError(
-      "--listen(または環境変数 KP_LISTEN)は <ホスト>:<ポート> の形で指定してください(例: 127.0.0.1:8790、[::1]:8790)。",
+      "--listen(または環境変数 LEISEN_LISTEN)は <ホスト>:<ポート> の形で指定してください(例: 127.0.0.1:8790、[::1]:8790)。",
     );
   }
   const path = values.path ?? DEFAULT_ORCHESTRATOR_HTTP_PATH;
@@ -382,7 +382,7 @@ export function waitForTerminationSignal(): Promise<string> {
   });
 }
 
-/** kp-ask serve の本体。終了コードを返す(プロセスの終了は呼び出し側)。 */
+/** leisen-ask serve の本体。終了コードを返す(プロセスの終了は呼び出し側)。 */
 export async function runServe(
   argv: readonly string[],
   io: CliIo,

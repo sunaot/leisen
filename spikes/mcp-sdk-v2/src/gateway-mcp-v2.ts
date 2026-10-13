@@ -20,7 +20,7 @@ import {
   type ServerContext,
   type Tool,
 } from "@modelcontextprotocol/server";
-import type { SearchFilters, SearchOptions } from "@kp/connector-sdk";
+import type { SearchFilters, SearchOptions } from "@leisen/connector-sdk";
 import { z } from "zod";
 import type { Gateway } from "../../../packages/gateway/src/proxy/gateway.js";
 import {
@@ -31,7 +31,7 @@ import {
 } from "../../../packages/gateway/src/proxy/types.js";
 
 export const GATEWAY_SERVER_INFO = {
-  name: "kp-gateway",
+  name: "leisen-gateway",
   version: "0.1.0",
 } as const;
 
