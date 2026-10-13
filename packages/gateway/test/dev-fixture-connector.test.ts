@@ -16,7 +16,7 @@ import {
   MAX_SNIPPET_CHARS,
   type AuthContext,
   type Connector,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   DEV_FIXTURE_SAMPLE_DOCUMENTS,
   DeploymentConfigError,
@@ -96,7 +96,7 @@ async function connectorError(promise: Promise<unknown>): Promise<ConnectorError
 
 const tempDirs: string[] = [];
 async function tempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "kp-dev-fixture-"));
+  const dir = await mkdtemp(join(tmpdir(), "leisen-dev-fixture-"));
   tempDirs.push(dir);
   return dir;
 }

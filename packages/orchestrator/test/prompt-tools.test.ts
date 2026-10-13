@@ -3,7 +3,7 @@
  * 質問。セキュリティレビュー H3)、Gateway ツール定義の strict 変換、費用概算の単体テスト。
  */
 import { describe, expect, it } from "vitest";
-import { toolDefinitions } from "@kp/gateway";
+import { toolDefinitions } from "@leisen/gateway";
 import {
   CONTAINER_KINDS,
   DEFAULT_PRICING,

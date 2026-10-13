@@ -94,14 +94,14 @@ export function acceptsAnyClient(allowedClients: readonly string[]): boolean {
   return allowedClients.includes(ANY_CLIENT);
 }
 
-/** allowedClients: ["*"] を受け入れたときの起動時の警告(kp-gateway validate / serve が出す)。 */
+/** allowedClients: ["*"] を受け入れたときの起動時の警告(leisen-gateway validate / serve が出す)。 */
 export const KEYCLOAK_ANY_CLIENT_WARNING =
   'any client is accepted (azp check disabled; idp.adapter.allowedClients contains "*")';
 
 export type IntrospectionCheckName = "active" | "iss" | "typ" | "azp" | "aud";
 
 /**
- * 検証項目1件の結果(kp-gateway auth-check の表示と diagnose の文言に使う)。
+ * 検証項目1件の結果(leisen-gateway auth-check の表示と diagnose の文言に使う)。
  * detail はクレーム名と設定値・クレームの値(iss / typ / azp / aud)だけで、トークン・sub・
  * 応答全体を含まない。
  */
@@ -311,7 +311,7 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
 
   /**
    * イントロスペクション(RFC 7662)を1回呼び、応答をそのまま返す(検証は checkIntrospection)。
-   * kp-gateway auth-check が検証項目ごとの結果を表示するために使う。
+   * leisen-gateway auth-check が検証項目ごとの結果を表示するために使う。
    */
   async introspect(sessionToken: string): Promise<IntrospectionResponse> {
     if (!sessionToken) {

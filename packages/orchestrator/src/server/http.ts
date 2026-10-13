@@ -49,7 +49,7 @@ import {
 } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { GATEWAY_REJECTION_ERROR_CODE } from "@kp/gateway";
+import { GATEWAY_REJECTION_ERROR_CODE } from "@leisen/gateway";
 import { GatewayClientError } from "../errors.js";
 import type { GatewayClient } from "../gateway/types.js";
 import { sourcesFromTools } from "../tools.js";
@@ -94,7 +94,7 @@ export interface OrchestratorHttpDeps {
   readonly retentionClass?: RetentionClass;
   /**
    * Gateway が公開するソースと --config の照合(S6)。省略時は照合しない(ライブラリとして
-   * 組む場合。kp-ask serve は常に渡す)
+   * 組む場合。leisen-ask serve は常に渡す)
    */
   readonly sourcePolicy?: GatewaySourcePolicy;
   /** Gateway への接続を作る(既定 McpGatewayClient) */
@@ -526,7 +526,7 @@ export function createOrchestratorRequestListener(
 }
 
 /**
- * Orchestrator を公開する http.Server を作る(listen は呼び出し側が行う。kp-ask serve)。
+ * Orchestrator を公開する http.Server を作る(listen は呼び出し側が行う。leisen-ask serve)。
  */
 export function createOrchestratorHttpServer(
   deps: OrchestratorHttpDeps,

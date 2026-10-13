@@ -8,7 +8,7 @@
  * 検証はカーソルを「偽造されうる入力」として扱う: 個々の値域に加え、正規の
  * エンコード経路では生じない組合せ(search の per_page 合計の上限超過)も拒否する。
  */
-import { ConnectorError } from "@kp/connector-sdk";
+import { ConnectorError } from "@leisen/connector-sdk";
 
 const MAX_CURSOR_LENGTH = 1024;
 const CURSOR_PATTERN = /^[A-Za-z0-9_-]+$/;

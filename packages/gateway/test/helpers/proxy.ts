@@ -18,8 +18,8 @@ import type {
   SearchOptions,
   SearchResult,
   SourceDescription,
-} from "@kp/connector-sdk";
-import { validateRecord, type AuditRecord, type AuditSink } from "@kp/audit";
+} from "@leisen/connector-sdk";
+import { validateRecord, type AuditRecord, type AuditSink } from "@leisen/audit";
 import {
   MockIdpAdapter,
   type CredentialProvider,

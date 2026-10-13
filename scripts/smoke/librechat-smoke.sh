@@ -6,7 +6,7 @@
 #   scripts/smoke/librechat-smoke.sh [LIBRECHAT_URL]
 #
 # 確認すること(1つでも失敗したら非0で終了する):
-#   1. GET /health が 200(起動直後に備えて KP_SMOKE_WAIT_SEC 秒まで待つ)
+#   1. GET /health が 200(起動直後に備えて LEISEN_SMOKE_WAIT_SEC 秒まで待つ)
 #   2. GET /oauth/openid が 302 で Keycloak の認可エンドポイント(https)へリダイレクトする。
 #      LibreChat が起動時に OpenID のディスカバリ(TLS 終端 keycloak-tls 経由、ローカル CA の
 #      信頼を含む)に成功し、ログインを構成できたことを示す(失敗していると 302 にならない)
@@ -18,16 +18,16 @@
 #
 # 環境変数:
 #   LIBRECHAT_URL           LibreChat のベース URL(既定 http://127.0.0.1:3080。第1引数が優先)
-#   KP_SMOKE_OIDC_AUTH_URL  期待する認可エンドポイント(既定 https://keycloak.localhost:8443/
-#                           realms/kp/protocol/openid-connect/auth。librechat.env の OPENID_ISSUER
+#   LEISEN_SMOKE_OIDC_AUTH_URL  期待する認可エンドポイント(既定 https://keycloak.localhost:8443/
+#                           realms/leisen/protocol/openid-connect/auth。librechat.env の OPENID_ISSUER
 #                           + /protocol/openid-connect/auth)
-#   KP_SMOKE_WAIT_SEC       /health を待つ秒数(既定 60)
+#   LEISEN_SMOKE_WAIT_SEC       /health を待つ秒数(既定 60)
 set -euo pipefail
 
 LIBRECHAT_URL="${1:-${LIBRECHAT_URL:-http://127.0.0.1:3080}}"
 LIBRECHAT_URL="${LIBRECHAT_URL%/}"
-AUTH_URL="${KP_SMOKE_OIDC_AUTH_URL:-https://keycloak.localhost:8443/realms/kp/protocol/openid-connect/auth}"
-WAIT_SEC="${KP_SMOKE_WAIT_SEC:-60}"
+AUTH_URL="${LEISEN_SMOKE_OIDC_AUTH_URL:-https://keycloak.localhost:8443/realms/leisen/protocol/openid-connect/auth}"
+WAIT_SEC="${LEISEN_SMOKE_WAIT_SEC:-60}"
 
 fail() {
   echo "librechat-smoke: FAIL: $*" >&2

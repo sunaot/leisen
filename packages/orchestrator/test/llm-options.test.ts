@@ -1,6 +1,6 @@
 /**
- * kp-ask の LLM バックエンド指定(bin/llm-options.ts)の単体テスト。
- * フラグと環境変数(KP_LLM_PROVIDER / KP_LLM_BASE_URL / KP_LLM_MODEL)の組み立て、
+ * leisen-ask の LLM バックエンド指定(bin/llm-options.ts)の単体テスト。
+ * フラグと環境変数(LEISEN_LLM_PROVIDER / LEISEN_LLM_BASE_URL / LEISEN_LLM_MODEL)の組み立て、
  * プロバイダと合わない指定の拒否、入力値をエコーしないこと、資格情報の案内を検証する。
  */
 import { describe, expect, it } from "vitest";
@@ -53,9 +53,9 @@ describe("LLM バックエンドの指定", () => {
 
   it("環境変数でも指定でき、フラグが優先する", () => {
     const env = {
-      KP_LLM_PROVIDER: "openai_compatible",
-      KP_LLM_BASE_URL: LM_STUDIO,
-      KP_LLM_MODEL: "env-model",
+      LEISEN_LLM_PROVIDER: "openai_compatible",
+      LEISEN_LLM_BASE_URL: LM_STUDIO,
+      LEISEN_LLM_MODEL: "env-model",
     };
     expect(parse({}, env)).toEqual({
       ok: true,
@@ -67,7 +67,7 @@ describe("LLM バックエンドの指定", () => {
     });
     expect(parse({ llm: "anthropic" }, env)).toEqual({
       ok: true,
-      // KP_LLM_BASE_URL は openai-compatible のときだけ使う(Claude の資格情報を別の宛先へ送らない)
+      // LEISEN_LLM_BASE_URL は openai-compatible のときだけ使う(Claude の資格情報を別の宛先へ送らない)
       config: { provider: "anthropic", model: "env-model" },
     });
   });

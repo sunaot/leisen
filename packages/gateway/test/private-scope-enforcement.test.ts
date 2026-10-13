@@ -19,8 +19,8 @@ import {
   type ListResult,
   type SearchResult,
   type SourceDescription,
-} from "@kp/connector-sdk";
-import { AuditLogger } from "@kp/audit";
+} from "@leisen/connector-sdk";
+import { AuditLogger } from "@leisen/audit";
 import {
   DeploymentConfigError,
   Gateway,

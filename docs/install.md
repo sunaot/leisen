@@ -10,11 +10,11 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
 
 | パス | 内容 |
 |---|---|
-| `deploy/Dockerfile` | Gateway のイメージ(multi-stage、非 root、`kp-gateway serve`)。Orchestrator(`kp-ask serve`)と昇格判定レポートも含む |
+| `deploy/Dockerfile` | Gateway のイメージ(multi-stage、非 root、`leisen-gateway serve`)。Orchestrator(`leisen-ask serve`)と昇格判定レポートも含む |
 | `deploy/compose/docker-compose.yml` | gateway + keycloak。検索バックエンドは profile `search-backend` の枠のみ |
 | `deploy/compose/docker-compose.librechat.yml` | LibreChat overlay(T-021): orchestrator + librechat + mongodb + keycloak-tls(Keycloak の TLS 終端)。`-f` で重ねる([docs/ui-librechat.md](ui-librechat.md)) |
 | `deploy/compose/librechat/` | overlay の設定(`librechat.yaml`、`librechat.env.example`、TLS 終端の `Caddyfile` / `keycloak-tls.sh`) |
-| `deploy/compose/deployment.yaml` | リファレンス設定(コンテナの `/etc/kp/deployment.yaml`) |
+| `deploy/compose/deployment.yaml` | リファレンス設定(コンテナの `/etc/leisen/deployment.yaml`) |
 | `deploy/compose/.env.example` | 環境変数の雛形(ローカル評価専用のダミー値) |
 | `scripts/smoke/gateway-smoke.sh` | スモークテスト(CI とローカルで共用) |
 | `scripts/smoke/orchestrator-smoke.sh` / `librechat-smoke.sh` | LibreChat overlay のスモークテスト(CI とローカルで共用) |
@@ -54,14 +54,14 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
 cd deploy/compose
 cp .env.example .env                  # ローカル評価専用のダミー値(dev-only-)
 docker compose up -d --build --wait   # イメージをビルドし、keycloak(realm の import 完了)→ gateway の順に起動
-KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/gateway-smoke.sh
+LEISEN_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/gateway-smoke.sh
 ```
 
 スモークは次を確かめ、失敗すると非0で終わる(トークンの値・検索結果の中身は出力しない):
 
 ```
 [1/5] GET /healthz: ok
-[2/5] initialize: ok (server kp-gateway 0.1.0, protocolVersion 2025-11-25)
+[2/5] initialize: ok (server leisen-gateway 0.1.0, protocolVersion 2025-11-25)
 [3/5] tools/list: ok (tools: describe, fetch, list, search; search sources: dev-docs)
 [4/5] tools/call search: ok (2 hit(s) for the smoke query on dev-docs)
 [5/5] requests without a valid token: ok (401)
@@ -71,17 +71,17 @@ gateway-smoke: all checks passed
 - MCP クライアント(curl / MCP Inspector / Claude Code)からの接続手順は README「手元で動かす」と同じで、
   `Authorization: Bearer` に `keycloak-token.sh` で得たトークンを使う。トークンの有効期間は realm の
   設定で 5 分(`accessTokenLifespan: 300`)なので、切れたら取り直す
-- ユーザー `bob` で試すときは `KP_SMOKE_USERNAME=bob KP_SMOKE_PASSWORD=dev-only-bob-password`
+- ユーザー `bob` で試すときは `LEISEN_SMOKE_USERNAME=bob LEISEN_SMOKE_PASSWORD=dev-only-bob-password`
 - 停止は `docker compose down`(監査ボリュームは残る)。`down -v` は監査ログのボリュームも消す。
   評価以外の環境では、監査ログの削除は保持期間の規程(ADR-013 §3)に従う
 
 ### 2.1 UI(LibreChat)・MCP クライアントから問い合わせる
 
-利用者が自然言語で問い合わせる面は、Orchestrator を MCP サーバーとして公開し(`kp-ask serve`)、汎用の
+利用者が自然言語で問い合わせる面は、Orchestrator を MCP サーバーとして公開し(`leisen-ask serve`)、汎用の
 チャット UI や MCP クライアントからつなぐ(ADR-018)。リファレンス構成では LibreChat の overlay を重ねる:
 
 ```bash
-cp librechat/librechat.env.example librechat/librechat.env   # deploy/compose で。.env の KP_LLM_MODEL も合わせる
+cp librechat/librechat.env.example librechat/librechat.env   # deploy/compose で。.env の LEISEN_LLM_MODEL も合わせる
 # ↑ 手元では LibreChat のセッション・暗号化の鍵を生成して置き換える(docs/ui-librechat.md §1.2)
 docker compose -f docker-compose.yml -f docker-compose.librechat.yml up -d --build --wait
 # → http://localhost:3080(Keycloak の alice / bob でログイン)
@@ -98,22 +98,22 @@ LibreChat のセッションを偽造できる。手順・前提(LM Studio、鍵
 
 ```bash
 npm ci && npm run build
-KP_MOCK_SESSIONS=dev-token=alice KP_MOCK_TOKEN_DEV_DOCS=dev-only-token \
-  node packages/gateway/dist/bin/kp-gateway.js serve --config examples/deployment.dev.yaml
+LEISEN_MOCK_SESSIONS=dev-token=alice LEISEN_MOCK_TOKEN_DEV_DOCS=dev-only-token \
+  node packages/gateway/dist/bin/leisen-gateway.js serve --config examples/deployment.dev.yaml
 # 別の端末で
-KP_SESSION_TOKEN=dev-token scripts/smoke/gateway-smoke.sh
+LEISEN_SESSION_TOKEN=dev-token scripts/smoke/gateway-smoke.sh
 ```
 
 イメージとの違いは IdP(モック)と監査の出力先(`audit.sink: stdout`)だけで、起動コード
-(`kp-gateway serve`、停止時の SIGTERM 処理)は同じ。Keycloak を使う場合は `e2e/keycloak` の compose で
-Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパス(`/etc/kp/…`、`/var/lib/kp/…`)と
+(`leisen-gateway serve`、停止時の SIGTERM 処理)は同じ。Keycloak を使う場合は `e2e/keycloak` の compose で
+Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパス(`/etc/leisen/…`、`/var/lib/leisen/…`)と
 `baseUrl`(`http://localhost:8080`)を手元の値に直した設定を使う。
 
 ## 4. deployment.yaml の注入と事前検証
 
-- イメージは `/etc/kp/deployment.yaml`(環境変数 `KP_DEPLOYMENT_CONFIG` の既定値)を読む。compose は
+- イメージは `/etc/leisen/deployment.yaml`(環境変数 `LEISEN_DEPLOYMENT_CONFIG` の既定値)を読む。compose は
   `deploy/compose/deployment.yaml` をそこへ読み取り専用でマウントする。導入1件=このファイル1枚(ADR-005)
-- ファイル内のパスはコンテナ内のパス。相対パスは設定ファイルの所在ディレクトリ(`/etc/kp`)基準で解決される
+- ファイル内のパスはコンテナ内のパス。相対パスは設定ファイルの所在ディレクトリ(`/etc/leisen`)基準で解決される
 - 変更は反映前に検証する。`validate` は設定の読み込みから Gateway の組み立てまでを行い(待ち受けない・
   ファイルを作らない)、不備を全件列挙して exit 1 で終わる:
 
@@ -122,7 +122,7 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   docker compose up -d --force-recreate gateway   # 反映(停止時は処理中のリクエストを待ち、監査を flush する)
   ```
 
-  コンテナを使わない場合は `npx kp-gateway validate --config <deployment.yaml>`
+  コンテナを使わない場合は `npx leisen-gateway validate --config <deployment.yaml>`
 - 設定からプラグイン(`connectors[].module`)を読み込めるため、deployment.yaml とプラグインの置き場所の
   書き込み権限は管理者に限る(T-010)
 - `idp.adapter.allowedClients`(必須)は、トークンの発行先クライアント(`azp`)として受け入れるクライアント ID の
@@ -131,7 +131,7 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   (realm の両クライアントには audience マッパーがある)。`allowedIssuers` は、トークンの発行者(`iss`。Keycloak の
   `KC_HOSTNAME` で固定される公開 URL)がイントロスペクションに使う `baseUrl`(compose のサービス名)と異なる
   ため明示している。`allowedClients: ["*"]` は開発専用(WARNING、本番では `dev_only_in_production`)。トークンが
-  401 になるときの切り分けは `docker compose run --rm --no-deps -e KP_SESSION_TOKEN gateway auth-check --token-env KP_SESSION_TOKEN`
+  401 になるときの切り分けは `docker compose run --rm --no-deps -e LEISEN_SESSION_TOKEN gateway auth-check --token-env LEISEN_SESSION_TOKEN`
   (項目ごとの pass / fail / skipped を表示。トークンは出力しない)
 
 ## 5. 秘密情報の渡し方
@@ -139,27 +139,27 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
 - **値は環境変数だけで渡す。** deployment.yaml には環境変数の「名前」だけを書く(`idp.adapter.clientSecretEnv`、
   `connectors[].settings` の `<name>Env`)。スキーマは秘密情報らしいキーを拒否する(不変条件6)
 - compose は `deploy/compose/.env`(git 管理外。`.dockerignore` でイメージにも入らない)を変数展開に使い、
-  各コンテナに必要な変数だけを渡す(gateway: `KP_KEYCLOAK_CLIENT_SECRET` / `KP_MOCK_TOKEN_DEV_DOCS` /
-  `KP_RUN_ID_KEY` / `KP_ORCHESTRATOR_CREDENTIAL` / `KP_AUDIT_HMAC_KEY`、keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`。
-  LibreChat overlay の orchestrator: `KP_ORCHESTRATOR_CREDENTIAL` と LLM の接続先・モデル名)。未設定なら
+  各コンテナに必要な変数だけを渡す(gateway: `LEISEN_KEYCLOAK_CLIENT_SECRET` / `LEISEN_MOCK_TOKEN_DEV_DOCS` /
+  `LEISEN_RUN_ID_KEY` / `LEISEN_ORCHESTRATOR_CREDENTIAL` / `LEISEN_AUDIT_HMAC_KEY`、keycloak: `KC_BOOTSTRAP_ADMIN_PASSWORD`。
+  LibreChat overlay の orchestrator: `LEISEN_ORCHESTRATOR_CREDENTIAL` と LLM の接続先・モデル名)。未設定なら
   compose が起動前に止まる
 - run API(ADR-019)の秘密は 3 つで、役割ごとに別の値にする(`deployment.yaml` の `gateway.runs.*Env` と
   `audit.docIdHmacKeyEnv` が環境変数名を決める。既定の名前が下のとおり):
-  - `KP_RUN_ID_KEY`(runId の署名鍵。**Gateway だけが持つ**): 32 バイト以上の乱数を hex / base64 / base64url で。
+  - `LEISEN_RUN_ID_KEY`(runId の署名鍵。**Gateway だけが持つ**): 32 バイト以上の乱数を hex / base64 / base64url で。
     `NODE_ENV=production` では未設定・短い・`.env.example` の例の値を起動拒否にする。入れ替えは
-    `KP_RUN_ID_KEY_PREVIOUS`(`gateway.runs.previousSigningKeyEnv`)に旧鍵を置いて新鍵で再起動し、runId の
+    `LEISEN_RUN_ID_KEY_PREVIOUS`(`gateway.runs.previousSigningKeyEnv`)に旧鍵を置いて新鍵で再起動し、runId の
     有効期間(`gateway.runs.ttlSec`、既定 15 分)とフィードバックの期間(`feedbackWindowSec`、既定 7 日)が
     過ぎたら旧鍵を外す。鍵を変えると(旧鍵を残さない限り)期限内の run の `finish` / `feedback` が
     `invalid_run_id` で拒否され、その run はレポートで「放棄」になる
-  - `KP_ORCHESTRATOR_CREDENTIAL`(Orchestrator の資格情報。**gateway と orchestrator の両方に同じ値**): 16 文字
+  - `LEISEN_ORCHESTRATOR_CREDENTIAL`(Orchestrator の資格情報。**gateway と orchestrator の両方に同じ値**): 16 文字
     以上。Gateway は run API(`/runs`)と、runId を申告する `tools/call` にこの値のヘッダ
-    (`x-kp-orchestrator-credential`)を要求する。利用者本人の Bearer トークンの代わりではなく、追加の条件
+    (`x-leisen-orchestrator-credential`)を要求する。利用者本人の Bearer トークンの代わりではなく、追加の条件
     (本人が Orchestrator を通さずに run の結果を偽って申告できないようにする。threat-model TM-I5)。
     `NODE_ENV=production` では未設定・開発用の既定値(`.env.example` の値)を起動拒否にする。16 文字以上の
     空白を含まない印字可能な ASCII(HTTP ヘッダで運ぶ)。**UI(LibreChat)や利用者には渡さない**: 利用者が
     この値を持つと、Orchestrator を通さずに自分の run の結果・ToolInvocation を偽って昇格判定の集計を汚せる
-    (他人の run には触れない)。`kp-ask` の 1 問モードを使う運用者・開発者だけに配る
-  - `KP_AUDIT_HMAC_KEY`(引用 docId の HMAC 鍵。**Gateway だけが持つ**。`audit.privateScopeDocIds: hashed`):
+    (他人の run には触れない)。`leisen-ask` の 1 問モードを使う運用者・開発者だけに配る
+  - `LEISEN_AUDIT_HMAC_KEY`(引用 docId の HMAC 鍵。**Gateway だけが持つ**。`audit.privateScopeDocIds: hashed`):
     run API の `finish` がプライベートスコープを持つソースの引用を不可逆化するのに使う(ADR-019 決定5)。
     導入ごとに1回だけ乱数で生成して秘密ストアに保管し、以後は同じ値を使い続ける(変えると以前に記録した
     `hmac:…` と突き合わせられなくなる)。リファレンス構成の `dev-docs`(`privateScopes: excluded`)だけなら
@@ -172,16 +172,16 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
   `.env.example` の値はいずれも評価用のダミーなので置き換える。生成例:
 
   ```bash
-  openssl rand -base64 32          # KP_RUN_ID_KEY / KP_ORCHESTRATOR_CREDENTIAL
-  openssl rand -hex 32             # KP_AUDIT_HMAC_KEY
+  openssl rand -base64 32          # LEISEN_RUN_ID_KEY / LEISEN_ORCHESTRATOR_CREDENTIAL
+  openssl rand -hex 32             # LEISEN_AUDIT_HMAC_KEY
   # または Node だけで
   node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
   ```
 - LibreChat overlay の LibreChat 固有の秘密(OpenID のクライアント secret、セッション・保存時暗号化の鍵)は
   `deploy/compose/librechat/librechat.env`(git 管理外。雛形は `librechat.env.example`)から librechat
   コンテナにだけ渡す
-- `.env.example` の値は realm(`e2e/keycloak/realm/kp-realm.json`)と揃えたローカル専用のダミー。
-  `KP_KEYCLOAK_CLIENT_SECRET` は realm のクライアント `gateway` の secret と一致させる必要がある
+- `.env.example` の値は realm(`e2e/keycloak/realm/leisen-realm.json`)と揃えたローカル専用のダミー。
+  `LEISEN_KEYCLOAK_CLIENT_SECRET` は realm のクライアント `gateway` の secret と一致させる必要がある
 - 本番では秘密をオーケストレーターの秘密ストア(Docker secrets、Kubernetes Secret 等)から環境変数として
   注入し、イメージ・compose ファイル・リポジトリに置かない。Gateway はトークン・clientSecret・環境変数の
   値をログやエラーに出さない
@@ -193,8 +193,8 @@ Keycloak だけを起動し、`deploy/compose/deployment.yaml` をもとにパ�
 - コンテナ内では `gateway.http.host: 0.0.0.0` で待ち受ける。コンテナ内のループバックで待ち受けると、
   ポート公開でホストから届かないため
 - `gateway.http.host` がループバック以外のとき、起動コードは `gateway.http.confirmExposedHost: true` を
-  要求する(なければ `http_host_exposed_requires_confirmation` で起動拒否。`kp-gateway validate` も同じ。
-  `kp-gateway serve --host <addr>` で待ち受けアドレスを上書きした場合も、上書き後のアドレスに同じ検査をかける。
+  要求する(なければ `http_host_exposed_requires_confirmation` で起動拒否。`leisen-gateway validate` も同じ。
+  `leisen-gateway serve --host <addr>` で待ち受けアドレスを上書きした場合も、上書き後のアドレスに同じ検査をかける。
   確認は deployment.yaml でだけ行い、フラグでは解除できない)。
   **Gateway は TLS を終端せず、Host / Origin ヘッダの検証もしない**ため、ループバック以外で待ち受ける
   構成は「TLS 終端とそれらの防御を前段のリバースプロキシが担う」前提を明示的に受け入れる必要がある
@@ -227,21 +227,21 @@ MCP SDK 1.32.1(1.30.1 から変わらず)の `StreamableHTTPServerTransport` に
 408 となり Gateway に届かない)を確認した。`ssl_reject_handshake` は nginx 1.19.4 以降。
 
 ```nginx
-# /etc/nginx/conf.d/kp-gateway.conf(http コンテキストに読み込まれる前提)
-# kp.example.test・証明書のパス・各上限値は導入先に合わせる。
+# /etc/nginx/conf.d/leisen-gateway.conf(http コンテキストに読み込まれる前提)
+# leisen.example.test・証明書のパス・各上限値は導入先に合わせる。
 
 # クライアント IP ごとの同時接続数(limit_conn)
-limit_conn_zone $binary_remote_addr zone=kp_gateway_conn:10m;
+limit_conn_zone $binary_remote_addr zone=leisen_gateway_conn:10m;
 
 # Origin の許可リスト(DNS rebinding 対策。minor-11)。
 # Origin ヘッダのないリクエスト(ブラウザ以外の MCP クライアント)は通す
-map $http_origin $kp_gateway_origin_ok {
+map $http_origin $leisen_gateway_origin_ok {
     default                    0;
     ""                         1;
-    "https://kp.example.test"  1;
+    "https://leisen.example.test"  1;
 }
 
-upstream kp_gateway {
+upstream leisen_gateway {
     # compose がホストのループバックに公開した Gateway。keepalive は設定しない
     # (Gateway への接続は応答ごとに閉じる)
     server 127.0.0.1:8787;
@@ -257,10 +257,10 @@ server {
 
 server {
     listen 443 ssl;
-    server_name kp.example.test;
+    server_name leisen.example.test;
 
-    ssl_certificate     /etc/nginx/tls/kp.example.test.crt;
-    ssl_certificate_key /etc/nginx/tls/kp.example.test.key;
+    ssl_certificate     /etc/nginx/tls/leisen.example.test.crt;
+    ssl_certificate_key /etc/nginx/tls/leisen.example.test.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
 
     # 遅い送信・長時間の保持でソケットを占有させない(minor-7)
@@ -269,14 +269,14 @@ server {
     client_max_body_size  1m;
     keepalive_timeout     15s;
     send_timeout          30s;
-    limit_conn kp_gateway_conn 20;
+    limit_conn leisen_gateway_conn 20;
 
-    if ($kp_gateway_origin_ok = 0) {
+    if ($leisen_gateway_origin_ok = 0) {
         return 403;
     }
 
     location = /mcp {
-        proxy_pass http://kp_gateway;
+        proxy_pass http://leisen_gateway;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         # 本文を受け切ってから Gateway に渡す(既定 on。遅い送信を Gateway に届かせない)
@@ -288,12 +288,12 @@ server {
         proxy_read_timeout    60s;
     }
 
-    # run API(ADR-019)。MCP のパスと同じディレクトリの runs(path: /mcp なら /runs、/kp/mcp なら /kp/runs。
-    # Orchestrator も同じ規則で導く)。Orchestrator(kp-ask / kp-ask serve)だけが呼ぶ。利用者本人の Bearer に加えて
+    # run API(ADR-019)。MCP のパスと同じディレクトリの runs(path: /mcp なら /runs、/leisen/mcp なら /leisen/runs。
+    # Orchestrator も同じ規則で導く)。Orchestrator(leisen-ask / leisen-ask serve)だけが呼ぶ。利用者本人の Bearer に加えて
     # Orchestrator の資格情報のヘッダが要るため、/mcp と同じ制限で通す(Orchestrator が同じホスト内に
     # あり外部から呼ぶ必要がなければ、この location を置かず 404 のままにしてよい)
     location ~ ^/runs(/|$) {
-        proxy_pass http://kp_gateway;
+        proxy_pass http://leisen_gateway;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_request_buffering on;
@@ -305,7 +305,7 @@ server {
     }
 
     location = /healthz {
-        proxy_pass http://kp_gateway;
+        proxy_pass http://leisen_gateway;
     }
 
     location / {
@@ -326,7 +326,7 @@ server {
 
 - `idp.adapter.baseUrl` が平文 `http:` でループバック以外(内部網のホスト名・IP)を指す構成は、
   `idp.adapter.confirmPlainHttp: true` がなければ静的検証が `idp_plain_http_requires_confirmation` で拒否する
-  (`kp-gateway validate` / `serve`、`kp-ask --config` も同じ。issue #17、ADR-011 追記)。イントロスペクション
+  (`leisen-gateway validate` / `serve`、`leisen-ask --config` も同じ。issue #17、ADR-011 追記)。イントロスペクション
   (RFC 7662)の往復には Gateway の clientSecret と利用者のセッショントークンが載るため、平文で内部網に出す
   構成は、経路が閉じた網であることを確認したうえで受け入れる(`gateway.http.confirmExposedHost` と同じ規約)
 - リファレンス設定の `http://keycloak:8080` は、Gateway → Keycloak の区間が compose のサービス間ネットワーク
@@ -335,9 +335,12 @@ server {
 
 ## 7. 監査ログの永続化
 
-- `audit.sink: jsonl`。監査レコード本体は `/var/lib/kp/audit/audit.jsonl`(ボリューム `kp-audit`)、
-  生クエリ原文は `/var/lib/kp/rawquery/raw-queries.jsonl`(ボリューム `kp-rawquery`)に追記する。
+- `audit.sink: jsonl`。監査レコード本体は `/var/lib/leisen/audit/audit.jsonl`(ボリューム `leisen-audit`)、
+  生クエリ原文は `/var/lib/leisen/rawquery/raw-queries.jsonl`(ボリューム `leisen-rawquery`)に追記する。
   保持期間(既定 365 日 / 30 日)と閲覧経路が異なるため別ボリュームにしている(ADR-011 §3、ADR-013 §3)
+- 名前の改名(ADR-020、2026-10-13)より前の構成で作った名前付きボリュームは、`kp-reference_kp-audit` /
+  `kp-reference_kp-rawquery` のまま残り、新しい構成(`leisen-reference_leisen-audit` 等)には引き継がれない。
+  残っていれば ADR-013 §3 の保持規程に従って扱う(集計に含めるときは下記の旧ボリュームと同じ要領で読み取り専用で見せる)
 - ディレクトリは実行ユーザー(uid 1000)所有・0700、ファイルは 0600 で作られる。バインドマウントに
   変える場合は所有者を uid 1000 にする
 - **at-least-once で、同じレコードが複数行に現れうる**(書き込みの成否が確定しない失敗でも再送するため)。
@@ -357,22 +360,22 @@ server {
   flush し、flush できなければ exit 1 で終わる。compose の `stop_grace_period: 30s` はこのためで、
   短くして SIGKILL されるとバッファ内のレコードを失う
 - 1ファイルに書き込むのは1プロセスに限る(Gateway は単一レプリカで動かす)
-- **監査ストアに書くのは Gateway だけ**(ADR-019)。Orchestrator(`kp-ask` / `kp-ask serve`)の run
+- **監査ストアに書くのは Gateway だけ**(ADR-019)。Orchestrator(`leisen-ask` / `leisen-ask serve`)の run
   (AnswerRun)も Gateway の run API(`/runs`)が `audit.jsonl` に記録する: run の開始で `answer_run`
   (pending)、終了で `answer_run_finish`、フィードバックで `answer_run_feedback` を追記する(部分レコード。
   書き直さない)。読み手は同じ `runId` の 3 種を結合して最終状態を得る(docs/audit-queries.md §0。昇格判定
   レポートは統合して集計し、有効期間を過ぎて finish のない run を「放棄」、pending のない部分レコードを
   「孤立」と数える。`gateway.runs.ttlSec` / `audit.rawQueryRetentionDays` を既定から変えたら
   `--run-ttl-sec` / `--raw-query-retention-days` に同じ値を渡す)。
-  orchestrator のコンテナは監査ボリュームを一切マウントしない(Gateway の監査ログ `kp-audit`・生クエリ原文
-  `kp-rawquery` も、以前の `kp-answer-runs` も)。Orchestrator は Gateway が信頼しない側(threat-model §1 の
+  orchestrator のコンテナは監査ボリュームを一切マウントしない(Gateway の監査ログ `leisen-audit`・生クエリ原文
+  `leisen-rawquery` も、以前の `kp-answer-runs` も)。Orchestrator は Gateway が信頼しない側(threat-model §1 の
   TB2)にあり、侵害・誤動作しても Gateway の監査ログを読めない・書き換えられない。ADR-018 決定4 の別ボリューム
   (`kp-answer-runs`、`answer-runs.jsonl`)は廃止した。以前の overlay で書いた `answer-runs.jsonl` が残って
   いるなら、その期間の集計には `--audit` を 1 つ足して渡す(下)
 - **監査ボリュームの容量に警報を設ける**(threat-model TM-I5 (d))。run API は本文の大きさ(64 KiB)・質問の長さ
   (4,000 字)・利用者ごとの頻度(既定 60 回 / 分。`gateway.runs.limits`)に上限をかけるが、期限内の runId
   での `finish` / `feedback` の再送や単発の `tools/call` でレコードは増え続ける。fail-closed なので容量の枯渇は
-  ツール呼び出し全体の停止になる。`kp-audit` / `kp-rawquery` の空き容量(目安: 残り 20% で警報)と
+  ツール呼び出し全体の停止になる。`leisen-audit` / `leisen-rawquery` の空き容量(目安: 残り 20% で警報)と
   `audit.jsonl` の増加率を監視し、利用者ごとの `invalid_run_id` の件数(docs/audit-queries.md §0)も見る
 - 昇格判定レポートはコンテナ内で監査ボリュームを読んで実行できる(手順と注意は docs/playbook.md
   「有効化判定」。レポートの実行自体がメタ監査の対象で、`--meta-audit-out` のファイルを監査ストアに残す):
@@ -380,11 +383,11 @@ server {
   ```bash
   docker compose run --rm --no-deps -v "$PWD/sources.json:/tmp/sources.json:ro" \
     --entrypoint node gateway packages/promotion-report/dist/cli.js \
-    --audit /var/lib/kp/audit/audit.jsonl \
-    --raw-queries /var/lib/kp/rawquery/raw-queries.jsonl \
+    --audit /var/lib/leisen/audit/audit.jsonl \
+    --raw-queries /var/lib/leisen/rawquery/raw-queries.jsonl \
     --sources /tmp/sources.json \
     --accessor <監査閲覧担当のuserId> \
-    --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
+    --meta-audit-out /var/lib/leisen/audit/meta-audit.jsonl
   ```
 
   LibreChat overlay を使っていても `--audit` は 1 つ(AnswerRun も Gateway の `audit.jsonl` にある)。
@@ -395,15 +398,15 @@ server {
 
   ```bash
   docker compose run --rm --no-deps \
-    -v kp-reference_kp-answer-runs:/var/lib/kp/answer-runs:ro \
+    -v kp-reference_kp-answer-runs:/var/lib/leisen/answer-runs:ro \
     -v "$PWD/sources.json:/tmp/sources.json:ro" \
     --entrypoint node gateway packages/promotion-report/dist/cli.js \
-    --audit /var/lib/kp/audit/audit.jsonl \
-    --audit /var/lib/kp/answer-runs/answer-runs.jsonl \
-    --raw-queries /var/lib/kp/rawquery/raw-queries.jsonl \
+    --audit /var/lib/leisen/audit/audit.jsonl \
+    --audit /var/lib/leisen/answer-runs/answer-runs.jsonl \
+    --raw-queries /var/lib/leisen/rawquery/raw-queries.jsonl \
     --sources /tmp/sources.json \
     --accessor <監査閲覧担当のuserId> \
-    --meta-audit-out /var/lib/kp/audit/meta-audit.jsonl
+    --meta-audit-out /var/lib/leisen/audit/meta-audit.jsonl
   ```
 
 ### 7.1 出力の規則(stdout = 結果、stderr = ログ、監査 = ファイル)
@@ -413,10 +416,10 @@ server {
 
 | プロセス | stdout(機械が読む結果) | stderr(人が読むログ) | 監査(ファイル) |
 |---|---|---|---|
-| `kp-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink、`run api: /runs (signing key: env KP_RUN_ID_KEY, kid …; orchestrator credential: env …; ttl …)`)、`WARNING`(開発部品の使用・一時鍵や開発用の資格情報・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation、AnswerRun の `answer_run` / `answer_run_finish` / `answer_run_feedback`)と `rawQueryPath`(生クエリ原文。run の質問原文を含む) |
-| `kp-gateway validate` | `validate: OK` と要約 | 設定の不備(`[code] path: message`)、`WARNING` | 書かない(ファイルも作らない) |
-| `kp-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告(開発用の資格情報の使用)・エラー | 書かない(run は Gateway の run API に申告し、Gateway が記録する。ADR-019) |
-| `kp-ask serve` | `--help` だけ | 起動ログ(`run api: gateway (orchestrator credential: …)` を含む)・エラー | 書かない(同上) |
+| `leisen-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink、`run api: /runs (signing key: env LEISEN_RUN_ID_KEY, kid …; orchestrator credential: env …; ttl …)`)、`WARNING`(開発部品の使用・一時鍵や開発用の資格情報・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation、AnswerRun の `answer_run` / `answer_run_finish` / `answer_run_feedback`)と `rawQueryPath`(生クエリ原文。run の質問原文を含む) |
+| `leisen-gateway validate` | `validate: OK` と要約 | 設定の不備(`[code] path: message`)、`WARNING` | 書かない(ファイルも作らない) |
+| `leisen-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告(開発用の資格情報の使用)・エラー | 書かない(run は Gateway の run API に申告し、Gateway が記録する。ADR-019) |
+| `leisen-ask serve` | `--help` だけ | 起動ログ(`run api: gateway (orchestrator credential: …)` を含む)・エラー | 書かない(同上) |
 | compose | コンテナの stdout / stderr は `docker logs` へ。収集は導入先の運用 | 同左 | 名前付きボリューム(§7) |
 
 出さないもの: トークン・API キー・AuthContext(`redactAuthContext` 経由でしか文字列化しない。不変条件 6)、
@@ -449,7 +452,7 @@ server {
 
 ## 9. アップグレード手順(骨子)
 
-1. リリースノートと ADR の変更を確認し、監査ボリューム(`kp-audit` / `kp-rawquery`。ADR-019 より前の
+1. リリースノートと ADR の変更を確認し、監査ボリューム(`leisen-audit` / `leisen-rawquery`。ADR-019 より前の
    overlay で作られた `kp-answer-runs` が残っていればそれも)をバックアップする
 2. 新しいイメージを用意する(イメージタグの差し替え)。現状はソースからビルドする:
    対象のタグを checkout して `docker compose build gateway`。レジストリ配布が整備されたら、
@@ -479,8 +482,8 @@ server {
   ([docs/usage-policy-template.md](usage-policy-template.md))の整備と労使協議・就業規則との整合確認を行い、
   確認フラグ(`confirmPrivateScopesIncluded: true`)を付ける(ADR-013 §1、TM-E4)。
   - `consent`(本人オプトイン)は**現在は指定できない**。同意状態の持ち方(#42)が未設計で、方針が
-    コネクタに届かず除外も確認フラグも効かないため、`kp-gateway validate` / `serve` と `kp-ask` /
-    `kp-ask serve` は無効化済みのコネクタでも `private_scopes_consent_not_supported` で起動を拒否する
+    コネクタに届かず除外も確認フラグも効かないため、`leisen-gateway validate` / `serve` と `leisen-ask` /
+    `leisen-ask serve` は無効化済みのコネクタでも `private_scopes_consent_not_supported` で起動を拒否する
     (ADR-016 追補2 決定6)
   - `excluded` は、コネクタが能力 `privateScopeHandling` に `enforced` か `classified` を宣言している
     場合だけ起動できる。宣言のないコネクタ(connector-sdk v0.3 のプラグイン)・`unsupported` のコネクタは
@@ -521,7 +524,7 @@ OAuth アプリ単位で行うためである。ただし、ソース側でア�
 - [ ] **ブラウザを操作するエージェントを端末側で管理する**: ブラウザ拡張の許可リスト(管理ポリシー)と、
   エージェント製品の組織管理設定で、ブラウザ操作・画面操作の機能を許可するかを決める。本人の Web セッションで
   動くため、ソース側からは本人の操作と区別できない
-- [ ] **エージェント製品の組織管理機能で、ソースへの公式コネクタを無効にし、leisen(`kp-ask serve`。
+- [ ] **エージェント製品の組織管理機能で、ソースへの公式コネクタを無効にし、leisen(`leisen-ask serve`。
   [docs/ui-librechat.md](ui-librechat.md))をカスタムコネクタとして配布する**(管理機能がある製品のみ)
 - [ ] **利用規程に、leisen 以外の経路で社内データをエージェントに渡すことの扱いを書く**(セッショントークンの
   流用、規約外の自作アプリ、エクスポートやコピー&ペーストを含む。
@@ -532,7 +535,7 @@ OAuth アプリ単位で行うためである。ただし、ソース側でア�
 
 Helm チャートは T-012 のスコープ外とし、作るときの要件だけを記録する。
 
-- **values での注入**: deployment.yaml を ConfigMap として `/etc/kp/deployment.yaml` に読み取り専用で
+- **values での注入**: deployment.yaml を ConfigMap として `/etc/leisen/deployment.yaml` に読み取り専用で
   マウントする(秘密を含まない)。秘密は Secret から環境変数として渡し、変数名は deployment.yaml の
   `clientSecretEnv` / `<name>Env` と一致させる
 - **readiness / liveness**: `GET /healthz`(認証不要)。監査 sink の状態は含まない(§8)

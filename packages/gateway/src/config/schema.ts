@@ -68,7 +68,7 @@ const connectorLimitsSchema = z.strictObject({
 
 /**
  * コネクタ実装の識別子(connectors[].kind)の形式。プラグインのモジュール名
- * `@kp/connector-<kind>` の導出に使うため、npmパッケージ名の一部として安全な
+ * `@leisen/connector-<kind>` の導出に使うため、npmパッケージ名の一部として安全な
  * 文字(英小文字・数字・ハイフン、先頭は英小文字)に限る。
  */
 export const CONNECTOR_KIND_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -166,7 +166,7 @@ const connectorSettingsSchema = z
 /**
  * コネクタの本人資格情報の取得方式(ADR-010 のソース別 Auth Adapter の選択)。
  * 当面は開発用の mock_env のみ: MockCredentialProvider が環境変数
- * KP_MOCK_TOKEN_<SOURCEID> の固定トークンを本人資格情報として渡す
+ * LEISEN_MOCK_TOKEN_<SOURCEID> の固定トークンを本人資格情報として渡す
  * (NODE_ENV=production では起動時に拒否される)。T-004 で oauth_individual
  * (Token Vault)等を追加する。ここにも秘密情報を置かない(環境変数名で参照する)。
  * 有効なコネクタに auth がない構成は起動コードが拒否する
@@ -182,18 +182,18 @@ const connectorSchema = z
     id: z.string().min(1),
     /**
      * コネクタ実装の識別子。組み込みの `dev-fixture`、またはプラグイン名
-     * (モジュール `@kp/connector-<kind>`)。省略時は id と同じ(下の transform)
+     * (モジュール `@leisen/connector-<kind>`)。省略時は id と同じ(下の transform)
      */
     kind: z
       .string()
       .regex(CONNECTOR_KIND_PATTERN, {
         error:
           "kind must be lowercase letters, digits and '-' starting with a letter " +
-          "(it names the plugin module @kp/connector-<kind>)",
+          "(it names the plugin module @leisen/connector-<kind>)",
       })
       .optional(),
     /**
-     * プラグインの import 指定子。省略時は `@kp/connector-<kind>`。
+     * プラグインの import 指定子。省略時は `@leisen/connector-<kind>`。
      * 相対パスは設定ファイルの所在ディレクトリ基準
      */
     module: z
@@ -227,7 +227,7 @@ const connectorSchema = z
  * 秘密情報(clientSecret)はファイルに書かず、環境変数名で参照する。
  */
 const idpAdapterSchema = z.discriminatedUnion("kind", [
-  // モックは開発専用。セッション対応表は環境変数 KP_MOCK_SESSIONS から読む
+  // モックは開発専用。セッション対応表は環境変数 LEISEN_MOCK_SESSIONS から読む
   // (設定ファイルにセッショントークンを書かせない)。本番ビルドでの拒否は
   // idp/factory.ts と MockIdpAdapter が行う。
   z.strictObject({ kind: z.literal("mock") }),
@@ -253,7 +253,7 @@ const idpAdapterSchema = z.discriminatedUnion("kind", [
      * 利用者がログインする UI・MCP クライアントを realm に登録し、ここに列挙する。"*" は
      * 任意のクライアントを受け入れる開発専用の逃げ道で(他の項目と混在しても同じ扱い)、
      * NODE_ENV=production では起動コードが dev_only_in_production で拒否し、それ以外でも
-     * kp-gateway validate / serve が WARNING を出す
+     * leisen-gateway validate / serve が WARNING を出す
      */
     allowedClients: z.array(z.string().min(1)).min(1),
     /**
@@ -329,9 +329,9 @@ const gatewayHttpSchema = z.strictObject({
  * run API(ADR-019 決定3・4、T-023)の設定。秘密情報(runId の署名鍵・Orchestrator の
  * 資格情報)は環境変数名で参照する。既定値は T-023 で決めた案。
  */
-export const DEFAULT_RUN_ID_KEY_ENV = "KP_RUN_ID_KEY";
-export const DEFAULT_RUN_ID_PREVIOUS_KEY_ENV = "KP_RUN_ID_KEY_PREVIOUS";
-export const DEFAULT_ORCHESTRATOR_CREDENTIAL_ENV = "KP_ORCHESTRATOR_CREDENTIAL";
+export const DEFAULT_RUN_ID_KEY_ENV = "LEISEN_RUN_ID_KEY";
+export const DEFAULT_RUN_ID_PREVIOUS_KEY_ENV = "LEISEN_RUN_ID_KEY_PREVIOUS";
+export const DEFAULT_ORCHESTRATOR_CREDENTIAL_ENV = "LEISEN_ORCHESTRATOR_CREDENTIAL";
 /** runId の有効期間の既定(秒)。Orchestrator の runTimeoutMs(既定 120 秒)より長くする */
 export const DEFAULT_RUN_ID_TTL_SEC = 900;
 /** 発行時刻からフィードバックを受ける期間の既定(秒)。7 日 */
@@ -446,7 +446,7 @@ const auditSchema = z.strictObject({
    * finish で引用 docId を不可逆化するときに使う(ADR-019 決定5)。プライベートスコープを
    * 持つソースが有効で hashed のときは起動時に必須(secret_env_missing)
    */
-  docIdHmacKeyEnv: envVarName("docIdHmacKeyEnv").default("KP_AUDIT_HMAC_KEY"),
+  docIdHmacKeyEnv: envVarName("docIdHmacKeyEnv").default("LEISEN_AUDIT_HMAC_KEY"),
   /** AnswerRun / ToolInvocation(監査ログ本体)の保持日数(ADR-013 §3) */
   retentionDays: positiveDays.default(365),
   /** rawQueryテーブルの保持日数(ADR-011 §3) */
@@ -515,7 +515,7 @@ export type GatewayRunsConfig = DeploymentConfig["gateway"]["runs"];
  * Slack と分類するコネクタの kind(`slack`、または `slack-` で始まるプラグイン名)。
  * 広めに取るほど記録しない側に倒れる(ADR-013 §2)。永続化不可のソース(不変条件7、
  * ADR-014)の有効化の判定に、Gateway(run API の引用の記録。ADR-019 決定5・7)と
- * Orchestrator(kp-ask serve。ADR-018 決定5)が同じ規則を使う。
+ * Orchestrator(leisen-ask serve。ADR-018 決定5)が同じ規則を使う。
  */
 export function isSlackKind(kind: string): boolean {
   return kind === "slack" || kind.startsWith("slack-");

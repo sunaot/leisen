@@ -59,8 +59,8 @@ import {
   type AuditRecord,
   type RawQueryRecord,
   type ToolInvocationRecord,
-} from "@kp/audit";
-import { DEFAULT_RUN_ID_TTL_SEC, decodeRunIdPayload } from "@kp/gateway";
+} from "@leisen/audit";
+import { DEFAULT_RUN_ID_TTL_SEC, decodeRunIdPayload } from "@leisen/gateway";
 import {
   classifySource,
   type PromotionEligibility,
@@ -410,10 +410,10 @@ export interface DedupedAuditRecords {
 }
 
 /**
- * 冪等キー(@kp/audit の auditRecordIdempotencyKey: requestId / runId / recordId / accessId /
+ * 冪等キー(@leisen/audit の auditRecordIdempotencyKey: requestId / runId / recordId / accessId /
  * purgeId)で1件にまとめ、重複(同じ内容の再送)と更新(内容が変わった後の行)を分けて数える。
  * 監査 JSONL は at-least-once で、書き込みの成否が確定しない失敗の再送により同じレコードが
- * 複数行に現れうる(@kp/audit の jsonl.ts)。ADR-019 より前の構成の AnswerRun は同じ runId で
+ * 複数行に現れうる(@leisen/audit の jsonl.ts)。ADR-019 より前の構成の AnswerRun は同じ runId で
  * pending → 最終状態 → フィードバックの行が並ぶ(書き直し)。Gateway の run API の部分レコードは
  * recordId ごとに別のキーなので、ここでは束ねず mergeAnswerRunRecords で統合する。
  */

@@ -1,9 +1,9 @@
 # deployment.dev.yaml — 手元で Gateway を動かすための開発用設定
 #
 # README「手元で動かす(5分)」を参照。例:
-#   export KP_MOCK_SESSIONS=dev-token=alice          # Bearer トークン → 利用者ID(モックIdP)
-#   export KP_MOCK_TOKEN_DEV_DOCS=dev-only-token     # dev-docs に渡す本人資格情報(モック)
-#   npx kp-gateway serve --config examples/deployment.dev.yaml
+#   export LEISEN_MOCK_SESSIONS=dev-token=alice          # Bearer トークン → 利用者ID(モックIdP)
+#   export LEISEN_MOCK_TOKEN_DEV_DOCS=dev-only-token     # dev-docs に渡す本人資格情報(モック)
+#   npx leisen-gateway serve --config examples/deployment.dev.yaml
 #
 # - idp.adapter.kind: mock / auth.provider: mock_env / kind: dev-fixture /
 #   audit.sink: stdout はいずれも開発専用で、NODE_ENV=production では起動時に拒否される
@@ -18,7 +18,7 @@ deployment:
 
 idp:
   adapter:
-    # 開発用モック。セッション(トークン=利用者ID)は環境変数 KP_MOCK_SESSIONS
+    # 開発用モック。セッション(トークン=利用者ID)は環境変数 LEISEN_MOCK_SESSIONS
     # ("token=userId[,token=userId...]")で渡す
     kind: mock
 
@@ -33,8 +33,8 @@ connectors:
     # 組み込みの開発用コネクタ(インメモリの合成コーパス)
     kind: dev-fixture
     auth:
-      # 本人資格情報は環境変数 KP_MOCK_TOKEN_DEV_DOCS の固定値(開発専用)。
-      # 利用者別に変えるときは KP_MOCK_TOKEN_DEV_DOCS__<USERID>
+      # 本人資格情報は環境変数 LEISEN_MOCK_TOKEN_DEV_DOCS の固定値(開発専用)。
+      # 利用者別に変えるときは LEISEN_MOCK_TOKEN_DEV_DOCS__<USERID>
       provider: mock_env
     settings:
       corpusFile: fixtures/dev-corpus.yaml

@@ -9,12 +9,12 @@
  * - ソース別レート制御・タイムアウト
  */
 import { describe, expect, it } from "vitest";
-import { ConnectorError, MAX_SNIPPET_CHARS } from "@kp/connector-sdk";
+import { ConnectorError, MAX_SNIPPET_CHARS } from "@leisen/connector-sdk";
 import {
   AuditLogger,
   InMemoryRawQueryStore,
   digestQuery,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   DeploymentConfigError,
   Gateway,

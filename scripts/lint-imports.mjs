@@ -2,17 +2,17 @@
 /**
  * import 境界の検査(ADR-019 決定10、T-023)。
  *
- * 監査のモジュール(@kp/audit)と Gateway の run モジュールは、同じプロセスに同居しても
+ * 監査のモジュール(@leisen/audit)と Gateway の run モジュールは、同じプロセスに同居しても
  * MCP・コネクタ IF・認証・設定に依存させない。ここでは TypeScript ソースの import / export
  * 文と動的 import の指定子を読み、各境界の許可リストに合わないものを違反として報告する
  * (違反があれば終了コード 1。CI の `npm run lint:imports` から呼ぶ)。
  *
  * - packages/audit/src       : 許可 = node:*、zod、同じディレクトリ木の中の相対パス
- * - packages/gateway/src/run : 許可 = node:*、zod、@kp/audit、同じディレクトリ木の中の相対パス
+ * - packages/gateway/src/run : 許可 = node:*、zod、@leisen/audit、同じディレクトリ木の中の相対パス
  *   (段階 2 で作る。存在しないうちは検査対象から外す)
  *
  * 禁止側を列挙しない(許可リスト方式): `proxy/`・`idp/`・`config/`・`@modelcontextprotocol/sdk`・
- * `@kp/connector-sdk` を名指しで禁止すると、新しい依存が増えたときに検査から漏れる。
+ * `@leisen/connector-sdk` を名指しで禁止すると、新しい依存が増えたときに検査から漏れる。
  *
  * 使い方: node scripts/lint-imports.mjs [--root <dir>]
  */
@@ -23,14 +23,14 @@ import { fileURLToPath } from "node:url";
 /** 境界の定義。dir はリポジトリルートからの相対パス */
 export const BOUNDARIES = [
   {
-    name: "@kp/audit",
+    name: "@leisen/audit",
     dir: "packages/audit/src",
     allowBare: [/^node:/, /^zod$/],
   },
   {
     name: "gateway run module",
     dir: "packages/gateway/src/run",
-    allowBare: [/^node:/, /^zod$/, /^@kp\/audit$/],
+    allowBare: [/^node:/, /^zod$/, /^@leisen\/audit$/],
   },
 ];
 

@@ -23,7 +23,7 @@ describe("createIdpAdapter", () => {
       {
         kind: "keycloak",
         baseUrl: "http://localhost:8080",
-        realm: "kp",
+        realm: "leisen",
         clientId: "gateway",
         clientSecret: "dev-only-secret",
         allowedClients: ["chat-ui"],
@@ -47,7 +47,7 @@ describe("createIdpAdapter", () => {
     const config = {
       kind: "keycloack", // 誤記を想定
       baseUrl: "http://localhost:8080",
-      realm: "kp",
+      realm: "leisen",
       clientId: "gateway",
       clientSecret: "dev-only-should-not-leak",
     } as never;

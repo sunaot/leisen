@@ -1,5 +1,5 @@
 {
-  "name": "@kp-spike/mcp-sdk-v2",
+  "name": "@leisen-spike/mcp-sdk-v2",
   "private": true,
   "license": "Apache-2.0",
   "description": "移行スパイク(本流に入れない): MCP TypeScript SDK v2(2.1.0)の検証。ルートの workspaces には含めない。typescript / vitest / @types/node はルートの devDependencies(5.9.3 / 4.1.9 / 22.20.0)を使う",

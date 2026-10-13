@@ -1,11 +1,11 @@
 {
-  "name": "@kp/gateway",
+  "name": "@leisen/gateway",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "kp-gateway": "bin/kp-gateway.js"
+    "leisen-gateway": "bin/leisen-gateway.js"
   },
   "scripts": {
     "build": "tsc",
@@ -13,8 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kp/audit": "0.1.0",
-    "@kp/connector-sdk": "0.4.0",
+    "@leisen/audit": "0.1.0",
+    "@leisen/connector-sdk": "0.4.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"

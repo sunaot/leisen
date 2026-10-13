@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * kp-ask — Orchestrator の CLI(T-007)。
+ * leisen-ask — Orchestrator の CLI(T-007)。
  *
- *   kp-ask --gateway http://127.0.0.1:8787/mcp [--token <セッショントークン>]
+ *   leisen-ask --gateway http://127.0.0.1:8787/mcp [--token <セッショントークン>]
  *          [--model <モデルID>] [--max-iterations N] [--effort low|medium|high|xhigh|max]
  *          [--user-id <userId>] [--config <deployment.yaml>]
  *          [--json] "質問文"
  *
- * - セッショントークンは --token か環境変数 KP_SESSION_TOKEN で渡す(--token は
+ * - セッショントークンは --token か環境変数 LEISEN_SESSION_TOKEN で渡す(--token は
  *   プロセス一覧に残るため環境変数を推奨)。トークンは表示・ログに出さない
  * - Claude API の資格情報は SDK が環境から解決する(ANTHROPIC_API_KEY、
  *   ANTHROPIC_AUTH_TOKEN、`ant auth login` のプロファイル等)。無い・無効な場合は
@@ -15,14 +15,14 @@
  * - LLM バックエンドは --llm で選ぶ(既定 anthropic。openai-compatible は LM Studio 等の
  *   OpenAI 互換エンドポイント。指定の解釈は bin/llm-options.ts、ADR-017 決定1)
  * - run の記録(AnswerRun)は Gateway の run API に申告する(ADR-019)。環境変数
- *   KP_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
+ *   LEISEN_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
  *   付ける。未設定なら開発用の既定値(WARNING)、NODE_ENV=production では必須(終了コード 2)。
- *   AnswerRun も ToolInvocation も Gateway 側の監査に記録され、kp-ask は監査ストアに触れない
- * - --json の出力契約(README「kp-ask の出力契約」): 回答できたとき・run が error で終わったときは
+ *   AnswerRun も ToolInvocation も Gateway 側の監査に記録され、leisen-ask は監査ストアに触れない
+ * - --json の出力契約(README「leisen-ask の出力契約」): 回答できたとき・run が error で終わったときは
  *   Answer、回答を返せなかったとき(引数・設定・資格情報の不備、実行時の例外)は失敗の表現
  *   { outcome: "error", errorClass, message[, runId] } を stdout に JSON で1つ出す。終了コードは
  *   --json の有無で変わらない
- * - AnswerRun の質問者は Gateway が認証した userId。--user-id(または環境変数 KP_USER_ID)は
+ * - AnswerRun の質問者は Gateway が認証した userId。--user-id(または環境変数 LEISEN_USER_ID)は
  *   照合用の申告で、一致しなければ run は error(user_mismatch)。省略時は照合しない
  * - --config は deployment.yaml(orchestrator セクションの maxIterations / costLimitPerQuery を
  *   探索の設定にする。--max-iterations が優先)。省略すると既定の設定で動く。citedDocIds の
@@ -30,10 +30,10 @@
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
- * サブコマンド `kp-ask serve`(bin/serve.ts): Orchestrator を MCP サーバーとして公開する
+ * サブコマンド `leisen-ask serve`(bin/serve.ts): Orchestrator を MCP サーバーとして公開する
  * (T-021、ADR-018)。最初の引数が `serve` のときだけ振り分ける。
  *
- * npm の bin(`npx kp-ask`)からは、リポジトリに含まれる起動シム packages/orchestrator/bin/kp-ask.js
+ * npm の bin(`npx leisen-ask`)からは、リポジトリに含まれる起動シム packages/orchestrator/bin/leisen-ask.js
  * 経由で読み込まれ、main() が呼ばれる(このファイルは自分がエントリのときだけ自動実行する)。
  */
 import { realpathSync } from "node:fs";
@@ -43,7 +43,7 @@ import { parseArgs } from "node:util";
 import {
   DeploymentConfigError,
   loadDeploymentConfig,
-} from "@kp/gateway";
+} from "@leisen/gateway";
 import type { Answer } from "../answer.js";
 import {
   orchestratorSettingsSchema,
@@ -89,11 +89,11 @@ import {
 } from "./upstream-options.js";
 
 export const USAGE = [
-  "usage: kp-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
+  "usage: leisen-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
   "              [--model <モデルID>] [--max-iterations <N>] [--effort low|medium|high|xhigh|max]",
   "              [--user-id <userId>] [--config <deployment.yaml>]",
   "              [--json] <質問文>",
-  "  セッショントークンは環境変数 KP_SESSION_TOKEN でも渡せます(推奨)。",
+  "  セッショントークンは環境変数 LEISEN_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(Gateway が認証した利用者と食い違えば run は error になります)。",
   "  --config の orchestrator セクション(maxIterations / costLimitPerQuery)を探索の設定にします(--max-iterations が優先)。",
@@ -101,7 +101,7 @@ export const USAGE = [
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
-  "  MCP サーバーとして起動する: kp-ask serve --gateway <URL> --config <deployment.yaml>(詳細は kp-ask serve --help)",
+  "  MCP サーバーとして起動する: leisen-ask serve --gateway <URL> --config <deployment.yaml>(詳細は leisen-ask serve --help)",
 ].join("\n");
 
 export {
@@ -150,9 +150,9 @@ export const defaultCliDependencies: CliDependencies = {
 class UsageError extends Error {}
 
 /**
- * --json の失敗の表現(回答を返せなかったとき。README「kp-ask の出力契約」)。Answer の
+ * --json の失敗の表現(回答を返せなかったとき。README「leisen-ask の出力契約」)。Answer の
  * outcome: error に揃えて outcome を持ち、回答本文の代わりに message(利用者向けの説明。
- * stderr に出す文言と同じ)、正規化コード errorClass(lower snake_case。kp-ask serve の
+ * stderr に出す文言と同じ)、正規化コード errorClass(lower snake_case。leisen-ask serve の
  * structuredContent.errorClass と同じ規約)を持つ。run を始めた後の失敗(LLM の資格情報の
  * 不備)では runId も持つ(AnswerRun と突き合わせられる)。トークン・API キーは含めない。
  */
@@ -221,10 +221,10 @@ function parseCliArgs(
   if (gateway === undefined || gateway === "") {
     throw new UsageError("--gateway を指定してください。");
   }
-  const token = values.token ?? env["KP_SESSION_TOKEN"];
+  const token = values.token ?? env["LEISEN_SESSION_TOKEN"];
   if (token === undefined || token === "") {
     throw new UsageError(
-      "セッショントークンを --token または環境変数 KP_SESSION_TOKEN で指定してください。",
+      "セッショントークンを --token または環境変数 LEISEN_SESSION_TOKEN で指定してください。",
     );
   }
   const question = positionals.join(" ").trim();
@@ -255,7 +255,7 @@ function parseCliArgs(
     gateway,
     token,
     question,
-    userId: values["user-id"] ?? env["KP_USER_ID"],
+    userId: values["user-id"] ?? env["LEISEN_USER_ID"],
     config: values.config,
     json: values.json === true,
     maxIterations,
@@ -529,7 +529,7 @@ function isMainModule(): boolean {
 
 /**
  * プロセスのエントリ。標準入出力につなぎ、終了コードを process.exitCode に設定する。
- * `node dist/bin/kp-ask.js`(下の isMainModule)と npm の bin(起動シム bin/kp-ask.js)の
+ * `node dist/bin/leisen-ask.js`(下の isMainModule)と npm の bin(起動シム bin/leisen-ask.js)の
  * 両方から呼ばれる。
  */
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
@@ -539,7 +539,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   }).catch((error: unknown) => {
     // 想定外の失敗。生の例外メッセージ・スタックは出さない(トークン等を含みうる、不変条件6)
     process.stderr.write(
-      `kp-ask: unexpected error (${error instanceof Error ? error.name : typeof error})\n`,
+      `leisen-ask: unexpected error (${error instanceof Error ? error.name : typeof error})\n`,
     );
     return 1;
   });

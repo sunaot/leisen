@@ -83,14 +83,14 @@ WARNING に現れる。参照実装は `keycloak.ts` の `checkIntrospection`。
 - 検証の順序は active → 発行者 → 種別 → 発行先 → 受け手で、最初の失敗で止める。失敗は
   すべて `IdpError("unauthenticated", <固定文言>)` にし、HTTP 層は 401 の固定文言に写す
   (理由を利用者に返さない)
-- **診断フックの規則**: 失敗の理由は `diagnose`(factory の `deps.warn`。kp-gateway serve は
+- **診断フックの規則**: 失敗の理由は `diagnose`(factory の `deps.warn`。leisen-gateway serve は
   stderr の `WARNING:`)に 1 行で渡す。渡してよいのはクレーム名と、設定値・クレームの値の
   うち秘密でないもの(`azp "foo" is not in allowedClients`、`aud does not include "gateway"`、
   `typ "Refresh" is not Bearer`、`iss mismatch`)だけ。トークン・`sub`(利用者 ID)・応答全体は
   渡さない(不変条件6)。診断フックにそれらが渡らないことをユニットテストで固定する。
   401 の洪水でログが線形に増えないよう、検証項目ごとに最初の 1 件は即時、以降は一定間隔
   (Keycloak 実装は `diagnoseIntervalMs`、既定 60 秒)に 1 件だけ出し、抑制した件数を添える
-- 運用者の切り分けは `kp-gateway auth-check --config <yaml> --token-env <VAR>`(項目ごとの
+- 運用者の切り分けは `leisen-gateway auth-check --config <yaml> --token-env <VAR>`(項目ごとの
   pass / fail / skipped)。新しいアダプタも同じ項目名(`active` / `iss` / `typ` / `azp` / `aud`)で
   `checkIntrospection` 相当を公開すると、同じコマンドで診断できる
 

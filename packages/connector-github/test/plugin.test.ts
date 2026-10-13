@@ -9,7 +9,7 @@
  * - factory の中で GitHub API を呼ばない
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConnectorError, type Connector } from "@kp/connector-sdk";
+import { ConnectorError, type Connector } from "@leisen/connector-sdk";
 import { GitHubConnector } from "../src/connector.js";
 import { createConnector } from "../src/index.js";
 import { FakeGitHub, bearerAuth, searchResponse } from "./helpers/fake-github.js";
@@ -38,7 +38,7 @@ describe("createConnector(Gateway のプラグイン契約)", () => {
     const connector: Connector = createConnector({
       sourceId: "github-corp",
       settings: {},
-      configDir: "/etc/kp",
+      configDir: "/etc/leisen",
     });
     expect(connector).toBeInstanceOf(GitHubConnector);
     expect(connector.sourceId).toBe("github-corp");
@@ -59,7 +59,7 @@ describe("createConnector(Gateway のプラグイン契約)", () => {
     createConnector({
       sourceId: "github",
       settings: { baseUrl: "https://ghe.corp.example/api/v3", searchCode: false },
-      configDir: "/etc/kp",
+      configDir: "/etc/leisen",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -79,7 +79,7 @@ describe("createConnector(Gateway のプラグイン契約)", () => {
         maxComments: 5,
         rateLimit: { maxEntries: 100, secondaryBackoffBaseMs: 1_000 },
       },
-      configDir: "/etc/kp",
+      configDir: "/etc/leisen",
     });
 
     await connector.search(ALICE, "経費精算");
@@ -116,7 +116,7 @@ describe("createConnector(Gateway のプラグイン契約)", () => {
     ["URL でない baseUrl", { baseUrl: "ghe.corp.example" }, "baseUrl must be an absolute URL"],
   ])("不正な settings(%s)は ConnectorError(invalid_request)で拒否する", (_label, settings, message) => {
     const error = captureError(() =>
-      createConnector({ sourceId: "github", settings, configDir: "/etc/kp" }),
+      createConnector({ sourceId: "github", settings, configDir: "/etc/leisen" }),
     );
     expect(error.errorClass).toBe("invalid_request");
     expect(error.message).toContain(message);
@@ -135,7 +135,7 @@ describe("createConnector(Gateway のプラグイン契約)", () => {
       createConnector({
         sourceId: "github",
         settings: settings as unknown as Record<string, unknown>,
-        configDir: "/etc/kp",
+        configDir: "/etc/leisen",
       }),
     );
     expect(error.errorClass).toBe("invalid_request");

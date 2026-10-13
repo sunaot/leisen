@@ -1,6 +1,6 @@
 /**
  * Gateway へ送る `_meta` の組み立て(buildGatewayMeta。T-007、セキュリティ再レビュー S3):
- * - キー集合が @kp/gateway の GATEWAY_META_KEYS の4キーと完全一致する(裸キー・余分な
+ * - キー集合が @leisen/gateway の GATEWAY_META_KEYS の4キーと完全一致する(裸キー・余分な
  *   キーを送らない)。Gateway 自身の `_meta` 解釈(declarationFromMeta /
  *   callContextFromMeta)で誤記として拒否されずに同じ値へ読み戻せる
  * - src のうち gateway/meta.ts 以外は `_meta` のキーを書かない(組み立て・結果側の読み取り
@@ -13,14 +13,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { type Actor } from "@kp/audit";
+import { type Actor } from "@leisen/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
   META_KEY_PREFIX,
   callContextFromMeta,
   declarationFromMeta,
-} from "@kp/gateway";
+} from "@leisen/gateway";
 import { buildGatewayMeta, gatewayUserIdFromResultMeta } from "../src/index.js";
 import {
   CorpusConnector,

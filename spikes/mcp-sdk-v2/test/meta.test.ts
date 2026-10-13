@@ -31,7 +31,7 @@ function metaProbe(eras: string[]): Server {
 }
 
 const meta = { [META_RUN_ID]: "run-x", [META_ITERATION]: 3 };
-const edgeAuth: AuthInfo = { token: "opaque", clientId: "kp-gateway-edge", scopes: [] };
+const edgeAuth: AuthInfo = { token: "opaque", clientId: "leisen-gateway-edge", scopes: [] };
 
 describe("(iv) custom _meta keys and handler context", () => {
   it("delivers prefixed _meta keys to both request.params._meta and ctx.mcpReq._meta in both eras", async () => {
@@ -59,7 +59,7 @@ describe("(iv) custom _meta keys and handler context", () => {
         expect(seen).toMatchObject({
           paramsMeta: meta,
           ctxMeta: meta,
-          authInfoClientId: "kp-gateway-edge",
+          authInfoClientId: "leisen-gateway-edge",
           authorizationHeaderSeen: true,
           sessionId: null,
         });

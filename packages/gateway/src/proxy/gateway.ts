@@ -42,13 +42,13 @@ import {
   type SearchHit,
   type SearchResult,
   type SourceDescription,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   digestQuery,
   type AuditLogger,
   type RawQueryStore,
   type ToolInvocationRecord,
-} from "@kp/audit";
+} from "@leisen/audit";
 import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
 import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";

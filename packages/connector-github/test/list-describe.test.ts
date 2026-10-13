@@ -5,7 +5,7 @@
  * - capabilities: nativeSearch "degraded"、ingest false、privateScopeHandling "classified"
  */
 import { describe, expect, it } from "vitest";
-import { ConnectorError, type Connector } from "@kp/connector-sdk";
+import { ConnectorError, type Connector } from "@leisen/connector-sdk";
 import { DEFAULT_GITHUB_SOURCE_ID, GitHubConnector } from "../src/connector.js";
 import * as publicApi from "../src/index.js";
 import { createGitHubConnector } from "../src/index.js";

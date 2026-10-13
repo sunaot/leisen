@@ -21,7 +21,7 @@
  *   (不変条件6、TM-A2)。識別には固定のエンドポイントラベルだけを使う
  * - レート制限状態は userId ごとに分離する(不変条件4、quota.ts)
  */
-import { ConnectorError, type AuthContext } from "@kp/connector-sdk";
+import { ConnectorError, type AuthContext } from "@leisen/connector-sdk";
 import { integerOption } from "./options.js";
 import {
   QuotaTracker,

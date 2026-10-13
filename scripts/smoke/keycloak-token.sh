@@ -2,11 +2,11 @@
 # shellcheck disable=SC2016
 # (SC2016: node -e に渡す JavaScript を単一引用符で書いている。シェルで展開しないのが意図どおり)
 #
-# 【開発・CI 専用】Keycloak(realm kp。e2e/keycloak/realm/kp-realm.json)から、
+# 【開発・CI 専用】Keycloak(realm leisen。e2e/keycloak/realm/leisen-realm.json)から、
 # パスワードグラント(public client e2e-cli)で利用者のアクセストークンを取得し、
 # 標準出力に1行で出す。スモークテスト(gateway-smoke.sh)に渡すためのもの。
 #
-#   KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)" scripts/smoke/gateway-smoke.sh
+#   LEISEN_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)" scripts/smoke/gateway-smoke.sh
 #
 # - パスワードグラント(Resource Owner Password Credentials)は開発・CI 専用。realm でも
 #   テスト用の e2e-cli だけが許可している(direct access grants)。本番の利用者認証に
@@ -18,17 +18,17 @@
 #
 # 環境変数:
 #   KEYCLOAK_BASE_URL   既定 http://localhost:8080(deploy/compose / e2e/keycloak の公開ポート)
-#   KEYCLOAK_REALM      既定 kp
+#   KEYCLOAK_REALM      既定 leisen
 #   KEYCLOAK_CLIENT_ID  既定 e2e-cli
-#   KP_SMOKE_USERNAME   既定 alice
-#   KP_SMOKE_PASSWORD   既定 dev-only-alice-password(realm のダミー値)
+#   LEISEN_SMOKE_USERNAME   既定 alice
+#   LEISEN_SMOKE_PASSWORD   既定 dev-only-alice-password(realm のダミー値)
 set -euo pipefail
 
 BASE_URL="${KEYCLOAK_BASE_URL:-http://localhost:8080}"
 BASE_URL="${BASE_URL%/}"
-REALM="${KEYCLOAK_REALM:-kp}"
+REALM="${KEYCLOAK_REALM:-leisen}"
 CLIENT_ID="${KEYCLOAK_CLIENT_ID:-e2e-cli}"
-USERNAME="${KP_SMOKE_USERNAME:-alice}"
+USERNAME="${LEISEN_SMOKE_USERNAME:-alice}"
 
 fail() {
   echo "keycloak-token: $*" >&2
@@ -52,7 +52,7 @@ esac
 # bash -x で実行されてもパスワードを展開した行をトレースに出さない
 case "$-" in *x*) restore_xtrace=1 ;; *) restore_xtrace=0 ;; esac
 { set +x; } 2>/dev/null
-status="$(printf '%s' "${KP_SMOKE_PASSWORD:-dev-only-alice-password}" |
+status="$(printf '%s' "${LEISEN_SMOKE_PASSWORD:-dev-only-alice-password}" |
   "${CURL[@]}" -o "$WORK/token.json" -w '%{http_code}' -X POST \
     --data-urlencode grant_type=password \
     --data-urlencode "client_id=$CLIENT_ID" \

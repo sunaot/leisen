@@ -12,7 +12,7 @@ import {
   AuditLogger,
   BufferedAuditSink,
   InMemoryAuditStore,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   GatewayClientError,
   failureCategoryOf,

@@ -9,7 +9,7 @@
  *   本人を検証する(他人・未知の runId は拒否)。finish の再送でフィードバックは消えない
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { digestQuery, type AuditRecord, type AuditSink } from "@kp/audit";
+import { digestQuery, type AuditRecord, type AuditSink } from "@leisen/audit";
 import {
   GatewayClientError,
   Orchestrator,

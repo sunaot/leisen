@@ -1,5 +1,5 @@
 /**
- * kp-ask serve(T-021、ADR-018)の CLI。runCli(["serve", ...])を直接呼び、待ち受けは
+ * leisen-ask serve(T-021、ADR-018)の CLI。runCli(["serve", ...])を直接呼び、待ち受けは
  * 127.0.0.1 の port 0。停止の合図は依存注入(waitForShutdown)で与える。
  *
  * 受け入れ条件4: Slack kind のソースが有効な deployment.yaml では起動を拒否し(終了コード 1)、
@@ -7,7 +7,7 @@
  * あわせて: 引数・設定の不備(終了コード 2)、公開境界(--confirm-exposed-host)、起動ログ
  * (秘密情報を出さない)、CLI 経由の ask の e2e、停止時の待ち合わせ。
  * ADR-019: AnswerRun は Gateway の run API が書く。NODE_ENV=production では Orchestrator の資格情報
- * (KP_ORCHESTRATOR_CREDENTIAL)が必須で、それ以外では開発用の既定値(WARNING)。Gateway が
+ * (LEISEN_ORCHESTRATOR_CREDENTIAL)が必須で、それ以外では開発用の既定値(WARNING)。Gateway が
  * --config で有効でないソースを公開していれば ask は config_mismatch、--allow-non-persistable-sources
  * なら non_persistable で通る(S6)。
  */
@@ -22,7 +22,7 @@ import {
   type LlmClient,
   type ScriptStep,
 } from "../src/index.js";
-import { runCli, type CliDependencies } from "../src/bin/kp-ask.js";
+import { runCli, type CliDependencies } from "../src/bin/leisen-ask.js";
 import {
   ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING,
   ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION,
@@ -120,7 +120,7 @@ function serveArgs(config: string, ...extra: string[]): string[] {
   return ["serve", "--gateway", UNREACHABLE_GATEWAY, "--config", config, "--listen", "127.0.0.1:0", ...extra];
 }
 
-describe("kp-ask serve: 不変条件7(永続化不可のソース)", () => {
+describe("leisen-ask serve: 不変条件7(永続化不可のソース)", () => {
   it.each([
     ["kind: slack", SLACK_CONNECTOR],
     ["kind: slack-enterprise(プラグイン)", ["  - id: sl", "    kind: slack-enterprise"]],
@@ -182,8 +182,8 @@ describe("kp-ask serve: 不変条件7(永続化不可のソース)", () => {
   });
 });
 
-describe("kp-ask serve: 本番では Orchestrator の資格情報が必須(ADR-019 決定3)", () => {
-  it("NODE_ENV=production で KP_ORCHESTRATOR_CREDENTIAL がなければ終了コード 2(固定文言、待ち受けない)", async () => {
+describe("leisen-ask serve: 本番では Orchestrator の資格情報が必須(ADR-019 決定3)", () => {
+  it("NODE_ENV=production で LEISEN_ORCHESTRATOR_CREDENTIAL がなければ終了コード 2(固定文言、待ち受けない)", async () => {
     const config = await writeYaml(deploymentYaml());
     const { out, err, io } = capture();
     const d = deps({ env: { NODE_ENV: "production" } });
@@ -191,29 +191,29 @@ describe("kp-ask serve: 本番では Orchestrator の資格情報が必須(ADR-0
     const code = await runCli(serveArgs(config), io, d);
 
     expect(code).toBe(2);
-    expect(err[0]).toBe(`kp-ask serve: ${ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION}`);
-    expect(ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION).toContain("KP_ORCHESTRATOR_CREDENTIAL");
-    expect(err.join("\n")).toContain("usage: kp-ask serve");
+    expect(err[0]).toBe(`leisen-ask serve: ${ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION}`);
+    expect(ORCHESTRATOR_CREDENTIAL_REQUIRED_IN_PRODUCTION).toContain("LEISEN_ORCHESTRATOR_CREDENTIAL");
+    expect(err.join("\n")).toContain("usage: leisen-ask serve");
     expect(err.join("\n")).not.toContain("listening on");
     expect(out).toEqual([]);
     expect(d.endpoints).toEqual([]);
   });
 
-  it("NODE_ENV=production でも KP_ORCHESTRATOR_CREDENTIAL があれば起動し、値は起動ログに出ない", async () => {
+  it("NODE_ENV=production でも LEISEN_ORCHESTRATOR_CREDENTIAL があれば起動し、値は起動ログに出ない", async () => {
     const config = await writeYaml(deploymentYaml());
     const { err, io } = capture();
-    const d = deps({ env: { NODE_ENV: "production", KP_ORCHESTRATOR_CREDENTIAL: CREDENTIAL } });
+    const d = deps({ env: { NODE_ENV: "production", LEISEN_ORCHESTRATOR_CREDENTIAL: CREDENTIAL } });
     expect(await runCli(serveArgs(config), io, d)).toBe(0);
     expect(d.endpoints).toHaveLength(1);
-    expect(err).toContain("kp-ask serve: run api: gateway (orchestrator credential: env KP_ORCHESTRATOR_CREDENTIAL)");
+    expect(err).toContain("leisen-ask serve: run api: gateway (orchestrator credential: env LEISEN_ORCHESTRATOR_CREDENTIAL)");
     expect(err.join("\n")).not.toContain(CREDENTIAL);
-    expect(err.join("\n")).not.toContain("WARNING: 環境変数 KP_ORCHESTRATOR_CREDENTIAL");
+    expect(err.join("\n")).not.toContain("WARNING: 環境変数 LEISEN_ORCHESTRATOR_CREDENTIAL");
   });
 
   it("短い資格情報は終了コード 2(値をエコーしない)", async () => {
     const config = await writeYaml(deploymentYaml());
     const { err, io } = capture();
-    expect(await runCli(serveArgs(config), io, deps({ env: { KP_ORCHESTRATOR_CREDENTIAL: "short" } }))).toBe(2);
+    expect(await runCli(serveArgs(config), io, deps({ env: { LEISEN_ORCHESTRATOR_CREDENTIAL: "short" } }))).toBe(2);
     expect(err[0]).toContain("16 文字以上");
     expect(err.join("\n")).not.toContain("short\n");
   });
@@ -225,13 +225,13 @@ describe("kp-ask serve: 本番では Orchestrator の資格情報が必須(ADR-0
       const { err, io } = capture();
       const d = deps({ env: nodeEnv === undefined ? {} : { NODE_ENV: nodeEnv } });
       expect(await runCli(serveArgs(config), io, d)).toBe(0);
-      expect(err).toContain("kp-ask serve: run api: gateway (orchestrator credential: development default)");
-      expect(err).toContain(`kp-ask serve: ${ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING}`);
+      expect(err).toContain("leisen-ask serve: run api: gateway (orchestrator credential: development default)");
+      expect(err).toContain(`leisen-ask serve: ${ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING}`);
     },
   );
 });
 
-describe("kp-ask serve: Gateway のソースと --config の照合(S6)", () => {
+describe("leisen-ask serve: Gateway のソースと --config の照合(S6)", () => {
   /** 待ち受けたら ALICE のトークンで ask を1回呼び、結果(isError と structuredContent)を返す。 */
   async function askOnce(argv: readonly string[]): Promise<{
     readonly code: number;
@@ -309,14 +309,14 @@ describe("kp-ask serve: Gateway のソースと --config の照合(S6)", () => {
   });
 });
 
-describe("kp-ask serve: 起動と停止", () => {
+describe("leisen-ask serve: 起動と停止", () => {
   it("起動ログ: 待ち受け・Gateway のホストだけ・run API・上限・LLM(秘密情報を出さない)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t021-serve-"));
     const config = await writeYaml(deploymentYaml([], ["orchestrator:", "  maxIterations: 3"]), dir);
     const { out, err, io } = capture();
     const d = deps({
       env: {
-        KP_ORCHESTRATOR_CREDENTIAL: CREDENTIAL,
+        LEISEN_ORCHESTRATOR_CREDENTIAL: CREDENTIAL,
         ANTHROPIC_API_KEY: "dev-only-anthropic-key",
       },
       onListening: async (endpoint) => {
@@ -345,14 +345,14 @@ describe("kp-ask serve: 起動と停止", () => {
     expect(endpoint?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
     expect(endpoint?.healthUrl).toBe(endpoint?.url.replace(/\/mcp$/, "/healthz"));
     expect(err).toEqual([
-      `kp-ask serve: listening on ${endpoint?.url} (health check: ${endpoint?.healthUrl})`,
-      "kp-ask serve: deployment: t021-serve",
-      "kp-ask serve: gateway: http://127.0.0.1:9",
-      "kp-ask serve: run api: gateway (orchestrator credential: env KP_ORCHESTRATOR_CREDENTIAL)",
-      "kp-ask serve: limits: max-concurrent-runs=2, max-question-chars=500, max-iterations=3",
-      "kp-ask serve: llm: anthropic (model: claude-opus-5, effort: high)",
-      "kp-ask serve: test-stop received, shutting down",
-      "kp-ask serve: stopped",
+      `leisen-ask serve: listening on ${endpoint?.url} (health check: ${endpoint?.healthUrl})`,
+      "leisen-ask serve: deployment: t021-serve",
+      "leisen-ask serve: gateway: http://127.0.0.1:9",
+      "leisen-ask serve: run api: gateway (orchestrator credential: env LEISEN_ORCHESTRATOR_CREDENTIAL)",
+      "leisen-ask serve: limits: max-concurrent-runs=2, max-question-chars=500, max-iterations=3",
+      "leisen-ask serve: llm: anthropic (model: claude-opus-5, effort: high)",
+      "leisen-ask serve: test-stop received, shutting down",
+      "leisen-ask serve: stopped",
     ]);
     const log = err.join("\n");
     expect(log).not.toContain("/some/path");
@@ -360,10 +360,10 @@ describe("kp-ask serve: 起動と停止", () => {
     expect(log).not.toContain("dev-only-anthropic-key");
   });
 
-  it("KP_LISTEN で待ち受けを指定できる", async () => {
+  it("LEISEN_LISTEN で待ち受けを指定できる", async () => {
     const config = await writeYaml(deploymentYaml());
     const viaEnv = capture();
-    const d = deps({ env: { KP_LISTEN: "127.0.0.1:0" } });
+    const d = deps({ env: { LEISEN_LISTEN: "127.0.0.1:0" } });
     expect(
       await runCli(["serve", "--gateway", UNREACHABLE_GATEWAY, "--config", config], viaEnv.io, d),
     ).toBe(0);
@@ -496,7 +496,7 @@ describe("kp-ask serve: 起動と停止", () => {
   });
 });
 
-describe("kp-ask serve: 引数と設定の不備", () => {
+describe("leisen-ask serve: 引数と設定の不備", () => {
   it("--help / help は使い方を stdout に出して終了コード 0", async () => {
     for (const argv of [["serve", "--help"], ["serve", "-h"], ["serve", "help"]]) {
       const { out, io } = capture();
@@ -522,7 +522,7 @@ describe("kp-ask serve: 引数と設定の不備", () => {
     const { err, io } = capture();
     expect(await runCli(argv, io, deps())).toBe(2);
     expect(err[0]).toContain(message);
-    expect(err.join("\n")).toContain("usage: kp-ask serve");
+    expect(err.join("\n")).toContain("usage: leisen-ask serve");
   });
 
   it("解釈できない引数の中身(トークン等)をエコーしない", async () => {
@@ -593,8 +593,8 @@ describe("kp-ask serve: 引数と設定の不備", () => {
     );
 
     expect(code).toBe(1);
-    expect(err).toContain(`kp-ask serve: cannot listen on 127.0.0.1:${port}: EADDRINUSE`);
-    expect(err).toContain(`kp-ask serve: ${servePortInUseMessage(port)}`);
+    expect(err).toContain(`leisen-ask serve: cannot listen on 127.0.0.1:${port}: EADDRINUSE`);
+    expect(err).toContain(`leisen-ask serve: ${servePortInUseMessage(port)}`);
     expect(servePortInUseMessage(port)).toContain("--listen");
     expect(d.endpoints).toEqual([]);
   });

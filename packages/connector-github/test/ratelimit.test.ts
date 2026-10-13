@@ -8,7 +8,7 @@
  * - 追跡状態は上限件数で打ち切る(無制限に成長しない)
  */
 import { describe, expect, it } from "vitest";
-import { ConnectorError } from "@kp/connector-sdk";
+import { ConnectorError } from "@leisen/connector-sdk";
 import { QuotaTracker } from "../src/quota.js";
 import { decodeSearchCursor } from "../src/cursor.js";
 import {

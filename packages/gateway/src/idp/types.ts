@@ -14,7 +14,7 @@
  * だけでは資格情報を導出できない。そこで authenticate() が返す Identity
  * (userId+セッション)を受け取る形にし、方式A/B/Cの差を吸収する。
  */
-import type { AuthContext, Credential } from "@kp/connector-sdk";
+import type { AuthContext, Credential } from "@leisen/connector-sdk";
 
 /** ADR-010 §12.1 の方式分類(Dは既定不採用のため型に含めない)。 */
 export type AuthMethod =

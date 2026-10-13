@@ -6,14 +6,14 @@
  * 再検索回数分布・失敗クエリ原文のレポートを出力する。
  *
  * 使い方:
- *   kp-promotion-report \
+ *   leisen-promotion-report \
  *     --audit audit-records.jsonl [--audit more.jsonl ...] \
  *     --sources sources.json \
  *     --accessor <監査閲覧担当のuserId> \
  *     --meta-audit-out meta-audit.jsonl \
  *     [--raw-queries raw-queries.jsonl] [--format text|json]
  *     [--run-ttl-sec 900] [--raw-query-retention-days 30]
- *   kp-promotion-report --help(-h)で使い方を表示する(終了コード 0)
+ *   leisen-promotion-report --help(-h)で使い方を表示する(終了コード 0)
  *
  * - --audit は Gateway の監査 JSONL 1 つでよい(ADR-019: ToolInvocation も run の記録 — pending の
  *   AnswerRun と部分レコード answer_run_finish / answer_run_feedback — も Gateway が同じファイルに
@@ -42,8 +42,8 @@ import {
   validateRecord,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/audit";
-import { DEFAULT_RUN_ID_TTL_SEC } from "@kp/gateway";
+} from "@leisen/audit";
+import { DEFAULT_RUN_ID_TTL_SEC } from "@leisen/gateway";
 import { DEFAULT_RAW_QUERY_RETENTION_DAYS, generatePromotionReport } from "./aggregate.js";
 import {
   InputError,
@@ -56,7 +56,7 @@ import { renderPromotionReportText } from "./render.js";
 import type { SourcesMeta } from "./sources.js";
 
 const USAGE =
-  "usage: kp-promotion-report --audit <records.jsonl> [--audit <more.jsonl> ...] " +
+  "usage: leisen-promotion-report --audit <records.jsonl> [--audit <more.jsonl> ...] " +
   "--sources <sources.json> --accessor <userId> --meta-audit-out <meta.jsonl> " +
   "[--raw-queries <raw.jsonl>] [--format text|json] " +
   "[--run-ttl-sec <N>] [--raw-query-retention-days <N>]";
@@ -264,7 +264,7 @@ export async function runCli(
 /**
  * プロセスのエントリ。標準入出力につなぎ、終了コードを process.exitCode に設定する。
  * `node dist/cli.js`(下の isMainModule)と npm の bin(起動シム
- * bin/kp-promotion-report.js)の両方から呼ばれる。
+ * bin/leisen-promotion-report.js)の両方から呼ばれる。
  */
 export async function main(
   argv: readonly string[] = process.argv.slice(2),
@@ -278,7 +278,7 @@ export async function main(
 /**
  * moduleUrl のモジュールがプロセスのエントリ(process.argv[1])として実行されたか。
  * 両側を realpath で正規化して比べる: シンボリックリンク経由の起動(npm の bin リンク、
- * workspace のリンク node_modules/@kp/promotion-report 等)では argv[1] がリンクのパス、
+ * workspace のリンク node_modules/@leisen/promotion-report 等)では argv[1] がリンクのパス、
  * import.meta.url が実体のパスになり、そのまま比べると一致しない(何もせず exit 0 で
  * 終わってしまう)。解決できないパスはエントリではないとみなす。
  */

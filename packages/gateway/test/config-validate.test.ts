@@ -2,7 +2,7 @@
  * 危険設定の起動時拒否テスト(T-010、threat-model 4-E)。
  * 危険パターンごとに「拒否される」テストと、正当な組合せが「通る」テストを対にする。
  */
-import type { ConnectorCapabilities } from "@kp/connector-sdk";
+import type { ConnectorCapabilities } from "@leisen/connector-sdk";
 import { describe, expect, it } from "vitest";
 import {
   DeploymentConfigError,
@@ -275,7 +275,7 @@ describe("privateScopes=consent の暫定拒否(ADR-016 追補2 決定6、#42)",
     expect(issueCodes(yaml)).toEqual(["private_scopes_consent_not_supported"]);
   });
 
-  it("capabilities なしの静的検証(kp-ask の --config と同じ経路)でも拒否し、理由と #42 を示す", () => {
+  it("capabilities なしの静的検証(leisen-ask の --config と同じ経路)でも拒否し、理由と #42 を示す", () => {
     try {
       parseDeploymentConfig(baseYaml(`
   - id: gdrive
@@ -488,7 +488,7 @@ idp:
     kind: keycloak
     baseUrl: "${baseUrl}"
 ${adapterExtra}    realm: acme
-    clientId: kp-gateway
+    clientId: leisen-gateway
     clientSecretEnv: TEST_KC_SECRET
     allowedClients: [chat-ui]
 connectors:

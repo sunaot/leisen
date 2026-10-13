@@ -122,7 +122,7 @@ describe("factory と方針", () => {
       const connector = createConnector({
         sourceId: "github",
         settings: {},
-        configDir: "/etc/kp",
+        configDir: "/etc/leisen",
         policy: { privateScopes },
       });
       expect(connector.capabilities.privateScopeHandling).toBe("classified");

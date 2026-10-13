@@ -2,7 +2,7 @@
 # docker-compose.yml(gateway + keycloak)に -f で重ねて、利用者が問い合わせる面を足す。
 #
 #   cd deploy/compose
-#   cp .env.example .env                                         # KP_LLM_MODEL を手元のモデル名に
+#   cp .env.example .env                                         # LEISEN_LLM_MODEL を手元のモデル名に
 #   cp librechat/librechat.env.example librechat/librechat.env
 #   # ↑ 手元では LibreChat のセッション・暗号化の鍵を生成して置き換える(雛形の値は公開済みの
 #   #   ダミー。docs/ui-librechat.md §1.2 に生成のコマンドがある)
@@ -10,7 +10,7 @@
 #   # → http://localhost:3080(手順・前提・トラブルシュートは docs/ui-librechat.md)
 #
 # 追加するサービス:
-#   orchestrator  kp-ask serve。Orchestrator を MCP サーバー(Streamable HTTP)として公開する。
+#   orchestrator  leisen-ask serve。Orchestrator を MCP サーバー(Streamable HTTP)として公開する。
 #                 gateway と同じイメージを別のエントリポイントで動かす。認証は Gateway に委ね、
 #                 利用者のトークンを保存しない(ADR-018 決定1・2)
 #   librechat     汎用チャット UI。Keycloak の OpenID でログインし、利用者本人のアクセストークンを
@@ -24,7 +24,7 @@
 # 内部 CA で keycloak.localhost の証明書を発行し、LibreChat にはそのルート証明書だけを追加で
 # 信頼させる(NODE_EXTRA_CA_CERTS)。ブラウザには初回に証明書の警告が出る(docs/ui-librechat.md)。
 #
-# 発行者 URL(https://keycloak.localhost:8443/realms/kp)は、ブラウザ(ログイン画面への
+# 発行者 URL(https://keycloak.localhost:8443/realms/leisen)は、ブラウザ(ログイン画面への
 # リダイレクト)とコンテナ(LibreChat のディスカバリ・トークン交換)の両方が同じ名前で参照する。
 # *.localhost は Chrome / Firefox がループバックに解決し、compose 内はネットワークエイリアスで
 # keycloak-tls に解決する。解決しない環境(Safari など)は hosts に「127.0.0.1 keycloak.localhost」
@@ -38,10 +38,10 @@
 # - deployment.yaml に永続化できないソース(Slack)が有効なら orchestrator は起動を拒否する
 #   (不変条件7、ADR-018 決定5)
 # - orchestrator は監査ストアに書かない(ADR-019)。run の開始・結果・フィードバック(AnswerRun)は
-#   Gateway の run API(/runs)に申告し、Gateway が kp-audit に記録する。orchestrator がマウントする
-#   のは設定(読み取り専用)だけで、Gateway の監査ログ・生クエリ原文のボリューム(kp-audit /
-#   kp-rawquery)はマウントしない。run API には利用者本人のトークンに加えて、Gateway と共有する
-#   Orchestrator の資格情報(KP_ORCHESTRATOR_CREDENTIAL。.env で両方に同じ値)が要る
+#   Gateway の run API(/runs)に申告し、Gateway が leisen-audit に記録する。orchestrator がマウントする
+#   のは設定(読み取り専用)だけで、Gateway の監査ログ・生クエリ原文のボリューム(leisen-audit /
+#   leisen-rawquery)はマウントしない。run API には利用者本人のトークンに加えて、Gateway と共有する
+#   Orchestrator の資格情報(LEISEN_ORCHESTRATOR_CREDENTIAL。.env で両方に同じ値)が要る
 # - LLM は既定でホストの LM Studio(OpenAI 互換 API、http://host.docker.internal:1234/v1)。
 #   UI 側の LLM(LibreChat の会話相手)と Orchestrator の探索ループの両方が使う
 # - orchestrator から上流(Gateway・LLM)へは非ループバックの平文 http のため、
@@ -64,7 +64,7 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
-    # Caddy を起動し、内部 CA のルート証明書を LibreChat が読める形でボリューム kp-dev-ca に
+    # Caddy を起動し、内部 CA のルート証明書を LibreChat が読める形でボリューム leisen-dev-ca に
     # 書き出す(秘密鍵は書き出さない)
     entrypoint: ["/bin/sh", "/usr/local/bin/keycloak-tls.sh"]
     networks:
@@ -77,8 +77,8 @@ services:
     volumes:
       - ./librechat/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./librechat/keycloak-tls.sh:/usr/local/bin/keycloak-tls.sh:ro
-      - kp-caddy-data:/data
-      - kp-dev-ca:/ca
+      - leisen-caddy-data:/data
+      - leisen-dev-ca:/ca
     healthcheck:
       test: ["CMD-SHELL", "test -s /ca/root.crt"]
       interval: 2s
@@ -96,12 +96,12 @@ services:
   orchestrator:
     # gateway と同じイメージ(deploy/Dockerfile。build は docker-compose.yml の gateway 側にあり、
     # compose は gateway のビルド後にこのサービスを作る)
-    image: kp-gateway:local
+    image: leisen:local
     pull_policy: never
     depends_on:
       gateway:
         condition: service_healthy
-    entrypoint: ["node", "packages/orchestrator/dist/bin/kp-ask.js"]
+    entrypoint: ["node", "packages/orchestrator/dist/bin/leisen-ask.js"]
     command:
       - serve
       # Gateway はネットワーク内のサービス名で呼ぶ(deployment.yaml の gateway.http の port / path)
@@ -111,7 +111,7 @@ services:
       # セクション(maxIterations / costLimitPerQuery)に使う。citedDocIds の記録方針は Gateway の
       # run API がかける(ADR-019 決定5)
       - --config
-      - /etc/kp/deployment.yaml
+      - /etc/leisen/deployment.yaml
       # コンテナ内では全インターフェースで待ち受ける(ホストへの公開は下の ports で 127.0.0.1 に
       # 限る)。ループバック以外で待ち受けるため確認フラグが要る(Gateway の confirmExposedHost と
       # 同じ規約。TLS・Host / Origin の検証・流量制御は前段のリバースプロキシの役目)
@@ -124,7 +124,7 @@ services:
       - "4"
       - --max-question-chars
       - "4000"
-      # LLM バックエンド。ベース URL とモデル名は環境変数 KP_LLM_BASE_URL / KP_LLM_MODEL(下)
+      # LLM バックエンド。ベース URL とモデル名は環境変数 LEISEN_LLM_BASE_URL / LEISEN_LLM_MODEL(下)
       - --llm
       - openai-compatible
       # 上流(Gateway の http://gateway:8787/mcp と LLM の http://host.docker.internal:1234/v1)は
@@ -137,27 +137,27 @@ services:
       # NODE_ENV=production では拒否されるため(gateway と同じ)
       NODE_ENV: development
       # Gateway の run API(/runs)と、runId を申告する tools/call に付ける Orchestrator の資格情報。
-      # docker-compose.yml の gateway と同じ変数(同じ値)。runId の署名鍵(KP_RUN_ID_KEY)と
-      # docId の HMAC 鍵(KP_AUDIT_HMAC_KEY)は Gateway だけが持ち、orchestrator には渡さない
-      KP_ORCHESTRATOR_CREDENTIAL: ${KP_ORCHESTRATOR_CREDENTIAL:?set it in deploy/compose/.env (cp .env.example .env)}
+      # docker-compose.yml の gateway と同じ変数(同じ値)。runId の署名鍵(LEISEN_RUN_ID_KEY)と
+      # docId の HMAC 鍵(LEISEN_AUDIT_HMAC_KEY)は Gateway だけが持ち、orchestrator には渡さない
+      LEISEN_ORCHESTRATOR_CREDENTIAL: ${LEISEN_ORCHESTRATOR_CREDENTIAL:?set it in deploy/compose/.env (cp .env.example .env)}
       # 既定はホストの LM Studio(extra_hosts の host.docker.internal)
-      KP_LLM_BASE_URL: ${KP_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      LEISEN_LLM_BASE_URL: ${LEISEN_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
       # LM Studio でロードしたモデル名(curl http://localhost:1234/v1/models の id)
-      KP_LLM_MODEL: ${KP_LLM_MODEL:?set it in deploy/compose/.env (the model name loaded in LM Studio)}
+      LEISEN_LLM_MODEL: ${LEISEN_LLM_MODEL:?set it in deploy/compose/.env (the model name loaded in LM Studio)}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       # MCP クライアント(Claude Code・MCP Inspector 等)からの接続用。ループバックのみ
       - "127.0.0.1:8790:8790"
     volumes:
-      # 設定だけ(読み取り専用)。Gateway の監査ログ(kp-audit)・生クエリ原文(kp-rawquery)は
+      # 設定だけ(読み取り専用)。Gateway の監査ログ(leisen-audit)・生クエリ原文(leisen-rawquery)は
       # マウントしない。Orchestrator は信頼境界 TB2 の外側にあり(threat-model §1)、侵害・誤動作
       # しても Gateway の監査ログを読めない・書き換えられないようにする(TM-I4)。AnswerRun は
-      # Gateway が run API で kp-audit に書く(ADR-019)。イメージの VOLUME により /var/lib/kp/audit
+      # Gateway が run API で leisen-audit に書く(ADR-019)。イメージの VOLUME により /var/lib/leisen/audit
       # 等には空の匿名ボリュームが付くが、Gateway のボリュームとは別物で、何も書かれない
-      - ./deployment.yaml:/etc/kp/deployment.yaml:ro
+      - ./deployment.yaml:/etc/leisen/deployment.yaml:ro
     healthcheck:
-      # イメージの HEALTHCHECK は Gateway の /healthz を見るため、kp-ask serve の /healthz に替える
+      # イメージの HEALTHCHECK は Gateway の /healthz を見るため、leisen-ask serve の /healthz に替える
       test:
         - CMD
         - node
@@ -190,7 +190,7 @@ services:
     networks:
       - librechat-internal
     volumes:
-      - kp-librechat-mongo:/data/db
+      - leisen-librechat-mongo:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)"]
       interval: 5s
@@ -219,9 +219,9 @@ services:
       MONGO_URI: mongodb://mongodb:27017/LibreChat
       CONFIG_PATH: /app/librechat.yaml
       # Keycloak の TLS 終端(keycloak-tls)のローカル CA だけを追加で信頼する
-      NODE_EXTRA_CA_CERTS: /etc/kp-dev-ca/root.crt
+      NODE_EXTRA_CA_CERTS: /etc/leisen-dev-ca/root.crt
       # librechat.yaml の LM Studio エンドポイントの baseURL(orchestrator と同じ既定)
-      KP_LLM_BASE_URL: ${KP_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      LEISEN_LLM_BASE_URL: ${LEISEN_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
       # 会話検索(Meilisearch)は使わない(この構成には含めない)
       SEARCH: "false"
     extra_hosts:
@@ -235,7 +235,7 @@ services:
       - "127.0.0.1:3080:3080"
     volumes:
       - ./librechat/librechat.yaml:/app/librechat.yaml:ro
-      - kp-dev-ca:/etc/kp-dev-ca:ro
+      - leisen-dev-ca:/etc/leisen-dev-ca:ro
     healthcheck:
       test:
         - CMD
@@ -252,9 +252,9 @@ services:
       - ALL
 
 volumes:
-  kp-caddy-data:
-  kp-dev-ca:
-  kp-librechat-mongo:
+  leisen-caddy-data:
+  leisen-dev-ca:
+  leisen-librechat-mongo:
 
 networks:
   # mongodb と librechat だけが属する内部ネットワーク(internal: 外部への経路を持たない)

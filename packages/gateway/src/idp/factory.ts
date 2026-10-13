@@ -20,7 +20,7 @@ import { IdpError, type CredentialProvider } from "./types.js";
 export type IdpAdapterConfig =
   | {
       readonly kind: "mock";
-      /** 未指定時は環境変数 KP_MOCK_SESSIONS から読む */
+      /** 未指定時は環境変数 LEISEN_MOCK_SESSIONS から読む */
       readonly sessions?: Readonly<Record<string, MockUser>>;
     }
   | ({ readonly kind: "keycloak" } & KeycloakIdpAdapterConfig);

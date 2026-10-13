@@ -1,13 +1,13 @@
 /**
- * dev-eval(合成コーパスに対する簡易評価)の判定・集計・表と、CLI の引数処理・kp-ask の起動の仕方。
- * kp-ask はフェイクの runner に差し替える。
+ * dev-eval(合成コーパスに対する簡易評価)の判定・集計・表と、CLI の引数処理・leisen-ask の起動の仕方。
+ * leisen-ask はフェイクの runner に差し替える。
  */
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/answer.js";
-import { runDevEval, type KpAskRunner } from "../src/bin/dev-eval.js";
+import { runDevEval, type LeisenAskRunner } from "../src/bin/dev-eval.js";
 import {
   devEvalQuestionSetSchema,
   formatReport,
@@ -48,7 +48,7 @@ function raw(question: DevEvalQuestion, stdout: string, overrides: Partial<DevEv
 }
 
 describe("judgeRun", () => {
-  it("期待した outcome で期待した文書を引用していれば合格(kp-ask の整形済み JSON を読む)", () => {
+  it("期待した outcome で期待した文書を引用していれば合格(leisen-ask の整形済み JSON を読む)", () => {
     const result = judgeRun(raw(resolvedQuestion, `${JSON.stringify(answer(), null, 2)}\n`));
     expect(result.verdict).toBe("pass");
     expect(result.citedDocIds).toEqual(["dev-docs:expense-rules"]);
@@ -109,7 +109,7 @@ describe("judgeRun", () => {
     expect(result.hitLimit).toBe(true);
   });
 
-  it("run の error、kp-ask の失敗の表現、解釈できない出力、タイムアウトはエラー", () => {
+  it("run の error、leisen-ask の失敗の表現、解釈できない出力、タイムアウトはエラー", () => {
     const runError = judgeRun(
       raw(
         resolvedQuestion,
@@ -291,10 +291,10 @@ describe("runDevEval(CLI)", () => {
     return { out, err, io: { stdout: (l: string) => out.push(l), stderr: (l: string) => err.push(l) } };
   }
 
-  it("`--` 以降の引数に --json と質問文を足して kp-ask を1問ずつ起動し、表を stdout に出す", async () => {
+  it("`--` 以降の引数に --json と質問文を足して leisen-ask を1問ずつ起動し、表を stdout に出す", async () => {
     const path = await questionFile([resolvedQuestion, absentQuestion]);
     const calls: string[][] = [];
-    const runner: KpAskRunner = async (args) => {
+    const runner: LeisenAskRunner = async (args) => {
       calls.push([...args]);
       const isAbsent = args.at(-1) === absentQuestion.question;
       return {
@@ -319,27 +319,27 @@ describe("runDevEval(CLI)", () => {
       resolvedQuestion.question,
     ]);
     expect(out.join("\n")).toContain("合格 4 / 4");
-    // 合格した run の kp-ask stderr(AnswerRun)は流さない
+    // 合格した run の leisen-ask stderr(AnswerRun)は流さない
     expect(err.join("\n")).not.toContain('{"kind":"audit"}');
   });
 
-  it("不合格・エラーがあれば終了コード 1。エラーの run は kp-ask の stderr を流す", async () => {
+  it("不合格・エラーがあれば終了コード 1。エラーの run は leisen-ask の stderr を流す", async () => {
     const path = await questionFile([resolvedQuestion]);
-    const runner: KpAskRunner = async () => ({
+    const runner: LeisenAskRunner = async () => ({
       exitCode: 2,
       stdout: JSON.stringify({ outcome: "error", errorClass: "invalid_configuration" }),
-      stderr: "KP_AUDIT_HMAC_KEY がありません",
+      stderr: "LEISEN_AUDIT_HMAC_KEY がありません",
       timedOut: false,
     });
     const { err, io } = capture();
     expect(await runDevEval(["--questions", path, "--", "--gateway", "x"], io, runner)).toBe(1);
-    expect(err.join("\n")).toContain("KP_AUDIT_HMAC_KEY がありません");
+    expect(err.join("\n")).toContain("LEISEN_AUDIT_HMAC_KEY がありません");
   });
 
   it("--only で質問を絞る", async () => {
     const path = await questionFile([resolvedQuestion, absentQuestion]);
     const asked: string[] = [];
-    const runner: KpAskRunner = async (args) => {
+    const runner: LeisenAskRunner = async (args) => {
       asked.push(args.at(-1) ?? "");
       return { exitCode: 0, stdout: JSON.stringify(answer({ outcome: "unresolved", citations: [] })), stderr: "", timedOut: false };
     };
@@ -348,10 +348,10 @@ describe("runDevEval(CLI)", () => {
     expect(asked).toEqual([absentQuestion.question]);
   });
 
-  it("引数・質問セットの不備は終了コード 2 で kp-ask を起動しない", async () => {
+  it("引数・質問セットの不備は終了コード 2 で leisen-ask を起動しない", async () => {
     const path = await questionFile([resolvedQuestion]);
     let called = false;
-    const runner: KpAskRunner = async () => {
+    const runner: LeisenAskRunner = async () => {
       called = true;
       return { exitCode: 0, stdout: "", stderr: "", timedOut: false };
     };
