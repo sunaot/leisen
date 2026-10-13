@@ -10,7 +10,7 @@ T-013 受け入れ条件「公開チェックリスト(秘密情報スキャン�
 | 項目 | 結果 |
 |---|---|
 | 道具 | gitleaks 8.28.0(公式リリース、配布元のチェックサムで検証)。既定ルール |
-| 範囲 | 全 ref の全コミット(`--log-opts=--all`)と作業ツリー |
+| 範囲 | 全 ref のコミット(`--log-opts=--all`。gitleaks はマージコミット自身の差分は走査しない)と作業ツリー |
 | 既定ルールでの検出 | 6 件。いずれも意図して置いた開発用のダミー値で、本物の秘密はなかった |
 | `.gitleaks.toml` 適用後 | 0 件 |
 
@@ -18,11 +18,11 @@ T-013 受け入れ条件「公開チェックリスト(秘密情報スキャン�
 
 | ルール | 場所 | 判定 |
 |---|---|---|
-| generic-api-key | `packages/gateway/src/bootstrap/runs.ts` の `DEV_RUN_ID_KEY_EXAMPLE`(T-023 の途中の版) | runId 署名鍵の例。復号すると `dev-only-` で始まる 32 バイトの公開済みダミーで、本番では起動時に拒否される(dev_only_in_production) |
+| generic-api-key | `packages/gateway/src/bootstrap/runs.ts` の `DEV_RUN_ID_KEY_EXAMPLE`(T-023 の PR の途中のコミット) | runId 署名鍵の旧い例示値。復号すると `dev-only-` で始まる 32 バイトのダミー。PR の途中のコミットにだけあり、main の先頭に入ったことはない(main の first-parent の全版で確認)。本番での拒否は現行の例示値との完全一致で行っており、この旧値は対象外。鍵の最小長を満たすため、手で設定すれば受け入れられる点に注意 |
 | generic-api-key ×2 | `deploy/compose/librechat/librechat.env.example` の `CREDS_KEY` / `CREDS_IV` | LibreChat の鍵の形式を満たすだけの連番の 16 進ダミー。ファイル内に「ダミー。手元では生成して置き換える」と明記 |
 | curl-auth-header ×3 | `README.md` の curl 例 | モック IdP の開発用トークン `dev-token` |
 
-`.gitleaks.toml` は値の形(`dev-only-` で始まる値とその base64 形、`dev-token`、連番の 16 進)だけを許可し、ファイル単位では外していない。ランダムに生成した値を置いた使い捨てのリポジトリで、許可の後も検出されることを確かめた。
+`.gitleaks.toml` は、旧い例示値の完全一致、`dev-token` の完全一致、連番の 16 進だけを許可し、ファイル単位では外していない。`scripts/ci/gitleaks.sh` は、行内の `gitleaks:allow` を無視し、`.gitleaksignore` が置かれていたら検査せずに失敗する(許可を `.gitleaks.toml` に一本化する)。使い捨てのリポジトリで、ランダムに生成した値、`gitleaks:allow` を付けた値、旧い例示値と同じ接頭辞のランダム値が検出されること、`.gitleaksignore` を置くと失敗することを確かめた。
 
 CI: `secret-scan` ジョブ(`scripts/ci/gitleaks.sh`、`fetch-depth: 0`)が PR と main への push のたびに履歴全体を検査する。
 
@@ -31,7 +31,7 @@ CI: `secret-scan` ジョブ(`scripts/ci/gitleaks.sh`、`fetch-depth: 0`)が PR �
 | 観点 | 結果 |
 |---|---|
 | 過去にコミットされた秘密を含みうるファイル(`.env`、鍵、証明書など) | `deploy/compose/.env.example`(ダミーのみ)だけ。実際の `.env` はコミットされていない |
-| 社名・社内ホスト名・私設 IP | 社名・社内ホスト名はなし。私設 IP(`10.0.0.x`)と `example.co.jp` はテストの入力値のみ |
+| 社名・社内ホスト名・私設 IP | 社名・社内ホスト名はなし。私設 IP(`10.0.0.x`、`192.168.1.10`)と `example.co.jp` はテストの入力値のみ |
 | コミットの作者・コミッターのアドレス | オーナーの個人アドレス、`noreply@anthropic.com`、`noreply@github.com` の 3 種。公開でオーナーの個人アドレスが見えるようになる(NOTICE の著作権者を個人名とした判断と整合) |
 
 ## 3. `_meta` prefix の最終確定
@@ -55,4 +55,5 @@ issue #32 の残り。公開時の供給網の強さに関わるが、本記録�
 - Actions の SHA 固定、Dependabot、ベースイメージの digest 固定
 - 各ワークスペースの `private` / `publishConfig` と、Gateway の kind → パッケージの許可表(`@kp` を確保しないまま公開するため、npm への誤公開と同名パッケージの混入を防ぐ手当て)
 - pre-commit での secret scan(T-013「内容」。CI は導入済み)
+- `.gitleaks.toml`・`scripts/ci/`・`.github/workflows/` の保護(CODEOWNERS 等)。secret-scan は PR 自身の設定で走るため、これらの変更はレビューで特に確認する
 - GitHub の設定(公開時にオーナーが行う): Secret scanning と push protection、Private vulnerability reporting の有効化
