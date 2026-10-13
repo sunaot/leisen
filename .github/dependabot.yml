@@ -1,0 +1,28 @@
+# Dependabot(T-013 / issue #32)。依存の更新 PR を週 1 回作る。
+# - github-actions: CI の Action は SHA で固定しているので、更新はこの PR で行う(版はコメントに残る)
+# - npm: ルートの lock(全 workspace)。minor / patch はまとめて 1 本にし、PR の数を抑える
+#   @modelcontextprotocol/sdk の更新は ADR-001 追補3「SDK更新の進め方」に従ってレビューする
+#   (回帰テスト packages/gateway/test/sdk-protocol.test.ts がプロトコルの版の変化で失敗する)
+# 既知の脆弱性への対応(security updates)は GitHub のリポジトリ設定で有効にする(オーナーの作業)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(actions)"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(npm)"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch

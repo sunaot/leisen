@@ -3,7 +3,9 @@ on:
   pull_request:
   push:
     branches: [main]
-# T-013 / issue #32: ワークフローのトークンは読み取りだけにする(書き込みを要するジョブはない)
+# T-013 / issue #32: ワークフローのトークンは読み取りだけにする(書き込みを要するジョブはない)。
+# Action はコミットの SHA で固定し、版をコメントに残す(タグの付け替えで中身が変わらないように)。
+# 更新は Dependabot(.github/dependabot.yml)の PR で行う。
 permissions:
   contents: read
 jobs:
@@ -14,8 +16,8 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22 }
       - run: npm audit --omit=dev --audit-level=high
   # T-013 / issue #32: git 履歴全体の秘密情報スキャン(gitleaks、版とチェックサムを固定)。
@@ -23,14 +25,14 @@ jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { fetch-depth: 0, persist-credentials: false }
       - run: scripts/ci/gitleaks.sh .
   build-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
@@ -43,8 +45,8 @@ jobs:
   keycloak-e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
@@ -71,9 +73,9 @@ jobs:
       LIBRECHAT_COMPOSE: deploy/compose/docker-compose.librechat.yml
       COMPOSE_ENV_EXAMPLE: deploy/compose/.env.example
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # スモーク用スクリプト(curl + node)を動かすため。npm の依存は入れない(ビルドはイメージ内)
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22 }
       # LibreChat overlay の env_file(雛形のダミー値)。overlay を含む compose の各コマンドは
       # このファイルがないと解釈できないため、最初に用意する(手順は docs/ui-librechat.md と同じ)

@@ -37,7 +37,7 @@
 3. [docs/backlog/](docs/backlog/) — タスクと受け入れ条件。1 タスク = 1 ブランチ = 1 PR で、PR は [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) のチェックリストを埋める
 4. 下記「[構成](#構成)」とパッケージ別の README: [orchestrator](packages/orchestrator/README.md)、[audit](packages/audit/README.md)、[connector-github](packages/connector-github/README.md)
 5. プラグインを書く: コネクタは `packages/connector-sdk` の IF と [connector-github](packages/connector-github/README.md) を参考に、IdP Adapter は [docs/idp-adapter-guide.md](docs/idp-adapter-guide.md)、Keycloak の参照統合は [e2e/keycloak/README.md](e2e/keycloak/README.md)
-6. CI: `build-test`、`keycloak-e2e`、`reference-deploy` に加え、本番依存の監査(`audit`)と履歴全体の秘密情報スキャン(`secret-scan`、`scripts/ci/gitleaks.sh`)が走る。開発用のダミー値を足すときは `.gitleaks.toml` に理由と一緒に許可を書く
+6. CI: `build-test`、`keycloak-e2e`、`reference-deploy` に加え、本番依存の監査(`audit`)と履歴全体の秘密情報スキャン(`secret-scan`、`scripts/ci/gitleaks.sh`)が走る。開発用のダミー値を足すときは `.gitleaks.toml` に理由と一緒に許可を書く。CI の Action はコミットの SHA で固定してあり、依存と Action の更新は Dependabot の PR で届く。パッケージはすべて `private`(npm には配布していない)
 
 ## セットアップ
 
