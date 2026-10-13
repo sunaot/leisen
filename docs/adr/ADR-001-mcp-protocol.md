@@ -88,3 +88,14 @@ HTTP配線PRへの申し送り(SDK 1.30.1 の実挙動):
 **人間への確認依頼:** 追補3 承認時の前提(1.30.0 が 2026-07-28 版に対応)が変わったので、再確認を求める。確認したいのは、上記の扱い(v1 系の現行 SDK で配線し、新仕様固有の項目は保留)で進めるか、v2 系への移行を先に検討するかである。
 
 **追記(2026-09-27、スパイク結果):** v2 系(2.1.0)への移行スパイク `docs/spikes/mcp-sdk-v2-migration-spike.md` を実施した。要点: v2 の `createMcpHandler` は既定(`legacy: 'stateless'`)で v1 系クライアント(1.29 / 1.30、2025-11-25 版の initialize フロー)もそのまま受ける、`server/discover` / `resultType` / `ttlMs` / `cacheScope` / `Mcp-Method` / `Mcp-Name` は SDK が自動で満たす、`mcp.ts` の移植差分は小さい(SDK 起因は約20行)、v1 系の保守は v2 公開(2026-07-27)から少なくとも6か月保証。HTTP 配線(T-003)は v1 で完了済みで SDK 依存部は隔離してあるため、確認したいのは「**v2 移行 PR をいつ行うか**」(追補2 の SDK 採用の見直しを伴う。移行時は 2.1.0 を exact 指定し、定数突き合わせではなく実通信で固定する回帰テストに置き換える)。
+
+### SDK更新の検証結果(2026-10-13、1.32.1)
+
+本節は上記「SDK更新の進め方」に沿った 2 回目の更新の記録であり、決定1〜7 と「扱い」は変更しない。
+
+`@modelcontextprotocol/sdk` を 1.30.1 から **1.32.1**(npm の latest)に上げ、`packages/gateway` と `packages/orchestrator` の exact 指定を更新した。理由は SDK 自身の high の advisory(GHSA-6qxp-vccf-f47h、OAuth クライアントが MCP サーバーの選んだ認可サーバーへ資格情報を送りうる。影響範囲は 1.12.0 以上 1.31.0 未満)である。本リポジトリは SDK の OAuth クライアント(`client/auth`、`authProvider`)を import していないため、現状のコードからは到達しない。それでも上げたのは、T-013 で本番依存の `npm audit` を high 以上ゼロのゲートにするため(issue #32)。同じ PR で、推移的依存の advisory(fast-uri、ip-address、proxy-addr、qs、hono、@hono/node-server)を lock の更新だけで解消した。
+
+- **プロトコルの版は変わらない。** 1.32.1 の `LATEST_PROTOCOL_VERSION` は `2025-11-25`、`SUPPORTED_PROTOCOL_VERSIONS` は 1.30.1 と同じ 5 版(順序も同じ)。回帰テスト `packages/gateway/test/sdk-protocol.test.ts` は定数を変えずに通った。v1 系は引き続き 2026-07-28 版に対応しておらず、上記「扱い」(新仕様固有の項目は保留、v2 移行は別途判断)はそのまま
+- **import しているモジュールの型定義の差分**(1.30.1 と 1.32.1 の配布物を比較): `server/index`・`server/streamableHttp`・`server/webStandardStreamableHttp`・`server/auth/types`・`client/index`・`types` は差分なし。差分は client 側だけで、`StreamableHTTPClientTransport` のオプションに `redirectPolicy`(既定 `'same-origin'`: 同一オリジン内か、同一ホストの http から https への昇格だけを追う)が加わった。Orchestrator は Gateway への要求に `redirect` を明示して渡しており(`packages/orchestrator/src/gateway/mcp-client.ts`)、メッセージを運ぶ POST と DELETE ではこの値がそのまま fetch に渡るため変わらない。**変わったのは、initialized の後に SDK が自動で出す単独 SSE 用の GET である。** 1.30.1 ではこの GET に `requestInit.redirect` が渡らず fetch の既定(`follow`)で送られ、`requestInit.headers`(Bearer と Orchestrator の資格情報ヘッダ)を運んだまま別オリジンへのリダイレクトも追いえた(undici は別オリジンで Authorization だけを外す)。1.32.1 では同一オリジン内のリダイレクトだけを追う。資格情報を運ぶ要求が他オリジンへ転送されない方向の変更であり、安全側である。この GET の経路は既存のテスト(`packages/orchestrator/test/gateway-client-hardening.test.ts` は initialize の POST で止まる)では試験していない
+- **SDK の依存範囲は 1.30.1 から変わらない。** `@hono/node-server` は SDK の範囲 `^1.19.9 || ^2.0.5` の中で 1.19.14 から 2.1.5 に上がった(advisory の解消版として npm が選んだ)。Gateway の要求経路上にあるが、Gateway の HTTP テスト(実ソケット)と CI の keycloak-e2e・reference-deploy で確かめる。2.x の要件 Node 20 以上は、ルートの `engines` とリファレンス構成のイメージ(node:22)の範囲内
+- `server/webStandardStreamableHttp` の `allowedHosts` / `allowedOrigins` / `enableDnsRebindingProtection` は 1.32.1 でも非推奨のまま(docs/install.md §6.2 の記述は有効)

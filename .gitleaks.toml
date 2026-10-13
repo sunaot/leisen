@@ -1,0 +1,25 @@
+# gitleaks の設定(T-013、issue #32)。既定ルールをそのまま使い、リポジトリに意図して置いた
+# 開発用のダミー値だけを、値の完全一致か狭い形で許可する。ファイル単位では外さない。
+# 新しいダミー値を足すときは、ここに理由と一緒に追記する(本物の秘密を足して黙らせない)。
+# 本ファイル・scripts/ci/gitleaks.sh・.github/workflows/ の変更はレビューで特に確認する
+# (PR 自身の設定で検査が走るため)。実施記録: docs/release/2026-10-13-public-checklist.md
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """runId 署名鍵の旧い例示値(base64。復号すると dev-only-run-id-signing-key-0001)。
+T-023 の PR の途中のコミットにだけあり、main の先頭に入ったことはない。履歴に残るため完全一致で許可する。
+現行の例示値(packages/gateway/src/bootstrap/runs.ts の DEV_RUN_ID_KEY_EXAMPLE)は既定ルールで検出されない"""
+regexTarget = "secret"
+regexes = ['''^ZGV2LW9ubHktcnVuLWlkLXNpZ25pbmcta2V5LTAwMDE=$''']
+
+[[allowlists]]
+description = "モック IdP の開発用トークン(README の curl 例など)"
+regexTarget = "secret"
+regexes = ['''^dev-token$''']
+
+[[allowlists]]
+description = "LibreChat の CREDS_KEY / CREDS_IV の形式だけを満たす連番の 16 進ダミー(deploy/compose/librechat/librechat.env.example)"
+regexTarget = "secret"
+regexes = ['''^(0123456789abcdef)+$''']

@@ -215,7 +215,7 @@ HTTP 配線の再レビューで、次の3件を「ループバック以外へ�
 | minor-7: 拒否応答への `connection: close` | 401 / 404 / 405 / 5xx でも接続を閉じないため、未認証のクライアントがソケットを保持できる(最大 300 秒) | 本文を受け切ってから転送(`proxy_request_buffering on`)、送信の期限(`client_header_timeout` / `client_body_timeout`)、本文の上限、IP ごとの同時接続数(`limit_conn`)。Gateway への接続は応答ごとに閉じる |
 | minor-11: 非ループバック公開の確認と Host / Origin 検証 | 確認フラグ(`confirmExposedHost`)は実装済み。Host / Origin の検証(DNS rebinding 対策)は未実装 | TLS 終端、Host の許可リスト(`server_name` と既定サーバーでの拒否)、Origin の許可リスト(`map`) |
 
-MCP SDK 1.30.1 の `StreamableHTTPServerTransport` には `allowedHosts` / `allowedOrigins` /
+MCP SDK 1.32.1(1.30.1 から変わらず)の `StreamableHTTPServerTransport` には `allowedHosts` / `allowedOrigins` /
 `enableDnsRebindingProtection` があるが、いずれも非推奨(外部のミドルウェアでの検証が推奨)で、Gateway は
 配線していない(§8)。
 

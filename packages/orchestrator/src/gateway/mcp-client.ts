@@ -53,6 +53,9 @@ import type {
  * fetch のリダイレクトは追わない(Node の fetch は別オリジンへの 307 で Authorization を外すが、
  * Orchestrator の資格情報のヘッダと本文(質問)はそのまま転送する)。Gateway の前段が誤設定・侵害
  * されてリダイレクトを返しても、資格情報と質問を別オリジンに送らない。
+ * 対象は自前の fetch と、SDK がメッセージを運ぶ POST / DELETE。SDK が initialized の後に自動で出す
+ * 単独 SSE 用の GET はこの値を読まず、SDK 1.32.1 の既定(同一オリジン内のリダイレクトだけを追う)に
+ * 従う(ADR-001 追補3「SDK更新の検証結果(2026-10-13、1.32.1)」)。
  */
 const NO_REDIRECT: RequestRedirect = "error";
 
