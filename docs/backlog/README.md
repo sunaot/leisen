@@ -30,7 +30,7 @@
 | T-021 | 利用者向けの面: Orchestrator の MCP サーバー化 + LibreChat 接続(ADR-018) | T-007, T-012 | なし(実走は LLM バックエンド) |
 | T-023 | Gateway の run API と署名付き runId(ADR-019 段階 1。監査の書き手を Gateway に一本化) | T-003, T-007, T-021, T-014 | なし |
 | T-012 | リファレンスデプロイ | T-010, T-002 | なし |
-| T-013 | OSS公開準備 | — | Slack法務確認のみ(2026-10-13: ライセンスは Apache-2.0 で確定、公開はすぐ行う、商標・配布名・窓口は保留で暫定名のまま公開) |
+| T-013 | OSS公開準備 | — | Slack法務確認のみ(2026-10-13: ライセンスは Apache-2.0 で確定、公開はすぐ行う、商標・配布名・窓口と SECURITY.md / CONTRIBUTING.md / CODE_OF_CONDUCT.md は保留で暫定名のまま公開) |
 | T-014 | 昇格判定レポート | T-001 | なし |
 | T-017 | delegated_identity認可スパイク(Q2) | T-000c | AD環境+セキュリティ部門相談 |
 | T-018 | Source Catalog / 全社公開マップ(Phase 1.5) | T-007 | なし |
