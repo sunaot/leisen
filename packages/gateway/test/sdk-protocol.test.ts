@@ -16,6 +16,9 @@
  *   返した追加フィールドはルーズな結果スキーマを型検証なしで素通りするだけ
  * - (d) 下記 PINNED_* の固定値アサート
  *
+ * SDK 1.32.1 への更新(2026-10-13、ADR-001追補3「SDK更新の検証結果(2026-10-13、1.32.1)」)でも
+ * (a)〜(d) の結果と下記の固定値は変わらない。
+ *
  * GatewayのMCPサーバー面(src/proxy/mcp.ts)には依存せず、最小のSDK Serverで
  * SDK自体の挙動を固定する。サーバー面はT-003のHTTP配線で作り替えるため、
  * その検証は配線PRのテストが担う。
@@ -51,7 +54,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 /**
- * SDKがネゴシエートする最新プロトコルバージョンの固定値(SDK 1.30.1 時点)。
+ * SDKがネゴシエートする最新プロトコルバージョンの固定値(SDK 1.30.1 時点。1.32.1 でも同じ)。
  *
  * この値が `2026-07-28` に変わったら、T-003 の保留項目(resultType 付与、
  * CacheableResult、Mcp-Method/Mcp-Name 検証、server/discover)を実装してから
@@ -67,7 +70,7 @@ import {
  */
 const PINNED_PROTOCOL_VERSION = "2025-11-25";
 
-/** SDK 1.30.1 の SUPPORTED_PROTOCOL_VERSIONS(順序込み)。旧版窓の変化もレビュー対象。 */
+/** SDK 1.30.1 / 1.32.1 の SUPPORTED_PROTOCOL_VERSIONS(順序込み)。旧版窓の変化もレビュー対象。 */
 const PINNED_SUPPORTED_PROTOCOL_VERSIONS = [
   "2025-11-25",
   "2025-06-18",
@@ -79,7 +82,7 @@ const PINNED_SUPPORTED_PROTOCOL_VERSIONS = [
 /** mcp-protocol-version ヘッダのないHTTP要求にSDKが仮定する版(2025-03-26以前のクライアント互換)。 */
 const PINNED_DEFAULT_NEGOTIATED_PROTOCOL_VERSION = "2025-03-26";
 
-/** ADR-001追補3 が設計前提とする仕様版。SDK 1.30.1 は未対応。 */
+/** ADR-001追補3 が設計前提とする仕様版。SDK 1.30.1 / 1.32.1 は未対応。 */
 const TARGET_SPEC_VERSION = "2026-07-28";
 
 const OLDER_SUPPORTED_VERSIONS = PINNED_SUPPORTED_PROTOCOL_VERSIONS.filter(
@@ -406,7 +409,7 @@ describe("(a)(d) version negotiation over InMemoryTransport", () => {
 
 // (b)(c) の新仕様フィールドは対応SDKを採用するまで保留(ADR-001追補3「SDK更新の検証結果」)。
 // 2025-11-25 でネゴシエートしている間は、Gatewayのハンドラで手で付与しない。
-describe("(b)(c) 2026-07-28 result fields are absent from SDK 1.30.1", () => {
+describe("(b)(c) 2026-07-28 result fields are absent from SDK v1 (1.30.1 / 1.32.1)", () => {
   it("does not attach resultType to results, nor declare it in result schemas (b)", async () => {
     const session = await rawInMemorySession(probeServer());
     try {

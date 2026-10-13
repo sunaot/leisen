@@ -3,7 +3,29 @@ on:
   pull_request:
   push:
     branches: [main]
+# T-013 / issue #32: ワークフローのトークンは読み取りだけにする(書き込みを要するジョブはない)
+permissions:
+  contents: read
 jobs:
+  # T-013 / issue #32: 本番依存の既知脆弱性の監査。受け入れ条件「npm audit が high 以上ゼロ」を
+  # 毎回確かめる。lock だけを読むので npm ci は不要。開発依存は対象外(--omit=dev)。
+  # 注意: 新しい advisory の公開だけで、変更のない PR でも赤になりうる。そのときは依存の更新を
+  # 別 PR で先に入れる(SDK の更新は ADR-001 追補3「SDK更新の検証結果」の手順に従う)。
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm audit --omit=dev --audit-level=high
+  # T-013 / issue #32: git 履歴全体の秘密情報スキャン(gitleaks、版とチェックサムを固定)。
+  # 開発用のダミー値だけを .gitleaks.toml で許可する。.claude/guard の軽い検査の代替ではなく本番の網。
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: scripts/ci/gitleaks.sh .
   build-test:
     runs-on: ubuntu-latest
     steps:

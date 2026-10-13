@@ -1,0 +1,24 @@
+# gitleaks の設定(T-013、issue #32)。既定ルールをそのまま使い、リポジトリに意図して置いた
+# 開発用のダミー値だけを許可する。許可は値の形(secret)で絞り、ファイル単位では外さない。
+# 新しいダミー値を足すときは、ここに理由と一緒に追記する(本物の秘密を足して黙らせない)。
+# 実施記録: docs/release/2026-10-13-public-checklist.md
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "開発専用のダミー値(dev-only- で始まる。NODE_ENV=production では起動時に拒否される)"
+regexTarget = "secret"
+# 2 つ目は同じダミーの base64 形(ZGV2LW9ubHkt = base64("dev-only-")。T-023 の途中の版で
+# runId 署名鍵の例をこの形で置いていた。履歴に残るため許可する)
+regexes = ['''^dev-only-[A-Za-z0-9-]+$''', '''^ZGV2LW9ubHkt[A-Za-z0-9+/]*={0,2}$''']
+
+[[allowlists]]
+description = "モック IdP の開発用トークン(README の curl 例など)"
+regexTarget = "secret"
+regexes = ['''^dev-token$''']
+
+[[allowlists]]
+description = "LibreChat の CREDS_KEY / CREDS_IV の形式だけを満たす連番の 16 進ダミー(librechat.env.example)"
+regexTarget = "secret"
+regexes = ['''^(0123456789abcdef)+$''']
