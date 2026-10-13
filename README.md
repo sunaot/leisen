@@ -4,6 +4,41 @@
 
 **実装前ゲート(T-000a/b/c)は完了し、Gateway土台(T-001/T-002/T-010/T-003)と昇格判定レポート(T-014)がmainにある。** Orchestrator(T-007)・リファレンスデプロイ(T-012)・利用者向けの面(T-021)も main にあり、手元で動かせる(下記)。次はコネクタの実疎通(T-019/T-005、人手の承認待ち)と評価(T-008)。現在のフェーズと制約は `CLAUDE.md` の「現在のフェーズ」を正とする。
 
+## ドキュメント
+
+読む人ごとに入口を 3 つに分けている。
+
+### 導入ガイド(自社に導入する人・運用する人)
+
+1. [docs/install.md](docs/install.md) — リファレンスデプロイの導入手順。前提、設定、公開前の必須条件(TLS 終端のリバースプロキシ)、監査ログの出力先と保持
+2. [docs/ui-librechat.md](docs/ui-librechat.md) — 利用者が問い合わせる面。LibreChat と MCP クライアント(Claude Code 等)からの接続
+3. [docs/playbook.md](docs/playbook.md) — 導入 1 件を進める標準工程(アセスメントから展開まで)
+4. [examples/deployment.yaml](examples/deployment.yaml) — Deployment Profile のサンプル。導入 1 件 = このファイル 1 枚(ADR-005)
+5. 運用で使うもの: [docs/audit-queries.md](docs/audit-queries.md)(監査ログのクエリ例)、[docs/usage-policy-template.md](docs/usage-policy-template.md)(利用規程の骨子)、`packages/promotion-report`(昇格判定レポート)
+
+### リファレンスアーキテクチャ(設計を理解したい人・評価する人)
+
+1. [docs/product-design.md](docs/product-design.md) の「2. プロダクト原則」と「3. 全体アーキテクチャ」— Gateway・コネクタ・Orchestrator・検索層の全体像。差分は [v2](docs/product-design-v2.md)(OSS 化と複数社導入)と [v3](docs/product-design-v3.md)(認可方式・監査・プライバシー・Slack)
+2. [docs/direct-connection.md](docs/direct-connection.md) — エージェントから各 SaaS へ直接つなぐ場合との違いと、leisen の位置づけ
+3. 中核の決定(ADR)
+   - 認可はソースに委譲し、本人の資格情報で呼ぶ: [ADR-010](docs/adr/ADR-010-source-auth-and-token-vault.md)、[ADR-003](docs/adr/ADR-003-no-acl-sync.md)
+   - 監査の 2 層モデルと書き手の一本化: [ADR-011](docs/adr/ADR-011-audit-two-layer.md)、[ADR-019](docs/adr/ADR-019-gateway-run-api.md)(図は [docs/adr/figures/ADR-019](docs/adr/figures/ADR-019))
+   - 未認可候補を境界の外に出さない: [ADR-012](docs/adr/ADR-012-unauthorized-candidate-boundary.md)
+   - 個社差分は設定と 3 つのプラグイン境界だけで吸収する: [ADR-005](docs/adr/ADR-005-deployment-profile.md)
+   - コネクタのツール IF: [ADR-016](docs/adr/ADR-016-connector-if-v03.md)
+   - プロトコル(MCP)と利用者向けの面: [ADR-001](docs/adr/ADR-001-mcp-protocol.md)、[ADR-018](docs/adr/ADR-018-orchestrator-mcp-server-and-chat-ui.md)
+   - 一覧は [docs/adr/](docs/adr/)。ADR-009 は欠番
+4. [docs/threat-model.md](docs/threat-model.md)(脅威モデル)、[docs/auth-matrix.md](docs/auth-matrix.md)(ソースごとの認可の実現性)、[ADR-013](docs/adr/ADR-013-privacy-retention-policy.md)(プライバシーと保持)
+
+### 開発ガイド(コードを読む人・コントリビュートする人)
+
+1. 下記「[セットアップ](#セットアップ)」と「[手元で動かす(5分)](#手元で動かす5分)」— モック IdP と開発用コネクタで Gateway と kp-ask を動かす
+2. [CLAUDE.md](CLAUDE.md) — 不変条件(違反するコードは書かない)、開発ルール、現在のフェーズ。人が書く場合も同じ規則に従う
+3. [docs/backlog/](docs/backlog/) — タスクと受け入れ条件。1 タスク = 1 ブランチ = 1 PR で、PR は [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) のチェックリストを埋める
+4. 下記「[構成](#構成)」とパッケージ別の README: [orchestrator](packages/orchestrator/README.md)、[audit](packages/audit/README.md)、[connector-github](packages/connector-github/README.md)
+5. プラグインを書く: コネクタは `packages/connector-sdk` の IF と [connector-github](packages/connector-github/README.md) を参考に、IdP Adapter は [docs/idp-adapter-guide.md](docs/idp-adapter-guide.md)、Keycloak の参照統合は [e2e/keycloak/README.md](e2e/keycloak/README.md)
+6. CI: `build-test`、`keycloak-e2e`、`reference-deploy` に加え、本番依存の監査(`audit`)と履歴全体の秘密情報スキャン(`secret-scan`、`scripts/ci/gitleaks.sh`)が走る。開発用のダミー値を足すときは `.gitleaks.toml` に理由と一緒に許可を書く
+
 ## セットアップ
 
 ```bash
