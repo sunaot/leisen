@@ -21,9 +21,10 @@ Status: Accepted(2026-10-13 オーナー決定。LICENSE / NOTICE 配置済み)/
 - BSL 等のソースアベイラブルは「OSS として公開」の趣旨から外れる(product-design-v2.md §3.1)
 
 ## 残る確認事項(公開前・T-013)
-- `NOTICE` の著作権者名(個人名で記載した。法人名に変える場合は `NOTICE` だけを更新する)
+- ~~`NOTICE` の著作権者名~~ → 2026-10-13 オーナー決定: **個人名(`Sunao Tanabe`)のままとする**。法人名には変えない
 - プロジェクト名・商標と配布名(`@kp` スコープ・`kp-ask`・`_meta` prefix。issue #32 / #38、ADR-001 追補3 決定4)。ライセンス選定とは独立に決める
 
 ## 経緯
 - 2026-07-04 Proposed(Apache-2.0 を提案。最終決定は経営判断)
-- 2026-10-13 Accepted。LICENSE / NOTICE / package.json の `license` を配置。T-013 の「人手の前提」からライセンスを外した
+- 2026-10-13 Accepted。LICENSE / NOTICE / package.json の `license` を配置。T-013 の「人手の前提」からライセンスを外した(PR #54)
+- 2026-10-13 `NOTICE` の著作権者は個人名のままで確定(オーナー決定)

@@ -5,7 +5,7 @@
 
 ## 内容
 - ~~LICENSE / NOTICE~~(配置済み) / SECURITY.md(非公開報告手順) / CONTRIBUTING.md(DCO。CLA は求めない、ADR-004) / CODE_OF_CONDUCT.md
-- `NOTICE` の著作権者名の最終確認(個人名で記載。法人名にする場合は NOTICE のみ更新)と、docs/install.md への同梱コンテナのライセンス注記(MongoDB は SSPL。ADR-004「決定」)
+- docs/install.md への同梱コンテナのライセンス注記(MongoDB は SSPL。ADR-004「決定」)。`NOTICE` の著作権者名は個人名で確定済み(2026-10-13 オーナー決定、ADR-004)
 - contrib/ 階層の定義(コア外・ベストエフォート保守)とPRテンプレート(汎用性チェック=2社ルールの確認項目)
 - 依存関係の脆弱性自動監査をCIに追加。vitest系dev依存の既知脆弱性はvitest 4系更新で解消済み(2026-07-05、npm audit 0件)。本タスクの残作業はCIへのaudit自動化
 - **secret scan(gitleaks等)をCIとpre-commitに導入**する。.claude/guardは軽い安全網でありこれの代替ではない
