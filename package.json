@@ -16,7 +16,7 @@
     "lint:imports": "node scripts/lint-imports.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.9",
     "@types/node": "^22.0.0"
   }
