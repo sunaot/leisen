@@ -25,7 +25,7 @@ ADR-005の設定駆動アーキテクチャの中核。導入1件=deployment.yam
 | 項目 | 型・既定 | 内容 |
 |---|---|---|
 | `connectors[].kind` | 文字列(英小文字・数字・`-`)。省略時は `id` と同じ | コネクタ実装の識別子。組み込みの `dev-fixture`(開発専用)またはプラグイン名 |
-| `connectors[].module` | 文字列、任意 | プラグインの import 指定子。省略時は `@leisen/connector-<kind>`。パッケージ名(サブパス可)か `./` `../` `/` で始まるパス(相対パスは設定ファイルの所在ディレクトリ基準)。URLスキーム(`data:` / `https:` 等)は拒否。組み込みの kind(`dev-fixture`)との併用は拒否。`@` で始まる値は YAML では引用符が必要。**設定から任意のコードを読み込む経路のため、deployment.yaml とプラグインの置き場所の書き込み権限は管理者に限る** |
+| `connectors[].module` | 文字列、任意 | プラグインの import 指定子。省略できるのは公式コネクタの kind(許可表 `OFFICIAL_CONNECTOR_PACKAGES`、現在は `github`)だけで、そのときは表のパッケージ名を使う。表にない kind で省略すると読み込みを試みずに `unknown_connector_kind`(ADR-021)。パッケージ名(サブパス可)か `./` `../` `/` で始まるパス(相対パスは設定ファイルの所在ディレクトリ基準)。URLスキーム(`data:` / `https:` 等)は拒否。組み込みの kind(`dev-fixture`)との併用は拒否。`@` で始まる値は YAML では引用符が必要。**設定から任意のコードを読み込む経路のため、deployment.yaml とプラグインの置き場所の書き込み権限は管理者に限る** |
 | `connectors[].settings` | 任意のマッピング、既定 `{}` | コネクタ固有の**秘密でない**設定。検証はコネクタの factory が行う。秘密情報らしいキー(末尾が token / secret / password / apiKey / privateKey / credential(s) / cookie)は拒否し、秘密は `<name>Env` に環境変数名を書いて参照する(`*Env` の値は環境変数名の形式を強制。不変条件6) |
 | `connectors[].auth` | `{ provider: "mock_env" }`、任意 | 本人資格情報の取得方式(ADR-010)。当面 `mock_env`(環境変数 `LEISEN_MOCK_TOKEN_<SOURCEID>`、開発専用)のみ。T-004 で `oauth_individual` 等を追加する。**有効なコネクタで欠落すると起動時に拒否**(`connector_auth_provider_missing`。スキーマ検証だけでは拒否しない) |
 | `audit.jsonl` | `{ path, rawQueryPath? }`、任意 | `audit.sink: jsonl` の出力先。監査レコードを1行1件のJSONで追記(promotion-report の入力形式)。`rawQueryPath` 省略時は生クエリ原文をメモリにのみ保持。`sink: jsonl` で欠落すると拒否(`audit_sink_options_missing`) |
@@ -42,4 +42,4 @@ ADR-005の設定駆動アーキテクチャの中核。導入1件=deployment.yam
 
 追加(2026-09-27、T-012): `gateway.http.confirmExposedHost`(boolean、省略時 false 扱い・解析結果には補わない)。`gateway.http.host` がループバック以外のとき true を要求し、なければ起動コードが `http_host_exposed_requires_confirmation` で拒否する(`validate.ts` の `validateGatewayHttpExposure`。Gateway は TLS を終端せず Host / Origin も検証しないため、前段のリバースプロキシに委ねる前提の明示。T-003 レビュー minor-11、docs/install.md §6)。schemaVersion は 1 のまま。
 
-コネクタ実装の解決順(`bootstrap/plugins.ts`): `assembleGateway` の `connectorFactories[kind]`(プログラム登録)→ 組み込み(`dev-fixture`)→ 動的 import(`module ?? "@leisen/connector-<kind>"`)の `createConnector` 名前付き export(なければ関数の default export)。契約 `ConnectorFactory = (init: { sourceId, settings, configDir }) => Connector | Promise<Connector>` は起動コード側のもので、connector-sdk の IF は変更していない。
+コネクタ実装の解決順(`bootstrap/plugins.ts`): `assembleGateway` の `connectorFactories[kind]`(プログラム登録)→ 組み込み(`dev-fixture`)→ 動的 import(`module ?? 公式コネクタの許可表[kind]`。ADR-021)の `createConnector` 名前付き export(なければ関数の default export)。契約 `ConnectorFactory = (init: { sourceId, settings, configDir }) => Connector | Promise<Connector>` は起動コード側のもので、connector-sdk の IF は変更していない。

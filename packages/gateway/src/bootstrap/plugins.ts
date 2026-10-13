@@ -10,8 +10,12 @@
  * 1. プログラム登録(assembleGateway の connectorFactories[kind])
  * 2. 組み込み(dev-fixture。開発専用で、本番では起動時に拒否する。module との
  *    併用は拒否する)
- * 3. プラグイン: 動的 import(connectors[].module ?? `@leisen/connector-<kind>`)の
- *    名前付き export `createConnector`。なければ default export(関数の場合)
+ * 3. プラグイン: 動的 import の名前付き export `createConnector`。なければ default export
+ *    (関数の場合)。import 指定子は connectors[].module。module を省略できるのは、
+ *    公式コネクタの許可表(OFFICIAL_CONNECTOR_PACKAGES)に載っている kind だけで、
+ *    そのときは表のパッケージ名を使う(ADR-021)。表にない kind で module がなければ、
+ *    読み込みを試みずに unknown_connector_kind で起動を拒否する(命名規則で第三者の
+ *    パッケージを暗黙に読み込まない)
  * いずれにも見つからなければ unknown_connector_kind で起動を拒否する。
  *
  * module は設定から任意のコードを読み込む経路である(プラグイン境界そのもの)。
@@ -44,10 +48,7 @@ import {
   type Connector,
   type SourcePolicy,
 } from "@leisen/connector-sdk";
-import {
-  CONNECTOR_KIND_PATTERN,
-  type ConnectorConfig,
-} from "../config/schema.js";
+import type { ConnectorConfig } from "../config/schema.js";
 import {
   DeploymentConfigError,
   type ConfigIssue,
@@ -102,6 +103,17 @@ export const BUILTIN_CONNECTOR_FACTORIES: Readonly<
   [DEV_FIXTURE_CONNECTOR_KIND]: createDevFixtureConnector,
 };
 
+/**
+ * 公式コネクタの許可表(ADR-021)。connectors[].module を省略した kind は、ここに
+ * 載っているものだけをこのパッケージ名で解決する。表にない kind は module の明示を
+ * 必須にする。行を足すのは、公式コネクタ(このリポジトリの packages/connector-*)を
+ * 追加する PR に限る。
+ */
+export const OFFICIAL_CONNECTOR_PACKAGES: Readonly<Record<string, string>> =
+  Object.freeze({
+    github: "@leisen/connector-github",
+  });
+
 /** 開発専用の組み込み kind(本番では起動時に拒否する)。 */
 export const DEV_ONLY_CONNECTOR_KINDS: ReadonlySet<string> = new Set([
   DEV_FIXTURE_CONNECTOR_KIND,
@@ -120,15 +132,20 @@ export interface ResolveConnectorFactoryOptions {
 }
 
 /**
- * プラグインの import 指定子。`./` `../` で始まる相対パスは設定ファイルの
- * 所在ディレクトリ基準、絶対パスはそのまま、いずれもファイルURLにする。
- * それ以外はパッケージ名として解決させる。
+ * プラグインの import 指定子。module があればそれを、なければ公式コネクタの許可表の
+ * パッケージ名を使う(ADR-021)。どちらもなければ undefined(呼び出し側が拒否する)。
+ * `./` `../` で始まる相対パスは設定ファイルの所在ディレクトリ基準、絶対パスは
+ * そのまま、いずれもファイルURLにする。それ以外はパッケージ名として解決させる。
  */
 export function pluginModuleSpecifier(
   connector: Pick<ConnectorConfig, "kind" | "module">,
   configDir: string,
-): string {
-  const module = connector.module ?? `@leisen/connector-${connector.kind}`;
+): string | undefined {
+  const module =
+    connector.module ?? ownString(OFFICIAL_CONNECTOR_PACKAGES, connector.kind);
+  if (module === undefined) {
+    return undefined;
+  }
   if (module.startsWith("./") || module.startsWith("../") || isAbsolute(module)) {
     return pathToFileURL(resolve(configDir, module)).href;
   }
@@ -141,6 +158,14 @@ function issue(
   message: string,
 ): DeploymentConfigError {
   return new DeploymentConfigError([{ code, path, message }]);
+}
+
+/** 自身のプロパティとして文字列を持つ場合だけ返す(継承プロパティを許可表の行と誤認しない)。 */
+function ownString(record: object, key: string): string | undefined {
+  const value = Object.hasOwn(record, key)
+    ? (record as Record<string, unknown>)[key]
+    : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 /** 自身のプロパティとして関数を持つ場合だけ返す(継承プロパティを factory と誤認しない)。 */
@@ -181,16 +206,18 @@ export async function resolveConnectorFactory(
     return { factory: builtin as ConnectorFactory, origin: "builtin" };
   }
 
-  if (connector.module === undefined && !CONNECTOR_KIND_PATTERN.test(kind)) {
-    // kind を省略し id から導出した場合(id はパッケージ名として安全とは限らない)
+  const specifier = pluginModuleSpecifier(connector, options.configDir);
+  if (specifier === undefined) {
+    // 許可表にない kind で module もない(kind を省略して id から導出した場合を含む)。
+    // 命名規則から導いたパッケージ名で読み込みを試みない(ADR-021)
     throw issue(
       "unknown_connector_kind",
       path,
-      `connector "${connector.id}" has no valid kind; set connectors[${index}].kind ` +
-        `(lowercase letters, digits and '-') or connectors[${index}].module`,
+      `connector "${connector.id}": kind is not an official connector ` +
+        `(official: ${Object.keys(OFFICIAL_CONNECTOR_PACKAGES).join(", ")}); ` +
+        `set connectors[${index}].module to the plugin package or file`,
     );
   }
-  const specifier = pluginModuleSpecifier(connector, options.configDir);
   let loaded: unknown;
   try {
     loaded = await options.loadModule(specifier);

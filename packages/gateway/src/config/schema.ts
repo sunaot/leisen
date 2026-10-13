@@ -67,9 +67,9 @@ const connectorLimitsSchema = z.strictObject({
 });
 
 /**
- * コネクタ実装の識別子(connectors[].kind)の形式。プラグインのモジュール名
- * `@leisen/connector-<kind>` の導出に使うため、npmパッケージ名の一部として安全な
- * 文字(英小文字・数字・ハイフン、先頭は英小文字)に限る。
+ * コネクタ実装の識別子(connectors[].kind)の形式。英小文字・数字・ハイフン、先頭は
+ * 英小文字に限る。kind からパッケージ名を導出することはしない(公式コネクタは許可表で
+ * パッケージ名に対応づけ、それ以外は connectors[].module を明示する。ADR-021)。
  */
 export const CONNECTOR_KIND_PATTERN = /^[a-z][a-z0-9-]*$/;
 
@@ -181,20 +181,20 @@ const connectorSchema = z
     /** コネクタの sourceId(Connector.sourceId と一致させる) */
     id: z.string().min(1),
     /**
-     * コネクタ実装の識別子。組み込みの `dev-fixture`、またはプラグイン名
-     * (モジュール `@leisen/connector-<kind>`)。省略時は id と同じ(下の transform)
+     * コネクタ実装の識別子。組み込みの `dev-fixture`、公式コネクタの kind(許可表、
+     * ADR-021)、または module を明示するプラグインの名前。省略時は id と同じ(下の transform)
      */
     kind: z
       .string()
       .regex(CONNECTOR_KIND_PATTERN, {
         error:
           "kind must be lowercase letters, digits and '-' starting with a letter " +
-          "(it names the plugin module @leisen/connector-<kind>)",
+          "(official connector kinds resolve to their package; other kinds need module)",
       })
       .optional(),
     /**
-     * プラグインの import 指定子。省略時は `@leisen/connector-<kind>`。
-     * 相対パスは設定ファイルの所在ディレクトリ基準
+     * プラグインの import 指定子。省略できるのは公式コネクタの kind だけで、そのときは
+     * 許可表のパッケージ名を使う(ADR-021)。相対パスは設定ファイルの所在ディレクトリ基準
      */
     module: z
       .string()
