@@ -134,3 +134,7 @@ KP_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/smoke/
 ## 進め方
 
 Claude Code でタスクIDを指定して着手する。例: 「docs/backlog/T-001-audit-log.md を読み、受け入れ条件を満たすまで実装して」
+
+## ライセンス
+
+Apache License 2.0(`LICENSE`、`NOTICE`)。選定理由は `docs/adr/ADR-004-oss-license.md`。

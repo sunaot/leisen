@@ -95,6 +95,8 @@ ENV NODE_ENV=production \
     KP_HEALTHCHECK_URL=http://127.0.0.1:8787/healthz
 WORKDIR /app
 
+# ライセンス表示(Apache-2.0 §4: 再配布物に License と NOTICE を含める。ADR-004)
+COPY LICENSE NOTICE ./
 COPY package.json package-lock.json ./
 COPY packages/audit/package.json packages/audit/
 COPY packages/connector-sdk/package.json packages/connector-sdk/
