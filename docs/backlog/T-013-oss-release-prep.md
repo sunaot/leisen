@@ -1,10 +1,11 @@
 # T-013: OSS公開準備
 
 ## 前提(人手)
-ライセンス最終決定(ADR-004)、プロジェクト名・商標、脆弱性報告窓口の体制、**Slack導入形態の法務確認(ADR-014)**、**公開時期の再判断(v3 §8: Q2公開とQ3公開+Q2非公開パートナー提供の比較)**。
+~~ライセンス最終決定(ADR-004)~~(2026-10-13 Apache-2.0 で Accepted。LICENSE / NOTICE / package.json の `license` は配置済み)、プロジェクト名・商標、脆弱性報告窓口の体制、**Slack導入形態の法務確認(ADR-014)**、**公開時期の再判断(v3 §8: Q2公開とQ3公開+Q2非公開パートナー提供の比較)**。
 
 ## 内容
-- LICENSE / NOTICE / SECURITY.md(非公開報告手順) / CONTRIBUTING.md(DCO) / CODE_OF_CONDUCT.md
+- ~~LICENSE / NOTICE~~(配置済み) / SECURITY.md(非公開報告手順) / CONTRIBUTING.md(DCO。CLA は求めない、ADR-004) / CODE_OF_CONDUCT.md
+- `NOTICE` の著作権者名の最終確認(個人名で記載。法人名にする場合は NOTICE のみ更新)と、docs/install.md への同梱コンテナのライセンス注記(MongoDB は SSPL。ADR-004「決定」)
 - contrib/ 階層の定義(コア外・ベストエフォート保守)とPRテンプレート(汎用性チェック=2社ルールの確認項目)
 - 依存関係の脆弱性自動監査をCIに追加。vitest系dev依存の既知脆弱性はvitest 4系更新で解消済み(2026-07-05、npm audit 0件)。本タスクの残作業はCIへのaudit自動化
 - **secret scan(gitleaks等)をCIとpre-commitに導入**する。.claude/guardは軽い安全網でありこれの代替ではない
