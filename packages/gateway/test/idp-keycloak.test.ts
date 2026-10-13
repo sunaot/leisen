@@ -245,7 +245,7 @@ describe("KeycloakIdpAdapter: iss / typ / azp / aud の検証(issue #16)", () =>
 
   it.each([
     "http://keycloak.test:8080/realms/leisen-evil",
-    "http://keycloak.test:8080/realms/kpx",
+    "http://keycloak.test:8080/realms/leisenx",
     "HTTP://KEYCLOAK.TEST:8080/realms/leisen",
     "http://keycloak.test:8080/realms/leisen/",
   ])("iss の似せ値 %s は受け付けない(前方一致・大文字小文字の緩和をしない。末尾スラッシュだけ同一視)", async (iss) => {

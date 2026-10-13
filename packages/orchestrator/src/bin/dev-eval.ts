@@ -54,7 +54,7 @@ export type LeisenAskRunner = (
   timeoutMs: number,
 ) => Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }>;
 
-export function spawnKpAsk(leisenAskPath: string): LeisenAskRunner {
+export function spawnLeisenAsk(leisenAskPath: string): LeisenAskRunner {
   return (args, timeoutMs) =>
     new Promise((resolvePromise, reject) => {
       const child = spawn(process.execPath, [leisenAskPath, ...args], {
@@ -176,7 +176,7 @@ async function loadQuestions(path: string): Promise<readonly DevEvalQuestion[] |
 export async function runDevEval(
   argv: readonly string[],
   io: DevEvalIo,
-  runner: LeisenAskRunner = spawnKpAsk(DEFAULT_LEISEN_ASK),
+  runner: LeisenAskRunner = spawnLeisenAsk(DEFAULT_LEISEN_ASK),
   now: () => number = () => performance.now(),
 ): Promise<number> {
   const args = parseCliArgs(argv);
