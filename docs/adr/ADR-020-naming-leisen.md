@@ -38,7 +38,7 @@ npm レジストリの確認(2026-10-13): `@kp/*` で公開されたパッケー
    - 既存の語彙と揃う。`serve` が公開する MCP ツールの名前は `ask` であり、ADR-018 も「ask / feedback の API」としている
    - 「query」はすでに別の意味で使っている。search ツールの引数、生クエリ表、v1.0 の範囲外とした text-to-query(ADR-008)である
    - 将来、Gateway の search を直接呼んで結果の一覧を返す CLI を作る場合に、`leisen-query` の名前を残せる
-4. **コネクタの既定の解決規則は `@leisen/connector-<kind>` とする。** `connectors[].module` の明示は従来どおり優先する。命名規則で第三者のパッケージを拾う経路を塞ぐ許可表方式(issue #32)は、プラグイン境界の変更なので別に決める。本 ADR は接頭辞だけを変える。**追記(2026-10-13)**: 許可表方式は ADR-021 で決定した。`module` を省略できるのは公式コネクタの許可表にある kind だけになり、`@leisen/connector-<kind>` の命名規則による解決はなくなった。
+4. **コネクタの既定の解決規則は `@leisen/connector-<kind>` とする。** `connectors[].module` の明示は従来どおり優先する。命名規則で第三者のパッケージを拾う経路を塞ぐ許可表方式(issue #32)は、プラグイン境界の変更なので ADR-005 の改訂(issue #23)で別に決める。本 ADR は接頭辞だけを変える。**追記(2026-10-13)**: 許可表方式は、実際には ADR-005 の改訂ではなく新しい ADR-021 で決めた(ADR-005 には追補で参照を足した。issue #23 の境界全体の見直しは別に残る)。`module` を省略できるのは公式コネクタの許可表にある kind だけになり、`@leisen/connector-<kind>` の命名規則による解決はなくなった。
 5. **環境変数の接頭辞は `KP_` から `LEISEN_` に変える**(例: `KP_DEPLOYMENT_CONFIG` → `LEISEN_DEPLOYMENT_CONFIG`、`KP_ORCHESTRATOR_CREDENTIAL` → `LEISEN_ORCHESTRATOR_CREDENTIAL`)。テスト・スモーク専用のものを含む全 36 種類(2026-10-13 時点)が対象。旧名の読み替えはしない。外部の利用者がいない公開前であり、読み替えを持つと設定の正が二つになるため。
 6. **線上と内部の名前も揃える。**
    - HTTP ヘッダ: `x-kp-orchestrator-credential` → `x-leisen-orchestrator-credential`(Orchestrator から Gateway の run API と tools/call へ)。テストで任意ヘッダの例に使う `x-kp-route` も揃える

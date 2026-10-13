@@ -938,7 +938,8 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
     expect(created[0]?.calls.map((c) => c.tool)).toEqual(["search"]);
   });
 
-  it("継承プロパティ(constructor 等)を factory と誤認しない", async () => {
+  it("継承プロパティ(constructor 等)を factory とも許可表の行とも誤認しない(ADR-021 決定 6)", async () => {
+    const loadModule = vi.fn(async () => ({}));
     const error = await rejection({
       config: config(`connectors:
   - id: odd
@@ -946,12 +947,29 @@ describe("(f) connectorFactories(プログラム登録)の優先", () => {
     auth:
       provider: mock_env
 `),
-      loadModule: async () => {
-        throw new Error("not installed");
-      },
+      loadModule,
     });
     expect(codes(error)).toEqual(["unknown_connector_kind"]);
+    expect(loadModule).not.toHaveBeenCalled();
   });
+
+  // kind はスキーマで英小文字に限られるが、kind を省略すると id がそのまま kind になる
+  it.each(["__proto__", "hasOwnProperty", "toString"])(
+    "id から導いた kind %s も許可表の行と誤認せず、読み込まずに拒否する(ADR-021 決定 6)",
+    async (id) => {
+      const loadModule = vi.fn(async () => ({}));
+      const error = await rejection({
+        config: config(`connectors:
+  - id: ${id}
+    auth:
+      provider: mock_env
+`),
+        loadModule,
+      });
+      expect(codes(error)).toEqual(["unknown_connector_kind"]);
+      expect(loadModule).not.toHaveBeenCalled();
+    },
+  );
 
   it("組み込みの dev-fixture を使う場合も factory の契約(init)どおりに構築する", async () => {
     const factory = vi.fn(createDevFixtureConnector);
