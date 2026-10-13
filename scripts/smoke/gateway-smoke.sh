@@ -2,17 +2,17 @@
 # shellcheck disable=SC2016
 # (SC2016: node -e に渡す JavaScript を単一引用符で書いている。シェルで展開しないのが意図どおり)
 #
-# kp-gateway のスモークテスト(T-012)。CI の reference-deploy ジョブとローカルで共用する。
+# leisen-gateway のスモークテスト(T-012)。CI の reference-deploy ジョブとローカルで共用する。
 #
-#   KP_SESSION_TOKEN=<Bearer セッショントークン> scripts/smoke/gateway-smoke.sh [GATEWAY_URL]
+#   LEISEN_SESSION_TOKEN=<Bearer セッショントークン> scripts/smoke/gateway-smoke.sh [GATEWAY_URL]
 #
 # 例(Docker Compose のリファレンスデプロイ。トークンは Keycloak から取得する):
-#   KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)" scripts/smoke/gateway-smoke.sh
+#   LEISEN_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)" scripts/smoke/gateway-smoke.sh
 # 例(モック IdP で手元起動した Gateway。README「手元で動かす」):
-#   KP_SESSION_TOKEN=dev-token scripts/smoke/gateway-smoke.sh
+#   LEISEN_SESSION_TOKEN=dev-token scripts/smoke/gateway-smoke.sh
 #
 # 確認すること(1つでも失敗したら非0で終了する):
-#   1. GET /healthz が 200 {"status":"ok"}(起動直後に備えて KP_SMOKE_WAIT_SEC 秒まで待つ)
+#   1. GET /healthz が 200 {"status":"ok"}(起動直後に備えて LEISEN_SMOKE_WAIT_SEC 秒まで待つ)
 #   2. initialize(protocolVersion 2025-11-25)が成功する
 #   3. tools/list が4ツール(search / fetch / list / describe)を返す。search の source enum を表示し、
 #      対象ソースが含まれることを確かめる
@@ -26,20 +26,20 @@
 #   本文をログ(CI ログを含む)に残さないため(不変条件7)
 #
 # 環境変数:
-#   KP_SESSION_TOKEN   Bearer セッショントークン(必須)
+#   LEISEN_SESSION_TOKEN   Bearer セッショントークン(必須)
 #   GATEWAY_URL        Gateway のベース URL(既定 http://127.0.0.1:8787。第1引数が優先)
-#   KP_SMOKE_MCP_PATH  MCP エンドポイントのパス(既定 /mcp。deployment.yaml の gateway.http.path)
-#   KP_SMOKE_SOURCE    検索するソース(既定 dev-docs)
-#   KP_SMOKE_QUERY     検索クエリ(既定 VPN)
-#   KP_SMOKE_WAIT_SEC  /healthz を待つ秒数(既定 30)
+#   LEISEN_SMOKE_MCP_PATH  MCP エンドポイントのパス(既定 /mcp。deployment.yaml の gateway.http.path)
+#   LEISEN_SMOKE_SOURCE    検索するソース(既定 dev-docs)
+#   LEISEN_SMOKE_QUERY     検索クエリ(既定 VPN)
+#   LEISEN_SMOKE_WAIT_SEC  /healthz を待つ秒数(既定 30)
 set -euo pipefail
 
 GATEWAY_URL="${1:-${GATEWAY_URL:-http://127.0.0.1:8787}}"
 GATEWAY_URL="${GATEWAY_URL%/}"
-MCP_PATH="${KP_SMOKE_MCP_PATH:-/mcp}"
-SOURCE="${KP_SMOKE_SOURCE:-dev-docs}"
-QUERY="${KP_SMOKE_QUERY:-VPN}"
-WAIT_SEC="${KP_SMOKE_WAIT_SEC:-30}"
+MCP_PATH="${LEISEN_SMOKE_MCP_PATH:-/mcp}"
+SOURCE="${LEISEN_SMOKE_SOURCE:-dev-docs}"
+QUERY="${LEISEN_SMOKE_QUERY:-VPN}"
+WAIT_SEC="${LEISEN_SMOKE_WAIT_SEC:-30}"
 PROTOCOL_VERSION="2025-11-25"
 
 fail() {
@@ -47,8 +47,8 @@ fail() {
   exit 1
 }
 
-if [ -z "${KP_SESSION_TOKEN:-}" ]; then
-  echo "gateway-smoke: KP_SESSION_TOKEN is not set" >&2
+if [ -z "${LEISEN_SESSION_TOKEN:-}" ]; then
+  echo "gateway-smoke: LEISEN_SESSION_TOKEN is not set" >&2
   exit 2
 fi
 command -v curl >/dev/null || fail "curl is required"
@@ -61,7 +61,7 @@ trap 'rm -rf "$WORK"' EXIT
 # トークンを展開した行をトレースに出さない
 case "$-" in *x*) restore_xtrace=1 ;; *) restore_xtrace=0 ;; esac
 { set +x; } 2>/dev/null
-printf 'Authorization: Bearer %s\n' "$KP_SESSION_TOKEN" >"$WORK/auth.header"
+printf 'Authorization: Bearer %s\n' "$LEISEN_SESSION_TOKEN" >"$WORK/auth.header"
 if [ "$restore_xtrace" = 1 ]; then set -x; fi
 
 CURL=(curl -sS --max-time 30)
@@ -106,7 +106,7 @@ mcp_post() {
   fi
   case "$auth" in
     token) args+=(-H "@$WORK/auth.header") ;;
-    invalid) args+=(-H 'Authorization: Bearer kp-smoke-invalid-token') ;;
+    invalid) args+=(-H 'Authorization: Bearer leisen-smoke-invalid-token') ;;
     none) ;;
   esac
   "${CURL[@]}" "${args[@]}" --data-binary "$body" "$GATEWAY_URL$MCP_PATH" || true
@@ -130,7 +130,7 @@ if (body.status !== "ok") process.exit(1);
 echo "[1/5] GET /healthz: ok"
 
 # --- 2. initialize -------------------------------------------------------
-status="$(mcp_post initialize '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"'"$PROTOCOL_VERSION"'","capabilities":{},"clientInfo":{"name":"kp-gateway-smoke","version":"0.0.0"}}}' token)"
+status="$(mcp_post initialize '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"'"$PROTOCOL_VERSION"'","capabilities":{},"clientInfo":{"name":"leisen-gateway-smoke","version":"0.0.0"}}}' token)"
 [ "$status" = 200 ] || fail "initialize returned HTTP ${status}"
 summary="$(check_json "$WORK/initialize.json" '
 const r = res.result ?? {};

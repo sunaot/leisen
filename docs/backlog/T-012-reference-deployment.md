@@ -1,7 +1,7 @@
 # T-012: リファレンスデプロイ(Docker Compose)
 
 ## 前提
-起動コード(`kp-gateway` CLI、`assembleGateway`)は先行実装済み(2026-09-27)。Docker 化はこの CLI をエントリポイントにする(例: `node packages/gateway/dist/bin/kp-gateway.js serve --config /etc/kp/deployment.yaml`、または `--config` を省略して環境変数 `KP_DEPLOYMENT_CONFIG`)。停止は SIGTERM(処理中のリクエストを待ち、監査バッファを flush してから終了。flush できなければ exit 1)。設定の事前検証は `kp-gateway validate`(listen しない、不備を全件列挙して exit 1)。
+起動コード(`leisen-gateway` CLI、`assembleGateway`)は先行実装済み(2026-09-27)。Docker 化はこの CLI をエントリポイントにする(例: `node packages/gateway/dist/bin/leisen-gateway.js serve --config /etc/leisen/deployment.yaml`、または `--config` を省略して環境変数 `LEISEN_DEPLOYMENT_CONFIG`)。停止は SIGTERM(処理中のリクエストを待ち、監査バッファを flush してから終了。flush できなければ exit 1)。設定の事前検証は `leisen-gateway validate`(listen しない、不備を全件列挙して exit 1)。
 
 本タスクで扱う残り:
 - `gateway.http.host` の既定は `127.0.0.1`。コンテナでは `0.0.0.0` 等を deployment.yaml で明示する
@@ -21,8 +21,8 @@
 
 ## 実装状況(2026-09-27)
 
-- **Docker 化**(`deploy/`): `deploy/Dockerfile`(multi-stage。build で全 workspace を `npm ci` → `npm run build`、runtime は `npm ci --omit=dev` で本番依存だけの node_modules を作り直し dist だけをコピー。非 root(uid 1000)、`NODE_ENV=production`、`KP_DEPLOYMENT_CONFIG=/etc/kp/deployment.yaml`、HEALTHCHECK は node で `/healthz`、監査 `/var/lib/kp/audit` と生クエリ `/var/lib/kp/rawquery` を VOLUME)、ルートの `.dockerignore`、`deploy/compose/`(`docker-compose.yml`・`deployment.yaml`・`.env.example`・README)。compose は評価用構成(`dev-fixture` / `mock_env` のため `NODE_ENV=development`)で、秘密は `.env` からの変数展開で各コンテナに必要な分だけ渡す。Keycloak はホストで取得したトークンの `iss` とネットワーク内のイントロスペクションが一致するよう `KC_HOSTNAME` を固定。検索バックエンドは profile `search-backend` の枠(コメント)のみ
-- **設定の追加**: `gateway.http.confirmExposedHost`(省略時 false)。host がループバック以外で確認フラグがなければ起動コードが `http_host_exposed_requires_confirmation` で拒否する(`validateGatewayHttpExposure`、`kp-gateway validate` / `serve` の両方)。静的検証(設定の解析)には入れていない(待ち受けない用途の解析を妨げない)
+- **Docker 化**(`deploy/`): `deploy/Dockerfile`(multi-stage。build で全 workspace を `npm ci` → `npm run build`、runtime は `npm ci --omit=dev` で本番依存だけの node_modules を作り直し dist だけをコピー。非 root(uid 1000)、`NODE_ENV=production`、`LEISEN_DEPLOYMENT_CONFIG=/etc/leisen/deployment.yaml`、HEALTHCHECK は node で `/healthz`、監査 `/var/lib/leisen/audit` と生クエリ `/var/lib/leisen/rawquery` を VOLUME)、ルートの `.dockerignore`、`deploy/compose/`(`docker-compose.yml`・`deployment.yaml`・`.env.example`・README)。compose は評価用構成(`dev-fixture` / `mock_env` のため `NODE_ENV=development`)で、秘密は `.env` からの変数展開で各コンテナに必要な分だけ渡す。Keycloak はホストで取得したトークンの `iss` とネットワーク内のイントロスペクションが一致するよう `KC_HOSTNAME` を固定。検索バックエンドは profile `search-backend` の枠(コメント)のみ
+- **設定の追加**: `gateway.http.confirmExposedHost`(省略時 false)。host がループバック以外で確認フラグがなければ起動コードが `http_host_exposed_requires_confirmation` で拒否する(`validateGatewayHttpExposure`、`leisen-gateway validate` / `serve` の両方)。静的検証(設定の解析)には入れていない(待ち受けない用途の解析を妨げない)
 - **スモーク**(`scripts/smoke/`): `gateway-smoke.sh`(healthz → initialize → tools/list → search → 認証なし・不正トークンの 401。curl と node のみ。トークンと検索結果の中身を出力しない)、`keycloak-token.sh`(開発・CI 専用のパスワードグラント)
 - **CI**: `.github/workflows/ci.yml` に `reference-deploy` ジョブ(`docker compose ... up -d --build --wait` → `e2e/keycloak/wait-ready.sh` → トークン取得 → スモーク → ログ出力 → `down -v`)。既存ジョブは変更なし
 - **文書**: docs/install.md(5分手順、設定の注入と事前検証、秘密の渡し方、TLS 終端とリバースプロキシ(nginx 例)、監査ログの永続化、未実装事項、アップグレード骨子、導入チェックリスト、Helm 化の要件)

@@ -12,21 +12,21 @@
 #   (start-dev、データは永続化しない)。本番の IdP ではない
 # - 秘密情報は .env(git 管理外。compose が自動で読む)から変数展開で渡し、各コンテナには
 #   必要な変数だけを渡す。このファイルと deployment.yaml に値を書かない(不変条件6)
-# - 監査ストア(kp-audit / kp-rawquery)に書くのは Gateway だけ(ADR-019)。Orchestrator の run
+# - 監査ストア(leisen-audit / leisen-rawquery)に書くのは Gateway だけ(ADR-019)。Orchestrator の run
 #   (AnswerRun)も Gateway の run API(/runs)が記録する。runId の署名鍵は Gateway だけが持ち、
-#   Orchestrator との間で共有する資格情報(KP_ORCHESTRATOR_CREDENTIAL)で run API を守る
+#   Orchestrator との間で共有する資格情報(LEISEN_ORCHESTRATOR_CREDENTIAL)で run API を守る
 # - ホストへの公開はループバック(127.0.0.1)に限る。外部への公開は TLS を終端する
 #   リバースプロキシ経由にする(リクエスト期限・接続数上限・Host / Origin の許可リストを
 #   そこで担う。docs/install.md)
 # - 検索バックエンドは profile search-backend の枠だけ(エンジンは T-016 の PoC で選定)
-name: kp-reference
+name: leisen-reference
 
 services:
   gateway:
     build:
       context: ../..
       dockerfile: deploy/Dockerfile
-    image: kp-gateway:local
+    image: leisen:local
     depends_on:
       keycloak:
         condition: service_healthy
@@ -34,31 +34,31 @@ services:
       # dev-fixture / mock_env は NODE_ENV=production で起動を拒否されるため(評価用構成)
       NODE_ENV: development
       # deployment.yaml の idp.adapter.clientSecretEnv が参照する
-      KP_KEYCLOAK_CLIENT_SECRET: ${KP_KEYCLOAK_CLIENT_SECRET:?set it in deploy/compose/.env (cp .env.example .env)}
+      LEISEN_KEYCLOAK_CLIENT_SECRET: ${LEISEN_KEYCLOAK_CLIENT_SECRET:?set it in deploy/compose/.env (cp .env.example .env)}
       # dev-docs の auth.provider: mock_env が参照する(開発専用のモック)
-      KP_MOCK_TOKEN_DEV_DOCS: ${KP_MOCK_TOKEN_DEV_DOCS:?set it in deploy/compose/.env (cp .env.example .env)}
+      LEISEN_MOCK_TOKEN_DEV_DOCS: ${LEISEN_MOCK_TOKEN_DEV_DOCS:?set it in deploy/compose/.env (cp .env.example .env)}
       # run API(ADR-019)の runId 署名鍵(deployment.yaml の gateway.runs.signingKeyEnv の既定)。
       # 32 バイト以上の乱数(hex / base64 / base64url)。Gateway だけが持つ(orchestrator には渡さない)
-      KP_RUN_ID_KEY: ${KP_RUN_ID_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
-      # Orchestrator(kp-ask serve)と共有する資格情報(gateway.runs.orchestratorCredentialEnv の既定)。
+      LEISEN_RUN_ID_KEY: ${LEISEN_RUN_ID_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
+      # Orchestrator(leisen-ask serve)と共有する資格情報(gateway.runs.orchestratorCredentialEnv の既定)。
       # run API と、runId を申告する tools/call に要る。LibreChat overlay の orchestrator にも同じ値を渡す
-      KP_ORCHESTRATOR_CREDENTIAL: ${KP_ORCHESTRATOR_CREDENTIAL:?set it in deploy/compose/.env (cp .env.example .env)}
+      LEISEN_ORCHESTRATOR_CREDENTIAL: ${LEISEN_ORCHESTRATOR_CREDENTIAL:?set it in deploy/compose/.env (cp .env.example .env)}
       # audit.privateScopeDocIds: hashed の HMAC 鍵(audit.docIdHmacKeyEnv の既定。デプロイ固有の秘密)。
       # run API の finish が引用の docId を不可逆化するのに使う(ADR-019 決定5)。この構成の dev-docs は
       # privateScopes: excluded なので起動には要らないが、プライベートスコープを持つソースを足したときに
       # 必須になるため最初から渡す
-      KP_AUDIT_HMAC_KEY: ${KP_AUDIT_HMAC_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
+      LEISEN_AUDIT_HMAC_KEY: ${LEISEN_AUDIT_HMAC_KEY:?set it in deploy/compose/.env (cp .env.example .env)}
     ports:
       # ホストのループバックだけに公開する(コンテナ内の待ち受けは 0.0.0.0)
       - "127.0.0.1:8787:8787"
     volumes:
-      # 設定(イメージの KP_DEPLOYMENT_CONFIG=/etc/kp/deployment.yaml)。読み取り専用
-      - ./deployment.yaml:/etc/kp/deployment.yaml:ro
+      # 設定(イメージの LEISEN_DEPLOYMENT_CONFIG=/etc/leisen/deployment.yaml)。読み取り専用
+      - ./deployment.yaml:/etc/leisen/deployment.yaml:ro
       # dev-fixture の合成コーパス(settings.corpusFile)
-      - ../../examples/fixtures:/etc/kp/fixtures:ro
+      - ../../examples/fixtures:/etc/leisen/fixtures:ro
       # 監査ログ本体と生クエリ原文(保持期間・閲覧経路が異なるため別ボリューム。ADR-011 §3)
-      - kp-audit:/var/lib/kp/audit
-      - kp-rawquery:/var/lib/kp/rawquery
+      - leisen-audit:/var/lib/leisen/audit
+      - leisen-rawquery:/var/lib/leisen/rawquery
     # 停止時は処理中のリクエストを待ち(最大 10 秒)、監査バッファを flush してから終了する
     stop_grace_period: 30s
     # コアダンプにメモリ上のトークンを残さない(threat-model TM-C3)
@@ -88,7 +88,7 @@ services:
     volumes:
       - ../../e2e/keycloak/realm:/opt/keycloak/data/import:ro
     healthcheck:
-      # realm kp の import 完了まで待つ。イメージに curl がないため bash の /dev/tcp で
+      # realm leisen の import 完了まで待つ。イメージに curl がないため bash の /dev/tcp で
       # HTTP を話し、ステータス行だけを見る
       test:
         - CMD
@@ -96,7 +96,7 @@ services:
         - -c
         - >-
           exec 3<>/dev/tcp/127.0.0.1/8080 &&
-          printf 'GET /realms/kp/.well-known/openid-configuration HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          printf 'GET /realms/leisen/.well-known/openid-configuration HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
           read -r _ status _ <&3 &&
           [ "$$status" = 200 ]
       interval: 5s
@@ -113,5 +113,5 @@ services:
   #   image: <T-016 で選定後に確定>
 
 volumes:
-  kp-audit:
-  kp-rawquery:
+  leisen-audit:
+  leisen-rawquery:

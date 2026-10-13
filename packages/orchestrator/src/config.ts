@@ -255,10 +255,10 @@ export const httpBaseUrlSchema = z.string().refine(
 );
 
 /**
- * allowInsecureHttp(kp-ask の `--allow-insecure-upstream`)のときだけ使うベース URL の検証。ループバック
+ * allowInsecureHttp(leisen-ask の `--allow-insecure-upstream`)のときだけ使うベース URL の検証。ループバック
  * 以外の http も通す(開発・評価用途。例: compose のコンテナからホストの LM Studio へ
  * `http://host.docker.internal:1234/v1`)。平文の http では会話(利用者の権限で取得した文書の本文)
- * とキーが経路上で読めるため、本番(NODE_ENV=production)では使わせない(kp-ask の引数の解釈と
+ * とキーが経路上で読めるため、本番(NODE_ENV=production)では使わせない(leisen-ask の引数の解釈と
  * OpenAiCompatibleLlmClient の構築で拒否する)。資格情報・フラグメントを載せない規則は
  * httpBaseUrlSchema と同じ。エラーメッセージに入力値を含めない。
  */
@@ -364,7 +364,7 @@ const openAiCompatibleLlmSettingsShape = {
   /** サーバーでロードしたコンテキスト長(参照用。能力フラグ maxContextTokens に出す) */
   maxContextTokens: z.number().int().positive().optional(),
   /**
-   * ループバック以外の http のベース URL を許す(kp-ask の `--allow-insecure-upstream`。開発・評価用途)。
+   * ループバック以外の http のベース URL を許す(leisen-ask の `--allow-insecure-upstream`。開発・評価用途)。
    * 本番(NODE_ENV=production)では OpenAiCompatibleLlmClient の構築を拒否する
    */
   allowInsecureHttp: z.boolean().optional(),

@@ -343,7 +343,7 @@ describe("ask: ツール定義と instructions", () => {
     expect(instructions).toContain("「出典」節に載っている URL だけ");
     expect(instructions).toContain("注意書きを省かず");
     expect(instructions).toContain("明示したときだけ");
-    expect(client.getServerVersion()).toMatchObject({ name: "kp-orchestrator" });
+    expect(client.getServerVersion()).toMatchObject({ name: "leisen-orchestrator" });
   });
 
   it("ツールは ask と feedback だけ。ask の質問長の上限は設定値、outputSchema はルートが object", async () => {

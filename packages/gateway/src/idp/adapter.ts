@@ -3,7 +3,7 @@
  * 資格情報キャッシュ(userId×sourceId、single-flight)を実装する。
  * 認証方式(モック / Keycloak / 各社IdP)は authenticate() の実装差のみ。
  */
-import type { AuthContext } from "@kp/connector-sdk";
+import type { AuthContext } from "@leisen/connector-sdk";
 import { CredentialCache, type CredentialCacheOptions } from "./cache.js";
 import {
   IdpError,

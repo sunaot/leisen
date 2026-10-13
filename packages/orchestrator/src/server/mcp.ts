@@ -38,7 +38,7 @@ import {
 } from "./tools.js";
 
 export const ORCHESTRATOR_SERVER_INFO = {
-  name: "kp-orchestrator",
+  name: "leisen-orchestrator",
   version: "0.1.0",
 } as const;
 
@@ -50,7 +50,7 @@ export type GatewayClientFactory = (options: {
   readonly orchestratorCredential?: string;
   /** MCP 1リクエストのタイムアウト(ms)。省略時はクライアントの既定 */
   readonly requestTimeoutMs?: number;
-  /** ループバック以外の http の Gateway を許す(kp-ask serve の --allow-insecure-upstream) */
+  /** ループバック以外の http の Gateway を許す(leisen-ask serve の --allow-insecure-upstream) */
   readonly allowInsecureHttp?: boolean;
 }) => GatewayClient;
 

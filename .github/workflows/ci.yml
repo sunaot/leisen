@@ -34,7 +34,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
-      # ADR-019 決定10: @kp/audit と Gateway の run モジュールの import 境界(scripts/lint-imports.mjs)
+      # ADR-019 決定10: @leisen/audit と Gateway の run モジュールの import 境界(scripts/lint-imports.mjs)
       - run: npm run lint:imports
       - run: npm test
   # T-002: Keycloak参照実装のE2E。
@@ -50,7 +50,7 @@ jobs:
       - run: npm run build
       - run: docker compose -f e2e/keycloak/docker-compose.yml up -d
       - run: e2e/keycloak/wait-ready.sh
-      - run: KEYCLOAK_E2E=1 npm test -w @kp/gateway
+      - run: KEYCLOAK_E2E=1 npm test -w @leisen/gateway
       - if: always()
         run: docker compose -f e2e/keycloak/docker-compose.yml down
   # T-012: リファレンスデプロイ(deploy/compose)の起動確認(受け入れ条件1)。
@@ -96,9 +96,9 @@ jobs:
           KEYCLOAK_BASE_URL: http://localhost:8080
       - name: Smoke test (token from Keycloak)
         run: |
-          KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"
-          echo "::add-mask::$KP_SESSION_TOKEN"
-          export KP_SESSION_TOKEN
+          LEISEN_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"
+          echo "::add-mask::$LEISEN_SESSION_TOKEN"
+          export LEISEN_SESSION_TOKEN
           scripts/smoke/gateway-smoke.sh http://127.0.0.1:8787
       # T-021: overlay を重ねる。keycloak は発行者(KC_HOSTNAME)が変わるため作り直される。
       # --wait: orchestrator(/healthz)、mongodb、keycloak-tls(ローカル CA の書き出し)、
@@ -111,9 +111,9 @@ jobs:
           KEYCLOAK_BASE_URL: http://localhost:8080
       - name: Smoke test the orchestrator (token from Keycloak)
         run: |
-          KP_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"
-          echo "::add-mask::$KP_SESSION_TOKEN"
-          export KP_SESSION_TOKEN
+          LEISEN_SESSION_TOKEN="$(scripts/smoke/keycloak-token.sh)"
+          echo "::add-mask::$LEISEN_SESSION_TOKEN"
+          export LEISEN_SESSION_TOKEN
           scripts/smoke/orchestrator-smoke.sh http://127.0.0.1:8790
       - name: Smoke test LibreChat (health and the OpenID login redirect)
         run: scripts/smoke/librechat-smoke.sh http://127.0.0.1:3080

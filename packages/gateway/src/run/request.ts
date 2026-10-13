@@ -11,7 +11,7 @@
  * proxy/session.ts の validateDeclaration で行う(このモジュールは proxy/ に依存しない)。
  */
 import { z } from "zod";
-import { finishOutcomeSchema, reasonCodeSchema, userFeedbackSchema } from "@kp/audit";
+import { finishOutcomeSchema, reasonCodeSchema, userFeedbackSchema } from "@leisen/audit";
 
 export interface RunRequestLimits {
   /** 質問の最大文字数 */

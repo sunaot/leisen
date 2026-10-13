@@ -6,7 +6,7 @@
  *   Gateway でも、同じホストのオリジン直下(別のバックエンドになりうる)へは送らない
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { ORCHESTRATOR_CREDENTIAL_HEADER } from "@kp/gateway";
+import { ORCHESTRATOR_CREDENTIAL_HEADER } from "@leisen/gateway";
 import { GatewayClientError, McpGatewayClient, Orchestrator, ScriptedLlmClient, scriptedSubmit, scriptedToolUse } from "../src/index.js";
 import {
   ALICE_TOKEN,
@@ -58,13 +58,13 @@ describe("リダイレクトを追わない", () => {
 });
 
 describe("run API のパスは MCP のパスと同じディレクトリ", () => {
-  it("接頭辞付き(/kp/mcp)の Gateway に対して /kp/runs を使い、run が記録される", async () => {
+  it("接頭辞付き(/leisen/mcp)の Gateway に対して /leisen/runs を使い、run が記録される", async () => {
     const harness = await startGateway({
       connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])],
-      httpPath: "/kp/mcp",
+      httpPath: "/leisen/mcp",
     });
     cleanups.push(() => harness.close());
-    expect(harness.url).toMatch(/\/kp\/mcp$/);
+    expect(harness.url).toMatch(/\/leisen\/mcp$/);
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
       (context) => {

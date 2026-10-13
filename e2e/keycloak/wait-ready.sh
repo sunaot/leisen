@@ -3,7 +3,7 @@
 set -eu
 BASE_URL="${KEYCLOAK_BASE_URL:-http://localhost:8080}"
 DEADLINE=$((SECONDS + ${KEYCLOAK_WAIT_TIMEOUT_SEC:-180}))
-until curl -sf --noproxy '*' "$BASE_URL/realms/kp/.well-known/openid-configuration" >/dev/null; do
+until curl -sf --noproxy '*' "$BASE_URL/realms/leisen/.well-known/openid-configuration" >/dev/null; do
   if [ "$SECONDS" -ge "$DEADLINE" ]; then
     echo "keycloak did not become ready within timeout" >&2
     docker compose -f "$(dirname "$0")/docker-compose.yml" logs keycloak | tail -50 >&2 || true
@@ -11,4 +11,4 @@ until curl -sf --noproxy '*' "$BASE_URL/realms/kp/.well-known/openid-configurati
   fi
   sleep 2
 done
-echo "keycloak ready: $BASE_URL/realms/kp"
+echo "keycloak ready: $BASE_URL/realms/leisen"

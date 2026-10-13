@@ -53,7 +53,7 @@ import { listTools, runToolCall, type ToolCallOutcome } from "./tools.js";
 import { GATEWAY_REJECTION_ERROR_CODE } from "./types.js";
 
 export const GATEWAY_SERVER_INFO = {
-  name: "kp-gateway",
+  name: "leisen-gateway",
   version: "0.1.0",
 } as const;
 
@@ -62,12 +62,12 @@ export const GATEWAY_SERVER_INFO = {
  * 受け渡され(HTTP層 → SDKトランスポート → ハンドラ)、ワイヤーには載らない
  * (クライアントが設定する手段はない)。
  */
-const IDENTITY_AUTH_EXTRA_KEY = "kp.gateway/identity";
+const IDENTITY_AUTH_EXTRA_KEY = "leisen.gateway/identity";
 /**
  * AuthInfo.extra 上の「HTTP 層が Orchestrator の資格情報を検証済み」の印(ADR-019 決定3)。
  * 名前空間付きのキーで runId を申告する tools/call の受理に要る(gateway.ts)。
  */
-const ORCHESTRATOR_VERIFIED_AUTH_EXTRA_KEY = "kp.gateway/orchestratorVerified";
+const ORCHESTRATOR_VERIFIED_AUTH_EXTRA_KEY = "leisen.gateway/orchestratorVerified";
 
 /**
  * AuthInfo.token に入れる固定値(秘密情報ではない)。SDK の AuthInfo は token を
@@ -75,7 +75,7 @@ const ORCHESTRATOR_VERIFIED_AUTH_EXTRA_KEY = "kp.gateway/orchestratorVerified";
  * 渡す)。セッショントークンを載せると、SDK 内部やハンドラの extra 経由で秘密情報の
  * 複製が増えるだけなので載せない(不変条件6)。
  */
-export const GATEWAY_AUTH_INFO_TOKEN = "kp-gateway-authenticated";
+export const GATEWAY_AUTH_INFO_TOKEN = "leisen-gateway-authenticated";
 
 /**
  * gatewayAuthInfo() が発行した extra オブジェクト。identityFromAuthInfo はこれに

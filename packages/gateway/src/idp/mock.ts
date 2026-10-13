@@ -6,7 +6,7 @@
  * 本番無効化: NODE_ENV=production では構築自体を拒否する(受け入れ条件)。
  * factory(createIdpAdapter)も同じ検査を行うため二重に守られる。
  */
-import type { Credential } from "@kp/connector-sdk";
+import type { Credential } from "@leisen/connector-sdk";
 import { CredentialResolvingIdpAdapter } from "./adapter.js";
 import type { CredentialCacheOptions } from "./cache.js";
 import {
@@ -32,7 +32,7 @@ export interface MockUser {
 export interface MockIdpAdapterOptions {
   /**
    * セッショントークン → ユーザーの対応表(開発用固定値)。
-   * 未指定時は環境変数 KP_MOCK_SESSIONS("token=userId[,token2=userId2...]")
+   * 未指定時は環境変数 LEISEN_MOCK_SESSIONS("token=userId[,token2=userId2...]")
    * から読む。
    */
   sessions?: Readonly<Record<string, MockUser>>;
@@ -46,12 +46,12 @@ export interface MockIdpAdapterOptions {
 }
 
 /**
- * 起動時の警告(kp-gateway validate / serve が表示する): セッション表が空。モック IdP は
+ * 起動時の警告(leisen-gateway validate / serve が表示する): セッション表が空。モック IdP は
  * 開発用のためエラーにはしないが、このままでは Bearer トークン付きの全リクエストが 401 になる。
  */
 export const MOCK_IDP_NO_SESSIONS_WARNING =
-  "mock IdP: no sessions configured — 環境変数 KP_MOCK_SESSIONS が未設定(または空)のため、" +
-  "すべてのリクエストが 401 になります。KP_MOCK_SESSIONS=<トークン>=<userId>[,<トークン>=<userId>...] を" +
+  "mock IdP: no sessions configured — 環境変数 LEISEN_MOCK_SESSIONS が未設定(または空)のため、" +
+  "すべてのリクエストが 401 になります。LEISEN_MOCK_SESSIONS=<トークン>=<userId>[,<トークン>=<userId>...] を" +
   "設定して起動し直してください";
 
 /**
@@ -59,12 +59,12 @@ export const MOCK_IDP_NO_SESSIONS_WARNING =
  * 最初の1回だけ出す。トークンの値は含めない(不変条件6)。
  */
 export const MOCK_IDP_NO_SESSIONS_REJECTED =
-  "mock IdP: no sessions configured — KP_MOCK_SESSIONS が空のため、Bearer トークン付きの" +
-  "リクエストを 401 で拒否しました。KP_MOCK_SESSIONS を設定して起動し直してください" +
+  "mock IdP: no sessions configured — LEISEN_MOCK_SESSIONS が空のため、Bearer トークン付きの" +
+  "リクエストを 401 で拒否しました。LEISEN_MOCK_SESSIONS を設定して起動し直してください" +
   "(以降の同じ理由の拒否は記録しません)";
 
 /**
- * KP_MOCK_SESSIONS 形式("token=userId[,token2=userId2...]")を解析する。
+ * LEISEN_MOCK_SESSIONS 形式("token=userId[,token2=userId2...]")を解析する。
  * 起動コード(bootstrap/)が注入された環境変数から読むために公開する。
  * 不正な形式のエラーには値(トークン)を含めない(不変条件6)。
  */
@@ -82,7 +82,7 @@ export function parseMockSessions(
     if (!token || !userId) {
       throw new IdpError(
         "misconfigured",
-        "KP_MOCK_SESSIONS must be 'token=userId[,token=userId...]'",
+        "LEISEN_MOCK_SESSIONS must be 'token=userId[,token=userId...]'",
       );
     }
     sessions[token] = { userId };
@@ -91,7 +91,7 @@ export function parseMockSessions(
 }
 
 function sessionsFromEnv(): Record<string, MockUser> {
-  return parseMockSessions(process.env.KP_MOCK_SESSIONS);
+  return parseMockSessions(process.env.LEISEN_MOCK_SESSIONS);
 }
 
 export class MockIdpAdapter extends CredentialResolvingIdpAdapter {
@@ -122,7 +122,7 @@ export class MockIdpAdapter extends CredentialResolvingIdpAdapter {
       : undefined;
     if (!user) {
       if (!this.warnedNoSessions && this.sessionCount === 0) {
-        // 原因(KP_MOCK_SESSIONS の設定漏れ)の手掛かりをサーバーログに1回だけ残す
+        // 原因(LEISEN_MOCK_SESSIONS の設定漏れ)の手掛かりをサーバーログに1回だけ残す
         this.warnedNoSessions = true;
         this.warn?.(MOCK_IDP_NO_SESSIONS_REJECTED);
       }
@@ -141,7 +141,7 @@ export class MockIdpAdapter extends CredentialResolvingIdpAdapter {
 
 /** モック資格情報の環境変数名(sourceIdごと)。 */
 export function mockTokenEnvVar(sourceId: string): string {
-  return `KP_MOCK_TOKEN_${sourceId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+  return `LEISEN_MOCK_TOKEN_${sourceId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 }
 
 export interface MockCredentialProviderOptions {
@@ -160,8 +160,8 @@ export interface MockCredentialProviderOptions {
  * 環境変数が未設定のユーザー/ソースは「未接続」(source_not_connected)として
  * 振る舞い、初回同意UX(ADR-010 決定3)の呼び出し側実装を開発できるようにする。
  *
- * 変数名: KP_MOCK_TOKEN_<SOURCEID>(ユーザー別に上書きしたい場合は
- * KP_MOCK_TOKEN_<SOURCEID>__<USERID>)。
+ * 変数名: LEISEN_MOCK_TOKEN_<SOURCEID>(ユーザー別に上書きしたい場合は
+ * LEISEN_MOCK_TOKEN_<SOURCEID>__<USERID>)。
  *
  * 注意: 変数名は英数字以外を "_" に正規化するため、"a.b" と "a_b" のような
  * userId同士は同じ上書き変数に写像される(開発専用機能の既知の限界)。

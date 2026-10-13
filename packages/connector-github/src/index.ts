@@ -1,5 +1,5 @@
 /**
- * @kp/connector-github — GitHub コネクタ(T-019)。
+ * @leisen/connector-github — GitHub コネクタ(T-019)。
  *
  * connector-sdk v0.4 の Connector を GitHub REST API で実装する。全呼び出しを
  * 利用者本人の user access token で行う(不変条件1、ADR-010、auth-matrix §4)。
@@ -12,7 +12,7 @@
  * documentId はコネクタスコープの不透明な文字列(ADR-007)。テストは相対 import で
  * 内部モジュールを参照する。
  */
-import { ConnectorError, type SourcePolicy } from "@kp/connector-sdk";
+import { ConnectorError, type SourcePolicy } from "@leisen/connector-sdk";
 import {
   GitHubConnector,
   type GitHubConnectorOptions,
@@ -27,7 +27,7 @@ export type { FetchLike, RateLimitOptions } from "./api.js";
 
 /**
  * Gateway のプラグイン契約(packages/gateway/src/bootstrap/plugins.ts の ConnectorFactory)
- * の引数。コネクタは @kp/gateway に依存しないため、同じ形をここで定義する。
+ * の引数。コネクタは @leisen/gateway に依存しないため、同じ形をここで定義する。
  */
 export interface GitHubConnectorFactoryInit {
   /** deployment.yaml の connectors[].id(返す Connector の sourceId になる) */
@@ -155,7 +155,7 @@ function parseGitHubConnectorSettings(settings: unknown): FactorySettings {
 
 /**
  * Gateway のプラグイン契約の factory(deployment.yaml の `kind: github` →
- * モジュール `@kp/connector-github` の名前付き export)。
+ * モジュール `@leisen/connector-github` の名前付き export)。
  * - settings は parseGitHubConnectorSettings で検証する。未知のキー(トークン類を含む)・
  *   型違い・範囲外は ConnectorError("invalid_request")(受領値をエコーしない)
  * - 返す Connector の sourceId は init.sourceId

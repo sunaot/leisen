@@ -1,10 +1,10 @@
 /**
- * kp-ask の LLM バックエンド指定(T-007、ADR-017 決定1)。
+ * leisen-ask の LLM バックエンド指定(T-007、ADR-017 決定1)。
  *
- *   --llm anthropic|openai-compatible   既定 anthropic(環境変数 KP_LLM_PROVIDER)
- *   --model <モデル>                     両方(環境変数 KP_LLM_MODEL。openai-compatible では必須)
+ *   --llm anthropic|openai-compatible   既定 anthropic(環境変数 LEISEN_LLM_PROVIDER)
+ *   --model <モデル>                     両方(環境変数 LEISEN_LLM_MODEL。openai-compatible では必須)
  *   --effort low..max                    anthropic のみ
- *   --llm-base-url <URL>                 openai-compatible のみ・必須(環境変数 KP_LLM_BASE_URL)
+ *   --llm-base-url <URL>                 openai-compatible のみ・必須(環境変数 LEISEN_LLM_BASE_URL)
  *   --llm-api-key-env <環境変数名>        openai-compatible のみ(キー不要のサーバーでは省略)
  *   --reasoning-effort low|medium|high   openai-compatible のみ(対応モデルのみ)
  *
@@ -12,7 +12,7 @@
  * (bin/upstream-options.ts)を解釈して options.allowInsecureHttp で許したときだけ通す
  * (httpBaseUrlSchema は変えず、ここで入口を分岐する)。
  *
- * フラグは環境変数より優先する。KP_LLM_BASE_URL は openai-compatible のときだけ使う
+ * フラグは環境変数より優先する。LEISEN_LLM_BASE_URL は openai-compatible のときだけ使う
  * (Claude API の接続先は SDK 標準の ANTHROPIC_BASE_URL で変える。残った環境変数で
  * Claude の資格情報を別の宛先へ送らないため)。エラーメッセージは固定文言で、入力値
  * (URL・環境変数名・キーの誤入力)をエコーしない。
@@ -40,8 +40,8 @@ export const OPENAI_COMPATIBLE_CREDENTIALS_REJECTED_MESSAGE =
 
 /** USAGE に足す行。 */
 export const LLM_USAGE_LINES: readonly string[] = [
-  "  LLM バックエンド: [--llm anthropic|openai-compatible](既定 anthropic。環境変数 KP_LLM_PROVIDER)",
-  "    openai-compatible: --llm-base-url <URL>(KP_LLM_BASE_URL) --model <モデル名>(KP_LLM_MODEL)",
+  "  LLM バックエンド: [--llm anthropic|openai-compatible](既定 anthropic。環境変数 LEISEN_LLM_PROVIDER)",
+  "    openai-compatible: --llm-base-url <URL>(LEISEN_LLM_BASE_URL) --model <モデル名>(LEISEN_LLM_MODEL)",
   "                       [--llm-api-key-env <環境変数名>] [--reasoning-effort low|medium|high]",
   "    例(LM Studio): --llm openai-compatible --llm-base-url http://localhost:1234/v1 --model <モデル名>",
 ];
@@ -89,14 +89,14 @@ export function parseLlmCliOptions(
   options: LlmCliParseOptions = {},
 ): LlmCliParseResult {
   const allowInsecureHttp = options.allowInsecureHttp === true;
-  const providerName = values.llm ?? nonEmpty(env["KP_LLM_PROVIDER"]) ?? "anthropic";
+  const providerName = values.llm ?? nonEmpty(env["LEISEN_LLM_PROVIDER"]) ?? "anthropic";
   const provider = Object.hasOwn(PROVIDER_NAMES, providerName)
     ? PROVIDER_NAMES[providerName]
     : undefined;
   if (provider === undefined) {
-    return fail("--llm(または環境変数 KP_LLM_PROVIDER)は anthropic / openai-compatible のいずれかです。");
+    return fail("--llm(または環境変数 LEISEN_LLM_PROVIDER)は anthropic / openai-compatible のいずれかです。");
   }
-  const model = values.model ?? nonEmpty(env["KP_LLM_MODEL"]);
+  const model = values.model ?? nonEmpty(env["LEISEN_LLM_MODEL"]);
 
   if (provider === "anthropic") {
     if (values["llm-base-url"] !== undefined) {
@@ -134,10 +134,10 @@ export function parseLlmCliOptions(
   if (values.effort !== undefined) {
     return fail("--effort は --llm anthropic 用です(OpenAI 互換では --reasoning-effort を使います)。");
   }
-  const baseUrl = values["llm-base-url"] ?? nonEmpty(env["KP_LLM_BASE_URL"]);
+  const baseUrl = values["llm-base-url"] ?? nonEmpty(env["LEISEN_LLM_BASE_URL"]);
   if (baseUrl === undefined) {
     return fail(
-      "--llm openai-compatible では --llm-base-url(または環境変数 KP_LLM_BASE_URL)でベース URL を指定してください(例: LM Studio は http://localhost:1234/v1)。",
+      "--llm openai-compatible では --llm-base-url(または環境変数 LEISEN_LLM_BASE_URL)でベース URL を指定してください(例: LM Studio は http://localhost:1234/v1)。",
     );
   }
   // 検証の入口で分岐する: --allow-insecure-upstream のときだけループバック以外の http も通す
@@ -155,7 +155,7 @@ export function parseLlmCliOptions(
   }
   if (model === undefined || model === "") {
     return fail(
-      "--llm openai-compatible では --model(または環境変数 KP_LLM_MODEL)でモデル名を指定してください(LM Studio なら GET <ベース URL>/models で確認できます)。",
+      "--llm openai-compatible では --model(または環境変数 LEISEN_LLM_MODEL)でモデル名を指定してください(LM Studio なら GET <ベース URL>/models で確認できます)。",
     );
   }
   const apiKeyEnv = values["llm-api-key-env"];

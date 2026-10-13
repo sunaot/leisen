@@ -3,14 +3,14 @@
  *
  * deployment.yaml(gateway.runs)は秘密を環境変数名で参照する。ここで初めて値を読み、
  * RunRuntime(署名鍵の鍵束・Orchestrator の資格情報・期間・上限)に写す。戻り値は秘密を含む
- * ので、ログ・エラー・設定の出力(kp-gateway validate 等)に載せない(不変条件6)。
+ * ので、ログ・エラー・設定の出力(leisen-gateway validate 等)に載せない(不変条件6)。
  *
  * - 署名鍵: 32 バイト以上のランダム値(hex / base64 / base64url)。kid は鍵の SHA-256 の先頭 8 文字。
  *   NODE_ENV=production では、未設定・復号不能・短い・開発用の例の値を起動拒否にする。それ以外で
  *   未設定なら起動ごとの一時鍵を使う(WARNING。再起動で期限内の runId が無効になる)
  * - 1 つ前の鍵: 設定があれば同じ規則で読み、現行と kid が違うことを確かめる
  * - Orchestrator の資格情報: 16 文字以上の、空白を含まない印字可能な ASCII(HTTP ヘッダで運ぶ。
- *   kp-ask 側の規則と同じ)。NODE_ENV=production では未設定・開発用の既定値を起動拒否にする。
+ *   leisen-ask 側の規則と同じ)。NODE_ENV=production では未設定・開発用の既定値を起動拒否にする。
  *   それ以外で未設定なら開発用の既定値(DEV_ORCHESTRATOR_CREDENTIAL。WARNING)
  * - docId の HMAC 鍵(audit.docIdHmacKeyEnv): privateScopeDocIds が hashed で、プライベート
  *   スコープを持つソースが有効なら必須(secret_env_missing)。run API の finish が引用を不可逆化
@@ -27,7 +27,7 @@ import { MIN_ORCHESTRATOR_CREDENTIAL_CHARS, type RunRuntime } from "../proxy/run
 
 /**
  * 開発用の Orchestrator の資格情報の既定値(production 以外で環境変数が未設定のとき)。
- * kp-ask も同じ既定値を使う。NODE_ENV=production では拒否される(dev_only_in_production)。
+ * leisen-ask も同じ既定値を使う。NODE_ENV=production では拒否される(dev_only_in_production)。
  */
 export const DEV_ORCHESTRATOR_CREDENTIAL = "dev-only-orchestrator-credential";
 
@@ -146,12 +146,12 @@ function orchestratorCredentialFromEnv(
       issues.push({
         code: "run_orchestrator_credential_missing",
         path,
-        message: `environment variable "${envName}" (orchestrator credential shared with kp-ask) is not set; it is required when NODE_ENV=production`,
+        message: `environment variable "${envName}" (orchestrator credential shared with leisen-ask) is not set; it is required when NODE_ENV=production`,
       });
       return undefined;
     }
     warnings.push(
-      `run API: environment variable "${envName}" is not set; using the development-only orchestrator credential (kp-ask uses the same default; set it for anything beyond local development)`,
+      `run API: environment variable "${envName}" is not set; using the development-only orchestrator credential (leisen-ask uses the same default; set it for anything beyond local development)`,
     );
     return { credential: DEV_ORCHESTRATOR_CREDENTIAL, source: "dev-default" };
   }

@@ -6,7 +6,7 @@
  * - トークンは dev-only のダミー値のみを使う(不変条件6)。実トークン形式の
  *   文字列はフィクスチャに書かない
  */
-import type { AuthContext } from "@kp/connector-sdk";
+import type { AuthContext } from "@leisen/connector-sdk";
 import {
   createGitHubConnector,
   type FetchLike,

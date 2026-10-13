@@ -10,7 +10,7 @@
  * 1. プログラム登録(assembleGateway の connectorFactories[kind])
  * 2. 組み込み(dev-fixture。開発専用で、本番では起動時に拒否する。module との
  *    併用は拒否する)
- * 3. プラグイン: 動的 import(connectors[].module ?? `@kp/connector-<kind>`)の
+ * 3. プラグイン: 動的 import(connectors[].module ?? `@leisen/connector-<kind>`)の
  *    名前付き export `createConnector`。なければ default export(関数の場合)
  * いずれにも見つからなければ unknown_connector_kind で起動を拒否する。
  *
@@ -19,7 +19,7 @@
  *
  * プラグイン(コネクタパッケージ)への要求:
  * - connector-sdk の Connector を返す factory を `createConnector` として export する。
- *   コネクタは connector-sdk にのみ依存し、@kp/gateway には依存しない
+ *   コネクタは connector-sdk にのみ依存し、@leisen/gateway には依存しない
  * - 返す Connector の sourceId は init.sourceId と一致させる
  * - settings は秘密でない設定で、factory 自身が検証する。不備は zod の parse が
  *   投げる ZodError、または ConnectorError("invalid_request", 値を含めない文言)で
@@ -43,7 +43,7 @@ import {
   ConnectorError,
   type Connector,
   type SourcePolicy,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   CONNECTOR_KIND_PATTERN,
   type ConnectorConfig,
@@ -128,7 +128,7 @@ export function pluginModuleSpecifier(
   connector: Pick<ConnectorConfig, "kind" | "module">,
   configDir: string,
 ): string {
-  const module = connector.module ?? `@kp/connector-${connector.kind}`;
+  const module = connector.module ?? `@leisen/connector-${connector.kind}`;
   if (module.startsWith("./") || module.startsWith("../") || isAbsolute(module)) {
     return pathToFileURL(resolve(configDir, module)).href;
   }

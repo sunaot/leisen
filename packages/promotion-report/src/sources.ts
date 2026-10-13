@@ -7,7 +7,7 @@
  * 分類がないソースは判定対象に含めない(安全側)。
  */
 import { z } from "zod";
-import type { ConnectorCapabilities } from "@kp/connector-sdk";
+import type { ConnectorCapabilities } from "@leisen/connector-sdk";
 
 /** ソース1件の分類メタ。CLIでは JSON ファイルとして与える。 */
 export const sourceMetaSchema = z.strictObject({

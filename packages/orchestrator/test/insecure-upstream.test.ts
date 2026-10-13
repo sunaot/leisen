@@ -1,5 +1,5 @@
 /**
- * `--allow-insecure-upstream`(環境変数 KP_ALLOW_INSECURE_UPSTREAM=1)— Gateway の URL と LLM の
+ * `--allow-insecure-upstream`(環境変数 LEISEN_ALLOW_INSECURE_UPSTREAM=1)— Gateway の URL と LLM の
  * ベース URL の両方について、ループバック以外の平文 http を開発・評価用途に限って許す(T-021。
  * compose の overlay はネットワーク内の http://gateway:8787/mcp とホストの LM Studio
  * http://host.docker.internal:1234/v1 に向く)。
@@ -7,7 +7,7 @@
  * - フラグなし → 従来どおり拒否(parseGatewayUrl / httpBaseUrlSchema は変えていない)
  * - フラグあり + development → 通る。Gateway への接続(preflight・ask)と LLM の設定に許可が渡り、
  *   平文 http の上流をホスト名だけで列挙した WARNING を1行出す
- * - フラグあり + NODE_ENV=production → 固定文言で拒否して終了コード 2(kp-ask / kp-ask serve)。
+ * - フラグあり + NODE_ENV=production → 固定文言で拒否して終了コード 2(leisen-ask / leisen-ask serve)。
  *   ライブラリとして直接組んだ場合も McpGatewayClient / OpenAiCompatibleLlmClient の構築で拒否する
  * - 資格情報・クエリ・フラグメント付き・http(s) 以外の URL はフラグがあっても拒否
  */
@@ -29,7 +29,7 @@ import {
   parseInsecureGatewayUrl,
   type LlmBackendConfigInput,
 } from "../src/index.js";
-import { runCli, USAGE, type CliDependencies } from "../src/bin/kp-ask.js";
+import { runCli, USAGE, type CliDependencies } from "../src/bin/leisen-ask.js";
 import { parseLlmCliOptions } from "../src/bin/llm-options.js";
 import type { ServeEndpoint } from "../src/bin/serve.js";
 import {
@@ -66,13 +66,13 @@ describe("parseInsecureUpstreamOption", () => {
   it("フラグ・環境変数(1 / true)で有効、未指定・0 / false / 空で無効", () => {
     expect(parseInsecureUpstreamOption(true, DEV)).toEqual({ ok: true, enabled: true });
     for (const value of ["1", "true", "TRUE", " 1 "]) {
-      expect(parseInsecureUpstreamOption(undefined, { ...DEV, KP_ALLOW_INSECURE_UPSTREAM: value })).toEqual({
+      expect(parseInsecureUpstreamOption(undefined, { ...DEV, LEISEN_ALLOW_INSECURE_UPSTREAM: value })).toEqual({
         ok: true,
         enabled: true,
       });
     }
     for (const value of ["0", "false", ""]) {
-      expect(parseInsecureUpstreamOption(undefined, { ...DEV, KP_ALLOW_INSECURE_UPSTREAM: value })).toEqual({
+      expect(parseInsecureUpstreamOption(undefined, { ...DEV, LEISEN_ALLOW_INSECURE_UPSTREAM: value })).toEqual({
         ok: true,
         enabled: false,
       });
@@ -81,16 +81,16 @@ describe("parseInsecureUpstreamOption", () => {
   });
 
   it("環境変数の誤記は拒否する(値をエコーしない)", () => {
-    const result = parseInsecureUpstreamOption(undefined, { ...DEV, KP_ALLOW_INSECURE_UPSTREAM: "dev-only-yes" });
+    const result = parseInsecureUpstreamOption(undefined, { ...DEV, LEISEN_ALLOW_INSECURE_UPSTREAM: "dev-only-yes" });
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.message).toContain("KP_ALLOW_INSECURE_UPSTREAM");
+    expect(result.ok === false && result.message).toContain("LEISEN_ALLOW_INSECURE_UPSTREAM");
     expect(result.ok === false && result.message).not.toContain("dev-only-yes");
   });
 
   it("NODE_ENV=production では有効にできない(フラグでも環境変数でも固定文言)", () => {
     const refused = { ok: false, message: INSECURE_UPSTREAM_IN_PRODUCTION_MESSAGE };
     expect(parseInsecureUpstreamOption(true, PROD)).toEqual(refused);
-    expect(parseInsecureUpstreamOption(undefined, { ...PROD, KP_ALLOW_INSECURE_UPSTREAM: "1" })).toEqual(refused);
+    expect(parseInsecureUpstreamOption(undefined, { ...PROD, LEISEN_ALLOW_INSECURE_UPSTREAM: "1" })).toEqual(refused);
     // 無効なら本番でも問題ない
     expect(parseInsecureUpstreamOption(undefined, PROD)).toEqual({ ok: true, enabled: false });
   });
@@ -250,7 +250,7 @@ describe("insecureUpstreamWarning", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CLI(kp-ask serve / kp-ask)
+// CLI(leisen-ask serve / leisen-ask)
 // ---------------------------------------------------------------------------
 
 function capture() {
@@ -333,7 +333,7 @@ async function serveArgs(gateway: string, ...extra: string[]): Promise<string[]>
 
 const LLM_ARGS = ["--llm", "openai-compatible", "--model", "local-model", "--llm-base-url", HOST_LM_STUDIO];
 
-describe("kp-ask serve: --allow-insecure-upstream", () => {
+describe("leisen-ask serve: --allow-insecure-upstream", () => {
   it("フラグなし: ループバック以外の http の Gateway は終了コード 2(案内を添える)", async () => {
     const { err, io } = capture();
     expect(await runCli(await serveArgs(COMPOSE_GATEWAY), io, deps({ env: DEV }))).toBe(2);
@@ -385,19 +385,19 @@ describe("kp-ask serve: --allow-insecure-upstream", () => {
     expect(d.llmConfigs).toEqual([expect.objectContaining({ allowInsecureHttp: true })]);
     const warnings = err.filter((line) => line.includes("平文 http"));
     expect(warnings).toEqual([
-      "kp-ask serve: WARNING: 上流への接続が平文 http です(Gateway: gateway、LLM: host.docker.internal)。利用者のトークンと会話(利用者の権限で取得した文書の本文)が経路上で読めます。開発・評価用途に限ってください(--allow-insecure-upstream。本番では使えません)",
+      "leisen-ask serve: WARNING: 上流への接続が平文 http です(Gateway: gateway、LLM: host.docker.internal)。利用者のトークンと会話(利用者の権限で取得した文書の本文)が経路上で読めます。開発・評価用途に限ってください(--allow-insecure-upstream。本番では使えません)",
     ]);
-    expect(err).toContain("kp-ask serve: gateway: http://gateway:8787");
+    expect(err).toContain("leisen-ask serve: gateway: http://gateway:8787");
     expect(err.join("\n")).not.toContain(ALICE_TOKEN);
   });
 
-  it("環境変数 KP_ALLOW_INSECURE_UPSTREAM=1 + development でも起動する(compose の overlay の形)", async () => {
+  it("環境変数 LEISEN_ALLOW_INSECURE_UPSTREAM=1 + development でも起動する(compose の overlay の形)", async () => {
     const { err, io } = capture();
     const code = await runCli(
       await serveArgs(COMPOSE_GATEWAY, "--llm", "openai-compatible"),
       io,
       deps({
-        env: { ...DEV, KP_ALLOW_INSECURE_UPSTREAM: "1", KP_LLM_BASE_URL: HOST_LM_STUDIO, KP_LLM_MODEL: "m" },
+        env: { ...DEV, LEISEN_ALLOW_INSECURE_UPSTREAM: "1", LEISEN_LLM_BASE_URL: HOST_LM_STUDIO, LEISEN_LLM_MODEL: "m" },
       }),
     );
     expect(code).toBe(0);
@@ -407,20 +407,20 @@ describe("kp-ask serve: --allow-insecure-upstream", () => {
   it("フラグあり + NODE_ENV=production: 固定文言で拒否して終了コード 2(待ち受けない)", async () => {
     for (const [extra, env] of [
       [["--allow-insecure-upstream"], PROD],
-      [[], { ...PROD, KP_ALLOW_INSECURE_UPSTREAM: "1" }],
+      [[], { ...PROD, LEISEN_ALLOW_INSECURE_UPSTREAM: "1" }],
     ] as const) {
       const { err, io } = capture();
       const d = deps({ env });
       const code = await runCli(await serveArgs(COMPOSE_GATEWAY, ...LLM_ARGS, ...extra), io, d);
       expect(code).toBe(2);
-      expect(err[0]).toBe(`kp-ask serve: ${INSECURE_UPSTREAM_IN_PRODUCTION_MESSAGE}`);
+      expect(err[0]).toBe(`leisen-ask serve: ${INSECURE_UPSTREAM_IN_PRODUCTION_MESSAGE}`);
       expect(err.join("\n")).not.toContain("listening on");
       expect(d.llmConfigs).toEqual([]);
     }
   });
 });
 
-describe("kp-ask(1問): --allow-insecure-upstream", () => {
+describe("leisen-ask(1問): --allow-insecure-upstream", () => {
   const ask = ["--gateway", COMPOSE_GATEWAY, "--token", "dev-only-token", ...LLM_ARGS];
 
   it("フラグなし: ループバック以外の http の Gateway は終了コード 2(案内を添える)", async () => {
@@ -458,7 +458,7 @@ describe("kp-ask(1問): --allow-insecure-upstream", () => {
   it("フラグあり + NODE_ENV=production: 固定文言で終了コード 2(何も作らない)", async () => {
     for (const [extra, env] of [
       [["--allow-insecure-upstream"], PROD],
-      [[], { ...PROD, KP_ALLOW_INSECURE_UPSTREAM: "1" }],
+      [[], { ...PROD, LEISEN_ALLOW_INSECURE_UPSTREAM: "1" }],
     ] as const) {
       const { err, io } = capture();
       const d = deps({ env });

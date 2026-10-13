@@ -33,15 +33,15 @@ describe("examples/deployment.keycloak.yaml(手元の Keycloak で試す開発�
     expect(config.idp.adapter).toEqual({
       kind: "keycloak",
       baseUrl: "http://localhost:8080",
-      realm: "kp",
+      realm: "leisen",
       clientId: "gateway",
-      clientSecretEnv: "KP_KEYCLOAK_CLIENT_SECRET",
+      clientSecretEnv: "LEISEN_KEYCLOAK_CLIENT_SECRET",
       allowedClients: ["e2e-cli"],
       requireAudience: true,
     });
     expect(config.connectors.map((c) => c.id)).toEqual(["dev-docs"]);
     expect(
-      resolveIdpAdapterConfig(config.idp.adapter, { KP_KEYCLOAK_CLIENT_SECRET: "dev-only-gateway-secret" }),
+      resolveIdpAdapterConfig(config.idp.adapter, { LEISEN_KEYCLOAK_CLIENT_SECRET: "dev-only-gateway-secret" }),
     ).toMatchObject({ kind: "keycloak", allowedClients: ["e2e-cli"], requireAudience: true });
   });
 });
@@ -144,7 +144,7 @@ idp:
     kind: keycloak
     baseUrl: http://localhost:8080
     realm: acme
-    clientId: kp-gateway
+    clientId: leisen-gateway
     clientSecretEnv: TEST_KC_SECRET
     allowedClients: [chat-ui]
 `;
@@ -158,7 +158,7 @@ idp:
       kind: "keycloak",
       baseUrl: "http://localhost:8080",
       realm: "acme",
-      clientId: "kp-gateway",
+      clientId: "leisen-gateway",
       clientSecret: "dev-only-s3cret",
       allowedClients: ["chat-ui"],
       requireAudience: false,

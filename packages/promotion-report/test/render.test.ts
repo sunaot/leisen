@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AuditRecord } from "@kp/audit";
+import type { AuditRecord } from "@leisen/audit";
 import { aggregatePromotionReport } from "../src/aggregate.js";
 import {
   renderJudgmentGuide,

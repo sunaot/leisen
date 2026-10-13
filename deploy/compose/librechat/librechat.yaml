@@ -94,10 +94,10 @@ endpoints:
       # LM Studio は API キーを見ない。空でない値が要るため librechat.env のダミーを使う
       apiKey: '${LIBRECHAT_LLM_API_KEY}'
       # 既定 http://host.docker.internal:1234/v1(docker-compose.librechat.yml)
-      baseURL: '${KP_LLM_BASE_URL}'
+      baseURL: '${LEISEN_LLM_BASE_URL}'
       models:
         # LM Studio の /v1/models から取得する。取得できないときはこの既定値を表示する
-        # (.env.example の KP_LLM_MODEL と同じ名前)
+        # (.env.example の LEISEN_LLM_MODEL と同じ名前)
         default:
           - 'openai/gpt-oss-20b'
         fetch: true

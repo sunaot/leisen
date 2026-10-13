@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 async function fakeRepo(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "kp-lint-imports-"));
+  const root = await mkdtemp(join(tmpdir(), "leisen-lint-imports-"));
   tempDirs.push(root);
   for (const [path, body] of Object.entries(files)) {
     await mkdir(dirname(join(root, path)), { recursive: true });
@@ -47,20 +47,20 @@ describe("lint-imports: the repository satisfies the boundaries", () => {
   it("defines both boundaries of ADR-019 決定10", () => {
     expect(auditBoundary).toBeDefined();
     expect(runBoundary).toBeDefined();
-    expect(runBoundary.allowBare.some((p) => p.test("@kp/audit"))).toBe(true);
-    expect(auditBoundary.allowBare.some((p) => p.test("@kp/audit"))).toBe(false);
+    expect(runBoundary.allowBare.some((p) => p.test("@leisen/audit"))).toBe(true);
+    expect(auditBoundary.allowBare.some((p) => p.test("@leisen/audit"))).toBe(false);
   });
 });
 
 describe("lint-imports: forbidden dependencies are detected", () => {
-  it("flags MCP SDK, connector-sdk, and Gateway-internal relative imports from @kp/audit", async () => {
+  it("flags MCP SDK, connector-sdk, and Gateway-internal relative imports from @leisen/audit", async () => {
     const root = await fakeRepo({
       "packages/audit/src/index.ts": [
         'import { z } from "zod";',
         'import { createHash } from "node:crypto";',
         'import { schema } from "./schema.js";',
         'import { Server } from "@modelcontextprotocol/sdk/server/index.js";',
-        'import type { Connector } from "@kp/connector-sdk";',
+        'import type { Connector } from "@leisen/connector-sdk";',
         'import { Gateway } from "../../gateway/src/proxy/gateway.js";',
         'export * from "../../gateway/src/config/index.js";',
         'const lazy = await import("../../gateway/src/idp/index.js");',
@@ -73,7 +73,7 @@ describe("lint-imports: forbidden dependencies are detected", () => {
         "../../gateway/src/config/index.js",
         "../../gateway/src/idp/index.js",
         "../../gateway/src/proxy/gateway.js",
-        "@kp/connector-sdk",
+        "@leisen/connector-sdk",
         "@modelcontextprotocol/sdk/server/index.js",
       ].sort(),
     );
@@ -82,10 +82,10 @@ describe("lint-imports: forbidden dependencies are detected", () => {
     }
   });
 
-  it("lets the run module import @kp/audit but not proxy/, idp/, config/ or the MCP SDK", async () => {
+  it("lets the run module import @leisen/audit but not proxy/, idp/, config/ or the MCP SDK", async () => {
     const root = await fakeRepo({
       "packages/gateway/src/run/index.ts": [
-        'import { validateRecord } from "@kp/audit";',
+        'import { validateRecord } from "@leisen/audit";',
         'import { timingSafeEqual } from "node:crypto";',
         'import { issue } from "./runid.js";',
         'import { GatewayError } from "../proxy/types.js";',
@@ -118,12 +118,12 @@ describe("lint-imports: forbidden dependencies are detected", () => {
     const root = await fakeRepo({
       "packages/audit/src/a.ts": 'export * as sdk from "@modelcontextprotocol/sdk";\n',
       "packages/audit/src/b.ts": 'export { Server } from "@modelcontextprotocol/sdk/server/index.js";\n',
-      "packages/audit/src/c.ts": 'export type { Connector } from "@kp/connector-sdk";\n',
+      "packages/audit/src/c.ts": 'export type { Connector } from "@leisen/connector-sdk";\n',
       "packages/audit/src/d.ts": 'export * from "zod";\n',
     });
     const violations = (await checkBoundary(root, auditBoundary)) as Violation[];
     expect(violations.map((v) => v.specifier).sort()).toEqual(
-      ["@kp/connector-sdk", "@modelcontextprotocol/sdk", "@modelcontextprotocol/sdk/server/index.js"].sort(),
+      ["@leisen/connector-sdk", "@modelcontextprotocol/sdk", "@modelcontextprotocol/sdk/server/index.js"].sort(),
     );
   });
 
@@ -137,7 +137,7 @@ describe("lint-imports: forbidden dependencies are detected", () => {
       {
         file: "packages/audit/src/nested/deep.ts",
         specifier: "yaml",
-        reason: "not in the allow list of @kp/audit",
+        reason: "not in the allow list of @leisen/audit",
       },
     ]);
   });

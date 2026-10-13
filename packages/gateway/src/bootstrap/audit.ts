@@ -12,7 +12,7 @@
  * 相対パスは設定ファイルの所在ディレクトリ基準。出力先は起動時に書き込み可能か
  * 確かめる(ディレクトリの誤記を起動後の監査欠落として初めて知る事態を避ける。
  * BufferedAuditSink は書けない間もバッファ容量までは呼び出しを受理するため)。
- * 確認はアクセス権の照会のみで、ファイルは作らない(kp-gateway validate を
+ * 確認はアクセス権の照会のみで、ファイルは作らない(leisen-gateway validate を
  * 副作用なしに保つ)。
  *
  * 未実装(T-012 以降): 保持期限(retentionDays / rawQueryRetentionDays)に基づく
@@ -30,7 +30,7 @@ import {
   StdoutDebugAuditSink,
   type AuditSink,
   type RawQueryStore,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   AUDIT_SINK_JSONL,
   AUDIT_SINK_STDOUT,

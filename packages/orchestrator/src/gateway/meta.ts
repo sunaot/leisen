@@ -3,7 +3,7 @@
  * ADR-011 追記、ADR-015)。
  *
  * Orchestrator が Gateway に送る `_meta` は buildGatewayMeta だけで組み立て、他の箇所に
- * キー文字列を書かない(`test/gateway-meta.test.ts` で固定)。キーは @kp/gateway の
+ * キー文字列を書かない(`test/gateway-meta.test.ts` で固定)。キーは @leisen/gateway の
  * GATEWAY_META_KEYS(prefix 付きの4キー)からのみ作り、裸キー(runId / iteration の
  * 移行期間の後方互換)は使わない。Gateway は名前空間内の未知キーや見た目違いの
  * 申告キーを誤記として invalid_request で拒否する(T-003 M2 / 再レビュー S1)。
@@ -15,16 +15,16 @@
  *   1件)ことを Orchestrator の MCP クライアント経由で確かめるテストのためだけにある
  *
  * 結果側の `_meta`(Gateway → Orchestrator)の読み取りもここに集約する
- * (gatewayUserIdFromResultMeta。キーは @kp/gateway の GATEWAY_RESULT_META_KEYS)。
+ * (gatewayUserIdFromResultMeta。キーは @leisen/gateway の GATEWAY_RESULT_META_KEYS)。
  * Gateway が認証した userId で、AnswerRun の主体をこれに束縛する(セキュリティ
  * レビュー 2026-09-27 H1、orchestrator.ts)。
  */
-import { type Actor } from "@kp/audit";
+import { type Actor } from "@leisen/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_RESULT_META_KEYS,
   type ExecutionClass,
-} from "@kp/gateway";
+} from "@leisen/gateway";
 import { HUMAN_ACTOR } from "../audit.js";
 
 /** Phase 1 の実行区分(ADR-015。scheduled / autonomous は Gateway が既定拒否する)。 */

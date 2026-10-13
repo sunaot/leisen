@@ -5,7 +5,7 @@
 
 **実装前ゲート**: T-000a/b/c は完了(2026-07-12)。完了済み: T-000a/b/c、T-001、T-002、T-010、T-003、T-014。現在のフェーズと着手順は CLAUDE.md の「現在のフェーズ」を参照。
 
-**2026-10-08 進捗**: PR #14 が main にマージ済み(T-003 HTTP配線・起動コード `kp-gateway`・T-019(モック)・T-007・T-012(CI `reference-deploy` で起動確認)・T-021)。T-007 は実モデル(LM Studio)で合成コーパスの 4 問を確認済み(`docs/eval/2026-10-08-explore-v3.md`)、Claude API での実走は未確認。**MCPトランスポート**: ADR-001追補3 は承認済み(2026-09-27)。T-003 のHTTP配線は完了。`@modelcontextprotocol/sdk` は 1.30.1 に更新済み(2026-07-28版には非対応のため、新仕様固有の必須項目は保留。ADR-001追補3「SDK更新の検証結果」)。
+**2026-10-08 進捗**: PR #14 が main にマージ済み(T-003 HTTP配線・起動コード `leisen-gateway`・T-019(モック)・T-007・T-012(CI `reference-deploy` で起動確認)・T-021)。T-007 は実モデル(LM Studio)で合成コーパスの 4 問を確認済み(`docs/eval/2026-10-08-explore-v3.md`)、Claude API での実走は未確認。**MCPトランスポート**: ADR-001追補3 は承認済み(2026-09-27)。T-003 のHTTP配線は完了。`@modelcontextprotocol/sdk` は 1.30.1 に更新済み(2026-07-28版には非対応のため、新仕様固有の必須項目は保留。ADR-001追補3「SDK更新の検証結果」)。
 
 | ID | タスク | 依存 | 人手の前提 |
 |---|---|---|---|
@@ -30,7 +30,7 @@
 | T-021 | 利用者向けの面: Orchestrator の MCP サーバー化 + LibreChat 接続(ADR-018) | T-007, T-012 | なし(実走は LLM バックエンド) |
 | T-023 | Gateway の run API と署名付き runId(ADR-019 段階 1。監査の書き手を Gateway に一本化) | T-003, T-007, T-021, T-014 | なし |
 | T-012 | リファレンスデプロイ | T-010, T-002 | なし |
-| T-013 | OSS公開準備 | — | Slack法務確認のみ(2026-10-13: ライセンスは Apache-2.0 で確定、公開はすぐ行う、配布名は ADR-020 で leisen に確定(改名 PR は未実施)、商標・窓口と SECURITY.md / CONTRIBUTING.md / CODE_OF_CONDUCT.md は保留) |
+| T-013 | OSS公開準備 | — | Slack法務確認のみ(2026-10-13: ライセンスは Apache-2.0 で確定、公開はすぐ行う、配布名は ADR-020 で leisen に確定・改名済み、商標・窓口と SECURITY.md / CONTRIBUTING.md / CODE_OF_CONDUCT.md は保留) |
 | T-014 | 昇格判定レポート | T-001 | なし |
 | T-017 | delegated_identity認可スパイク(Q2) | T-000c | AD環境+セキュリティ部門相談 |
 | T-018 | Source Catalog / 全社公開マップ(Phase 1.5) | T-007 | なし |

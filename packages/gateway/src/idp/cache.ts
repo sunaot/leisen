@@ -9,7 +9,7 @@
  *   TTLは権限剥奪の反映遅延の上限になる(threat-model TM-C系)ため、
  *   deployment.yaml から注入可能にする。
  */
-import type { Credential } from "@kp/connector-sdk";
+import type { Credential } from "@leisen/connector-sdk";
 
 export interface CredentialCacheOptions {
   /** キャッシュTTL(ms)。既定 5分。 */

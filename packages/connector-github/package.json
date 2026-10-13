@@ -1,5 +1,5 @@
 {
-  "name": "@kp/connector-github",
+  "name": "@leisen/connector-github",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -17,6 +17,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kp/connector-sdk": "0.4.0"
+    "@leisen/connector-sdk": "0.4.0"
   }
 }

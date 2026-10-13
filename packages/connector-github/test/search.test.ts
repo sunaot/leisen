@@ -6,7 +6,7 @@
  * - limit の配分とカーソルによる継続、一部ストリーム失敗時の縮退
  */
 import { describe, expect, it } from "vitest";
-import { ConnectorError, MAX_SNIPPET_CHARS } from "@kp/connector-sdk";
+import { ConnectorError, MAX_SNIPPET_CHARS } from "@leisen/connector-sdk";
 import { decodeSearchCursor, encodeSearchCursor } from "../src/cursor.js";
 import {
   ALICE,

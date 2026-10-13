@@ -25,12 +25,12 @@ import {
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { AuthContext } from "@kp/connector-sdk";
+import type { AuthContext } from "@leisen/connector-sdk";
 import {
   AuditLogger,
   digestQuery,
   type AuditRecord,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   GATEWAY_META_KEYS,
   GATEWAY_REJECTION_ERROR_CODE,
@@ -587,7 +587,7 @@ describe("_meta declarations over HTTP (ADR-011 追記、ADR-015)", () => {
       "'.' instead of '/' after the prefix",
       { "io.github.sunaot.leisen.executionClass": "scheduled" },
     ],
-    ["a package-like prefix", { "kp.gateway/executionClass": "autonomous" }],
+    ["a package-like prefix", { "leisen.gateway/executionClass": "autonomous" }],
     ["a zero-width space inside a bare key", { "execution​Class": "scheduled" }],
     [
       "a trailing space after a bare actor",
@@ -623,7 +623,7 @@ describe("HTTP surface", () => {
     expect(response.headers.get("mcp-session-id")).toBeNull();
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(JSON.parse(text)).toMatchObject({
-      result: { serverInfo: { name: "kp-gateway" } },
+      result: { serverInfo: { name: "leisen-gateway" } },
     });
   });
 

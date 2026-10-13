@@ -27,7 +27,7 @@ import {
   type Actor,
   type AuditRecord,
   type AuditSink,
-} from "@kp/audit";
+} from "@leisen/audit";
 import {
   GATEWAY_META_KEYS,
   Gateway,
@@ -382,15 +382,15 @@ describe("tools/call での runId の申告(名前空間付きのキー)", () =>
   });
 
   it("run API は MCP のパスと同じディレクトリの runs にある(接頭辞付きの公開でもオリジン直下には出ない)", async () => {
-    const { origin, post, asOrchestrator, connect, startRun, sink } = await startHarness({ path: "/kp/mcp" });
+    const { origin, post, asOrchestrator, connect, startRun, sink } = await startHarness({ path: "/leisen/mcp" });
     const root = await post("/runs", { question: "q" }, asOrchestrator());
     expect(root.response.status).toBe(404);
-    const prefixed = await post("/kp/runs", { question: "q" }, asOrchestrator());
+    const prefixed = await post("/leisen/runs", { question: "q" }, asOrchestrator());
     expect(prefixed.response.status).toBe(201);
     const runId = (prefixed.json as { runId: string }).runId;
-    const finish = await post(`/kp/runs/${runId}/finish`, { outcome: "resolved", confidence: 0.5, searchedSources: ["alpha"], citations: [] }, asOrchestrator());
+    const finish = await post(`/leisen/runs/${runId}/finish`, { outcome: "resolved", confidence: 0.5, searchedSources: ["alpha"], citations: [] }, asOrchestrator());
     expect(finish.response.status).toBe(200);
-    // 既存の startRun ヘルパーは /runs 固定なので使えない(404)。MCP は /kp/mcp で動く
+    // 既存の startRun ヘルパーは /runs 固定なので使えない(404)。MCP は /leisen/mcp で動く
     await expect(startRun()).rejects.toThrow();
     const client = await connect("session-alice", CREDENTIAL);
     await client.callTool({ name: "search", arguments: { source: "alpha", query: "q" }, _meta: meta(runId) });

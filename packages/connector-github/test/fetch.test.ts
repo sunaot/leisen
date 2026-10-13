@@ -6,7 +6,7 @@
  * - バイナリ・巨大ファイル・ディレクトリの拒否
  */
 import { describe, expect, it } from "vitest";
-import { ConnectorError } from "@kp/connector-sdk";
+import { ConnectorError } from "@leisen/connector-sdk";
 import {
   decodeDocumentId,
   encodeDocumentId,

@@ -41,7 +41,7 @@ import {
   type SearchResult,
   type SourceDescription,
   type SourcePolicy,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import YAML from "yaml";
 import { z } from "zod";
 import type { ConnectorFactoryInit } from "../bootstrap/plugins.js";

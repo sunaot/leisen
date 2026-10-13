@@ -3,7 +3,7 @@
  *
  * 実 Gateway(JSONL の監査ストアと生クエリ表)に対して Orchestrator が run を実行し、利用者が
  * フィードバックし、別の run を開始したまま終わらせず、Gateway を再起動して finish を再送したあと、
- * 昇格判定レポート(kp-promotion-report)で Gateway の audit.jsonl を 1 つ読んで集計する:
+ * 昇格判定レポート(leisen-promotion-report)で Gateway の audit.jsonl を 1 つ読んで集計する:
  * - run が集計される(run > 0)、失敗クエリに質問原文が表示される
  * - フィードバックが Gateway の再起動と finish の再送のあとも残る(部分レコードは消えない)
  * - finish のない期限切れの run が「放棄」と数えられる
@@ -19,8 +19,8 @@ import {
   JsonlRawQueryStore,
   parseAuditRecord,
   type AuditRecord,
-} from "@kp/audit";
-import { mergeAnswerRunRecords, runCli } from "@kp/promotion-report";
+} from "@leisen/audit";
+import { mergeAnswerRunRecords, runCli } from "@leisen/promotion-report";
 import { Orchestrator, ScriptedLlmClient, scriptedSubmit, scriptedToolUse } from "../src/index.js";
 import {
   ALICE_TOKEN,

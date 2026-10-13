@@ -12,7 +12,7 @@ import {
   ConnectorError,
   type AuthContext,
   type Connector,
-} from "@kp/connector-sdk";
+} from "@leisen/connector-sdk";
 import {
   ALICE,
   BOB,

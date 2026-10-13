@@ -5,7 +5,7 @@
  * - render.ts     テキスト表示と判定ガイド(product-design.md 5.1)
  * - sources.ts    昇格判定の対象分類(Slack対象外=ADR-014、
  *                 index-required適用外=ADR-007)
- * - cli.ts        CLIエントリポイント(kp-promotion-report)
+ * - cli.ts        CLIエントリポイント(leisen-promotion-report)
  *
  * 集計と表示は分離してある(将来の管理画面化のため)。監査ログへの
  * アクセスはメタ監査の対象(ADR-013 §3)。入口は generatePromotionReport

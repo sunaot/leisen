@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * dev-eval — 合成コーパスに対する質問セットを kp-ask で流し、判定と計測値を Markdown の表にする
+ * dev-eval — 合成コーパスに対する質問セットを leisen-ask で流し、判定と計測値を Markdown の表にする
  * (開発用の簡易評価。T-008 の前段。判定・集計は src/dev-eval.ts)。
  *
  *   node packages/orchestrator/dist/bin/dev-eval.js \
  *     [--questions examples/eval/dev-questions.json] [--repeat N] [--only id1,id2] \
- *     [--label <表の見出し>] [--timeout-sec 300] -- <kp-ask に渡す引数...>
+ *     [--label <表の見出し>] [--timeout-sec 300] -- <leisen-ask に渡す引数...>
  *
- * - `--` 以降はそのまま kp-ask に渡す(--gateway / --config / --llm / --model 等)。dev-eval は
- *   `--json` と質問文を足す。トークン・LLM の設定は kp-ask と同じく環境変数で渡す
- *   (KP_SESSION_TOKEN、KP_LLM_*、KP_ORCHESTRATOR_CREDENTIAL 等。dev-eval は値を読まない・表示しない)
+ * - `--` 以降はそのまま leisen-ask に渡す(--gateway / --config / --llm / --model 等)。dev-eval は
+ *   `--json` と質問文を足す。トークン・LLM の設定は leisen-ask と同じく環境変数で渡す
+ *   (LEISEN_SESSION_TOKEN、LEISEN_LLM_*、LEISEN_ORCHESTRATOR_CREDENTIAL 等。dev-eval は値を読まない・表示しない)
  * - 質問は1問ずつ順に流す(ローカル推論を並行に叩かない)。進捗は stderr、表は stdout
- * - kp-ask の stderr(AnswerRun の監査レコードと案内)は、kp-ask が回答を返せなかったときだけ
+ * - leisen-ask の stderr(AnswerRun の監査レコードと案内)は、leisen-ask が回答を返せなかったときだけ
  *   そのまま stderr に流す。run の記録(AnswerRun)は Gateway の監査ログに残る(ADR-019)
  * - 終了コード: 0 全問合格、1 不合格・エラーあり、2 引数・質問セットの不備
  */
@@ -34,30 +34,30 @@ import { EXPLORE_PROMPT_VERSION } from "../prompt.js";
 const DEFAULT_QUESTIONS = fileURLToPath(
   new URL("../../../../examples/eval/dev-questions.json", import.meta.url),
 );
-const DEFAULT_KP_ASK = fileURLToPath(new URL("./kp-ask.js", import.meta.url));
+const DEFAULT_LEISEN_ASK = fileURLToPath(new URL("./leisen-ask.js", import.meta.url));
 const DEFAULT_TIMEOUT_SEC = 300;
 
 const USAGE = `usage: dev-eval [--questions <file>] [--repeat N] [--only id1,id2] [--label <見出し>]
-                [--timeout-sec N] -- <kp-ask に渡す引数...>
+                [--timeout-sec N] -- <leisen-ask に渡す引数...>
   例: dev-eval -- --gateway http://127.0.0.1:8787/mcp --config examples/deployment.dev.yaml \\
                  --llm openai-compatible --llm-base-url http://localhost:1234/v1 --model <モデル名>
-  トークン・LLM の設定は kp-ask と同じ環境変数で渡す(KP_SESSION_TOKEN、KP_LLM_* 等)。`;
+  トークン・LLM の設定は leisen-ask と同じ環境変数で渡す(LEISEN_SESSION_TOKEN、LEISEN_LLM_* 等)。`;
 
 export interface DevEvalIo {
   readonly stdout: (line: string) => void;
   readonly stderr: (line: string) => void;
 }
 
-/** kp-ask を1回起動して結果を集める(テストでは差し替える)。 */
-export type KpAskRunner = (
+/** leisen-ask を1回起動して結果を集める(テストでは差し替える)。 */
+export type LeisenAskRunner = (
   args: readonly string[],
   timeoutMs: number,
 ) => Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }>;
 
-export function spawnKpAsk(kpAskPath: string): KpAskRunner {
+export function spawnLeisenAsk(leisenAskPath: string): LeisenAskRunner {
   return (args, timeoutMs) =>
     new Promise((resolvePromise, reject) => {
-      const child = spawn(process.execPath, [kpAskPath, ...args], {
+      const child = spawn(process.execPath, [leisenAskPath, ...args], {
         stdio: ["ignore", "pipe", "pipe"],
       });
       let stdout = "";
@@ -95,13 +95,13 @@ interface ParsedArgs {
   readonly only?: ReadonlySet<string>;
   readonly label?: string;
   readonly timeoutMs: number;
-  readonly kpAskArgs: readonly string[];
+  readonly leisenAskArgs: readonly string[];
 }
 
 function parseCliArgs(argv: readonly string[]): ParsedArgs | string {
   const separator = argv.indexOf("--");
   const own = separator === -1 ? argv : argv.slice(0, separator);
-  const kpAskArgs = separator === -1 ? [] : argv.slice(separator + 1);
+  const leisenAskArgs = separator === -1 ? [] : argv.slice(separator + 1);
   let values;
   try {
     ({ values } = parseArgs({
@@ -138,10 +138,10 @@ function parseCliArgs(argv: readonly string[]): ParsedArgs | string {
   if (timeoutSec === undefined) {
     return "--timeout-sec は 1〜3600 の整数で指定してください。";
   }
-  if (kpAskArgs.length === 0) {
-    return "`--` のあとに kp-ask に渡す引数(--gateway など)を指定してください。";
+  if (leisenAskArgs.length === 0) {
+    return "`--` のあとに leisen-ask に渡す引数(--gateway など)を指定してください。";
   }
-  if (kpAskArgs.includes("--json")) {
+  if (leisenAskArgs.includes("--json")) {
     return "--json は dev-eval が付けるので、`--` 以降には指定しないでください。";
   }
   const only =
@@ -154,7 +154,7 @@ function parseCliArgs(argv: readonly string[]): ParsedArgs | string {
     ...(only === undefined ? {} : { only }),
     ...(values.label === undefined ? {} : { label: values.label }),
     timeoutMs: timeoutSec * 1000,
-    kpAskArgs,
+    leisenAskArgs,
   };
 }
 
@@ -176,7 +176,7 @@ async function loadQuestions(path: string): Promise<readonly DevEvalQuestion[] |
 export async function runDevEval(
   argv: readonly string[],
   io: DevEvalIo,
-  runner: KpAskRunner = spawnKpAsk(DEFAULT_KP_ASK),
+  runner: LeisenAskRunner = spawnLeisenAsk(DEFAULT_LEISEN_ASK),
   now: () => number = () => performance.now(),
 ): Promise<number> {
   const args = parseCliArgs(argv);
@@ -206,7 +206,7 @@ export async function runDevEval(
       index += 1;
       io.stderr(`[${index}/${total}] ${question.id}(${attempt} 回目)…`);
       const started = now();
-      const run = await runner([...args.kpAskArgs, "--json", question.question], args.timeoutMs);
+      const run = await runner([...args.leisenAskArgs, "--json", question.question], args.timeoutMs);
       const raw: DevEvalRawRun = {
         question,
         attempt,

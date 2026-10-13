@@ -4,8 +4,8 @@ import {
   validateRecord,
   type AuditRecord,
   type RawQueryRecord,
-} from "@kp/audit";
-import { createRunIdKeyRing, issueRunId } from "@kp/gateway";
+} from "@leisen/audit";
+import { createRunIdKeyRing, issueRunId } from "@leisen/gateway";
 import {
   aggregatePromotionReport,
   dedupeAuditRecords,

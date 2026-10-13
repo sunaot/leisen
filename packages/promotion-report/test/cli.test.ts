@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseAuditRecord } from "@kp/audit";
+import { parseAuditRecord } from "@leisen/audit";
 import { HELP, isMainModule, runCli } from "../src/cli.js";
 import { AUDIT_INPUT_FORMAT_HINT } from "../src/input.js";
 import {
@@ -52,7 +52,7 @@ async function writeFixtureFiles(dir: string): Promise<{
   return { audit, sources, raw, metaOut };
 }
 
-describe("kp-promotion-report CLI", () => {
+describe("leisen-promotion-report CLI", () => {
   it("正常系: レポートを出力し、メタ監査レコードをファイルに追記する", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t014-"));
     const files = await writeFixtureFiles(dir);
@@ -212,7 +212,7 @@ describe("kp-promotion-report CLI", () => {
 describe("--audit の複数指定(ADR-019 より前の構成: Gateway の JSONL と Orchestrator の AnswerRun の JSONL、T-021)", () => {
   /**
    * ADR-019 より前のリファレンス構成(ADR-018 決定4)の2ファイル: Gateway の監査 JSONL には
-   * ToolInvocation(とメタ監査)、kp-ask serve の JSONL には AnswerRun(同じ runId の pending →
+   * ToolInvocation(とメタ監査)、leisen-ask serve の JSONL には AnswerRun(同じ runId の pending →
    * 最終状態 → フィードバックの行が並ぶ)。過去の記録を集計するために複数指定を残している(T-023)。
    */
   async function writeSplitFiles(dir: string): Promise<{ gateway: string; answerRuns: string }> {
@@ -383,7 +383,7 @@ describe("使い方・入力の不備の表示(issue #38)", () => {
       expect(result.code).toBe(0);
       expect(result.out).toEqual([HELP]);
       expect(result.err).toEqual([]);
-      expect(HELP).toContain("usage: kp-promotion-report");
+      expect(HELP).toContain("usage: leisen-promotion-report");
       expect(HELP).toContain("--raw-queries");
       expect(HELP).toContain("audit.sink: stdout");
     },
@@ -462,7 +462,7 @@ describe("使い方・入力の不備の表示(issue #38)", () => {
   it.each([
     ["kind が audit 以外の行", JSON.stringify({ kind: "log", message: "listening" }), '"kind" が "audit" 以外'],
     ["recordType のない JSON", JSON.stringify({ level: "info" }), "recordType がない"],
-    ["JSON でない行(起動ログなど)", "kp-gateway: listening on …", "JSON として読めません"],
+    ["JSON でない行(起動ログなど)", "leisen-gateway: listening on …", "JSON として読めません"],
   ])("%s は行番号と渡すべき形式の案内を出して拒否する", async (_label, line, reason) => {
     const dir = await mkdtemp(join(tmpdir(), "t014-"));
     const files = await writeFixtureFiles(dir);
@@ -510,7 +510,7 @@ describe("isMainModule(エントリとして実行されたかの判定)", () =>
   it("argv[1] がシンボリックリンクでも実体が同じなら true(npm の bin リンク経由)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t014-main-"));
     const target = join(dir, "cli.js");
-    const link = join(dir, "kp-promotion-report");
+    const link = join(dir, "leisen-promotion-report");
     await writeFile(target, "");
     await symlink(target, link);
     const url = pathToFileURL(target).href;
@@ -536,7 +536,7 @@ describe("isMainModule(エントリとして実行されたかの判定)", () =>
 
 const PACKAGE_DIR = fileURLToPath(new URL("../", import.meta.url));
 const DIST_CLI = join(PACKAGE_DIR, "dist", "cli.js");
-const BIN_SHIM = join(PACKAGE_DIR, "bin", "kp-promotion-report.js");
+const BIN_SHIM = join(PACKAGE_DIR, "bin", "leisen-promotion-report.js");
 
 // ビルド成果物(dist)がある場合のみ子プロセスで実行する(src は直接実行しない)
 describe.skipIf(!existsSync(DIST_CLI))("ビルド成果物の実行(子プロセス)", () => {
@@ -546,34 +546,34 @@ describe.skipIf(!existsSync(DIST_CLI))("ビルド成果物の実行(子プロセ
 
   it("dist/cli.js をシンボリックリンク経由で起動しても実行される(何もせず 0 で終わらない)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t014-bin-"));
-    const link = join(dir, "kp-promotion-report");
+    const link = join(dir, "leisen-promotion-report");
     await symlink(DIST_CLI, link);
 
     const viaLink = run(link);
     expect(viaLink.status).toBe(2);
-    expect(viaLink.stderr).toContain("usage: kp-promotion-report");
+    expect(viaLink.stderr).toContain("usage: leisen-promotion-report");
 
     const direct = run(DIST_CLI);
     expect(direct.status).toBe(2);
-    expect(direct.stderr).toContain("usage: kp-promotion-report");
+    expect(direct.stderr).toContain("usage: leisen-promotion-report");
   });
 
   it("npm の bin(起動シム)経由でも動く(.bin のシンボリックリンク経由を含む)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t014-bin-"));
-    const link = join(dir, "kp-promotion-report");
+    const link = join(dir, "leisen-promotion-report");
     await symlink(BIN_SHIM, link);
 
     for (const entry of [BIN_SHIM, link]) {
       const result = run(entry);
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("usage: kp-promotion-report");
+      expect(result.stderr).toContain("usage: leisen-promotion-report");
     }
   });
 
   it("シム経由の実行でレポートを出し、メタ監査を1回だけ書く(二重実行しない)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "t014-bin-"));
     const files = await writeFixtureFiles(dir);
-    const link = join(dir, "kp-promotion-report");
+    const link = join(dir, "leisen-promotion-report");
     await symlink(BIN_SHIM, link);
 
     const result = run(link, [

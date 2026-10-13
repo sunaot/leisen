@@ -1,6 +1,6 @@
 /**
  * 上流(Gateway・LLM バックエンド)への平文 http の許可 — `--allow-insecure-upstream`
- * (環境変数 KP_ALLOW_INSECURE_UPSTREAM=1)。T-021。kp-ask(1問)と kp-ask serve の両方で受ける。
+ * (環境変数 LEISEN_ALLOW_INSECURE_UPSTREAM=1)。T-021。leisen-ask(1問)と leisen-ask serve の両方で受ける。
  *
  * - 既定では Gateway の URL(parseGatewayUrl)も LLM のベース URL(httpBaseUrlSchema)も、
  *   ループバック以外は https 必須。compose のネットワーク内の Gateway(http://gateway:8787/mcp)や、
@@ -17,11 +17,11 @@ import { isPlainHttpBeyondLoopback, parseInsecureGatewayUrl } from "../gateway/m
 
 /** NODE_ENV=production で --allow-insecure-upstream を拒否するときの表示(固定文言)。 */
 export const INSECURE_UPSTREAM_IN_PRODUCTION_MESSAGE =
-  "--allow-insecure-upstream(環境変数 KP_ALLOW_INSECURE_UPSTREAM)は NODE_ENV=production では使えません。本番では Gateway と LLM バックエンドに https(またはループバック)で接続してください。";
+  "--allow-insecure-upstream(環境変数 LEISEN_ALLOW_INSECURE_UPSTREAM)は NODE_ENV=production では使えません。本番では Gateway と LLM バックエンドに https(またはループバック)で接続してください。";
 
 /** USAGE に足す行。 */
 export const INSECURE_UPSTREAM_USAGE_LINE =
-  "  [--allow-insecure-upstream](環境変数 KP_ALLOW_INSECURE_UPSTREAM=1)Gateway・LLM のループバック以外の http を許す(開発・評価用途。NODE_ENV=production では使えない)";
+  "  [--allow-insecure-upstream](環境変数 LEISEN_ALLOW_INSECURE_UPSTREAM=1)Gateway・LLM のループバック以外の http を許す(開発・評価用途。NODE_ENV=production では使えない)";
 
 /** 既定の規則で拒否されたときに添える案内(非ループバックの http だったとき)。 */
 export const INSECURE_UPSTREAM_HINT =
@@ -35,7 +35,7 @@ export type InsecureUpstreamOption =
 
 /**
  * NODE_ENV=production か(渡された環境に加えてプロセスの環境も見る。安全側に倒す)。
- * Orchestrator の資格情報(KP_ORCHESTRATOR_CREDENTIAL)の必須の判定(credential-options.ts)にも使う。
+ * Orchestrator の資格情報(LEISEN_ORCHESTRATOR_CREDENTIAL)の必須の判定(credential-options.ts)にも使う。
  */
 export function isProductionEnv(env: Env): boolean {
   return env["NODE_ENV"] === "production" || process.env["NODE_ENV"] === "production";
@@ -53,7 +53,7 @@ export function parseInsecureUpstreamOption(
   if (flag === true) {
     enabled = true;
   } else {
-    const raw = (env["KP_ALLOW_INSECURE_UPSTREAM"] ?? "").trim().toLowerCase();
+    const raw = (env["LEISEN_ALLOW_INSECURE_UPSTREAM"] ?? "").trim().toLowerCase();
     if (raw === "1" || raw === "true") {
       enabled = true;
     } else if (raw === "" || raw === "0" || raw === "false") {
@@ -61,7 +61,7 @@ export function parseInsecureUpstreamOption(
     } else {
       return {
         ok: false,
-        message: "環境変数 KP_ALLOW_INSECURE_UPSTREAM は 1(有効)または 0(無効)で指定してください。",
+        message: "環境変数 LEISEN_ALLOW_INSECURE_UPSTREAM は 1(有効)または 0(無効)で指定してください。",
       };
     }
   }

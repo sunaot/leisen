@@ -2,7 +2,7 @@
  * run API(ADR-019)のパスの導出。
  *
  * run API は MCP エンドポイントと同じオリジン・同じディレクトリの `runs` に置く
- * (`/mcp` → `/runs`、`/kp/mcp` → `/kp/runs`)。Gateway(http.ts)と Orchestrator
+ * (`/mcp` → `/runs`、`/leisen/mcp` → `/leisen/runs`)。Gateway(http.ts)と Orchestrator
  * (mcp-client.ts)が同じ関数で導くので、パスの接頭辞付きで公開した Gateway に対して
  * Orchestrator が別のパス(同じホストの別のバックエンド)へ本人のトークン・資格情報・質問を
  * 送ることがない。`gateway.http.path` に run API のパスそのもの(`/runs`、`/x/runs`)は

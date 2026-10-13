@@ -1,5 +1,5 @@
 /**
- * 起動コード(kp-gateway CLI、リファレンスデプロイ T-012)。
+ * 起動コード(leisen-gateway CLI、リファレンスデプロイ T-012)。
  *
  * - assemble.ts  設定 → コネクタ・資格情報プロバイダ・IdP Adapter・監査シンク・
  *                Gateway・HTTPサーバーの組み立て(assembleGateway)

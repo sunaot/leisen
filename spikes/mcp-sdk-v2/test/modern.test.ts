@@ -73,7 +73,7 @@ describe("(i) 2026-07-28: v2 Client ↔ v2 server", () => {
     expect(list).toMatchObject({ resultType: "complete", ttlMs: 300000, cacheScope: "private" });
     expect(call).toMatchObject({
       resultType: "complete",
-      _meta: { "io.modelcontextprotocol/serverInfo": { name: "kp-gateway" } },
+      _meta: { "io.modelcontextprotocol/serverInfo": { name: "leisen-gateway" } },
     });
     expect(call).not.toHaveProperty("ttlMs");
 
