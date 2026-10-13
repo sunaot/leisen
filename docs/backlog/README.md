@@ -18,7 +18,7 @@
 | T-003 | Gateway MCPプロキシ骨格 | T-001, T-002, T-010 | なし |
 | T-004 | Auth Adapter実接続+Token Vault | T-000a, T-002 | IdPサンドボックス+クライアント登録 |
 | T-005 | Google Driveコネクタ | T-003 | GCP OAuthアプリ承認 |
-| T-006 | Slackコネクタ(RTS/公式MCP第一候補) | T-003 | 法務確認(ADR-014)+Slackアプリ承認 |
+| T-006 | Slackコネクタ(RTS/公式MCP第一候補) | T-003 | Slackアプリ承認(導入形態は 2026-10-13 に類型(a)で確定、#59) |
 | T-019 | GitHubコネクタ | T-003 | GitHub App承認 |
 | T-020 | wikiコネクタ | T-003, T-000a | 対象wikiのOAuth承認 |
 | T-007 | Orchestrator探索戦略v1 | T-003 | Claude APIキー |
@@ -26,11 +26,11 @@
 | T-024 | 探索プロンプト v4(複数文書の質問の分解と、見つからないときの打ち切り) | T-007, T-022 | 実走は LLM(オーナーの手元の LM Studio)。新しい質問の書き手の判断 |
 | T-025 | 自分の GitHub で試す開発用設定(本人の PAT と mock_env) | T-019, T-010, T-007 | 試す人の fine-grained PAT(開発専用)。GitHub App の承認は不要 |
 | T-008 | 評価ハーネス+評価セットv0 | T-007 | クエリサンプル+テストアイデンティティ |
-| T-009 | 非永続フロントエンド(Slack 対応。2026-10-09 に付け替え。元: チャットUI(最小)) | T-007, T-006 の法務確認 | なし |
+| T-009 | 非永続フロントエンド(Slack 対応。2026-10-09 に付け替え。元: チャットUI(最小)) | T-007, T-006 | なし |
 | T-021 | 利用者向けの面: Orchestrator の MCP サーバー化 + LibreChat 接続(ADR-018) | T-007, T-012 | なし(実走は LLM バックエンド) |
 | T-023 | Gateway の run API と署名付き runId(ADR-019 段階 1。監査の書き手を Gateway に一本化) | T-003, T-007, T-021, T-014 | なし |
 | T-012 | リファレンスデプロイ | T-010, T-002 | なし |
-| T-013 | OSS公開準備 | — | Slack法務確認のみ(2026-10-13: ライセンスは Apache-2.0 で確定、公開はすぐ行う、配布名は ADR-020 で leisen に確定・改名済み、商標・窓口と SECURITY.md / CONTRIBUTING.md / CODE_OF_CONDUCT.md は保留) |
+| T-013 | OSS公開準備 | — | なし(2026-10-13: Slack導入形態は類型(a)で確定(#59)、ライセンスは Apache-2.0 で確定、公開はすぐ行う、配布名は ADR-020 で leisen に確定・改名済み、商標・窓口と SECURITY.md / CONTRIBUTING.md / CODE_OF_CONDUCT.md は保留) |
 | T-014 | 昇格判定レポート | T-001 | なし |
 | T-017 | delegated_identity認可スパイク(Q2) | T-000c | AD環境+セキュリティ部門相談 |
 | T-018 | Source Catalog / 全社公開マップ(Phase 1.5) | T-007 | なし |

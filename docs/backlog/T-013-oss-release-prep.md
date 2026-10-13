@@ -7,7 +7,7 @@
 - ~~プロジェクト名・配布名~~ → **確定**(2026-10-13、ADR-020: `leisen` に統一。`@leisen/*`、`leisen-gateway` / `leisen-ask` / `leisen-promotion-report`、`LEISEN_*`)。**商標** は保留(時期尚早)。`_meta` prefix は `io.github.sunaot.leisen/` のまま(最終確定は下記)
 - ~~脆弱性報告窓口の体制~~ → **保留**(時期尚早。SECURITY.md は体制を決めずに書ける範囲、例: GitHub の Private vulnerability reporting を窓口にする、で先行してよい)
 - ~~公開時期の再判断~~ → **決定: すぐに公開する**(v3 §8 の Q2 / Q3 比較は行わない)
-- **Slack導入形態の法務確認(ADR-014)** は未決のまま(T-006 の前提。公開自体は待たない)
+- ~~Slack導入形態の法務確認(ADR-014)~~ → **確定**(類型(a): 導入企業が自社でSlackアプリを登録・運用する。有償導入支援・類型(b) の商用配布の論点は issue #59 に記録)
 
 公開を先に行うため、下記「内容」のうち人手の前提なしで進められる項目(公開チェックリスト、CI の audit / secret scan、README 導線)を優先する。SECURITY.md / CONTRIBUTING.md / CODE_OF_CONDUCT.md は 2026-10-13 のオーナー判断で保留とし、公開を待たない。
 

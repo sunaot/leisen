@@ -217,8 +217,9 @@ LibreChat は会話を MongoDB に保存する。overlay の設定(`librechat.ya
 - 一時チャットも保持期限までは DB に残る(最短 1 時間)
 - **Slack を有効にする場合**: deployment.yaml で Slack のソースが有効だと `orchestrator` は起動を拒否する
   (終了コード 1。理由は orchestrator の起動ログに出る)。有効にするには次をすべて行う
-  1. 導入形態の法務確認(ADR-014。T-006 の前提と同じ)。LibreChat の履歴は最短でも 1 時間 DB に残るため、
-     不変条件7(Slack 由来データを永続化しない)との関係もこの確認に含める
+  1. 法務確認: LibreChat の履歴は最短でも 1 時間 DB に残るため、不変条件7(Slack 由来データを永続化しない)
+     との関係を確認する。導入形態は類型(a)で確定している(ADR-014 追記 2026-10-13、issue #59)が、
+     この点は別の確認として残る
   2. `docker-compose.librechat.yml` の orchestrator の `command` に `--allow-non-persistable-sources` を足す
      (起動ログに WARNING が出て、`ask` の `structuredContent.retentionClass` が `non_persistable` になる。
      LibreChat はこの値を読まない)
