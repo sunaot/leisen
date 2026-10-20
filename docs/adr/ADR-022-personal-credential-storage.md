@@ -6,7 +6,7 @@ Status: Proposed(ドラフト。人間レビュー待ち。本 ADR の確認事�
 
 ADR-010 は、本人ごとの OAuth(方式 A: Google Drive / Slack / GitHub / Confluence / Notion)が主経路であると確定し、更新トークンの暗号化保管・ローテーション・失効を担う Token Vault を中核部品とした。T-004 はその実装(KMS 連携、deprovisioning 連動)を内容とする。これに対し、「サーバー側で持たず、もっとローカル(ブラウザの localStorage など)に寄せられないか」という指摘があった。運用者が全利用者分の更新トークンを預かる状態を避けたい、という動機である。
 
-2026-10-14 から 10-20 にかけて、この問いを検討した(検討メモ「個人の認可の実現方式」「資格情報の置き場所」「個人認可の方式比較」)。本 ADR はその結論を記録し、人間の判断が要る点を確認事項として挙げる。
+2026-10-14 から 10-20 にかけて、この問いを検討した(検討メモ「個人の認可の実現方式」「資格情報の置き場所」「個人認可の方式比較」。docs/notes/)。本 ADR はその結論を記録し、人間の判断が要る点を確認事項として挙げる。
 
 ### 問題の構造
 
@@ -76,6 +76,6 @@ Orchestrator の経由について、「ESC は中継者に無意味だから渡
 
 ## 参照
 
-- 検討メモ(本セッションの成果物。リポジトリ外): 「個人の認可の実現方式」(2026-10-14)、「資格情報の置き場所」(2026-10-15)、「個人認可の方式比較」(2026-10-19、10-20 改訂)
+- 検討メモ(docs/notes/): 「個人の認可の実現方式」(2026-10-14-personal-auth-study.html)、「資格情報の置き場所」(2026-10-15-credential-locality.html)、「個人認可の方式比較」(2026-10-19-auth-methods-comparison.html、10-20 改訂)
 - ADR-005 / ADR-010(追補を含む)/ ADR-012 / ADR-013 / ADR-014 / ADR-018 / ADR-019、docs/auth-matrix.md §12、docs/direct-connection.md、docs/threat-model.md §7、docs/backlog/T-004
 - RFC 10017 / BCP 212(OAuth 2.0 for Browser-Based Applications、2026-08)、RFC 6819 §3.1、RFC 8693、RFC 9728 / 8414、draft-ietf-oauth-identity-assertion-authz-grant-04(2026-05)、MCP Authorization / Security Best Practices(token passthrough の禁止)
