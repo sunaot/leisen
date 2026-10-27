@@ -18,6 +18,6 @@
     "@leisen/audit": "0.1.0",
     "@leisen/connector-sdk": "0.4.0",
     "@leisen/gateway": "0.1.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   }
 }
