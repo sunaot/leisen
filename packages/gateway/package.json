@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@leisen/audit": "0.1.0",
-    "@leisen/connector-sdk": "0.4.0",
+    "@leisen/connector-sdk": "0.5.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"

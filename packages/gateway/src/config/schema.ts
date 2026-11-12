@@ -166,14 +166,17 @@ const connectorSettingsSchema = z
 /**
  * コネクタの本人資格情報の取得方式(ADR-010 のソース別 Auth Adapter の選択)。
  * 当面は開発用の mock_env のみ: MockCredentialProvider が環境変数
- * LEISEN_MOCK_TOKEN_<SOURCEID> の固定トークンを本人資格情報として渡す
+ * LEISEN_MOCK_TOKEN_<SOURCEID> の固定値を本人資格情報として渡す
  * (NODE_ENV=production では起動時に拒否される)。T-004 で oauth_individual
- * (Token Vault)等を追加する。ここにも秘密情報を置かない(環境変数名で参照する)。
+ * (Token Vault)等を追加する。credentialKind はモックが返す形式を選ぶ。
+ * ここにも秘密情報を置かない(値は環境変数で渡す)。
  * 有効なコネクタに auth がない構成は起動コードが拒否する
  * (connector_auth_provider_missing。スキーマ検証だけでは拒否しない)。
  */
 const connectorAuthSchema = z.strictObject({
   provider: z.enum(["mock_env"]),
+  /** mock_env で渡す資格情報形式。開発専用。 */
+  credentialKind: z.enum(["oauth_bearer", "api_key"]).optional(),
 });
 
 const connectorSchema = z

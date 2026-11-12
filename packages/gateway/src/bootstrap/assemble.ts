@@ -154,7 +154,12 @@ function createCredentialProvider(
 ): CredentialProvider {
   switch (auth.provider) {
     case "mock_env":
-      return new MockCredentialProvider(sourceId, { env });
+      return new MockCredentialProvider(sourceId, {
+        env,
+        ...(auth.credentialKind !== undefined
+          ? { credentialKind: auth.credentialKind }
+          : {}),
+      });
   }
 }
 
