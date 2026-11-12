@@ -3,6 +3,7 @@
  *
  * ADR-010の認可方式分類(auth-matrix.md §12.1)をプラグイン境界として吸収する:
  * - A. oauth_individual: 個別OAuth(3-legged、本人トークン)。Token Vault 要
+ * - api_key_individual: 利用者ごとの API キー。資格情報はユーザー×ソースに保存し、共有しない
  * - B. token_exchange: OBO等のtoken exchange。Vault不要、IdPセッションに追随
  * - C. delegated_identity: 委譲身元。方式ごとにADR承認必須(T-017)
  * - D. サービスアカウント+本人判定は既定不採用(ソース別ADRで例外承認)のため
@@ -12,13 +13,14 @@
  * バックログのIF案は getCredential(userId, source) だが、方式B(OBO)は
  * 「本人のIdPトークン(subject token)」を都度交換に使うため、userId 文字列
  * だけでは資格情報を導出できない。そこで authenticate() が返す Identity
- * (userId+セッション)を受け取る形にし、方式A/B/Cの差を吸収する。
+ * (userId+セッション)を受け取る形にし、方式A/B/C と個人 API キーの差を吸収する。
  */
 import type { AuthContext, Credential } from "@leisen/connector-sdk";
 
 /** ADR-010 §12.1 の方式分類(Dは既定不採用のため型に含めない)。 */
 export type AuthMethod =
   | "oauth_individual"
+  | "api_key_individual"
   | "token_exchange"
   | "delegated_identity";
 

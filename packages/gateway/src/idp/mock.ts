@@ -11,6 +11,7 @@ import { CredentialResolvingIdpAdapter } from "./adapter.js";
 import type { CredentialCacheOptions } from "./cache.js";
 import {
   IdpError,
+  type AuthMethod,
   type CredentialProvider,
   type Identity,
 } from "./types.js";
@@ -153,6 +154,8 @@ export interface MockCredentialProviderOptions {
    * 起動コードが注入された環境(assembleGateway の env)を渡す。
    */
   env?: Readonly<Record<string, string | undefined>>;
+  /** 開発用に注入する資格情報の形式。既定は OAuth bearer。 */
+  credentialKind?: "oauth_bearer" | "api_key";
 }
 
 /**
@@ -168,10 +171,11 @@ export interface MockCredentialProviderOptions {
  * 開発用の固定userIdには英数字のみを使うこと。
  */
 export class MockCredentialProvider implements CredentialProvider {
-  readonly method = "oauth_individual" as const;
+  readonly method: AuthMethod;
   private readonly tokenLifetimeMs: number;
   private readonly now: () => number;
   private readonly env: Readonly<Record<string, string | undefined>>;
+  private readonly credentialKind: "oauth_bearer" | "api_key";
 
   constructor(
     public readonly sourceId: string,
@@ -181,6 +185,8 @@ export class MockCredentialProvider implements CredentialProvider {
     this.tokenLifetimeMs = options.tokenLifetimeMs ?? 60 * 60 * 1000;
     this.now = options.now ?? Date.now;
     this.env = options.env ?? process.env;
+    this.credentialKind = options.credentialKind ?? "oauth_bearer";
+    this.method = this.credentialKind === "api_key" ? "api_key_individual" : "oauth_individual";
   }
 
   async getCredential(identity: Identity): Promise<Credential> {
@@ -196,10 +202,9 @@ export class MockCredentialProvider implements CredentialProvider {
         `no mock credential injected for source '${this.sourceId}' (set ${base})`,
       );
     }
-    return {
-      kind: "oauth_bearer",
-      accessToken: token,
-      expiresAt: this.now() + this.tokenLifetimeMs,
-    };
+    if (this.credentialKind === "api_key") {
+      return { kind: "api_key", apiKey: token };
+    }
+    return { kind: "oauth_bearer", accessToken: token, expiresAt: this.now() + this.tokenLifetimeMs };
   }
 }

@@ -35,7 +35,7 @@
 1. 下記「[セットアップ](#セットアップ)」と「[手元で動かす(5分)](#手元で動かす5分)」— モック IdP と開発用コネクタで Gateway と leisen-ask を動かす
 2. [CLAUDE.md](CLAUDE.md) — 不変条件(違反するコードは書かない)、開発ルール、現在のフェーズ。人が書く場合も同じ規則に従う
 3. [docs/backlog/](docs/backlog/) — タスクと受け入れ条件。1 タスク = 1 ブランチ = 1 PR で、PR は [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) のチェックリストを埋める
-4. 下記「[構成](#構成)」とパッケージ別の README: [orchestrator](packages/orchestrator/README.md)、[audit](packages/audit/README.md)、[connector-github](packages/connector-github/README.md)
+4. 下記「[構成](#構成)」とパッケージ別の README: [orchestrator](packages/orchestrator/README.md)、[audit](packages/audit/README.md)、[connector-github](packages/connector-github/README.md)、[connector-redmine](packages/connector-redmine/README.md)
 5. プラグインを書く: コネクタは `packages/connector-sdk` の IF と [connector-github](packages/connector-github/README.md) を参考に、IdP Adapter は [docs/idp-adapter-guide.md](docs/idp-adapter-guide.md)、Keycloak の参照統合は [e2e/keycloak/README.md](e2e/keycloak/README.md)
 6. CI: `build-test`、`keycloak-e2e`、`reference-deploy` に加え、本番依存の監査(`audit`)と履歴全体の秘密情報スキャン(`secret-scan`、`scripts/ci/gitleaks.sh`)が走る。開発用のダミー値を足すときは `.gitleaks.toml` に理由と一緒に許可を書く。CI の Action はコミットの SHA で固定してあり、依存と Action の更新は Dependabot の PR で届く。パッケージはすべて `private`(npm には配布していない)
 
@@ -153,11 +153,12 @@ LEISEN_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/sm
 
 ## 構成
 
-- `packages/connector-sdk` — コネクタ共通IF(v0.4。ADR-016 追補2: 結果ごとのプライベート領域の分類 `scope`、能力 `privateScopeHandling`、factory への方針 `policy`)
+- `packages/connector-sdk` — コネクタ共通IF(v0.5。ADR-016 追補2: 結果ごとのプライベート領域の分類 `scope`、能力 `privateScopeHandling`、factory への方針 `policy`。ADR-022: 個人 API キー資格情報)
 - `packages/audit` — 監査ログの共通モジュール(ADR-011 の 2 層モデル。Gateway が書き、Orchestrator が申告し、昇格判定レポートが読む型と実装。ADR-019 決定10 で Gateway から切り出した。依存は zod と Node 標準のみ)
 - `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP。HTTPトランスポートは配線済みで `leisen-gateway serve` で起動する)と起動コード(`leisen-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
 - `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded、privateScopeHandling: classified。GitHub App は組織にだけインストールする前提)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち
+- `packages/connector-redmine` — Redmine コネクターの読み取り専用プロトタイプ。本人 API キーによる Issue / Wiki 検索と取得、Project 一覧に対応。現時点で検索フィルタと本番 Credential Provider は未対応
 - `packages/orchestrator` — Orchestrator 探索戦略 v1(T-007)と `leisen-ask` CLI(`leisen-ask serve` で MCP サーバーとして公開する。T-021、ADR-018)。LLM バックエンドは設定で選ぶ(Anthropic Messages API / OpenAI 互換。LM Studio・llama.cpp 等のローカルモデルは `--llm openai-compatible`)。使い方・LM Studio 手順・出典検証の契約は `packages/orchestrator/README.md`。設計は ADR-017(Proposed)
 - `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `examples/deployment.dev.yaml` — 手元で動かすための開発用設定(上記「手元で動かす」)

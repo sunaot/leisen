@@ -5,7 +5,7 @@
  *   資格情報を共有する経路を作らない。
  * - single-flight: 同一キーへの並行取得は1回のロードに合流する
  *   (トークンリフレッシュ/交換の重複実行防止)。
- * - TTL: 設定TTLと資格情報自体の失効(oauth_bearer.expiresAt)の早い方。
+ * - TTL: 設定TTLと資格情報自体の失効時刻がある場合はその早い方。
  *   TTLは権限剥奪の反映遅延の上限になる(threat-model TM-C系)ため、
  *   deployment.yaml から注入可能にする。
  */
@@ -15,7 +15,7 @@ export interface CredentialCacheOptions {
   /** キャッシュTTL(ms)。既定 5分。 */
   ttlMs?: number;
   /**
-   * oauth_bearer の expiresAt をどれだけ手前で失効扱いするか(ms)。
+   * Credential.expiresAt をどれだけ手前で失効扱いするか(ms)。
    * 期限直前のトークンをコネクタへ渡して即 auth_expired になるのを避ける。
    */
   expirySafetyMarginMs?: number;
@@ -116,8 +116,14 @@ export class CredentialCache {
 
   private entryExpiry(credential: Credential): number {
     const byTtl = this.now() + this.ttlMs;
-    if (credential.kind === "oauth_bearer") {
-      return Math.min(byTtl, credential.expiresAt - this.safetyMarginMs);
+    const credentialExpiry =
+      credential.kind === "oauth_bearer"
+        ? credential.expiresAt
+        : credential.kind === "api_key"
+          ? credential.expiresAt
+          : undefined;
+    if (credentialExpiry !== undefined) {
+      return Math.min(byTtl, credentialExpiry - this.safetyMarginMs);
     }
     return byTtl;
   }
