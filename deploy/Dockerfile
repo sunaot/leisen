@@ -35,7 +35,7 @@
 # その依存が入らずビルドが失敗する(orchestrator の追加時に CI の reference-deploy で
 # 実際に起きた: `Cannot find module '@anthropic-ai/sdk'`)。
 # runtime ステージにはイメージに含める workspace(gateway と、それが読み込む
-# audit / connector-sdk / connector-github / connector-esa、orchestrator、運用 CLI の promotion-report)だけを置く。
+# audit / connector-sdk / connector-github / connector-esa / connector-redmine、orchestrator、運用 CLI の promotion-report)だけを置く。
 # orchestrator を含めるため、本番依存に @anthropic-ai/sdk が加わる(ADR-018 帰結)。
 # npm ci は manifest のない workspace を無視するので、runtime の manifest を減らしても
 # lockfile との整合検査は通る(CI で確認済み)。
@@ -80,6 +80,7 @@ COPY packages/audit/package.json packages/audit/
 COPY packages/connector-sdk/package.json packages/connector-sdk/
 COPY packages/connector-github/package.json packages/connector-github/
 COPY packages/connector-esa/package.json packages/connector-esa/
+COPY packages/connector-redmine/package.json packages/connector-redmine/
 COPY packages/gateway/package.json packages/gateway/
 COPY packages/orchestrator/package.json packages/orchestrator/
 COPY packages/promotion-report/package.json packages/promotion-report/
@@ -103,6 +104,7 @@ COPY packages/audit/package.json packages/audit/
 COPY packages/connector-sdk/package.json packages/connector-sdk/
 COPY packages/connector-github/package.json packages/connector-github/
 COPY packages/connector-esa/package.json packages/connector-esa/
+COPY packages/connector-redmine/package.json packages/connector-redmine/
 COPY packages/gateway/package.json packages/gateway/
 COPY packages/orchestrator/package.json packages/orchestrator/
 COPY packages/promotion-report/package.json packages/promotion-report/
@@ -114,6 +116,7 @@ COPY --from=build /app/packages/audit/dist packages/audit/dist
 COPY --from=build /app/packages/connector-sdk/dist packages/connector-sdk/dist
 COPY --from=build /app/packages/connector-github/dist packages/connector-github/dist
 COPY --from=build /app/packages/connector-esa/dist packages/connector-esa/dist
+COPY --from=build /app/packages/connector-redmine/dist packages/connector-redmine/dist
 COPY --from=build /app/packages/gateway/dist packages/gateway/dist
 COPY --from=build /app/packages/orchestrator/dist packages/orchestrator/dist
 # system prompt の固定部(実行時に dist/ から ../prompts/ を読む)

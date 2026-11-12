@@ -113,6 +113,7 @@ export const OFFICIAL_CONNECTOR_PACKAGES: Readonly<Record<string, string>> =
   Object.freeze({
     github: "@leisen/connector-github",
     esa: "@leisen/connector-esa",
+    redmine: "@leisen/connector-redmine",
   });
 
 /** 開発専用の組み込み kind(本番では起動時に拒否する)。 */

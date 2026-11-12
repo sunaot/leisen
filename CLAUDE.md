@@ -16,7 +16,7 @@
 
 ## リポジトリ構成
 
-- `packages/connector-sdk` — コネクタ共通IF・型定義(v0.4、ADR-016 追補2)。全コネクタはここに依存する
+- `packages/connector-sdk` — コネクタ共通IF・型定義(v0.5、ADR-016 追補2・ADR-024 の `api_key`)。全コネクタはここに依存する
 - `packages/audit` — 監査ログの共通モジュール(2層モデルのスキーマ、docId 不可逆化、生クエリ表、保持期間、sink、JSONL ストア。ADR-019 決定10 で Gateway から切り出し)。依存は zod と Node 標準のみで、`proxy/`・`idp/`・`config/`・MCP SDK・connector-sdk を import しない(`npm run lint:imports` で検査)
 - `packages/gateway` — MCP Gateway(認証、IdP Adapter、監査ログの書き手、ルーティング)
 - `packages/connector-*` — 各データソースのMCPサーバー(今後追加)
@@ -49,6 +49,7 @@
 - 着手可能(人手の前提なし): T-024(探索プロンプト v4。T-022 の計測で v3 は 20 問 × 2 回で 37 / 40、不合格は複数文書の質問のみ。改訂の評価には v4 より前に固定した新しい質問を使う。実走は LLM)、T-025(自分の GitHub で試す開発用設定。本人の fine-grained PAT と `mock_env` の開発経路で、GitHub App の承認は不要)、T-007 / T-021 の改善。Claude API での実走のみ API キーが必要
 - 着手可能(実疎通は人手の前提待ち): T-019(GitHub App承認)、T-005(GCP OAuthクライアント承認)、T-004(IdPサンドボックス+KMS)。API薄ラッパーをモックした実装とテストは先行してよい
 - esa コネクタ(T-026、ADR-023 Accepted 2026-11-14): 公式リモート MCP サーバー(`https://mcp.esa.io`、β)を本人の OAuth トークンで呼ぶ `packages/connector-esa`。資格情報は Token Vault / ESC のどちらでも選べる(Gateway の OAuth プリセット `esa`、RFC 8707 の `resource`)。**2026-11-14: 実チームで Token Vault による接続(本人照合は MCP の `esa_get_team_members`。mcp スコープのトークンでは REST の `/v1/user` が 403)と Gateway 経由の検索を確認した。同日、ESC(Gateway の認可サーバーの同意画面で接続、発行トークンで検索)も確認した。** 手元で試す手順は README「自分の esa で試す」。2026-11-15 に LibreChat からの ESC での利用(出典付きの回答)も確認した(手元の一時的な構成。探索の時間上限は `orchestrator.runTimeoutSec` で延ばした)。ESC の Gateway のトークンの更新(refresh_token)は 2026-11-15 に確認。esa 側のトークンの更新と ADR-023「残る確認事項」3〜8 は未確認
+- Redmine コネクタ(ADR-024 Proposed、外部 PR #74 の取り込み): `packages/connector-redmine`、本人の個人 API キー(connector-sdk v0.5 の `Credential` `api_key`)で `/search.json` 等を呼ぶ読み取り専用。公式コネクタとして初期セットに含める(2026-11-16 オーナー決定)。現状は開発用の `mock_env`(`credentialKind: api_key`)のみで、本番の経路(Redmine の OAuth2 + Token Vault、または接続ページでの API キー登録)は未決定
 - **MCP実装は仕様2026-07-28版(ステートレス)を設計前提とする(ADR-001追補3、2026-09-27 Accepted)。** Gateway の HTTP トランスポート配線は完了(SDK v1)。`@modelcontextprotocol/sdk` は 1.32.1 に更新済み(2026-10-13、high の advisory 対応。v1 系は 1.32.1 でも2026-07-28版に非対応のため、新仕様固有の必須項目は保留。ADR-001追補3「SDK更新の検証結果」)。`_meta` の独自キーは暫定prefix `io.github.sunaot.leisen/` を使う(最終確定はT-013)
 - Slackコネクタ(T-006)は RTS/公式MCP を第一候補とする(ADR-014)。導入形態は類型(a)(導入企業が自社でSlackアプリを登録・運用する)で確定した(2026-10-13、オーナー決定)。ベンダーが Slack アプリやテンプレートを顧客に渡す形・有償導入支援との関係は issue #59 に論点として残す。実疎通は導入先の Slack アプリ承認と RTS 利用可否の確認待ち。モックでの先行実装はよいが、着手前に「Slack 有効時の生クエリ表の扱い」(下の未決事項)を決める
 - delegated_identity 認可スパイク(T-017)は Q2 に前倒し。ただし文書検索モジュール本体の実装は Q3 着手(ADR-006/008)であり、まだ書かない

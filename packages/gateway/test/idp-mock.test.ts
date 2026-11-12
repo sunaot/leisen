@@ -194,6 +194,33 @@ describe("MockCredentialProvider", () => {
     );
   });
 
+  it("Redmine の利用者別 API キーと GitHub の Bearer トークンを区別する", async () => {
+    const env = {
+      [`${mockTokenEnvVar("redmine")}__ALICE`]: "test-key-alice",
+      [`${mockTokenEnvVar("redmine")}__BOB`]: "test-key-bob",
+      [`${mockTokenEnvVar("github")}__ALICE`]: "test-bearer-alice",
+    };
+    const options = { env, now: () => 0, tokenLifetimeMs: 1000 };
+    const redmine = new MockCredentialProvider("redmine", {
+      ...options,
+      credentialKind: "api_key",
+    });
+    const github = new MockCredentialProvider("github", options);
+    await expect(redmine.getCredential(identity)).resolves.toEqual({
+      kind: "api_key",
+      apiKey: "test-key-alice",
+    });
+    await expect(redmine.getCredential({ ...identity, userId: "bob" })).resolves.toEqual({
+      kind: "api_key",
+      apiKey: "test-key-bob",
+    });
+    await expect(github.getCredential(identity)).resolves.toEqual({
+      kind: "oauth_bearer",
+      accessToken: "test-bearer-alice",
+      expiresAt: 1000,
+    });
+  });
+
   it("未注入のソースはsource_not_connected(未接続の認可分岐)", async () => {
     const provider = new MockCredentialProvider("gdrive");
     const error = await provider.getCredential(identity).catch((e) => e);

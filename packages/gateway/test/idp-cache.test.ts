@@ -70,6 +70,33 @@ describe("CredentialCache", () => {
     expect(calls).toBe(2);
   });
 
+  it("api_key の expiresAt があればそちらで、なければ TTL だけで失効する(ADR-024)", async () => {
+    const clock = fakeClock();
+    const cache = new CredentialCache({ ttlMs: 60_000, expirySafetyMarginMs: 100, now: clock.now });
+    let calls = 0;
+    const withExpiry = async (): Promise<Credential> => {
+      calls++;
+      return { kind: "api_key", apiKey: `key-${calls}`, expiresAt: clock.now() + 1000 };
+    };
+    await cache.getOrLoad("alice", "redmine", withExpiry);
+    clock.advance(901);
+    await cache.getOrLoad("alice", "redmine", withExpiry);
+    expect(calls).toBe(2);
+
+    let plainCalls = 0;
+    const withoutExpiry = async (): Promise<Credential> => {
+      plainCalls++;
+      return { kind: "api_key", apiKey: `key-${plainCalls}` };
+    };
+    await cache.getOrLoad("bob", "redmine", withoutExpiry);
+    clock.advance(59_999);
+    await cache.getOrLoad("bob", "redmine", withoutExpiry);
+    expect(plainCalls).toBe(1);
+    clock.advance(2);
+    await cache.getOrLoad("bob", "redmine", withoutExpiry);
+    expect(plainCalls).toBe(2);
+  });
+
   it("並行呼び出しはsingle-flightで1回のloaderに合流する", async () => {
     const cache = new CredentialCache({ ttlMs: 1000 });
     let calls = 0;
