@@ -6,6 +6,7 @@
  *
  * 秘密情報の実値は使わない(ダミーは dev-only-...、不変条件6)。
  */
+import type { TokenExchanger } from "../../src/server/token-exchange.js";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -34,6 +35,8 @@ import { searchHits } from "./script.js";
 export type AnswerRunRecord = Extract<AuditRecord, { recordType: "answer_run" }>;
 
 export interface OrchestratorServerOptions {
+  readonly tokenExchange?: TokenExchanger;
+  readonly protectedResource?: { readonly resource: string; readonly authorizationServer: string };
   readonly gatewayUrl: string;
   readonly llm: LlmClient;
   readonly limits?: ServerLimitsInput;
@@ -91,6 +94,8 @@ export async function startOrchestratorServer(
         ? { feedbackTimeoutMs: options.feedbackTimeoutMs }
         : {}),
       ...(options.sourcePolicy !== undefined ? { sourcePolicy: options.sourcePolicy } : {}),
+      ...(options.tokenExchange !== undefined ? { tokenExchange: options.tokenExchange } : {}),
+      ...(options.protectedResource !== undefined ? { protectedResource: options.protectedResource } : {}),
     },
     {
       ...(options.path !== undefined ? { path: options.path } : {}),

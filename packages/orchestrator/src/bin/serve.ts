@@ -84,6 +84,7 @@ import {
 } from "./credential-options.js";
 import type { CliDependencies, CliIo } from "./leisen-ask.js";
 import { LLM_USAGE_LINES, parseLlmCliOptions } from "./llm-options.js";
+import { GatewayTokenExchanger } from "../server/token-exchange.js";
 import {
   INSECURE_UPSTREAM_HINT,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -105,8 +106,12 @@ export const SERVE_USAGE = [
   "                    [--max-concurrent-runs <N>] [--max-question-chars <N>]",
   "                    [--confirm-exposed-host] [--allow-non-persistable-sources]",
   "                    [--allow-insecure-upstream] [LLM バックエンドの指定(下記)]",
+  "                    [--authorization-server <Gateway の公開 URL> --public-url <この MCP の公開 URL>]",
   "  Orchestrator を MCP サーバー(Streamable HTTP)として公開します(ツール: ask / feedback)。",
   "  利用者の認証は Gateway に委譲します(Authorization: Bearer <IdP が利用者に発行したアクセストークン>)。",
+  "  --authorization-server を付けると Gateway の認可サーバーを使う構成になり(ADR-022 決定 10)、受けたトークン",
+  "  (受け手 = --public-url)を Gateway の /token で Gateway 宛てに交換してから使います。",
+  "  --gateway-resource の既定は <--authorization-server>/mcp(Gateway の resource)。",
   `  --listen の既定は ${DEFAULT_SERVE_LISTEN}(環境変数 LEISEN_LISTEN)。ループバック以外は --confirm-exposed-host が必要です。`,
   `  --path の既定は ${DEFAULT_ORCHESTRATOR_HTTP_PATH}(死活確認は GET ${ORCHESTRATOR_HEALTH_PATH})。`,
   `  --max-concurrent-runs の既定は ${DEFAULT_MAX_CONCURRENT_RUNS}(1〜${MAX_CONCURRENT_RUNS_LIMIT})、--max-question-chars の既定は ${DEFAULT_MAX_QUESTION_CHARS}(1〜${MAX_QUESTION_CHARS})。`,
@@ -157,6 +162,12 @@ interface ServeArgs {
   /** --allow-insecure-upstream(Gateway・LLM のループバック以外の http を許す) */
   readonly allowInsecureUpstream: boolean;
   readonly llm: LlmBackendConfigInput;
+  /** Gateway の認可サーバーを使う構成(ADR-022 決定 10) */
+  readonly authorizationServer?: {
+    readonly issuer: string;
+    readonly publicUrl: string;
+    readonly gatewayResource: string;
+  };
 }
 
 function nonEmpty(value: string | undefined): string | undefined {
@@ -195,6 +206,9 @@ function parseServeArgsStrict(argv: readonly string[]) {
     args: [...argv],
     options: {
       gateway: { type: "string" },
+      "authorization-server": { type: "string" },
+      "public-url": { type: "string" },
+      "gateway-resource": { type: "string" },
       config: { type: "string" },
       listen: { type: "string" },
       path: { type: "string" },
@@ -282,7 +296,31 @@ function parseServeArgs(
   if (!credential.ok) {
     throw new ServeUsageError(credential.message);
   }
+  const issuer = nonEmpty(values["authorization-server"]);
+  const publicUrl = nonEmpty(values["public-url"]);
+  if ((issuer === undefined) !== (publicUrl === undefined)) {
+    throw new ServeUsageError("--authorization-server と --public-url は両方を指定してください。");
+  }
+  let authorizationServer: ServeArgs["authorizationServer"];
+  if (issuer !== undefined && publicUrl !== undefined) {
+    const valid = (u: string) => {
+      try {
+        const url = new URL(u);
+        return url.protocol === "https:" || (insecure.enabled || ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname));
+      } catch {
+        return false;
+      }
+    };
+    const gatewayResource = nonEmpty(values["gateway-resource"]) ?? `${issuer.replace(/\/+$/, "")}/mcp`;
+    if (!valid(issuer) || !valid(publicUrl) || !valid(gatewayResource)) {
+      throw new ServeUsageError(
+        "--authorization-server / --public-url / --gateway-resource は https の URL で指定してください(ループバックと --allow-insecure-upstream のときは http も可)。",
+      );
+    }
+    authorizationServer = { issuer: issuer.replace(/\/+$/, ""), publicUrl, gatewayResource };
+  }
   return {
+    ...(authorizationServer !== undefined ? { authorizationServer } : {}),
     gateway,
     config,
     listen,
@@ -489,6 +527,20 @@ export async function runServe(
       gatewayUrl: gatewayUrl.href,
       // run API と runId を申告する tools/call に付ける(ADR-019 決定3)
       orchestratorCredential: args.orchestratorCredential,
+      // Gateway の認可サーバーを使う構成: 受けたトークンを Gateway 宛てに交換する(ADR-022 決定 10)
+      ...(args.authorizationServer !== undefined
+        ? {
+            tokenExchange: new GatewayTokenExchanger({
+              tokenEndpoint: new URL("/token", gatewayUrl).href,
+              gatewayResource: args.authorizationServer.gatewayResource,
+              credential: args.orchestratorCredential,
+            }),
+            protectedResource: {
+              resource: args.authorizationServer.publicUrl,
+              authorizationServer: args.authorizationServer.issuer,
+            },
+          }
+        : {}),
       limits,
       retentionClass: nonPersistable.length > 0 ? "non_persistable" : "persistable",
       // Gateway が --config にないソースを公開していれば ask / feedback を断る(S6)。
@@ -536,6 +588,11 @@ export async function runServe(
   io.stderr(`${PREFIX}: deployment: ${config.deployment.name}`);
   // Gateway の URL はホストだけ(パス・クエリは出さない)
   io.stderr(`${PREFIX}: gateway: ${gatewayUrl.protocol}//${gatewayUrl.host}`);
+  if (args.authorizationServer !== undefined) {
+    io.stderr(
+      `${PREFIX}: authorization server: ${args.authorizationServer.issuer} (resource ${args.authorizationServer.publicUrl}; tokens are exchanged for ${args.authorizationServer.gatewayResource})`,
+    );
+  }
   // run の記録は Gateway の run API(ADR-019)。資格情報の値は出さない
   io.stderr(
     `${PREFIX}: run api: gateway (orchestrator credential: ${describeOrchestratorCredential(args.credentialSource)})`,
