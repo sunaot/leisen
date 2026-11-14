@@ -98,7 +98,7 @@ async function startFakeEsaMcp(validTokens: () => Set<string>) {
 }
 
 /** esa の OAuth(api.esa.io)のモック。 */
-function esaOAuthMock(state: { email: string; issued: Set<string>; revoked: string[]; tokenRequests: RecordedRequest[] }) {
+function esaOAuthMock(state: { email: string; userStatus: number; issued: Set<string>; revoked: string[]; tokenRequests: RecordedRequest[] }) {
   let n = 0;
   return mockFetch({
     "POST https://api.esa.io/oauth/token": (req) => {
@@ -113,7 +113,9 @@ function esaOAuthMock(state: { email: string; issued: Set<string>; revoked: stri
       return jsonResponse({ access_token: access, refresh_token: `esa-refresh-${n}`, token_type: "Bearer", expires_in: 7200, scope: "mcp" });
     },
     "GET https://api.esa.io/v1/user": (req) =>
-      state.issued.has(String(req.headers["authorization"]).replace(/^Bearer /, ""))
+      state.userStatus !== 200
+        ? jsonResponse({ error: "unauthorized", message: "token for another resource" }, state.userStatus)
+        : state.issued.has(String(req.headers["authorization"]).replace(/^Bearer /, ""))
         ? jsonResponse({ id: 1, name: "Alice", screen_name: "alice", email: state.email })
         : jsonResponse({ error: "unauthorized" }, 401),
     "POST https://api.esa.io/oauth/revoke": (req) => {
@@ -128,7 +130,7 @@ async function startGateway(provider: "token_vault" | "esc") {
   const base = `http://127.0.0.1:${port}`;
   const dir = await mkdtemp(join(tmpdir(), "leisen-esa-"));
   dirs.push(dir);
-  const esa = { email: "alice@example.com", issued: new Set<string>(), revoked: [] as string[], tokenRequests: [] as RecordedRequest[] };
+  const esa = { email: "alice@example.com", userStatus: 200, issued: new Set<string>(), revoked: [] as string[], tokenRequests: [] as RecordedRequest[] };
   const mcp = await startFakeEsaMcp(() => esa.issued);
   const yaml = `
 schemaVersion: 1
@@ -158,7 +160,9 @@ audit:
 `;
   const oauth = esaOAuthMock(esa);
   const specifiers: string[] = [];
+  const warnings: string[] = [];
   const assembled = await assembleGateway({
+    warn: (message) => warnings.push(message),
     config: parseDeploymentConfig(yaml),
     configDir: dir,
     fetchImpl: oauth.impl,
@@ -179,7 +183,7 @@ audit:
   assembled.httpServer.listen(port, "127.0.0.1");
   await once(assembled.httpServer, "listening");
   expect(specifiers).toEqual(["@leisen/connector-esa"]);
-  return { base, esa, mcp };
+  return { base, esa, mcp, warnings };
 }
 
 class Browser {
@@ -289,6 +293,24 @@ describe("esa を Token Vault で使う", () => {
     expect(await done.text()).toContain("一致しません");
     expect(esa.revoked).toEqual(["esa-refresh-1"]);
     expect((await mcpSearch(base, "alice-token")).text).toContain("source_not_connected");
+  });
+});
+
+describe("接続の失敗の切り分け", () => {
+  it("本人照合の照会(/v1/user)が拒否されたら、段階と HTTP 状態をサーバーログに出す(トークンは出さない)", async () => {
+    const { base, esa, warnings } = await startGateway("token_vault");
+    esa.userStatus = 401;
+    const browser = new Browser(base);
+    await mockLogin(browser, await browser.request("/connections?source=esa"), "alice-token");
+    const csrf = hidden(await (await browser.request("/connections")).text(), "csrf");
+    const done = await esaCallback(browser, await browser.post("/connections/start", { csrf, source: "esa" }));
+    expect(done.status).toBe(502);
+    const line = warnings.find((w) => w.startsWith('connecting source "esa" failed'));
+    expect(line).toBe('connecting source "esa" failed: identity lookup returned HTTP 401');
+    // 照合できなかったトークンは失効を依頼して捨てる
+    expect(esa.revoked).toEqual(["esa-refresh-1"]);
+    expect(warnings.join("\n")).not.toContain("esa-access");
+    expect(warnings.join("\n")).not.toContain("another resource");
   });
 });
 
