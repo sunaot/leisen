@@ -12,7 +12,7 @@ T-004(本人資格情報の 3 方式と認可サーバー、ADR-022)、T-003(Gat
 - `packages/connector-esa`: connector-sdk v0.4 の IF を esa の読み取り系 MCP ツールで実装する。上流は公式 SDK のクライアントで、本人の OAuth アクセストークンで呼ぶ。書き込み系のツールは呼べない
 - Gateway の OAuth プリセット `esa`(端点、RFC 8707 の `resource=https://mcp.esa.io`、本人照合は `GET /v1/user` の email、失効は RFC 7009)。`connectors[].auth.oauth.resource` の設定
 - 公式コネクタの許可表に `esa` の行を足す
-- 設定例(`examples/deployment.credentials.yaml`)、docs/personal-auth.md、docs/auth-matrix.md、Dockerfile
+- 設定例(`examples/deployment.credentials.yaml`、手元で試す開発用の `examples/deployment.dev-esa.yaml` と README「自分の esa で試す」)、docs/personal-auth.md、docs/auth-matrix.md、Dockerfile
 
 ## 受け入れ条件
 - [x] 全呼び出しが本人トークン(上流に届く Authorization が本人の esa トークンだけで、IdP・MCP クライアントのトークンが届かないことの結合テスト)

@@ -632,6 +632,36 @@ describe.skipIf(!existsSync(DIST_BIN))("ビルド成果物の実行(子プロセ
     expectNoSecrets(result.stdout + result.stderr);
   });
 
+  it("examples/deployment.dev-esa.yaml は鍵と client secret を与えれば validate が 0 で終わり、状態 DB を作らない", () => {
+    const esaConfig = join(EXAMPLES_DIR, "deployment.dev-esa.yaml");
+    const stateDb = join(EXAMPLES_DIR, "..", "var", "esa-credentials.db");
+    const existedBefore = existsSync(stateDb);
+    const result = spawnSync(process.execPath, [DIST_BIN, "validate", "--config", esaConfig], {
+      env: {
+        ...env,
+        LEISEN_MOCK_SESSIONS: "dev-only-session=alice;email=alice@example.com",
+        LEISEN_VAULT_KEY: Buffer.alloc(32, 1).toString("base64"),
+        LEISEN_ESC_KEY: Buffer.alloc(32, 2).toString("base64"),
+        LEISEN_ESA_CLIENT_SECRET: "dev-only-cli-token",
+      },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("enabled sources: esa");
+    expect(existsSync(stateDb)).toBe(existedBefore);
+    expectNoSecrets(result.stdout + result.stderr);
+  });
+
+  it("examples/deployment.dev-esa.yaml は NODE_ENV=production では開発用の部品で拒否される", () => {
+    const result = spawnSync(process.execPath, [DIST_BIN, "validate", "--config", join(EXAMPLES_DIR, "deployment.dev-esa.yaml")], {
+      env: { ...env, NODE_ENV: "production", LEISEN_ESA_CLIENT_SECRET: "dev-only-cli-token" },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain("dev_only_in_production");
+    expectNoSecrets(result.stdout + result.stderr);
+  });
+
   it("npm の bin(起動シム)経由でも動き、使い方の誤りは 2 で終わる", () => {
     const help = spawnSync(process.execPath, [NPM_BIN_SHIM, "help"], { env, encoding: "utf8" });
     expect(help.status).toBe(0);
