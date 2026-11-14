@@ -66,6 +66,10 @@ export type ConfigIssueCode =
   | "token_exchange_scope_missing"
   /** identityCheck: none に confirmIdentityCheckDisabled: true がない */
   | "identity_check_disabled_requires_confirmation"
+  /** preset: esa の本人照合に、kind: esa と settings.team がない(ADR-023) */
+  | "esa_identity_check_requires_esa_connector"
+  /** 本番で esa の mcpUrl が https://mcp.esa.io 以外(本人のトークンの送り先の固定。ADR-023) */
+  | "esa_mcp_url_not_allowed"
   /** preset: custom に端点がない */
   | "oauth_endpoints_missing"
   /** provider: esc なのに認可サーバーが無効 */

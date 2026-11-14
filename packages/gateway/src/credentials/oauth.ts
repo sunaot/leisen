@@ -45,6 +45,11 @@ export interface SourceOAuthConfig {
    * https://mcp.esa.io)。既定のないプリセットでは送らない
    */
   readonly resource?: string;
+  /**
+   * 本人照合のメールアドレスの取得をプリセットの既定(userinfo 等)から差し替える。
+   * esa は必須(MCP の esa_get_team_members で引く。credentials/esa-identity.ts、ADR-023)
+   */
+  readonly identityLookup?: (accessToken: string) => Promise<string[]>;
 }
 
 export class SourceOAuthError extends Error {
@@ -78,13 +83,12 @@ const PRESET_ENDPOINTS: Record<Exclude<OAuthPreset, "custom">, OAuthEndpoints> =
   },
   // esa のリモート MCP サーバー(https://mcp.esa.io)の認可サーバー(RFC 9728 の
   // authorization_servers)。端点は https://api.esa.io/.well-known/oauth-authorization-server
-  // で確認した(ADR-023)。本人照合は REST API の GET /v1/user の email
+  // で確認した(ADR-023)。本人照合は MCP 経由(identityLookup。mcp スコープのトークンでは
+  // REST の GET /v1/user が 403 になるため)
   esa: {
     authorizationEndpoint: "https://api.esa.io/oauth/authorize",
     tokenEndpoint: "https://api.esa.io/oauth/token",
     revocationEndpoint: "https://api.esa.io/oauth/revoke",
-    userinfoEndpoint: "https://api.esa.io/v1/user",
-    apiBaseUrl: "https://api.esa.io",
   },
 };
 
@@ -160,6 +164,9 @@ export class SourceOAuthClient {
     this.endpoints = resolveEndpoints(config.preset, config.endpoints);
     if (config.preset === "custom" && config.fetchIdentity && this.endpoints.userinfoEndpoint === undefined) {
       throw new Error("custom OAuth sources with identityCheck: email require userinfoEndpoint");
+    }
+    if (config.preset === "esa" && config.fetchIdentity && config.identityLookup === undefined) {
+      throw new Error("esa OAuth sources with identityCheck: email require an identity lookup via the esa MCP server");
     }
     this.resource = config.resource ?? PRESET_RESOURCES[config.preset];
     this.#config = config;
@@ -291,7 +298,10 @@ export class SourceOAuthClient {
     let verifiedEmails: string[] = [];
     if (this.#config.fetchIdentity) {
       try {
-        verifiedEmails = await this.#fetchVerifiedEmails(raw.tokens, raw.slackUserId);
+        verifiedEmails =
+          this.#config.identityLookup !== undefined
+            ? await this.#config.identityLookup(raw.tokens.accessToken)
+            : await this.#fetchVerifiedEmails(raw.tokens, raw.slackUserId);
       } catch (error) {
         // 本人照合ができなかったトークンは使わない。ソースへ失効を依頼して捨てる
         await this.revoke(raw.tokens);
@@ -457,15 +467,6 @@ export function extractVerifiedEmails(preset: OAuthPreset, body: unknown): strin
     // Slack はワークスペースが確認したメールアドレスだけを返す
     if (isRecord(body) && body["ok"] === true && isRecord(body["user"]) && isRecord(body["user"]["profile"])) {
       push(body["user"]["profile"]["email"]);
-    }
-    return out;
-  }
-  if (preset === "esa") {
-    // esa の GET /v1/user はアカウントのメールアドレスを 1 件返す(email_verified を持たない)。
-    // esa はメールアドレスの確認を経てアカウントを有効にするため、確認済みとして扱う(ADR-023。
-    // 実疎通で確認する事項)
-    if (isRecord(body)) {
-      push(body["email"]);
     }
     return out;
   }

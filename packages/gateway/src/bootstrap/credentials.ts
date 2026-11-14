@@ -20,6 +20,7 @@ import { discardCredentialEvents, type CredentialEventSink } from "../credential
 import { GcpKmsKeyProvider } from "../credentials/gcp-kms.js";
 import { decodeKeyBytes, LocalKeyProvider, type KeyProvider } from "../credentials/keys.js";
 import { SourceOAuthClient } from "../credentials/oauth.js";
+import { esaIdentityLookup } from "../credentials/esa-identity.js";
 import {
   EscCredentialProvider,
   TokenExchangeCredentialProvider,
@@ -306,6 +307,34 @@ export function createSourceCredentialProvider(
     });
     return undefined;
   }
+  // esa の本人照合は、接続するコネクタと同じ MCP エンドポイント・チームで行う(ADR-023)
+  let identityLookup: ((accessToken: string) => Promise<string[]>) | undefined;
+  if (o.preset === "esa" && o.identityCheck === "email") {
+    const settings = connector.settings as Record<string, unknown> | undefined;
+    const team = settings?.["team"];
+    const mcpUrl = settings?.["mcpUrl"];
+    if (connector.kind !== "esa" || typeof team !== "string" || team === "") {
+      issues.push({
+        code: "esa_identity_check_requires_esa_connector",
+        path: `${path}.oauth.preset`,
+        message: "preset esa with identityCheck: email requires kind: esa with settings.team (the identity check calls the team's esa MCP server)",
+      });
+      return undefined;
+    }
+    const lookupUrl = typeof mcpUrl === "string" ? mcpUrl : "https://mcp.esa.io/";
+    // 本番では本人のトークンの送り先を mcp.esa.io に固定する(コネクタと同じ規則。ADR-023 決定 12)
+    let lookupOrigin: string | undefined;
+    try {
+      lookupOrigin = new URL(lookupUrl).origin;
+    } catch {
+      lookupOrigin = undefined;
+    }
+    if (isProduction() && lookupOrigin !== "https://mcp.esa.io") {
+      issues.push({ code: "esa_mcp_url_not_allowed", path: `${path}.settings.mcpUrl`, message: "the esa identity check must call https://mcp.esa.io in production" });
+      return undefined;
+    }
+    identityLookup = esaIdentityLookup({ team, mcpUrl: lookupUrl });
+  }
   const secret = secretFromEnv(env, o.clientSecretEnv, `${path}.oauth.clientSecretEnv`, issues);
   if (secret === undefined) return undefined;
   const oauth = new SourceOAuthClient({
@@ -319,6 +348,7 @@ export function createSourceCredentialProvider(
       : {}),
     fetchIdentity: o.identityCheck === "email",
     ...(o.resource !== undefined ? { resource: o.resource } : {}),
+    ...(identityLookup !== undefined ? { identityLookup } : {}),
   }, runtime.fetchImpl !== undefined ? { fetchImpl: runtime.fetchImpl } : {});
   runtime.sources.set(connector.id, { sourceId: connector.id, kind: auth.provider, oauth, identityCheck: o.identityCheck });
   const publicBaseUrl = config.gateway.publicBaseUrl;

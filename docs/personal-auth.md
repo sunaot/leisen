@@ -78,7 +78,7 @@ auth:
   - GitHub: `GET /user/emails` の verified なもの(GitHub App は「Email addresses」の読み取り権限が要る)
   - Google: userinfo の `email`(`email_verified: true`)。スコープ `openid email` を自動で足す
   - Slack: `users.info` の `profile.email`。`authed_user.id` は照会にだけ使い、保管しない(不変条件 7)。スコープ `users:read` `users:read.email` を自動で足す
-  - esa: REST API の `GET /v1/user` の `email`(ADR-023。`mcp` スコープのトークンで呼べるかは実疎通で確認する)
+  - esa: MCP の `esa_get_team_members` の `myself: true` の行の `email`(ADR-023。`mcp` スコープのトークンでは REST の `GET /v1/user` が 403 になるため、コネクタと同じ MCP サーバー・チームで引く。`kind: esa` と `settings.team` が要る)
   - custom: `endpoints.userinfoEndpoint` の `email` / `email_verified`
 - プリセットの端点は `endpoints` で上書きできる(GitHub Enterprise Server は `authorizationEndpoint` / `tokenEndpoint` / `apiBaseUrl`)
 - `resource`(RFC 8707)はトークンの受け手。リモート MCP サーバーを上流にするソースで使い、認可要求・コード交換・更新の 3 つに同じ値を載せる。`esa` プリセットの既定は `https://mcp.esa.io`
