@@ -112,6 +112,7 @@ export const BUILTIN_CONNECTOR_FACTORIES: Readonly<
 export const OFFICIAL_CONNECTOR_PACKAGES: Readonly<Record<string, string>> =
   Object.freeze({
     github: "@leisen/connector-github",
+    esa: "@leisen/connector-esa",
   });
 
 /** 開発専用の組み込み kind(本番では起動時に拒否する)。 */

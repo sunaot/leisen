@@ -291,3 +291,59 @@ describe("CredentialRevocation", () => {
     expect(await revocation.disconnect(alice, "other")).toBe(false);
   });
 });
+
+describe("SourceOAuthClient(esa プリセット、ADR-023)", () => {
+  function esa(routes: Record<string, MockHandler> = {}) {
+    const fetch = mockFetch(routes);
+    const client = new SourceOAuthClient(
+      { sourceId: "esa", preset: "esa", clientId: "esa-app", clientSecret: "esa-secret", scopes: ["mcp"], fetchIdentity: true },
+      { fetchImpl: fetch.impl, now: () => 10_000 },
+    );
+    return { client, fetch };
+  }
+
+  it("認可 URL は api.esa.io で、RFC 8707 の resource に mcp.esa.io を載せる", () => {
+    const { client } = esa();
+    const url = new URL(client.authorizationUrl({ state: "s", codeChallenge: "c", redirectUri: "https://leisen.example/connections/callback" }));
+    expect(url.origin + url.pathname).toBe("https://api.esa.io/oauth/authorize");
+    expect(url.searchParams.get("resource")).toBe("https://mcp.esa.io");
+    expect(url.searchParams.get("scope")).toBe("mcp");
+    expect(client.resource).toBe("https://mcp.esa.io");
+  });
+
+  it("更新(refresh_token)にも resource を載せ、ローテーションしなければ旧更新トークンを保つ", async () => {
+    const { client, fetch } = esa({
+      "POST https://api.esa.io/oauth/token": () => jsonResponse({ access_token: "esa-access-2", expires_in: 7200 }),
+    });
+    const refreshed = await client.refresh({ accessToken: "esa-access-1", refreshToken: "esa-refresh-1", obtainedAt: 0 });
+    const form = fetch.requests[0]?.form();
+    expect(form?.get("grant_type")).toBe("refresh_token");
+    expect(form?.get("resource")).toBe("https://mcp.esa.io");
+    expect(refreshed.refreshToken).toBe("esa-refresh-1");
+    expect(refreshed.accessExpiresAt).toBe(10_000 + 7_200_000);
+  });
+
+  it("本人照合は GET /v1/user の email、失効は RFC 7009 で更新トークンを送る", async () => {
+    expect(extractVerifiedEmails("esa", { screen_name: "alice", email: "Alice@Example.com" })).toEqual(["alice@example.com"]);
+    expect(extractVerifiedEmails("esa", { screen_name: "alice" })).toEqual([]);
+    const { client, fetch } = esa({ "POST https://api.esa.io/oauth/revoke": () => new Response(null, { status: 200 }) });
+    expect(await client.revoke({ accessToken: "esa-access-1", refreshToken: "esa-refresh-1", obtainedAt: 0 })).toBe(true);
+    expect(fetch.requests[0]?.form().get("token")).toBe("esa-refresh-1");
+  });
+
+  it("resource を設定で上書きでき、既定のないプリセットには送らない", () => {
+    const custom = new SourceOAuthClient({
+      sourceId: "x",
+      preset: "custom",
+      clientId: "c",
+      clientSecret: "s",
+      scopes: [],
+      fetchIdentity: false,
+      endpoints: { authorizationEndpoint: "https://as.example/authorize", tokenEndpoint: "https://as.example/token" },
+      resource: "https://mcp.example",
+    });
+    expect(new URL(custom.authorizationUrl({ state: "s", codeChallenge: "c", redirectUri: "https://x/cb" })).searchParams.get("resource")).toBe("https://mcp.example");
+    const { client } = github();
+    expect(new URL(client.authorizationUrl({ state: "s", codeChallenge: "c", redirectUri: "https://x/cb" })).searchParams.get("resource")).toBeNull();
+  });
+});

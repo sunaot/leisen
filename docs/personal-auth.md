@@ -65,7 +65,7 @@ Keycloak の場合:
 auth:
   provider: token_vault        # または esc
   oauth:
-    preset: github             # github / google / slack / custom
+    preset: github             # github / google / slack / esa / custom
     clientId: Iv23li...
     clientSecretEnv: LEISEN_GITHUB_APP_SECRET
     scopes: []                 # プリセットが本人照合に要るスコープを足す
@@ -78,8 +78,33 @@ auth:
   - GitHub: `GET /user/emails` の verified なもの(GitHub App は「Email addresses」の読み取り権限が要る)
   - Google: userinfo の `email`(`email_verified: true`)。スコープ `openid email` を自動で足す
   - Slack: `users.info` の `profile.email`。`authed_user.id` は照会にだけ使い、保管しない(不変条件 7)。スコープ `users:read` `users:read.email` を自動で足す
+  - esa: REST API の `GET /v1/user` の `email`(ADR-023。`mcp` スコープのトークンで呼べるかは実疎通で確認する)
   - custom: `endpoints.userinfoEndpoint` の `email` / `email_verified`
 - プリセットの端点は `endpoints` で上書きできる(GitHub Enterprise Server は `authorizationEndpoint` / `tokenEndpoint` / `apiBaseUrl`)
+- `resource`(RFC 8707)はトークンの受け手。リモート MCP サーバーを上流にするソースで使い、認可要求・コード交換・更新の 3 つに同じ値を載せる。`esa` プリセットの既定は `https://mcp.esa.io`
+
+### esa(ADR-023)
+
+```yaml
+- id: esa
+  kind: esa                    # 公式コネクタ(@leisen/connector-esa)
+  settings:
+    team: example-team         # <team>.esa.io の <team>。このチームだけを検索する
+    privateCategories: [Users] # 個人の場所として使うカテゴリを private に分類する
+  auth:
+    provider: token_vault      # または esc
+    oauth:
+      preset: esa
+      clientId: <esa の OAuth クライアント ID>
+      clientSecretEnv: LEISEN_ESA_CLIENT_SECRET
+      scopes: [mcp]
+```
+
+- esa チームの owner が「SETTINGS > API・アプリ・MCP > アクセス設定 > リモートMCPサーバー」でアクセスを許可する(既定は拒否)。「ポリシー+アプリごとに承認」にして leisen のクライアントだけを承認し、ポリシーで読み取り系に絞ることを推奨する
+- クライアントは `https://api.esa.io/oauth/dcr`(動的登録)で一度だけ登録する。リダイレクト URI は `<publicBaseUrl>/connections/callback`、認証方式は `client_secret_post`。得た client secret は環境変数で渡す
+- コネクタは esa の読み取り系のツールだけを呼ぶ。書き込み系のツールは MCP クライアントに見えない。`mcp` スコープ自体は書き込みも許すので、owner のポリシーで読み取りに絞ることは**必須**とする
+- 本番ではトークンの送り先を `https://mcp.esa.io` に固定する(`settings.mcpUrl` の上書きは開発・テスト用)
+- 本人照合はメールアドレスの一致による。esa がメールアドレスの変更時に確認を求めるかは未確認(ADR-023 確認事項 8)
 
 ## 5. IdP トークン方式(token_exchange)
 
