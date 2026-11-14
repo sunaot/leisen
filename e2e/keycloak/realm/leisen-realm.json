@@ -5,32 +5,13 @@
   "clients": [
     {
       "clientId": "gateway",
-      "name": "Gateway (introspection + browser login for the connections page / authorization server, ADR-022)",
+      "name": "Gateway (introspection client)",
       "enabled": true,
       "publicClient": false,
       "secret": "dev-only-gateway-secret",
       "serviceAccountsEnabled": true,
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:8787/login/callback"],
-      "attributes": {
-        "pkce.code.challenge.method": "S256"
-      },
-      "protocolMappers": [
-        {
-          "name": "audience-gateway-self",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "gateway",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-            "introspection.token.claim": "true"
-          }
-        }
-      ]
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
     },
     {
       "clientId": "e2e-cli",
