@@ -399,6 +399,14 @@ export function assembleAuth(input: {
         issues.push({ code: "redirect_uri_not_allowed", path: `${path}.redirectUris`, message: "redirect URIs must be https, or http on a loopback host, without a fragment" });
         return;
       }
+      if (
+        client.defaultResource !== undefined &&
+        client.defaultResource !== `${publicBaseUrl}${config.gateway.http.path}` &&
+        client.defaultResource !== as.orchestratorResource
+      ) {
+        issues.push({ code: "redirect_uri_not_allowed", path: `${path}.defaultResource`, message: "defaultResource must be the gateway MCP URL or orchestratorResource" });
+        return;
+      }
       const secret = client.clientSecretEnv !== undefined ? secretFromEnv(env, client.clientSecretEnv, `${path}.clientSecretEnv`, issues) : undefined;
       if (client.clientSecretEnv !== undefined && secret === undefined) return;
       clients.set(client.clientId, {
@@ -406,6 +414,7 @@ export function assembleAuth(input: {
         redirectUris: client.redirectUris,
         ...(client.name !== undefined ? { name: client.name } : {}),
         ...(secret !== undefined ? { secret } : {}),
+        ...(client.defaultResource !== undefined ? { defaultResource: client.defaultResource } : {}),
       });
     });
     if (clients.size === 0 && !as.allowDynamicRegistration) {

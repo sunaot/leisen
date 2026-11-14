@@ -327,10 +327,8 @@ export class GitHubApiClient {
         "GitHub access token has no valid expiry time; the user must reconnect GitHub",
       );
     }
-    // TODO(T-004 / ADR-016 追補): expiresAt <= 0 の意味は connector-sdk で未定義
-    // (型コメントは「トークン失効時刻(epoch ms)」のみ)。現状は「失効時刻不明」
-    // (失効しないトークン等)とみなして判定せず、GitHub の 401 に委ねる暫定扱い。
-    // Token Vault(T-004)で失効時刻不明の表現を確定し、SDK の型コメントに追補する
+    // expiresAt <= 0 は「失効時刻不明」(失効しないトークン等。ADR-016 追補3)。判定せず
+    // GitHub の 401 に委ねる
     if (credential.expiresAt > 0 && credential.expiresAt <= this.now()) {
       throw new ConnectorError(
         "auth_expired",

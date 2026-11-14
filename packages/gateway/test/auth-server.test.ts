@@ -461,6 +461,29 @@ describe("MCP 認可サーバーと ESC", () => {
 });
 
 describe("起動時の検証", () => {
+  it("examples/deployment.credentials.yaml は秘密を環境変数で与えれば検証を通る", async () => {
+    const { loadDeploymentConfig } = await import("../src/index.js");
+    const dir = await mkdtemp(join(tmpdir(), "leisen-example-"));
+    dirs.push(dir);
+    const loaded = loadDeploymentConfig(join(EXAMPLES_DIR, "deployment.credentials.yaml"));
+    const config = { ...loaded, audit: { ...loaded.audit, jsonl: { path: join(dir, "audit.jsonl") } } };
+    const assembled = await assembleGateway({
+      config,
+      configDir: EXAMPLES_DIR,
+      validateOnly: true,
+      env: {
+        LEISEN_KEYCLOAK_CLIENT_SECRET: "x",
+        LEISEN_ESC_KEY: randomBytes(32).toString("base64"),
+        LEISEN_GITHUB_APP_SECRET: "y",
+        LEISEN_LIBRECHAT_CLIENT_SECRET: "z",
+        LEISEN_ADMIN_CREDENTIAL: "q".repeat(40),
+      },
+    });
+    opened.push(assembled);
+    expect(assembled.credentialsDescription).toContain("github=token_vault");
+    expect(assembled.credentialsDescription).toContain("authorization server on");
+  });
+
   it("esc は認可サーバーの有効化を要し、鍵・publicBaseUrl の欠落を列挙する", async () => {
     const config = parseDeploymentConfig(`
 schemaVersion: 1

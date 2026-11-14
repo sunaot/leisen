@@ -514,6 +514,11 @@ const authorizationServerClientSchema = z.strictObject({
   redirectUris: z.array(z.url()).min(1),
   /** 機密クライアントの secret を保持する環境変数の名前。省略時は公開クライアント(PKCE のみ) */
   clientSecretEnv: envVarName("clientSecretEnv").optional(),
+  /**
+   * 認可要求に resource(RFC 8707)がないときの受け手。省略時は Gateway の MCP。resource を送らない
+   * クライアントを Orchestrator に向けるとき orchestratorResource と同じ URL を書く
+   */
+  defaultResource: z.url().optional(),
 });
 
 export const DEFAULT_ACCESS_TOKEN_TTL_SEC = 300;

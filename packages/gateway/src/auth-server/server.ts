@@ -64,6 +64,8 @@ export interface RegisteredClient {
   readonly redirectUris: readonly string[];
   /** 機密クライアントの secret(ログ出力禁止)。undefined なら公開クライアント */
   readonly secret?: string;
+  /** resource のない認可要求の受け手 */
+  readonly defaultResource?: string;
 }
 
 export interface AuthorizationServerSettings {
@@ -834,7 +836,7 @@ export class AuthHttpHandler {
     if (query.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) {
       return fail("invalid_request", "PKCE with code_challenge_method S256 is required");
     }
-    const resource = query.get("resource") ?? this.resource;
+    const resource = query.get("resource") ?? client.defaultResource ?? this.resource;
     if (!this.#resources().includes(resource)) {
       return fail("invalid_target", "unknown resource");
     }

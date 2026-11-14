@@ -24,7 +24,10 @@ export type Credential =
       readonly kind: "oauth_bearer";
       /** ログ出力禁止(不変条件6)。redactAuthContext() を経由せずにシリアライズしない */
       readonly accessToken: string;
-      /** トークン失効時刻(epoch ms) */
+      /**
+       * トークン失効時刻(epoch ms)。0 以下は「失効時刻不明」で、コネクタはこの値で失効を
+       * 判定せずソースの 401 等に委ねる(ADR-016 追補3)
+       */
       readonly expiresAt: number;
     }
   | {
