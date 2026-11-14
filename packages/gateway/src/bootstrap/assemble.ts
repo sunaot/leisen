@@ -63,6 +63,8 @@ import { Gateway } from "../proxy/gateway.js";
 import { createGatewayHttpServer } from "../proxy/http.js";
 import { GatewayError } from "../proxy/types.js";
 import { resolveAuditSink, type ResolvedAuditSink } from "./audit.js";
+import { assembleAuth, createSourceCredentialProvider, resolveCredentialRuntime } from "./credentials.js";
+import { auditCredentialEventSink } from "../credentials/events.js";
 import { resolveRunRuntime, type ResolvedRunRuntime } from "./runs.js";
 import {
   buildConnector,
@@ -100,6 +102,13 @@ export interface AssembleGatewayOptions {
    * 検証で拒否した理由(クレーム名だけ。issue #16)。省略時は出さない
    */
   readonly warn?: (message: string) => void;
+  /**
+   * 検証だけを行う(leisen-gateway validate)。資格情報の状態 DB をファイルに作らず、
+   * メモリ上で開く(validate を副作用なしに保つ)
+   */
+  readonly validateOnly?: boolean;
+  /** 外部 HTTP(ソースの OAuth・トークン交換・KMS・IdP のログイン)の fetch。テスト用 */
+  readonly fetchImpl?: typeof fetch;
 }
 
 export interface AssembledGateway {
@@ -112,6 +121,8 @@ export interface AssembledGateway {
   readonly auditSinkDescription: string;
   /** 起動ログ用の run API(ADR-019)の説明(秘密情報なし。鍵の kid と環境変数名だけ) */
   readonly runApiDescription: string;
+  /** 起動ログ用の資格情報の方式・接続ページ・認可サーバーの説明(ADR-022。秘密情報なし) */
+  readonly credentialsDescription?: string;
   /**
    * 起動時の警告(起動は拒否しないが、そのままでは動かない可能性が高い構成。秘密情報なし)。
    * 例: モック IdP のセッション表(LEISEN_MOCK_SESSIONS)が空。leisen-gateway validate / serve が表示する
@@ -146,16 +157,13 @@ function rejectDevOnlyInProduction(
   }
 }
 
-/** 本人資格情報のプロバイダ(ADR-010 のソース別 Auth Adapter)。T-004 で方式を追加する。 */
-function createCredentialProvider(
+/** 開発用の mock_env のプロバイダ(それ以外の方式は bootstrap/credentials.ts)。 */
+function createMockCredentialProvider(
   sourceId: string,
   auth: ConnectorAuthConfig,
   env: Readonly<Record<string, string | undefined>>,
-): CredentialProvider {
-  switch (auth.provider) {
-    case "mock_env":
-      return new MockCredentialProvider(sourceId, { env });
-  }
+): CredentialProvider | undefined {
+  return auth.provider === "mock_env" ? new MockCredentialProvider(sourceId, { env }) : undefined;
 }
 
 function collect(issues: ConfigIssue[], error: unknown): void {
@@ -222,6 +230,12 @@ export async function assembleGateway(
     }
   }
 
+  // --- 資格情報の保管・鍵(token_vault / esc / 認可サーバーを使う構成のみ。ADR-022) ---
+  const credentialRuntime = resolveCredentialRuntime(config, env, configDir, issues, warnings, {
+    inMemoryStore: options.validateOnly === true,
+    ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+  });
+
   // --- コネクタ実体と本人資格情報のプロバイダ(有効なコネクタのみ) ---
   const connectors: Connector[] = [];
   const providers: CredentialProvider[] = [];
@@ -280,7 +294,12 @@ export async function assembleGateway(
     }
     if (!providerRejected && connector.auth !== undefined) {
       try {
-        providers.push(createCredentialProvider(connector.id, connector.auth, env));
+        const provider =
+          createMockCredentialProvider(connector.id, connector.auth, env) ??
+          createSourceCredentialProvider(connector, index, config, env, credentialRuntime, issues, warnings);
+        if (provider !== undefined) {
+          providers.push(provider);
+        }
       } catch (error) {
         issues.push({
           code: "idp_adapter_misconfigured",
@@ -296,9 +315,13 @@ export async function assembleGateway(
 
   // --- IdP Adapter ---
   let idpAdapter: IdpAdapter | undefined;
+  let idpClientSecret: string | undefined;
   if (!idpRejected) {
     try {
       const resolved = resolveIdpAdapterConfig(config.idp.adapter, env);
+      if (resolved.kind === "keycloak") {
+        idpClientSecret = resolved.clientSecret;
+      }
       if (resolved.kind === "mock") {
         const sessions = parseMockSessions(env["LEISEN_MOCK_SESSIONS"]);
         if (Object.keys(sessions).length === 0) {
@@ -348,15 +371,34 @@ export async function assembleGateway(
     warnings.push(...runs.warnings);
   }
 
-  if (issues.length > 0 || idpAdapter === undefined || audit === undefined || runs === undefined) {
+  // --- 接続ページ・認可サーバー(ADR-022 決定 4・7) ---
+  const auth =
+    idpAdapter !== undefined
+      ? assembleAuth({
+          config,
+          env,
+          runtime: credentialRuntime,
+          idpAdapter,
+          ...(idpClientSecret !== undefined ? { idpClientSecret } : {}),
+          ...(runs !== undefined ? { orchestratorCredential: Buffer.from(runs.runtime.orchestratorCredential).toString("utf8") } : {}),
+          issues,
+          warnings,
+          ...(options.warn !== undefined ? { warn: options.warn } : {}),
+        })
+      : undefined;
+
+  if (issues.length > 0 || auth === undefined || audit === undefined || runs === undefined) {
+    credentialRuntime.close();
     throw new DeploymentConfigError(issues);
   }
 
   // --- Gateway(capability 連動の設定検証はコンストラクタが行う)と HTTP ---
   const auditLogger = new AuditLogger(audit.sink);
+  // 接続・解除・失効・トークン発行の事象を監査に記録する(ADR-022 決定 9)
+  credentialRuntime.setEventSink(auditCredentialEventSink(auditLogger));
   const gateway = new Gateway({
     config,
-    idpAdapter,
+    idpAdapter: auth.idpAdapter,
     connectors,
     auditLogger,
     rawQueryStore: audit.rawQueryStore,
@@ -365,8 +407,17 @@ export async function assembleGateway(
   });
   const httpServer = createGatewayHttpServer(gateway, {
     path: config.gateway.http.path,
+    ...(auth.handler !== undefined ? { auth: auth.handler } : {}),
   });
 
+  // 期限切れの拒否リスト・使用済みの印を定期的に消す(1 時間ごと。停止を妨げない)
+  const purgeTimer =
+    credentialRuntime.store !== undefined && options.validateOnly !== true
+      ? setInterval(() => {
+          credentialRuntime.store?.purgeExpired(Date.now()).catch(() => undefined);
+        }, 3_600_000)
+      : undefined;
+  purgeTimer?.unref();
   let closing: Promise<void> | undefined;
   return {
     gateway,
@@ -375,10 +426,13 @@ export async function assembleGateway(
     httpServer,
     auditSinkDescription: audit.description,
     runApiDescription: runs.description,
+    ...(auth.description !== undefined ? { credentialsDescription: auth.description } : {}),
     warnings,
     close: () =>
       (closing ??= (async () => {
         await stopHttpServer(httpServer);
+        if (purgeTimer !== undefined) clearInterval(purgeTimer);
+        credentialRuntime.close();
         // BufferedAuditSink の未永続レコードを書き切る。書けなければ例外
         // (停止時の監査欠落に気づけるようにする、TM-F2)。書き込み先の生の
         // 例外文言は載せず、エラーコードだけを残す

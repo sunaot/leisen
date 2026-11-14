@@ -20,7 +20,21 @@
 - **ADR-022(Proposed、2026-10-20)**: 本人資格情報の置き場所の検討。既定は Token Vault を維持したうえで、Token Store の共通 IF、接続・解除・失効の監査事象、接続時の本人照合、Slack の識別子を保管しないことを本タスクの内容と受け入れ条件に加える案。確認事項 1〜4(認可サーバー化、永続化しないことを要件とするか、Token Store の境界、失効の責任分担)の判断が先
 - **H2**: `IdpAdapter.authenticate`(HTTP配線によりMCPリクエストごとに呼ばれる)の結果キャッシュを導入する場合、キャッシュキーはセッショントークンのハッシュ(トークン値そのものを保持しない)、TTL は「IdP 側の失効がGatewayに反映されるまでの遅延上限」として本タスクで定める。現状はキャッシュなし・毎リクエスト検証(T-003 注記)
 
+## 実装の状況(2026-11-14、ADR-022 Accepted)
+ADR-022 のオーナー決定(3 方式のソース別選択、Gateway の MCP 認可サーバー化、Token Store は Auth Adapter の内側、失効はソース側一次)に基づき、モックで検証できる範囲を実装した。運用者向けの手引きは docs/personal-auth.md。
+- 方式: `token_vault`(packages/gateway/src/credentials/vault.ts・providers.ts)、`esc`(auth-server/)、`token_exchange`(entra_obo / rfc8693)
+- 鍵管理: local / aws_kms / gcp_kms(SDK 依存なし。実 KMS との疎通は未確認)。保管: SQLite(node:sqlite)
+- 接続ページ(/connections)、本人照合(検証済みメールの一致)、認可サーバー(/authorize・/token・/revoke・/register・メタデータ)、利用停止の管理 API、監査の `credential_event`
+- Orchestrator の RFC 8693 交換(leisen-ask serve --authorization-server)
+- `Credential.expiresAt` が 0 以下は「失効時刻不明」(ADR-016 追補 2026-11-14)
+- 残り: 実サンドボックスでの結合テスト(人手の前提)、IdP の deprovisioning イベント(SCIM 等)から管理 API を呼ぶ連携、Token Vault の包み直しの CLI、接続後の自動再実行(Orchestrator / UI)、`leisen-ask`(1 問の CLI)の認可サーバーへのログイン
+
 ## 受け入れ条件
 - [ ] サンドボックスに対する結合テスト手順がREADME化され、手動実行結果がPRに添付されている
 - [ ] トークンが平文でディスク・ログに残らないことをレビューで確認(redactAuthContext使用の確認を含む)
-- [ ] deprovisioningイベント受信→対象ユーザーの全SaaSトークン失効のテスト(モックで可)
+- [x] deprovisioningイベント受信→対象ユーザーの全SaaSトークン失効のテスト(モックで可)(test/credentials-providers.test.ts「CredentialRevocation」、test/auth-server.test.ts「利用停止」)
+- [x] Token Store の IF(TokenVault / KeyProvider / CredentialStore の 3 層、ADR-022 決定 2)
+- [x] 接続・解除・失効の監査事象(`credential_event`、ADR-022 決定 9)
+- [x] 接続時の本人照合(不一致の拒否とトークンの失効依頼、ADR-022 決定 8)
+- [x] Slack の識別子を保管しない(oauth.ts は `authed_user.id` を users.info の照会にだけ使い返さない。test/credentials-providers.test.ts)
+- [x] 3 方式(token_vault / esc / token_exchange)のソース別の選択と、esc のための Gateway の MCP 認可サーバー(ADR-022 決定 1・4。test/auth-server.test.ts)

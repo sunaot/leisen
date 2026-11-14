@@ -53,6 +53,7 @@ import { GATEWAY_REJECTION_ERROR_CODE } from "@leisen/gateway";
 import { GatewayClientError } from "../errors.js";
 import type { GatewayClient } from "../gateway/types.js";
 import { sourcesFromTools } from "../tools.js";
+import { TokenExchangeError, type TokenExchanger } from "./token-exchange.js";
 import { untilAborted, type ServerLimits } from "./limits.js";
 import {
   createOrchestratorMcpServer,
@@ -101,6 +102,16 @@ export interface OrchestratorHttpDeps {
   readonly createGatewayClient?: GatewayClientFactory;
   /** feedback の申告の期限(ms、既定 FEEDBACK_TIMEOUT_MS) */
   readonly feedbackTimeoutMs?: number;
+  /**
+   * Gateway の認可サーバーを使う構成(ADR-022 決定 10)。受けたトークン(受け手 = この
+   * Orchestrator)を Gateway 宛てに交換してから preflight・ask・feedback に使う
+   */
+  readonly tokenExchange?: TokenExchanger;
+  /**
+   * RFC 9728 の保護リソースメタデータ(この Orchestrator の MCP の公開 URL と認可サーバー)。
+   * 指定すると /.well-known/oauth-protected-resource<path> で公開し、401 に resource_metadata を添える
+   */
+  readonly protectedResource?: { readonly resource: string; readonly authorizationServer: string };
 }
 
 export interface OrchestratorHttpServerOptions {
@@ -404,6 +415,12 @@ async function serveMcpRequest(
   }
 }
 
+/** 保護リソースメタデータの URL(RFC 9728 §3.1: resource のパスを well-known の後ろに付ける)。 */
+export function protectedResourceMetadataUrl(resource: string): string {
+  const url = new URL(resource);
+  return `${url.origin}/.well-known/oauth-protected-resource${url.pathname === "/" ? "" : url.pathname}`;
+}
+
 /** クエリ文字列を除いたパス(完全一致でルーティングする)。 */
 function requestPath(url: string | undefined): string {
   const raw = url ?? "/";
@@ -427,11 +444,34 @@ async function routeMcp(
     sendRejection(res, 405, REJECTIONS.methodNotAllowed, { allow: "POST" });
     return;
   }
-  const token = bearerToken(req.headers.authorization);
-  if (token === undefined) {
+  const presented = bearerToken(req.headers.authorization);
+  const metadataUrl =
+    deps.protectedResource !== undefined ? protectedResourceMetadataUrl(deps.protectedResource.resource) : undefined;
+  if (presented === undefined) {
     // 資格情報の提示なし: Gateway にも問い合わせず、本文も読まない
-    sendRejection(res, 401, REJECTIONS.unauthenticated, MISSING_TOKEN_HEADERS);
+    sendRejection(
+      res,
+      401,
+      REJECTIONS.unauthenticated,
+      metadataUrl !== undefined ? { "www-authenticate": `Bearer resource_metadata="${metadataUrl}"` } : MISSING_TOKEN_HEADERS,
+    );
     return;
+  }
+  let token = presented;
+  if (deps.tokenExchange !== undefined) {
+    // 受けたトークンは Gateway に転送しない(token passthrough の禁止)。Gateway 宛てに交換する
+    try {
+      token = await deps.tokenExchange.exchange(presented);
+    } catch (error) {
+      if (error instanceof TokenExchangeError && error.kind === "invalid") {
+        sendRejection(res, 401, REJECTIONS.unauthenticated, {
+          "www-authenticate": `Bearer error="invalid_token"${metadataUrl !== undefined ? `, resource_metadata="${metadataUrl}"` : ""}`,
+        });
+        return;
+      }
+      sendRejection(res, 503, REJECTIONS.gatewayUnavailable);
+      return;
+    }
   }
   const checked = await preflight(deps, token, options.preflightTimeoutMs);
   if (!checked.ok) {
@@ -477,6 +517,24 @@ async function route(
   const path = requestPath(req.url);
   if (path === options.mcpPath) {
     await routeMcp(deps, options, req, res);
+    return;
+  }
+  if (
+    deps.protectedResource !== undefined &&
+    // リバースプロキシの接頭辞の下に置かれても引けるよう、well-known の下はすべて同じ応答にする
+    path.startsWith("/.well-known/oauth-protected-resource")
+  ) {
+    if (req.method !== "GET") {
+      sendRejection(res, 405, REJECTIONS.methodNotAllowed, { allow: "GET" });
+      return;
+    }
+    sendJson(res, 200, {
+      resource: deps.protectedResource.resource,
+      authorization_servers: [deps.protectedResource.authorizationServer],
+      scopes_supported: ["mcp"],
+      bearer_methods_supported: ["header"],
+      resource_name: "Leisen",
+    });
     return;
   }
   if (path === ORCHESTRATOR_HEALTH_PATH) {

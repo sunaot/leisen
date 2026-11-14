@@ -84,6 +84,9 @@ export interface IntrospectionResponse {
   /** 発行先(authorized party)のクライアント ID */
   azp?: string;
   aud?: string | string[];
+  /** 本人照合(ADR-022 決定 8)に使う。email_verified が false なら使わない */
+  email?: string;
+  email_verified?: boolean;
 }
 
 /** allowedClients の「任意のクライアントを受け入れる」印(開発専用)。 */
@@ -274,9 +277,15 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     // checkIntrospection が通れば sub はある
     const userId = body.sub ?? "";
     const displayName = body.name ?? body.preferred_username;
+    const email =
+      // 本人照合に使うため、IdP が確認したメールアドレス(email_verified: true)だけを採る
+      typeof body.email === "string" && body.email !== "" && body.email_verified === true
+        ? body.email
+        : undefined;
     return {
       userId,
       ...(displayName !== undefined ? { displayName } : {}),
+      ...(email !== undefined ? { email } : {}),
       session: {
         subjectToken: sessionToken,
         ...(body.exp !== undefined ? { expiresAt: body.exp * 1000 } : {}),

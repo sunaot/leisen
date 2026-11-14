@@ -33,3 +33,7 @@ ADR-019(Accepted)により、監査ストア(ToolInvocation・AnswerRun・rawQue
 4. **出力の規則**: **stdout = 機械が読む結果、stderr = 人が読むログ、監査 = ファイル**。Gateway の `serve` は stdout に何も出さず(開発用の `stdout` シンクだけが例外)、起動ログ・警告・設定エラーは stderr、監査は `jsonl` のファイルに書く。`kp-ask` は回答(`--json` なら Answer の JSON)を stdout、進捗・警告・AnswerRun(既定、開発用)を stderr に出す。規則の全文は docs/install.md §7.1
 
 2 層モデル(決定 1〜4)は変更しない。
+
+## 追記(2026-11-14): 資格情報の事象(ADR-022 決定 9)
+
+接続・解除・失効・認可サーバーのトークン発行を、2 層モデル(AnswerRun / ToolInvocation)の外の、run に属さない監査レコード `credential_event` として記録する(packages/audit/src/schema.ts)。書き手は Gateway だけで、トークンの値・メールアドレス・ソース側のアカウント識別子(Slack の user ID 等、不変条件 7)は型に置き場がない。不変条件 2 の「全ツール呼び出しを監査ログに記録する」は、資格情報の事象を含めて読む。接続ページの「接続」は監査の書き込みに失敗したら成立させない(保管を取り消す)。保持期間は監査ログ本体と同じ(`audit.retentionDays`)。

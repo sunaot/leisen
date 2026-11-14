@@ -15,12 +15,16 @@
  * (userId+セッション)を受け取る形にし、方式A/B/Cの差を吸収する。
  */
 import type { AuthContext, Credential } from "@leisen/connector-sdk";
+import type { SourceTokenSet } from "../credentials/types.js";
 
 /** ADR-010 §12.1 の方式分類(Dは既定不採用のため型に含めない)。 */
 export type AuthMethod =
   | "oauth_individual"
   | "token_exchange"
   | "delegated_identity";
+
+/** connectors[].auth.provider(ADR-022 決定 1)。mock_env は開発専用 */
+export type CredentialProviderKind = "mock_env" | "token_vault" | "esc" | "token_exchange";
 
 /**
  * authenticate() が検証したIdPセッション。
@@ -35,6 +39,23 @@ export interface IdpSession {
   readonly subjectToken: string;
   /** セッション失効時刻(epoch ms)。不明な場合は undefined */
   readonly expiresAt?: number;
+  /**
+   * 認可サーバー(ADR-022 決定 4)が発行したトークンで認証したときの ESC の内容。
+   * 秘密情報(不変条件6)。IdP のトークンを直接受けた要求では undefined
+   */
+  readonly esc?: EscSessionData;
+}
+
+/** Gateway 発行のトークンから開いた ESC の内容(auth-server/tokens.ts)。秘密情報。 */
+export interface EscSessionData {
+  /** ログインの系列 ID(/revoke・再利用検知の単位) */
+  readonly sid: string;
+  /** トークンの発行時刻(epoch ms。拒否リスト sub の判定に使う) */
+  readonly issuedAt: number;
+  /** トークンを得たクライアント ID(監査用) */
+  readonly clientId: string;
+  /** provider: esc のソースのトークン(sourceId → トークン一式) */
+  readonly sources: Readonly<Record<string, SourceTokenSet>>;
 }
 
 /** 検証済みの利用者アイデンティティ。IdpAdapter.authenticate() が発行する。 */
@@ -42,6 +63,11 @@ export interface Identity {
   /** IdP上の一意なユーザーID(監査ログの主体、キャッシュキーの必須要素) */
   readonly userId: string;
   readonly displayName?: string;
+  /**
+   * IdP が確認したメールアドレス(接続時の本人照合に使う。ADR-022 決定 8)。
+   * 個人情報: ログ・監査に出さない(redactIdentity は含めない)
+   */
+  readonly email?: string;
   readonly session: IdpSession;
 }
 
@@ -92,6 +118,13 @@ export class IdpError extends Error {
 export interface CredentialProvider {
   readonly sourceId: string;
   readonly method: AuthMethod;
+  /** 設定上の方式(省略時は判定に使わない) */
+  readonly kind?: CredentialProviderKind;
+  /**
+   * false なら資格情報キャッシュを使わない(ESC: 要求に添えられたトークンから毎回取り出す。
+   * 別のトークンの内容を返さないため)。既定 true
+   */
+  readonly cacheable?: boolean;
   /**
    * 利用者本人の資格情報を発行する。未接続なら IdpError("source_not_connected")。
    * 戻り値はキャッシュされうる(キーはuserId×sourceId、不変条件4)。
@@ -120,35 +153,13 @@ export interface IdpAdapter {
   /**
    * 失効の反映: 該当ユーザーの資格情報キャッシュを破棄する。
    * IdPのdeprovisioningイベント(SCIM等)受信時に呼ぶ(TM-C4)。
-   * Token Vault内のトークンrevokeはT-004(TokenVault.revokeAllForUser)。
+   * Token Vault・ESC の失効は credentials/revocation.ts(ADR-022 決定 6)。
    */
   invalidateUser(userId: string): void;
 }
 
-/**
- * Token Vault IF(骨格のみ、実装はT-004)。
- * 方式A(個別OAuth)のリフレッシュトークンを暗号化保管(KMS連携)・
- * ローテーション・失効する中核コンポーネント(ADR-010 決定2)。
+/*
+ * Token Vault の実装は credentials/(ADR-022 決定 2: Auth Adapter の内側の 3 層)。
+ * vault.ts(封筒暗号化・更新の直列化)、keys.ts(KeyProvider)、store.ts(CredentialStore)。
+ * ソースへの失効依頼は credentials/oauth.ts、利用者単位の一括失効は credentials/revocation.ts。
  */
-export interface VaultedToken {
-  /** リフレッシュトークン等の長期秘密。ログ出力禁止(不変条件6) */
-  readonly secret: string;
-  /** 保管時刻(epoch ms)。ローテーション判定に使う */
-  readonly storedAt: number;
-  /** 発行時に同意したスコープ(監査・再同意判定用。秘密ではない) */
-  readonly scopes?: readonly string[];
-}
-
-export interface TokenVault {
-  /** 初回同意フロー完了時に保管する。既存があれば置き換え(ローテーション) */
-  store(userId: string, sourceId: string, token: VaultedToken): Promise<void>;
-  /** 未保管(未接続)なら null。呼び出し元は source_not_connected として扱う */
-  retrieve(userId: string, sourceId: string): Promise<VaultedToken | null>;
-  /** ソース側のrevokeエンドポイント呼び出しと保管削除。 */
-  revoke(userId: string, sourceId: string): Promise<void>;
-  /**
-   * IdPのdeprovisioningイベント(SCIM等)を受けて、該当ユーザーの全ソースの
-   * トークンをrevokeする(ADR-010 決定2、TM-C4)。
-   */
-  revokeAllForUser(userId: string): Promise<void>;
-}

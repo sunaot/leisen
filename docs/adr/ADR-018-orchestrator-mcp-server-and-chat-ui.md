@@ -74,3 +74,7 @@ issue #21 のコメント(2026-10-08)で次が決まり、本 ADR を Accepted �
 ### 追記(2026-10-09): Gateway が受けるクライアントの範囲(issue #16)
 
 上の未決のうち「MCP クライアントから Gateway へ直接接続する経路を azp の許可リストで制限するか」は issue #16 のオーナー決定で決着した。**本番**では Gateway は deployment.yaml の `idp.adapter.allowedClients` に列挙したクライアントが得たトークンだけを受ける(issue #21 の B: 自作の MCP クライアントも IdP の realm に登録し、リストに足す。`requireAudience: true` なら Gateway を audience に加える設定も付ける)。LibreChat overlay の `librechat` と開発・CI 用の `e2e-cli` はリファレンス構成で列挙済み。**開発**では `allowedClients: ["*"]` が明示の逃げ道で(`azp` の検証だけを省く)、起動ログに WARNING が出て `NODE_ENV=production` では起動を拒否する。検証項目(iss / typ / azp / aud)の契約は ADR-010 追補(2026-10-09)と docs/idp-adapter-guide.md。
+
+## 追記(2026-11-14): 決定 8 の再確認(ADR-022)
+
+ADR-022 決定 4・10(2026-11-14 オーナー決定)により、Gateway の認可サーバー(`gateway.authorizationServer`)を有効にした構成では、決定 8 の IdP トークンの直接転送をやめる。LibreChat・MCP クライアントは Orchestrator を受け手とするトークンを Gateway から OAuth で得て、Orchestrator はそれを Gateway の `/token` で RFC 8693 により Gateway 宛ての短命トークンへ交換してから Gateway を呼ぶ。認可サーバーを無効にした構成では決定 8 のまま残る。「人間に確認してほしい点」3 はこれで決着する。

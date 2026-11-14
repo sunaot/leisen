@@ -215,6 +215,53 @@ export const answerRunFeedbackRecordSchema = z.strictObject({
   userFeedback: userFeedbackSchema,
 });
 
+/**
+ * 資格情報の事象(ADR-022 決定 9)。接続・解除・失効・認可サーバーのトークン発行を、
+ * run に属さない事象として記録する。トークンの値・ソース側のアカウント識別子(Slack の
+ * user ID 等、不変条件7)・メールアドレスは含めない。
+ */
+export const credentialEventTypeSchema = z.enum([
+  "connect_started",
+  "connected",
+  "connect_failed",
+  "disconnected",
+  "revoked",
+  "deprovisioned",
+  "refresh_failed",
+  "token_issued",
+  "token_refreshed",
+  "token_exchanged",
+  "token_revoked",
+  "token_reuse_detected",
+]);
+
+/** 資格情報の取得方式(ADR-022 決定 1)。gateway_token は認可サーバーが発行するトークン */
+export const credentialMethodSchema = z.enum([
+  "token_vault",
+  "esc",
+  "token_exchange",
+  "gateway_token",
+]);
+
+export const credentialEventRecordSchema = z.strictObject({
+  recordType: z.literal("credential_event"),
+  /** 冪等キー(Gateway が採番) */
+  recordId: identityString("recordId"),
+  /** ISO 8601 */
+  timestamp: isoTimestamp,
+  /** IdP 上のユーザーID。本人を特定できない段階の失敗(ログイン前)は "anonymous" */
+  userId: identityString("userId"),
+  event: credentialEventTypeSchema,
+  /** 対象のソース(認可サーバーのトークンの事象では null) */
+  sourceId: z.string().min(1).max(256).nullable(),
+  method: credentialMethodSchema.nullable(),
+  outcome: z.enum(["success", "failure"]),
+  /** 正規化済みの理由コード(失敗時。例: identity_mismatch, invalid_grant) */
+  reason: reasonCode.nullable(),
+  /** 認可サーバーの事象のクライアント ID(事前登録の ID。動的登録は "dynamic") */
+  clientId: z.string().min(1).max(256).nullable(),
+});
+
 export const auditRecordSchema = z.discriminatedUnion("recordType", [
   answerRunRecordSchema,
   toolInvocationRecordSchema,
@@ -222,6 +269,7 @@ export const auditRecordSchema = z.discriminatedUnion("recordType", [
   answerRunFeedbackRecordSchema,
   auditAccessRecordSchema,
   retentionPurgeRecordSchema,
+  credentialEventRecordSchema,
 ]);
 
 export type Actor = z.infer<typeof actorSchema>;
@@ -252,6 +300,12 @@ export type RetentionPurgeRecord = Omit<
   z.infer<typeof retentionPurgeRecordSchema>,
   "recordType"
 >;
+export type CredentialEventRecord = Omit<
+  z.infer<typeof credentialEventRecordSchema>,
+  "recordType"
+>;
+export type CredentialEventType = z.infer<typeof credentialEventTypeSchema>;
+export type CredentialMethod = z.infer<typeof credentialMethodSchema>;
 export type AuditRecord = z.infer<typeof auditRecordSchema>;
 
 /**

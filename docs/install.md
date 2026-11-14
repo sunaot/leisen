@@ -437,7 +437,10 @@ server {
 - **JSONL のローテーション**: 未実装。Gateway はバッチごとにパスを開いて追記するため、ファイルを
   rename すれば次の追記から新しいファイルに書かれる(コード上の挙動。再起動は不要)。ただし期限超過分の
   削除は削除実行の記録とセットで行う必要があるため、仕組みができるまでは手動で削除しない
-- **本番の本人資格情報の取得**(`connectors[].auth.provider`): T-004。現状の `mock_env` は開発専用
+- **本人資格情報の取得**(`connectors[].auth.provider`): `token_vault` / `esc` / `token_exchange` を実装済み
+  (ADR-022、[docs/personal-auth.md](personal-auth.md))。実ソース・実 IdP・実 KMS との疎通は未確認(モックで検証。
+  GitHub App・GCP OAuth クライアント・Entra ID のアプリ登録と KMS の用意が人手の前提、T-004)。`mock_env` は開発専用。
+  制約(複数レプリカ、接続後の自動再実行、包み直しの CLI 等)は personal-auth.md §10
 - **Gateway 側の Host / Origin 検証・リクエスト単位の期限・拒否応答の `connection: close`**
   (minor-6 / minor-7 / minor-11): 未実装。リバースプロキシで緩和する(§6)
 - **監査 sink の死活**: `/healthz`(イメージの HEALTHCHECK)は待ち受けの死活だけを示し、監査の書き込み
@@ -500,6 +503,12 @@ server {
 - [ ] 保持期間(監査 365 日、生クエリ 30 日、テレメトリ 14 日、チャット履歴 90 日)を確認し、定期削除が
   未実装であることを踏まえた運用計画を立てる(§8)
 - [ ] コアダンプを無効にする(メモリ上のトークンを残さない。TM-C3。compose は `ulimits: core: 0`)
+- [ ] **本人資格情報の方式をソースごとに決める**(IdP トークン方式が成り立つソースは `token_exchange`、それ以外は
+  `token_vault` を既定、「サーバーに永続化しない」を要件にするソースだけ `esc`。[docs/personal-auth.md](personal-auth.md) §1)。
+  `token_vault` は鍵を KMS(`aws_kms` / `gcp_kms`)に置き、状態 DB(`gateway.credentials.store`)をバックアップの対象にする
+- [ ] **IdP の利用停止を Gateway に通知する連携を組む**(`POST /admin/deprovision`、`LEISEN_ADMIN_CREDENTIAL`)。
+  ソース側の失効経路(上の GitHub の SCIM 等)が一次で、Gateway の通知は追加の防御(ADR-022 決定 6)。`esc` を選んだ
+  ソースではソース側の経路が IdP 起点の唯一の失効経路になる
 - [ ] Slack を対象にする場合は、Slack アプリを自社のワークスペースで自社が登録・運用する(ADR-014 の類型(a)。ベンダーが用意したアプリやテンプレートを受け取る形は対象外、issue #59)。Slack コネクタ(T-006)は未実装
 
 ### 10.1 直接接続の統制

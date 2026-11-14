@@ -69,6 +69,7 @@ import type { Identity } from "../idp/types.js";
 import { isValidRunId } from "../run/runid.js";
 import { runApiPathFor } from "../run/path.js";
 import type { Gateway } from "./gateway.js";
+import { MCP_SCOPE, SOURCE_SCOPE_PREFIX, type AuthHttpHandler } from "../auth-server/server.js";
 import { createGatewayMcpServer, gatewayAuthInfo } from "./mcp.js";
 import { ORCHESTRATOR_CREDENTIAL_HEADER, type RunApiResponse } from "./runs.js";
 import {
@@ -80,7 +81,16 @@ import {
 export interface GatewayHttpServerOptions {
   /** MCPエンドポイントのパス(deployment.yaml の gateway.http.path)。既定 "/mcp" */
   readonly path?: string;
+  /**
+   * 接続ページ・認可サーバー(ADR-022 決定 4・7)。指定すると /login・/connections・/authorize・
+   * /token 等をこのハンドラに渡し、認可サーバーが有効なら 401 に resource_metadata を添え、
+   * esc のソースが要求のトークンにない tools/call を 403 insufficient_scope で返す(step-up)
+   */
+  readonly auth?: AuthHttpHandler;
 }
+
+/** step-up の判定のために読む MCP 要求の本文の上限(バイト)。 */
+const MAX_MCP_BODY_BYTES = 4 * 1024 * 1024;
 
 /** HTTP層の拒否で返す固定文言。例外やIdP由来のメッセージはエコーしない。 */
 const REJECTION_MESSAGES: Partial<Record<GatewayErrorClass, string>> = {
@@ -123,15 +133,19 @@ function bearerToken(header: string | undefined): string | undefined {
 async function authenticateRequest(
   gateway: Gateway,
   authorization: string | undefined,
+  resourceMetadataUrl?: string,
 ): Promise<RequestAuthentication> {
   const token = bearerToken(authorization);
+  // 認可サーバーを有効にした構成では、クライアントが認可サーバーを見つけられるよう
+  // 保護リソースメタデータの URL を添える(RFC 9728 §5.1)
+  const metadata = resourceMetadataUrl !== undefined ? `, resource_metadata="${resourceMetadataUrl}"` : "";
   if (token === undefined) {
     // 資格情報の提示なし: RFC 6750 §3.1 によりエラー詳細を付けない
     return {
       ok: false,
       status: 401,
       errorClass: "unauthenticated",
-      headers: { "www-authenticate": "Bearer" },
+      headers: { "www-authenticate": `Bearer${metadata !== "" ? ` ${metadata.slice(2)}` : ""}` },
     };
   }
   try {
@@ -145,7 +159,7 @@ async function authenticateRequest(
         ok: false,
         status: 401,
         errorClass,
-        headers: { "www-authenticate": 'Bearer error="invalid_token"' },
+        headers: { "www-authenticate": `Bearer error="invalid_token"${metadata}` },
       };
     }
     return {
@@ -211,6 +225,7 @@ async function serveMcpRequest(
   identity: Identity,
   req: IncomingMessage,
   res: ServerResponse,
+  parsedBody?: unknown,
 ): Promise<void> {
   const server = createGatewayMcpServer(gateway);
   // sessionIdGenerator を渡さない=ステートレスモード(Mcp-Session-Idを発行・
@@ -231,7 +246,9 @@ async function serveMcpRequest(
         req.headers[ORCHESTRATOR_CREDENTIAL_HEADER],
       ),
     });
-    await transport.handleRequest(authenticated, res);
+    await (parsedBody === undefined
+      ? transport.handleRequest(authenticated, res)
+      : transport.handleRequest(authenticated, res, parsedBody));
   } finally {
     // JSON応答モードでは通常 handleRequest の完了=応答の送出完了。取り消し通知を
     // 含むバッチでは handleRequest が完了せずここに到達しない(minor-6、冒頭の注記)
@@ -319,6 +336,7 @@ async function serveRunsRequest(
   res: ServerResponse,
   path: string,
   runsPath: string,
+  resourceMetadataUrl?: string,
 ): Promise<void> {
   const target = parseRunsPath(path, runsPath);
   const runs = gateway.runs;
@@ -330,7 +348,7 @@ async function serveRunsRequest(
     sendRejection(res, 405, "invalid_request", { allow: "POST" });
     return;
   }
-  const auth = await authenticateRequest(gateway, req.headers.authorization);
+  const auth = await authenticateRequest(gateway, req.headers.authorization, resourceMetadataUrl);
   if (!auth.ok) {
     sendRejection(res, auth.status, auth.errorClass, auth.headers);
     return;
@@ -363,17 +381,44 @@ async function serveRunsRequest(
   }
 }
 
+/**
+ * step-up(ADR-022 決定 7): tools/call の対象が esc のソースで、要求のトークンにそのソースの
+ * 資格情報がなければ、足りない scope を返す(クライアントが scope を足して再認可する)。
+ */
+function missingEscScopes(auth: AuthHttpHandler, identity: Identity, body: unknown): string[] {
+  const messages = Array.isArray(body) ? body : [body];
+  const missing = new Set<string>();
+  for (const message of messages) {
+    if (typeof message !== "object" || message === null) continue;
+    const m = message as { method?: unknown; params?: { arguments?: { source?: unknown } } };
+    const source = m.params?.arguments?.source;
+    if (m.method === "tools/call" && typeof source === "string" && auth.isEscSource(source)) {
+      if (identity.session.esc?.sources[source] === undefined) {
+        missing.add(`${SOURCE_SCOPE_PREFIX}${source}`);
+      }
+    }
+  }
+  return [...missing];
+}
+
 async function route(
   gateway: Gateway,
   mcpPath: string,
   req: IncomingMessage,
   res: ServerResponse,
+  auth?: AuthHttpHandler,
 ): Promise<void> {
   const path = requestPath(req.url);
+  if (auth !== undefined && auth.handles(path)) {
+    const query = new URLSearchParams((req.url ?? "").includes("?") ? (req.url ?? "").slice((req.url ?? "").indexOf("?") + 1) : "");
+    await auth.handle(req, res, path, query);
+    return;
+  }
+  const resourceMetadataUrl = auth?.authorizationServerEnabled === true ? auth.resourceMetadataUrl : undefined;
   // run API は MCP エンドポイントと同じディレクトリの runs(run/path.ts)。Orchestrator も同じ規則で導く
   const runsPath = runApiPathFor(mcpPath);
   if (path === runsPath || path.startsWith(`${runsPath}/`)) {
-    await serveRunsRequest(gateway, req, res, path, runsPath);
+    await serveRunsRequest(gateway, req, res, path, runsPath, resourceMetadataUrl);
     return;
   }
   if (path === mcpPath) {
@@ -381,14 +426,42 @@ async function route(
       sendRejection(res, 405, "invalid_request", { allow: "POST" });
       return;
     }
-    const auth = await authenticateRequest(gateway, req.headers.authorization);
-    if (!auth.ok) {
-      sendRejection(res, auth.status, auth.errorClass, auth.headers);
+    const authenticated = await authenticateRequest(gateway, req.headers.authorization, resourceMetadataUrl);
+    if (!authenticated.ok) {
+      sendRejection(res, authenticated.status, authenticated.errorClass, authenticated.headers);
       return;
     }
     // 認証済み応答(検索結果等)を中間キャッシュに乗せない
     res.setHeader("cache-control", "no-store");
-    await serveMcpRequest(gateway, auth.identity, req, res);
+    if (auth?.authorizationServerEnabled === true && authenticated.identity.session.esc !== undefined) {
+      // step-up の判定のため本文を先に読む(SDK には parsedBody として渡す)
+      const body = await readJsonBody(req, MAX_MCP_BODY_BYTES);
+      if (!body.ok) {
+        sendRejection(res, body.status, body.errorClass, body.status === 413 ? { connection: "close" } : {});
+        return;
+      }
+      const missing = missingEscScopes(auth, authenticated.identity, body.json);
+      if (missing.length > 0) {
+        const granted = new Set([MCP_SCOPE, ...Object.keys(authenticated.identity.session.esc.sources).map((id) => `${SOURCE_SCOPE_PREFIX}${id}`)]);
+        const scope = [...granted, ...missing].join(" ");
+        sendJson(
+          res,
+          403,
+          {
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: GATEWAY_REJECTION_ERROR_CODE, message: "the source must be connected by signing in again", data: { errorClass: "source_not_connected" } },
+          },
+          {
+            "www-authenticate": `Bearer error="insufficient_scope", scope="${scope}", resource_metadata="${auth.resourceMetadataUrl}"`,
+          },
+        );
+        return;
+      }
+      await serveMcpRequest(gateway, authenticated.identity, req, res, body.json);
+      return;
+    }
+    await serveMcpRequest(gateway, authenticated.identity, req, res);
     return;
   }
   if (path === GATEWAY_HEALTH_PATH) {
@@ -411,7 +484,7 @@ export function createGatewayRequestListener(
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const mcpPath = options.path ?? DEFAULT_GATEWAY_HTTP_PATH;
   return (req, res) => {
-    route(gateway, mcpPath, req, res).catch(() => {
+    route(gateway, mcpPath, req, res, options.auth).catch(() => {
       // 想定外の失敗。生の例外メッセージは返さない(TM-A2)
       if (!res.headersSent) {
         sendRejection(res, 500, "internal_error");

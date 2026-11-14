@@ -185,3 +185,10 @@ T-005 / T-006 の着手(モックでの先行実装を含む)より前に Accept
 - T-xxx 監査の docId 分類の結果単位化: 証拠台帳への scope の記録、`citedDocIdsForAudit` の論理和の規則、`packages/orchestrator/test/cited-docids.test.ts` の更新
 - T-xxx 分離テレメトリの最小実装: 日単位の集計・バケット化・`audit.telemetryRetentionDays` での削除・閲覧の限定(ADR-013 §3)。ADR-011 決定2 に用途(方針の強制の発動)を追記する
 - T-xxx 文書と脅威モデル: threat-model に TM-E8(既定の `excluded` がコネクタで実装されない)を追加、各コネクタの README に領域の対応表、T-005 / T-006 の受け入れ条件に「scope の対応表・能力の宣言・契約テスト」を追加
+
+## 追補3(2026-11-14): `Credential.expiresAt` が 0 以下の意味(T-004、ADR-022)
+
+`oauth_bearer` の `expiresAt` が 0 以下のときは「失効時刻不明」(失効しないトークン、またはソースが期限を返さないトークン)を表す。コネクタはこの値で失効を判定せず、ソースの 401 等を `auth_expired` に写す。Gateway の資格情報キャッシュは、この場合は設定の TTL だけで切る。`NaN` / `±Infinity` は従来どおり不正な値として失効扱いにする。
+
+- 由来: Token Vault・ESC のプロバイダは、ソースのトークン応答に `expires_in` がなければ `expiresAt: 0` を渡す(GitHub OAuth App のトークン等)。IdP トークン方式も同じ
+- IF の型は変えない(フィールドの意味の確定だけ)。connector-sdk の型コメントに追記し、connector-github の暫定扱い(「判定せず GitHub の 401 に委ねる」)を正式の扱いとした。開発用の dev-fixture もこの扱いに揃えた
