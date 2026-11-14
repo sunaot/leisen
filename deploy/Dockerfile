@@ -120,9 +120,9 @@ COPY --from=build /app/packages/orchestrator/dist packages/orchestrator/dist
 COPY --from=build /app/packages/orchestrator/prompts packages/orchestrator/prompts
 COPY --from=build /app/packages/promotion-report/dist packages/promotion-report/dist
 
-RUN mkdir -p /etc/leisen /var/lib/leisen/audit /var/lib/leisen/rawquery \
-    && chown 1000:1000 /var/lib/leisen/audit /var/lib/leisen/rawquery \
-    && chmod 0700 /var/lib/leisen/audit /var/lib/leisen/rawquery
+RUN mkdir -p /etc/leisen /var/lib/leisen/audit /var/lib/leisen/rawquery /var/lib/leisen/credentials \
+    && chown 1000:1000 /var/lib/leisen/audit /var/lib/leisen/rawquery /var/lib/leisen/credentials \
+    && chmod 0700 /var/lib/leisen/audit /var/lib/leisen/rawquery /var/lib/leisen/credentials
 # 空の名前付きボリュームは初回マウント時にこのディレクトリの所有者・権限を引き継ぐ
 VOLUME ["/var/lib/leisen/audit", "/var/lib/leisen/rawquery"]
 
