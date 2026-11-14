@@ -286,6 +286,7 @@ function summaryLines(
     `idp adapter: ${config.idp.adapter.kind}`,
     `audit sink: ${assembled.auditSinkDescription}`,
     `run api: ${assembled.runApiDescription}`,
+    ...(assembled.credentialsDescription !== undefined ? [`credentials: ${assembled.credentialsDescription}`] : []),
   ];
 }
 
@@ -310,6 +311,7 @@ async function loadAndAssemble(
   configPath: string,
   overrides: ListenOverrides,
   deps: CliDeps,
+  validateOnly = false,
 ): Promise<
   | { readonly config: DeploymentConfig; readonly assembled: AssembledGateway }
   | undefined
@@ -327,6 +329,7 @@ async function loadAndAssemble(
       config,
       env: deps.env ?? process.env,
       configDir: dirname(absolute),
+      validateOnly,
       // 稼働中の警告(モック IdP のセッション表が空のままの拒否など)はサーバーログへ
       warn: (message) => deps.stderr(`leisen-gateway: WARNING: ${message}`),
     });
@@ -342,7 +345,7 @@ async function validateCommand(
   overrides: ListenOverrides,
   deps: CliDeps,
 ): Promise<number> {
-  const loaded = await loadAndAssemble(configPath, overrides, deps);
+  const loaded = await loadAndAssemble(configPath, overrides, deps, true);
   if (loaded === undefined) {
     return 1;
   }

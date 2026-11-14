@@ -137,7 +137,7 @@ describe("認可分岐: 本人のベアラー資格情報を要求する", () =>
 
   it("エラーメッセージにトークンの値を含めない(不変条件6)", async () => {
     const error = await connectorError(
-      connector().search(bearer({ accessToken: "dev-only-secret-token", expiresAt: 0 }), "VPN"),
+      connector().search(bearer({ accessToken: "dev-only-secret-token", expiresAt: 1 }), "VPN"),
     );
     expect(error.message).not.toContain("dev-only-secret-token");
   });

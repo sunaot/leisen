@@ -54,6 +54,15 @@ export class CredentialRevocation {
     this.#now = options.now ?? Date.now;
   }
 
+  /** 解除したソースの資格情報キャッシュを捨てる(単一ソースの破棄がなければ利用者ごと)。 */
+  #invalidate(userId: string, sourceId: string): void {
+    if (this.#o.invalidateCredential !== undefined) {
+      this.#o.invalidateCredential(userId, sourceId);
+    } else {
+      this.#o.invalidateUser(userId);
+    }
+  }
+
   /** 本人の解除。対象のソースが token_vault / esc でなければ false。 */
   async disconnect(identity: Identity, sourceId: string): Promise<boolean> {
     const { vault, store, sources, events } = this.#o;
@@ -63,7 +72,7 @@ export class CredentialRevocation {
       const entry = await vault.get(userId, sourceId);
       const accepted = entry !== null ? await vaultClient.revoke(entry.tokens) : true;
       await vault.delete(userId, sourceId);
-      this.#o.invalidateCredential?.(userId, sourceId);
+      this.#invalidate(userId, sourceId);
       await events({
         userId,
         event: "disconnected",
@@ -78,6 +87,7 @@ export class CredentialRevocation {
     if (escClient !== undefined && store !== undefined) {
       const now = this.#now();
       await store.addDenial("sub_source", subSourceKey(userId, sourceId), now + 1, now + this.#o.denialRetentionMs);
+      this.#invalidate(userId, sourceId);
       const tokens = identity.session.esc?.sources[sourceId];
       const accepted = tokens !== undefined ? await escClient.revoke(tokens) : false;
       await events({

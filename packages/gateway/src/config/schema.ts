@@ -164,17 +164,69 @@ const connectorSettingsSchema = z
   });
 
 /**
- * コネクタの本人資格情報の取得方式(ADR-010 のソース別 Auth Adapter の選択)。
- * 当面は開発用の mock_env のみ: MockCredentialProvider が環境変数
- * LEISEN_MOCK_TOKEN_<SOURCEID> の固定トークンを本人資格情報として渡す
- * (NODE_ENV=production では起動時に拒否される)。T-004 で oauth_individual
- * (Token Vault)等を追加する。ここにも秘密情報を置かない(環境変数名で参照する)。
- * 有効なコネクタに auth がない構成は起動コードが拒否する
- * (connector_auth_provider_missing。スキーマ検証だけでは拒否しない)。
+ * コネクタの本人資格情報の取得方式(ADR-010 のソース別 Auth Adapter、ADR-022 決定 1)。
+ * - mock_env: 開発用。MockCredentialProvider が環境変数 LEISEN_MOCK_TOKEN_<SOURCEID> の固定
+ *   トークンを渡す(NODE_ENV=production では起動時に拒否)
+ * - token_vault: Gateway の接続ページで OAuth を行い、更新トークンを Token Vault に保管する
+ * - esc: 同じく OAuth で得たトークンを、Gateway の認可サーバーが発行するトークン(ESC)に
+ *   封じてクライアントに持たせる(gateway.authorizationServer.enabled が要る)
+ * - token_exchange: 本人の IdP トークンを呼び出しのたびにソースのトークンへ交換する
+ * ここにも秘密情報を置かない(環境変数名で参照する)。有効なコネクタに auth がない構成は
+ * 起動コードが拒否する(connector_auth_provider_missing)。
  */
-const connectorAuthSchema = z.strictObject({
-  provider: z.enum(["mock_env"]),
+const httpsOrLoopbackUrl = (what: string) =>
+  z.url({ error: `${what} must be an absolute URL` });
+
+const oauthEndpointsSchema = z.strictObject({
+  authorizationEndpoint: httpsOrLoopbackUrl("authorizationEndpoint").optional(),
+  tokenEndpoint: httpsOrLoopbackUrl("tokenEndpoint").optional(),
+  revocationEndpoint: httpsOrLoopbackUrl("revocationEndpoint").optional(),
+  userinfoEndpoint: httpsOrLoopbackUrl("userinfoEndpoint").optional(),
+  /** GitHub Enterprise Server などの API の基点 */
+  apiBaseUrl: httpsOrLoopbackUrl("apiBaseUrl").optional(),
 });
+
+/** token_vault / esc のソース OAuth(ADR-022 決定 7・8)。 */
+const sourceOAuthSchema = z.strictObject({
+  /** 端点と本人照合の方式のプリセット。custom は endpoints が必須 */
+  preset: z.enum(["github", "google", "slack", "custom"]),
+  clientId: z.string().min(1),
+  /** client secret を保持する環境変数の名前(値ではない) */
+  clientSecretEnv: z.string().regex(ENV_VAR_NAME_PATTERN, {
+    error: "clientSecretEnv must be an environment variable NAME, not a secret value",
+  }),
+  scopes: z.array(z.string().min(1)).default([]),
+  endpoints: oauthEndpointsSchema.optional(),
+  /**
+   * 接続時の本人照合(決定 8)。email: ソース側の検証済みメールと IdP のメールの一致を要求する。
+   * none は confirmIdentityCheckDisabled: true が要る(起動時に WARNING)
+   */
+  identityCheck: z.enum(["email", "none"]).default("email"),
+  confirmIdentityCheckDisabled: z.boolean().optional(),
+});
+
+const connectorAuthSchema = z.discriminatedUnion("provider", [
+  z.strictObject({ provider: z.literal("mock_env") }),
+  z.strictObject({ provider: z.literal("token_vault"), oauth: sourceOAuthSchema }),
+  z.strictObject({ provider: z.literal("esc"), oauth: sourceOAuthSchema }),
+  z.strictObject({
+    provider: z.literal("token_exchange"),
+    exchange: z.strictObject({
+      kind: z.enum(["entra_obo", "rfc8693"]),
+      tokenEndpoint: httpsOrLoopbackUrl("tokenEndpoint"),
+      clientId: z.string().min(1),
+      clientSecretEnv: z.string().regex(ENV_VAR_NAME_PATTERN, {
+        error: "clientSecretEnv must be an environment variable NAME, not a secret value",
+      }),
+      /** entra_obo では必須(例: https://graph.microsoft.com/.default) */
+      scope: z.string().min(1).optional(),
+      audience: z.string().min(1).optional(),
+      resource: z.string().min(1).optional(),
+      clientAuth: z.enum(["client_secret_basic", "client_secret_post"]).default("client_secret_basic"),
+      timeoutMs: z.number().int().min(1).optional(),
+    }),
+  }),
+]);
 
 const connectorSchema = z
   .strictObject({
@@ -397,9 +449,121 @@ const gatewayRunsSchema = z.strictObject({
     .prefault({}),
 });
 
+/**
+ * 資格情報の保管と鍵(ADR-022 決定 2・3)。token_vault / esc のソース、または認可サーバーを
+ * 使う構成で必須(credentials_config_missing)。
+ */
+export const DEFAULT_VAULT_KEY_ENV = "LEISEN_VAULT_KEY";
+export const DEFAULT_VAULT_PREVIOUS_KEY_ENV = "LEISEN_VAULT_KEY_PREVIOUS";
+export const DEFAULT_ESC_KEY_ENV = "LEISEN_ESC_KEY";
+export const DEFAULT_ESC_PREVIOUS_KEY_ENV = "LEISEN_ESC_KEY_PREVIOUS";
+export const DEFAULT_ADMIN_CREDENTIAL_ENV = "LEISEN_ADMIN_CREDENTIAL";
+
+const credentialKeysSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("local"),
+    /** 32 バイトのマスター鍵(hex / base64 / base64url)を保持する環境変数の名前 */
+    keyEnv: envVarName("keyEnv").default(DEFAULT_VAULT_KEY_ENV),
+    /** 入れ替え中の旧鍵(カンマ区切りで複数可)を保持する環境変数の名前 */
+    previousKeyEnv: envVarName("previousKeyEnv").default(DEFAULT_VAULT_PREVIOUS_KEY_ENV),
+  }),
+  z.strictObject({
+    kind: z.literal("aws_kms"),
+    keyId: z.string().min(1),
+    region: z.string().regex(/^[a-z]{2}(-[a-z]+)+-\d+$/, { error: "region must look like ap-northeast-1" }),
+    endpoint: z.url().optional(),
+    timeoutMs: z.number().int().min(1).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("gcp_kms"),
+    keyName: z.string().regex(/^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+$/, {
+      error: "keyName must be projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>",
+    }),
+    endpoint: z.url().optional(),
+    timeoutMs: z.number().int().min(1).optional(),
+  }),
+]);
+
+const credentialsSchema = z.strictObject({
+  store: z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("sqlite"),
+      /** 状態 DB のパス(暗号文・拒否リスト)。相対パスは設定ファイルの所在ディレクトリ基準 */
+      path: z.string().min(1),
+    }),
+  ]),
+  keys: credentialKeysSchema.prefault({ kind: "local" }),
+  /**
+   * Gateway が発行するトークン(ESC・認可コード・state・ブラウザのセッション)を封じる鍵の
+   * 環境変数の名前。32 バイト。Token Vault の鍵とは別の値にする
+   */
+  escKeyEnv: envVarName("escKeyEnv").default(DEFAULT_ESC_KEY_ENV),
+  escPreviousKeyEnv: envVarName("escPreviousKeyEnv").default(DEFAULT_ESC_PREVIOUS_KEY_ENV),
+  /** 接続ページ等のブラウザのログインの有効期間(秒) */
+  browserSessionTtlSec: z.number().int().min(60).max(86_400).default(3600),
+});
+
+/** Gateway の MCP 認可サーバー(ADR-022 決定 4)。 */
+const authorizationServerClientSchema = z.strictObject({
+  clientId: z.string().min(1).max(256).regex(/^[A-Za-z0-9._~:-]+$/, {
+    error: "clientId must be URL-safe (letters, digits, . _ ~ : -)",
+  }),
+  /** 同意画面に出す名前 */
+  name: z.string().min(1).max(100).optional(),
+  /** 完全一致で照合するリダイレクト先(https、またはループバックの http) */
+  redirectUris: z.array(z.url()).min(1),
+  /** 機密クライアントの secret を保持する環境変数の名前。省略時は公開クライアント(PKCE のみ) */
+  clientSecretEnv: envVarName("clientSecretEnv").optional(),
+});
+
+export const DEFAULT_ACCESS_TOKEN_TTL_SEC = 300;
+export const MAX_ACCESS_TOKEN_TTL_SEC = 3600;
+
+const authorizationServerSchema = z.strictObject({
+  enabled: z.boolean().default(false),
+  /** アクセストークンの有効期間の上限(秒)。IdP・ソースのトークンの期限でさらに短くなる */
+  accessTokenTtlSec: z
+    .number()
+    .int()
+    .min(30)
+    .max(MAX_ACCESS_TOKEN_TTL_SEC)
+    .default(DEFAULT_ACCESS_TOKEN_TTL_SEC),
+  /** リフレッシュトークンの有効期間(秒)。既定 30 日 */
+  refreshTokenTtlSec: z.number().int().min(300).max(180 * 86_400).default(30 * 86_400),
+  /** 事前登録のクライアント */
+  clients: z.array(authorizationServerClientSchema).default([]),
+  /** RFC 7591 の動的登録を受けるか(既定 false。登録は保管せず、封じた client_id で返す) */
+  allowDynamicRegistration: z.boolean().default(false),
+  /** 認可サーバーを有効にした構成で IdP のトークンを直接受けるか(移行期間・開発用) */
+  acceptIdpTokens: z.boolean().default(false),
+  /**
+   * Orchestrator の MCP エンドポイントの URL(RFC 8707 の resource)。指定すると、この受け手の
+   * トークンを発行し、Orchestrator が RFC 8693 で Gateway 宛てに交換できる(決定 10)
+   */
+  orchestratorResource: z.url().optional(),
+});
+
 const gatewaySchema = z.strictObject({
   http: gatewayHttpSchema.prefault({}),
   runs: gatewayRunsSchema.prefault({}),
+  /**
+   * 利用者のブラウザ・MCP クライアントから見た Gateway の URL(末尾のスラッシュなし)。
+   * 接続ページ・認可サーバーの URL の基点。token_vault / esc / 認可サーバーで必須
+   */
+  publicBaseUrl: z
+    .url()
+    .refine((url) => !/[?#]/.test(url) && !url.endsWith("/"), {
+      error: "publicBaseUrl must not end with '/' or contain a query",
+    })
+    .optional(),
+  credentials: credentialsSchema.optional(),
+  authorizationServer: authorizationServerSchema.prefault({}),
+  admin: z
+    .strictObject({
+      /** 利用停止の通知(POST /admin/deprovision)の資格情報を保持する環境変数の名前 */
+      credentialEnv: envVarName("credentialEnv").default(DEFAULT_ADMIN_CREDENTIAL_ENV),
+    })
+    .prefault({}),
 });
 
 const orchestratorSchema = z.strictObject({
@@ -510,6 +674,8 @@ export type IdpAdapterConfigSection = DeploymentConfig["idp"]["adapter"];
 export type GatewayHttpConfig = DeploymentConfig["gateway"]["http"];
 export type AuditConfig = DeploymentConfig["audit"];
 export type GatewayRunsConfig = DeploymentConfig["gateway"]["runs"];
+export type CredentialsConfig = NonNullable<DeploymentConfig["gateway"]["credentials"]>;
+export type AuthorizationServerConfig = DeploymentConfig["gateway"]["authorizationServer"];
 
 /**
  * Slack と分類するコネクタの kind(`slack`、または `slack-` で始まるプラグイン名)。

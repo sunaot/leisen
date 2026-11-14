@@ -513,7 +513,8 @@ export class DevFixtureConnector implements Connector {
         "dev-fixture accepts only the caller's bearer credential",
       );
     }
-    if (credential.accessToken.length === 0 || credential.expiresAt <= this.now()) {
+    // expiresAt が 0 以下は「失効時刻不明」(ADR-016 追補 2026-11-14)。判定せずに受ける
+    if (credential.accessToken.length === 0 || (credential.expiresAt > 0 && credential.expiresAt <= this.now())) {
       throw new ConnectorError(
         "auth_expired",
         "the caller's credential is missing or expired",

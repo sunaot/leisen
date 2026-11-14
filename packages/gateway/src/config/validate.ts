@@ -55,6 +55,28 @@ export type ConfigIssueCode =
   // --- 以下は起動コード(bootstrap/)が出す ---
   /** audit.sink が起動コードの解決できない値(stdout / jsonl 以外) */
   | "unknown_audit_sink"
+  // --- 本人資格情報の方式と認可サーバー(ADR-022、bootstrap/credentials.ts) ---
+  /** token_vault / esc / 認可サーバーに gateway.publicBaseUrl・gateway.credentials がない */
+  | "credentials_config_missing"
+  /** 本番で gateway.publicBaseUrl が https でない */
+  | "public_base_url_not_https"
+  /** 鍵・資格情報の環境変数の値の形が合わない(長さ・符号化・他の鍵との重複) */
+  | "secret_env_invalid"
+  /** token_exchange の entra_obo に scope がない */
+  | "token_exchange_scope_missing"
+  /** identityCheck: none に confirmIdentityCheckDisabled: true がない */
+  | "identity_check_disabled_requires_confirmation"
+  /** preset: custom に端点がない */
+  | "oauth_endpoints_missing"
+  /** provider: esc なのに認可サーバーが無効 */
+  | "esc_requires_authorization_server"
+  /** ブラウザのログインに使う Gateway の clientId が allowedClients にない */
+  | "idp_login_client_not_allowed"
+  /** 認可サーバーのクライアントの clientId が予約済み・重複 */
+  | "reserved_client_id"
+  | "duplicate_client_id"
+  /** 認可サーバーのクライアントのリダイレクト先が https / ループバックでない */
+  | "redirect_uri_not_allowed"
   /** 監査シンクの出力先が使えない(書き込めない、rawQueryPath が監査ログと同じ等) */
   | "audit_sink_options_invalid"
   /** コネクタ kind の実装が見つからない(プログラム登録・組み込み・プラグインのいずれにもない) */
