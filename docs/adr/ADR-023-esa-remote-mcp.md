@@ -39,7 +39,7 @@ leisen のコネクタは connector-sdk の IF(`search` / `fetch` / `list` / `de
    - スコープは `mcp`(esa が公開する唯一のスコープ。読み取り・書き込みの絞り込みは owner のポリシーで行う)
    - クライアント認証は本文の client secret(`client_secret_post`)
    - 失効は RFC 7009(更新トークンを送る)。本人の解除・IdP の利用停止で Gateway から失効を依頼できる(ADR-022 確認事項 4 の「能動的な失効依頼」を満たす)
-9. **本人照合(ADR-022 決定 8)は esa の REST API `GET https://api.esa.io/v1/user` の `email` を使う。** esa はメールアドレスの確認を経てアカウントを有効にするため、確認済みとして扱う。照合できなければ保管せず、得たトークンの失効を依頼する
+9. **本人照合(ADR-022 決定 8)は、esa の MCP サーバーの `esa_get_team_members` で `myself: true` の行の `email` を使う**(2026-11-14 改訂。当初の REST API `GET /v1/user` は、`mcp` スコープのトークンでは 403 になることを実チームで確認した)。照会先はコネクタと同じ MCP エンドポイント・同じチームで、トークンの受け手(`resource`)と一致する。最終アクセスの新しい順に並べ(認可した直後の本人はほぼ先頭)、見つかるまでページを進め、上限(20 ページ)で打ち切る。他のメンバーの行は読み捨て、保管・記録しない。`preset: esa` で照合するには `kind: esa` と `settings.team` が要る(なければ起動時に `esa_identity_check_requires_esa_connector`)。esa はメールアドレスの確認を経てアカウントを有効にするため確認済みとして扱う(変更時の扱いは確認事項 8)。照合できなければ保管せず、得たトークンの失効を依頼する
 10. **IdP トークン方式(方式 B)は、esa では現時点で採らない。** ID-JAG の引き換え(jwt-bearer)に対応しておらず、token-exchange が外部 IdP のトークンを受けるかは確認できない。esa が対応したら、`connectors[].auth.provider` を切り替えるだけで移れる(コネクタは方式を知らない)
 11. **OAuth クライアントは導入企業が登録し、owner が承認する。** 登録は動的登録(`/oauth/dcr`)を導入時に一度だけ行うか、esa のアプリ登録を使う。リダイレクト URI は `<publicBaseUrl>/connections/callback`。owner のアクセス設定は「ポリシー+アプリごとに承認」にし、leisen のアプリだけを承認する構成を推奨する(docs/direct-connection.md §2。利用者が自分で登録したクライアントを止められる)
 12. **トークンの送り先を `mcp.esa.io` に固定する。** `settings.mcpUrl` の上書きは開発・テスト用で、本番(`NODE_ENV=production`)ではオリジンが `https://mcp.esa.io` 以外なら起動を拒否する(設定の誤り・改ざんで本人のトークンが別のホストへ送られることを防ぐ。OAuth の `resource` と同じオリジン。既定の `https://mcp.esa.io/` の末尾の `/` は MCP のパスで、`resource` の値には付けない)。`oauth.resource` は `esa` と `custom` のプリセットにだけ書ける
@@ -56,7 +56,7 @@ leisen のコネクタは connector-sdk の IF(`search` / `fetch` / `list` / `de
 ## 残る確認事項(実疎通で確かめる。導入先の esa チームの承認が要る)
 
 1. `mcp.esa.io` に、`resource` を付けて得たトークンで実際に接続できるか(付けない場合に受け手がどうなるか)
-2. `GET /v1/user` が `mcp` スコープのトークンで呼べるか。`resource=https://mcp.esa.io` に限ったトークンを `api.esa.io` が受け手の検査で拒むか(拒むなら本人照合は必ず失敗し、拒まないならトークンは受け手限定になっていない)。呼べない場合は本人照合の方法を見直す(`identityCheck: none` は確認フラグ付きの逃げ道として残るが、推奨しない)
+2. ~~`GET /v1/user` が `mcp` スコープのトークンで呼べるか~~ → **確認済み(2026-11-14、実チーム): 403 で呼べない。** トークンの交換(`resource` 付きの認可コードの交換)は成功した。本人照合を MCP の `esa_get_team_members` に切り替えた(決定 9)。あわせて、受け手を限ったトークンが `api.esa.io` の REST では使えないことも分かった
 3. 更新トークンの寿命とローテーションの有無(Token Vault の直列化と、ESC の更新の挙動に関わる)
 4. owner がメンバーを削除・停止したときに、既存のトークンが即時に無効になるか(ESC では退職時の失効をこの経路に頼る。TM-C4)
 5. 動的登録で作るクライアントと、esa のアプリ登録で作るクライアントのどちらが owner の承認・ポリシーの対象になるか

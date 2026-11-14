@@ -163,7 +163,7 @@ npx leisen-gateway serve --config examples/deployment.dev-esa.yaml
 
 `http://127.0.0.1:8787/connections?source=esa` を開き、モック IdP のフォームに `dev-token` を入れてログインし、esa の「接続」を押して esa の認可画面で許可する。接続ページに戻って「接続済み」になれば完了。
 
-⚠️ 本人照合で失敗する場合は、`GET /v1/user` が `mcp` スコープのトークンで呼べない可能性がある(ADR-023 確認事項 2)。切り分けのためだけなら `oauth` に `identityCheck: none` と `confirmIdentityCheckDisabled: true` を足すと照合を省ける(本番では使わない)。
+本人照合は esa の MCP のメンバー一覧(`myself: true` の行)のメールアドレスで行う。失敗するとサーバーログ(標準エラー出力)に `connecting source "esa" failed: …` の形で段階と HTTP 状態が出る。切り分けのためだけなら `oauth` に `identityCheck: none` と `confirmIdentityCheckDisabled: true` を足すと照合を省ける(本番では使わない)。
 
 **4. 検索する**
 

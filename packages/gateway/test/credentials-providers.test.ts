@@ -296,7 +296,15 @@ describe("SourceOAuthClient(esa プリセット、ADR-023)", () => {
   function esa(routes: Record<string, MockHandler> = {}) {
     const fetch = mockFetch(routes);
     const client = new SourceOAuthClient(
-      { sourceId: "esa", preset: "esa", clientId: "esa-app", clientSecret: "esa-secret", scopes: ["mcp"], fetchIdentity: true },
+      {
+        sourceId: "esa",
+        preset: "esa",
+        clientId: "esa-app",
+        clientSecret: "esa-secret",
+        scopes: ["mcp"],
+        fetchIdentity: true,
+        identityLookup: async () => ["alice@example.com"],
+      },
       { fetchImpl: fetch.impl, now: () => 10_000 },
     );
     return { client, fetch };
@@ -323,9 +331,19 @@ describe("SourceOAuthClient(esa プリセット、ADR-023)", () => {
     expect(refreshed.accessExpiresAt).toBe(10_000 + 7_200_000);
   });
 
-  it("本人照合は GET /v1/user の email、失効は RFC 7009 で更新トークンを送る", async () => {
-    expect(extractVerifiedEmails("esa", { screen_name: "alice", email: "Alice@Example.com" })).toEqual(["alice@example.com"]);
-    expect(extractVerifiedEmails("esa", { screen_name: "alice" })).toEqual([]);
+  it("本人照合は差し替えた照会(MCP)を使い、/v1/user を呼ばない。照会なしの構成は拒否する", async () => {
+    const { client, fetch } = esa({
+      "POST https://api.esa.io/oauth/token": () => jsonResponse({ access_token: "esa-access-1", refresh_token: "esa-refresh-1", expires_in: 7200 }),
+    });
+    const result = await client.exchangeCode({ code: "c", codeVerifier: "v", redirectUri: "https://x/cb" });
+    expect(result.verifiedEmails).toEqual(["alice@example.com"]);
+    expect(fetch.requests.map((r) => r.url)).toEqual(["https://api.esa.io/oauth/token"]);
+    expect(
+      () => new SourceOAuthClient({ sourceId: "esa", preset: "esa", clientId: "c", clientSecret: "s", scopes: [], fetchIdentity: true }),
+    ).toThrow(/identity lookup/);
+  });
+
+  it("失効は RFC 7009 で更新トークンを送る", async () => {
     const { client, fetch } = esa({ "POST https://api.esa.io/oauth/revoke": () => new Response(null, { status: 200 }) });
     expect(await client.revoke({ accessToken: "esa-access-1", refreshToken: "esa-refresh-1", obtainedAt: 0 })).toBe(true);
     expect(fetch.requests[0]?.form().get("token")).toBe("esa-refresh-1");

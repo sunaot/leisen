@@ -5,7 +5,8 @@
  * モックし、esa のリモート MCP サーバーは公式 SDK のサーバーを 127.0.0.1 で動かしたフェイクにする。
  * 確かめること:
  * - 認可要求・コード交換・更新に RFC 8707 の resource=https://mcp.esa.io を載せ、scope は mcp
- * - 本人照合は GET /v1/user の email。不一致なら保管せず失効を依頼する
+ * - 本人照合は MCP の esa_get_team_members の myself の行の email(mcp スコープのトークンでは
+ *   GET /v1/user が 403 になるため)。不一致なら保管せず失効を依頼する
  * - 上流の MCP サーバーには本人の esa トークンだけが届く(他人の・IdP のトークンは届かない)
  * - ESC: Gateway が発行するトークンは暗号文で、esa のトークンが見えない
  */
@@ -50,13 +51,37 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+interface EsaState {
+  email: string;
+  /** MCP サーバーが HTTP で返す状態(200 以外なら全要求をその状態で拒否する) */
+  mcpStatus: number;
+  issued: Set<string>;
+  revoked: string[];
+  tokenRequests: RecordedRequest[];
+  userinfoCalls: number;
+  toolCalls: { name: string; args: Record<string, unknown> }[];
+}
+
+/** メンバー一覧(2 ページ。本人は 2 ページ目。他のメンバーの行は読み捨てられる)。 */
+function membersPage(page: number, email: string) {
+  const other = { myself: false, screen_name: "someone", email: "someone@example.com" };
+  return page === 1
+    ? { members: [other], next_page: 2, total_count: 2, page: 1 }
+    : { members: [{ myself: true, screen_name: "alice", email }], next_page: null, total_count: 2, page: 2 };
+}
+
 /** esa のリモート MCP サーバーのフェイク。受けた Authorization を記録する。 */
-async function startFakeEsaMcp(validTokens: () => Set<string>) {
+async function startFakeEsaMcp(state: EsaState) {
+  const validTokens = () => state.issued;
   const seen: string[] = [];
   const http = createServer((req, res) => {
     void (async () => {
       const authorization = req.headers.authorization ?? "";
       seen.push(authorization);
+      if (state.mcpStatus !== 200) {
+        res.writeHead(state.mcpStatus).end("forbidden body that must not be logged");
+        return;
+      }
       if (!validTokens().has(authorization.replace(/^Bearer /, ""))) {
         res.writeHead(401).end("Missing or invalid Authorization header");
         return;
@@ -66,7 +91,13 @@ async function startFakeEsaMcp(validTokens: () => Set<string>) {
       const text = Buffer.concat(chunks).toString("utf8");
       const server = new Server({ name: "fake-esa", version: "0.0.0" }, { capabilities: { tools: {} } });
       server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [] }));
-      server.setRequestHandler(CallToolRequestSchema, () => ({
+      server.setRequestHandler(CallToolRequestSchema, (request) => {
+        const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+        state.toolCalls.push({ name: request.params.name, args });
+        if (request.params.name === "esa_get_team_members") {
+          return { content: [{ type: "text" as const, text: JSON.stringify(membersPage(Number(args["page"]), state.email)) }] };
+        }
+        return {
         content: [
           {
             type: "text" as const,
@@ -81,7 +112,8 @@ async function startFakeEsaMcp(validTokens: () => Set<string>) {
             ]),
           },
         ],
-      }));
+        };
+      });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on("close", () => {
         void transport.close();
@@ -98,7 +130,7 @@ async function startFakeEsaMcp(validTokens: () => Set<string>) {
 }
 
 /** esa の OAuth(api.esa.io)のモック。 */
-function esaOAuthMock(state: { email: string; userStatus: number; issued: Set<string>; revoked: string[]; tokenRequests: RecordedRequest[] }) {
+function esaOAuthMock(state: EsaState) {
   let n = 0;
   return mockFetch({
     "POST https://api.esa.io/oauth/token": (req) => {
@@ -112,12 +144,11 @@ function esaOAuthMock(state: { email: string; userStatus: number; issued: Set<st
       state.issued.add(access);
       return jsonResponse({ access_token: access, refresh_token: `esa-refresh-${n}`, token_type: "Bearer", expires_in: 7200, scope: "mcp" });
     },
-    "GET https://api.esa.io/v1/user": (req) =>
-      state.userStatus !== 200
-        ? jsonResponse({ error: "unauthorized", message: "token for another resource" }, state.userStatus)
-        : state.issued.has(String(req.headers["authorization"]).replace(/^Bearer /, ""))
-        ? jsonResponse({ id: 1, name: "Alice", screen_name: "alice", email: state.email })
-        : jsonResponse({ error: "unauthorized" }, 401),
+    // mcp スコープのトークンでは 403(実チームで確認した挙動)。呼ばれないことを確かめる
+    "GET https://api.esa.io/v1/user": () => {
+      state.userinfoCalls += 1;
+      return jsonResponse({ error: "forbidden" }, 403);
+    },
     "POST https://api.esa.io/oauth/revoke": (req) => {
       state.revoked.push(String(req.form().get("token")));
       return new Response(null, { status: 200 });
@@ -130,8 +161,8 @@ async function startGateway(provider: "token_vault" | "esc") {
   const base = `http://127.0.0.1:${port}`;
   const dir = await mkdtemp(join(tmpdir(), "leisen-esa-"));
   dirs.push(dir);
-  const esa = { email: "alice@example.com", userStatus: 200, issued: new Set<string>(), revoked: [] as string[], tokenRequests: [] as RecordedRequest[] };
-  const mcp = await startFakeEsaMcp(() => esa.issued);
+  const esa: EsaState = { email: "alice@example.com", mcpStatus: 200, issued: new Set(), revoked: [], tokenRequests: [], userinfoCalls: 0, toolCalls: [] };
+  const mcp = await startFakeEsaMcp(esa);
   const yaml = `
 schemaVersion: 1
 deployment: { name: esa-test }
@@ -265,6 +296,12 @@ describe("esa を Token Vault で使う", () => {
     expect(exchange?.get("grant_type")).toBe("authorization_code");
     expect(exchange?.get("resource")).toBe(ESA_RESOURCE);
     expect(exchange?.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]{43,}$/);
+    // 本人照合は MCP のメンバー一覧(最終アクセスの新しい順、本人の行が見つかるまでページを進める)
+    expect(esa.userinfoCalls).toBe(0);
+    expect(esa.toolCalls.filter((c) => c.name === "esa_get_team_members").map((c) => c.args)).toEqual([
+      { teamName: "example-team", sort: "last_accessed", order: "desc", page: 1, perPage: 100 },
+      { teamName: "example-team", sort: "last_accessed", order: "desc", page: 2, perPage: 100 },
+    ]);
 
     const after = await mcpSearch(base, "alice-token");
     expect(after.isError).toBe(false);
@@ -297,20 +334,20 @@ describe("esa を Token Vault で使う", () => {
 });
 
 describe("接続の失敗の切り分け", () => {
-  it("本人照合の照会(/v1/user)が拒否されたら、段階と HTTP 状態をサーバーログに出す(トークンは出さない)", async () => {
+  it("本人照合の照会(MCP)が拒否されたら、段階と HTTP 状態をサーバーログに出す(トークンは出さない)", async () => {
     const { base, esa, warnings } = await startGateway("token_vault");
-    esa.userStatus = 401;
+    esa.mcpStatus = 403;
     const browser = new Browser(base);
     await mockLogin(browser, await browser.request("/connections?source=esa"), "alice-token");
     const csrf = hidden(await (await browser.request("/connections")).text(), "csrf");
     const done = await esaCallback(browser, await browser.post("/connections/start", { csrf, source: "esa" }));
     expect(done.status).toBe(502);
     const line = warnings.find((w) => w.startsWith('connecting source "esa" failed'));
-    expect(line).toBe('connecting source "esa" failed: identity lookup returned HTTP 401');
+    expect(line).toBe('connecting source "esa" failed: identity lookup returned HTTP 403');
     // 照合できなかったトークンは失効を依頼して捨てる
     expect(esa.revoked).toEqual(["esa-refresh-1"]);
     expect(warnings.join("\n")).not.toContain("esa-access");
-    expect(warnings.join("\n")).not.toContain("another resource");
+    expect(warnings.join("\n")).not.toContain("forbidden body");
   });
 });
 
@@ -366,6 +403,38 @@ connectors:
       oauth: { preset: ${preset}, clientId: c, clientSecretEnv: S, resource: "https://mcp.example" }
 audit: { sink: stdout }
 `;
+
+  it("preset esa の本人照合は kind: esa と settings.team を要する(照合に esa の MCP を使うため)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "leisen-esa-cfg-"));
+    dirs.push(dir);
+    const error = await assembleGateway({
+      config: parseDeploymentConfig(`
+schemaVersion: 1
+deployment: { name: esa-config }
+idp: { adapter: { kind: mock } }
+gateway:
+  publicBaseUrl: http://127.0.0.1:8787
+  credentials:
+    store: { kind: sqlite, path: ${join(dir, "state.db")} }
+    keys: { kind: local }
+connectors:
+  - id: src
+    kind: dev-fixture
+    settings: { corpusFile: fixtures/dev-corpus.yaml }
+    auth:
+      provider: token_vault
+      oauth: { preset: esa, clientId: c, clientSecretEnv: S }
+audit: { sink: stdout }
+`),
+      configDir: dir,
+      validateOnly: true,
+      env: { S: "x", LEISEN_VAULT_KEY: randomBytes(32).toString("base64"), LEISEN_ESC_KEY: randomBytes(32).toString("base64") },
+    }).then(
+      () => undefined,
+      (e: unknown) => e as { issues?: { code: string }[] },
+    );
+    expect(error?.issues?.map((i) => i.code)).toContain("esa_identity_check_requires_esa_connector");
+  });
 
   it("oauth.resource は esa / custom のプリセットだけに書ける", () => {
     expect(() => parseDeploymentConfig(yaml("esa"))).not.toThrow();

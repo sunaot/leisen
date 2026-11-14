@@ -19,7 +19,7 @@ connector-sdk v0.4 の `Connector`(`search` / `fetch` / `list` / `describe`)を�
 
 手元で自分の esa チームを試す手順は、リポジトリ直下の README「自分の esa で試す」(`examples/deployment.dev-esa.yaml`)。
 
-どちらの本番方式も Gateway の OAuth プリセット `esa` を使う(`resource=https://mcp.esa.io`、scope `mcp`、本人照合は `GET /v1/user` の email、失効は RFC 7009)。設定の書き方は docs/personal-auth.md「esa」。
+どちらの本番方式も Gateway の OAuth プリセット `esa` を使う(`resource=https://mcp.esa.io`、scope `mcp`、本人照合は MCP の `esa_get_team_members` の `myself: true` の行の `email`、失効は RFC 7009)。設定の書き方は docs/personal-auth.md「esa」。
 
 esa チームの owner は「SETTINGS > API・アプリ・MCP > アクセス設定 > リモートMCPサーバー」でアクセスを許可する(既定は拒否)。「ポリシー+アプリごとに承認」にして leisen のクライアントだけを承認し、ポリシーで読み取り系に絞ることを推奨する。
 
@@ -76,5 +76,5 @@ esa にはチーム内の非公開領域の仕組みがない(閲覧範囲はメ
 - 1 回の操作ごとに MCP の接続(initialize)を行う。往復が増えるが、セッションを利用者間で共有しない
 - 上流はβで、応答の形が変わりうる。想定外は `source_unavailable` にする(黙って空にしない)
 - ゲストのカテゴリ制限が MCP の検索にも効くかは未確認(ADR-023 確認事項 7)
-- 本人照合(`GET /v1/user` の email)の強さは、esa がメールアドレスの変更時に確認を求めるかに依存する(ADR-023 確認事項 8。未確認)
+- 本人照合(メンバー一覧の本人の行の email)の強さは、esa がメールアドレスの変更時に確認を求めるかに依存する(ADR-023 確認事項 8。未確認)
 - 期限切れで打ち切った操作は、上流のセッションの終了を送らない
