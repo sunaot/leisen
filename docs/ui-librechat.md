@@ -326,6 +326,103 @@ run API を呼べるのは、利用者本人のトークンに加えて Orchestr
 前の overlay(AnswerRun を `kp-answer-runs` の `answer-runs.jsonl` に書いていた版)を動かした期間を含めるときだけ、
 そのボリュームを読み取り専用で見せて `--audit` を足す(手順は docs/install.md §7)。
 
+### 1.8 ESC 方式で esa を使う
+
+LibreChat から、本人の esa(T-026、ADR-023)を ESC 方式(ADR-022)で検索する評価用構成。1.2 の overlay に、さらに
+`docker-compose.esc.yml` を重ねる。**この構成の通し確認(ブラウザでのログイン → 接続 → 質問)はまだ行っていない**
+(compose の静的な検証と設定の整合のテスト `packages/gateway/test/reference-deploy.test.ts` まで)。結果は ADR-023 に追記する。
+
+1.2 の構成(Keycloak のトークンを LibreChat が Orchestrator へ転送する)との違い:
+
+| | 1.2 の構成 | ESC overlay |
+|---|---|---|
+| LibreChat が Orchestrator に渡すトークン | Keycloak のアクセストークン(直接転送、ADR-018 決定8) | Gateway の認可サーバーが発行したトークン(受け手 = Orchestrator) |
+| LibreChat の役割 | OpenID でログインし、トークンを転送する | 加えて、MCP サーバー leisen の OAuth クライアント(`librechat-mcp`)になる |
+| Orchestrator | トークンを Gateway に転送する | Gateway の `/token` で Gateway 宛てに交換してから使う(RFC 8693、ADR-022 決定 10) |
+| esa のトークン | — | Gateway の鍵で封じた暗号文として LibreChat が保持する。Gateway は保管しない |
+
+変えるファイル: `deploy/compose/deployment.esc.yaml`(Gateway と Orchestrator の設定)、`docker-compose.esc.yml`、
+`librechat/librechat.esc.yaml`(`librechat.yaml` との違いは MCP サーバー leisen と `mcpSettings.allowedDomains` だけ)。
+Keycloak の realm のクライアント `gateway` は、Gateway 自身のログイン(接続ページ・`/authorize`)のために
+`http://localhost:8787/login/callback` へのリダイレクトだけを許す。
+
+**1. esa 側の準備(owner の操作)**
+
+- リモート MCP サーバーへのアクセスを許可する(README「自分の esa で試す」と同じ)
+- OAuth クライアントを動的登録する。**リダイレクト URI は `http://localhost:8787/connections/callback`**
+  (この構成の Gateway の `publicBaseUrl` は `http://localhost:8787`。README の手順で `127.0.0.1` を登録したクライアントは使えない)
+
+```bash
+curl -s https://api.esa.io/oauth/dcr \
+  -H 'Content-Type: application/json' \
+  -d '{"client_name":"leisen (compose esc)","redirect_uris":["http://localhost:8787/connections/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post","scope":"mcp"}'
+```
+
+**2. 設定を書き換える**
+
+- `deploy/compose/deployment.esc.yaml` の esa の `settings.team` と `auth.oauth.clientId` を自分の値にする(コミットしない)
+- `deploy/compose/.env` に 2 つ足す(1.2 で作った `.env` に追記する。雛形に値はない)
+
+```bash
+cd deploy/compose
+printf 'LEISEN_ESC_KEY=%s\n' "$(openssl rand -base64 32)" >> .env
+read -rs ESA_SECRET && printf 'LEISEN_ESA_CLIENT_SECRET=%s\n' "$ESA_SECRET" >> .env && unset ESA_SECRET
+grep -q '^LEISEN_LIBRECHAT_MCP_CLIENT_SECRET=' .env || grep '^LEISEN_LIBRECHAT_MCP_CLIENT_SECRET=' .env.example >> .env
+```
+
+**3. 起動する**
+
+```bash
+export COMPOSE_FILE=docker-compose.yml:docker-compose.librechat.yml:docker-compose.esc.yml
+docker compose up -d --build --wait
+```
+
+- realm を変えたので、以前に 1.2 で起動していた場合は Keycloak を作り直す(`docker compose up -d --force-recreate keycloak`。
+  realm は起動時の import だけで反映される)
+- Gateway の起動ログ(`docker compose logs gateway`)の `credentials:` の行に `esa=esc` と `authorization server on` が出る
+
+**4. 本人照合のためにメールアドレスをそろえる**
+
+接続時に、Keycloak の利用者のメールアドレスと esa のメールアドレス(MCP のメンバー一覧の本人の行)を突き合わせる。
+評価用の利用者 alice は `alice@example.test` なので、esa に登録しているメールアドレスに変える。Keycloak は
+開発モードでデータを永続化しないため、Keycloak を作り直したらやり直す。
+
+```bash
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh config credentials \
+  --server http://localhost:8080 --realm master --user admin --password "$(grep '^KC_BOOTSTRAP_ADMIN_PASSWORD=' .env | cut -d= -f2-)"
+ALICE_ID=$(docker compose exec keycloak /opt/keycloak/bin/kcadm.sh get users -r leisen -q username=alice --fields id --format csv --noquotes | tr -d '\r')
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh update "users/$ALICE_ID" -r leisen \
+  -s 'email=<esa に登録しているメールアドレス>' -s emailVerified=true
+```
+
+**5. LibreChat から使う**
+
+1. `http://localhost:3080` を開き、Keycloak で alice(パスワードは `e2e/keycloak/realm/leisen-realm.json` の開発用の値)としてログインする
+2. 会話で MCP サーバー **Leisen** を選ぶ。初回は LibreChat が認証を求める(「認証」「接続」等のボタン)
+3. ボタンを押すと Gateway の `/authorize` が開く。Keycloak にはログイン済みなので、そのまま Gateway の同意画面になる
+4. 同意画面で esa の「接続」を押し、esa の認可画面で許可する。同意画面に戻ったら「許可」を押す
+5. LibreChat に戻る。以降は Leisen に質問すると、esa を本人の権限で検索した出典付きの回答が返る
+
+アクセストークンの期限(既定 5 分)が切れたあとの更新(refresh_token の入れ替え)は LibreChat が行う。
+
+**確かめたいこと**(結果は ADR-023「残る確認事項」に追記する)
+
+- 同意画面から esa に接続でき、LibreChat から esa の検索結果を使った回答が返るか
+- 5 分を過ぎてからの質問でも続けて使えるか(LibreChat の refresh_token の入れ替え)
+- esa を接続せずに許可したとき(403 `insufficient_scope`)、LibreChat が再認証を促すか(MCP の step-up への対応)
+
+**トラブルシュート**
+
+| 症状 | 原因と対処 |
+|---|---|
+| Gateway が起動しない | `docker compose logs gateway`。`LEISEN_ESC_KEY` / `LEISEN_ESA_CLIENT_SECRET` の未設定(compose が起動前に止める)、`esa_identity_check_requires_esa_connector`(esa の `settings.team` がない)など、不備は固定文言で列挙される |
+| LibreChat のログに `OAuth authorization_url ... blocked` / `Domain ... is not allowed` | `librechat.esc.yaml` の `mcpSettings.allowedDomains` に OAuth の URL の origin(`http://localhost:8787`・`http://gateway:8787`)がない |
+| Keycloak の画面に `Invalid parameter: redirect_uri` | realm のクライアント `gateway` のリダイレクト先(`http://localhost:8787/login/callback`)が古い realm のまま。Keycloak を作り直す |
+| Gateway の画面に `redirect_uri` の不一致 | Gateway の `authorizationServer.clients[librechat-mcp].redirectUris` と LibreChat のコールバック(`DOMAIN_SERVER` + `/api/mcp/leisen/oauth/callback`)がずれている |
+| esa への接続で「一致しません」 | 手順 4 のメールアドレスが esa と違う。Gateway のログの `connecting source "esa" failed: …` も見る |
+| ツールの呼び出しが 401 | Orchestrator の交換の失敗。`docker compose logs orchestrator` の `authorization server:` の行と、`deployment.esc.yaml` の `orchestratorResource`・`--public-url`・LibreChat の `url` が同じ URL か |
+| ツールの呼び出しが 403(`insufficient_scope`) | 同意画面で esa を接続せずに許可した。LibreChat で Leisen の認証をやり直す(再認証のボタン、または MCP サーバーの設定から) |
+
 ## 2. MCP クライアントの場合
 
 Claude Code・MCP Inspector・自作エージェントなども同じ規約で接続する(ADR-018 決定9)。

@@ -1,0 +1,105 @@
+# deployment.esc.yaml — LibreChat から ESC 方式で esa を使う評価用の設定(ADR-022 / ADR-023、T-026)
+#
+# docker-compose.esc.yml(基本の docker-compose.yml と LibreChat overlay に重ねる)が、gateway と
+# orchestrator の /etc/leisen/deployment.yaml にこのファイルを読み取り専用でマウントする。
+# 手順は docs/ui-librechat.md「1.8 ESC 方式で esa を使う」。
+#
+# 基本の deployment.yaml との違い:
+# - Gateway を MCP の認可サーバーにする(authorizationServer.enabled)。LibreChat は Keycloak の
+#   トークンを転送せず、Gateway が発行した ESC を持つ OAuth クライアントになる
+# - esa を provider: esc で足す。本人の esa のトークンは Gateway の鍵で封じた暗号文として LibreChat が
+#   持ち、Gateway は保管しない
+# - Gateway 自身がブラウザのログイン(Keycloak の認可コード)を行うため、allowedClients に gateway を
+#   足し、allowedIssuers の先頭をブラウザから見える発行者(overlay の keycloak.localhost)にする
+#
+# **使う前に書き換える**(この 2 か所は導入者ごとの値。コミットしない):
+#   connectors[esa].settings.team      … <team>.esa.io の <team>
+#   connectors[esa].auth.oauth.clientId … esa に動的登録したクライアントの client_id
+#                                         (リダイレクト URI は http://localhost:8787/connections/callback)
+#
+# 秘密はこのファイルに書かない(不変条件6)。環境変数の名前だけを書き、値は deploy/compose/.env から渡す。
+schemaVersion: 1
+
+deployment:
+  name: reference-compose-esc
+
+idp:
+  adapter:
+    kind: keycloak
+    baseUrl: http://keycloak:8080
+    confirmPlainHttp: true
+    realm: leisen
+    clientId: gateway
+    clientSecretEnv: LEISEN_KEYCLOAK_CLIENT_SECRET
+    # gateway: 接続ページ・/authorize のログインで Gateway 自身が得たトークン(idp_login_client_not_allowed)
+    allowedClients: [e2e-cli, librechat, gateway]
+    requireAudience: true
+    # 先頭はブラウザから見える発行者(Gateway のログインの認可画面に使う。overlay の KC_HOSTNAME)
+    allowedIssuers:
+      - https://keycloak.localhost:8443/realms/leisen
+      - http://localhost:8080/realms/leisen
+
+gateway:
+  http:
+    host: 0.0.0.0
+    confirmExposedHost: true
+    port: 8787
+    path: /mcp
+  # ブラウザから見た Gateway の URL(ホストのループバックに公開したポート)。発行者・接続ページ・
+  # esa のリダイレクト URI(<publicBaseUrl>/connections/callback)の基点
+  publicBaseUrl: http://localhost:8787
+  credentials:
+    # ESC の拒否リスト・使用済みの印を置く状態 DB(資格情報そのものは置かない)
+    store: { kind: sqlite, path: /var/lib/leisen/credentials/state.db }
+    keys: { kind: local }
+  authorizationServer:
+    enabled: true
+    # LibreChat が持つトークンの受け手は Orchestrator(LibreChat から見た URL)。Orchestrator は
+    # RFC 8693 で Gateway 宛てに交換する(ADR-022 決定 10)
+    orchestratorResource: http://orchestrator:8790/mcp
+    clients:
+      - clientId: librechat-mcp
+        name: LibreChat
+        # LibreChat v0.8.7 の MCP の OAuth コールバック(DOMAIN_SERVER + /api/mcp/<サーバー名>/oauth/callback)
+        redirectUris: ["http://localhost:3080/api/mcp/leisen/oauth/callback"]
+        clientSecretEnv: LEISEN_LIBRECHAT_MCP_CLIENT_SECRET
+        # LibreChat は設定済みの OAuth では resource を送らないため、既定の受け手を Orchestrator にする
+        defaultResource: http://orchestrator:8790/mcp
+
+connectors:
+  - id: dev-docs
+    kind: dev-fixture
+    auth:
+      provider: mock_env
+    settings:
+      corpusFile: /etc/leisen/fixtures/dev-corpus.yaml
+    privateScopes: excluded
+    searchLayer:
+      enabled: false
+  - id: esa
+    kind: esa
+    settings:
+      team: your-team # ← 書き換える
+      privateCategories: [Users]
+    auth:
+      provider: esc
+      oauth:
+        preset: esa
+        clientId: replace-with-your-esa-client-id # ← 書き換える
+        clientSecretEnv: LEISEN_ESA_CLIENT_SECRET
+        scopes: [mcp]
+    privateScopes: excluded
+
+audit:
+  sink: jsonl
+  jsonl:
+    path: /var/lib/leisen/audit/audit.jsonl
+    rawQueryPath: /var/lib/leisen/rawquery/raw-queries.jsonl
+  failureMode: fail-closed
+  privateScopeDocIds: hashed
+  retentionDays: 365
+  rawQueryRetentionDays: 30
+  telemetryRetentionDays: 14
+
+chatHistory:
+  retentionDays: 90

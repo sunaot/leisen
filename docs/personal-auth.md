@@ -151,7 +151,7 @@ leisen-ask serve --gateway http://gateway:8787/mcp --config deployment.yaml \
 
 - deployment.yaml の `authorizationServer.orchestratorResource` を `--public-url` と同じ URL にする
 - 交換のクライアント認証は `LEISEN_ORCHESTRATOR_CREDENTIAL`(run API と同じ値)。Gateway 宛ての受け手は `--gateway-resource`(既定 `<--authorization-server>/mcp`)
-- LibreChat は MCP サーバー(Orchestrator)の OAuth 設定で、`authorization_url` を `<publicBaseUrl>/authorize`、`token_url` を `<publicBaseUrl>/token`、`client_id` / `client_secret` を事前登録の値にする。LibreChat のコールバック URL を `redirectUris` に、`defaultResource` を `orchestratorResource` にする(設定キーは LibreChat のバージョンで異なる。docs/ui-librechat.md を参照し、導入時に実機で確かめる)
+- LibreChat は MCP サーバー(Orchestrator)の OAuth 設定で、`authorization_url` を `<publicBaseUrl>/authorize`、`token_url` を `<publicBaseUrl>/token`、`client_id` / `client_secret` を事前登録の値にする。LibreChat のコールバック URL を `redirectUris` に、`defaultResource` を `orchestratorResource` にする(設定キーは LibreChat のバージョンで異なる。docs/ui-librechat.md を参照し、導入時に実機で確かめる)。v0.8.7 の評価用構成は `deploy/compose/docker-compose.esc.yml` と docs/ui-librechat.md §1.8(LibreChat のソースで設定の項目と挙動を確かめた。ブラウザでの通し確認は未実施)
 
 ## 7. 失効と利用停止
 
