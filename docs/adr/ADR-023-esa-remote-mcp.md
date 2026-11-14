@@ -55,7 +55,7 @@ leisen のコネクタは connector-sdk の IF(`search` / `fetch` / `list` / `de
 
 ## 残る確認事項(実疎通で確かめる。導入先の esa チームの承認が要る)
 
-1. ~~`mcp.esa.io` に、`resource` を付けて得たトークンで実際に接続できるか~~ → **確認済み(2026-11-14、実チーム、Token Vault)**: 動的登録したクライアント(リダイレクト先 `http://127.0.0.1:8787/connections/callback`)で、接続ページから認可 → コード交換 → 本人照合(MCP のメンバー一覧)→ 保管が通り、Gateway 経由の `search` で結果が返った。`resource` を付けない場合の挙動は未確認。**ESC でも確認済み(2026-11-14、実チーム)**: Gateway の認可サーバー(手元の Gateway、モック IdP、事前登録の公開クライアント)で、`/authorize` → 同意画面での esa の接続 → 認可コードの交換が通り、発行されたトークンの `scope` に `source:<esa のソース>` が入り、そのトークンで Gateway 経由の `search` の結果が返った。ESC の更新(`refresh_token` の入れ替えと esa のトークンの更新)と、LibreChat からの利用(docs/ui-librechat.md §1.8)は未確認
+1. ~~`mcp.esa.io` に、`resource` を付けて得たトークンで実際に接続できるか~~ → **確認済み(2026-11-14、実チーム、Token Vault)**: 動的登録したクライアント(リダイレクト先 `http://127.0.0.1:8787/connections/callback`)で、接続ページから認可 → コード交換 → 本人照合(MCP のメンバー一覧)→ 保管が通り、Gateway 経由の `search` で結果が返った。`resource` を付けない場合の挙動は未確認。**ESC でも確認済み(2026-11-14、実チーム)**: Gateway の認可サーバー(手元の Gateway、モック IdP、事前登録の公開クライアント)で、`/authorize` → 同意画面での esa の接続 → 認可コードの交換が通り、発行されたトークンの `scope` に `source:<esa のソース>` が入り、そのトークンで Gateway 経由の `search` の結果が返った。ESC の更新(`refresh_token` の入れ替えと esa のトークンの更新)と、LibreChat からの利用は未確認
 2. ~~`GET /v1/user` が `mcp` スコープのトークンで呼べるか~~ → **確認済み(2026-11-14、実チーム): 403 で呼べない。** トークンの交換(`resource` 付きの認可コードの交換)は成功した。本人照合を MCP の `esa_get_team_members` に切り替えた(決定 9)。あわせて、受け手を限ったトークンが `api.esa.io` の REST では使えないことも分かった
 3. 更新トークンの寿命とローテーションの有無(Token Vault の直列化と、ESC の更新の挙動に関わる)
 4. owner がメンバーを削除・停止したときに、既存のトークンが即時に無効になるか(ESC では退職時の失効をこの経路に頼る。TM-C4)

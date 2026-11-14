@@ -13,8 +13,7 @@ LEISEN_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/sm
 |---|---|
 | `docker-compose.yml` | gateway(`deploy/Dockerfile` でビルド)+ keycloak。検索バックエンドは profile `search-backend` の枠のみ |
 | `docker-compose.librechat.yml` | LibreChat overlay(T-021): orchestrator(`leisen-ask serve`)+ librechat + mongodb + keycloak-tls。`-f` で重ねる |
-| `librechat/` | overlay の設定(`librechat.yaml`、`librechat.env.example`、Keycloak の TLS 終端の `Caddyfile` / `keycloak-tls.sh`、ESC overlay 用の `librechat.esc.yaml`) |
-| `docker-compose.esc.yml` / `deployment.esc.yaml` | ESC overlay(T-026): LibreChat overlay にさらに重ね、Gateway の認可サーバーと esa(`provider: esc`)を有効にする評価用構成。手順は docs/ui-librechat.md §1.8 |
+| `librechat/` | overlay の設定(`librechat.yaml`、`librechat.env.example`、Keycloak の TLS 終端の `Caddyfile` / `keycloak-tls.sh`) |
 | `deployment.yaml` | リファレンス設定(コンテナの `/etc/leisen/deployment.yaml` に読み取り専用でマウント) |
 | `.env.example` | 環境変数の雛形(ローカル評価専用のダミー値) |
 
