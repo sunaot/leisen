@@ -1,0 +1,24 @@
+{
+  "name": "@leisen/connector-esa",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@leisen/connector-sdk": "0.4.0",
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}

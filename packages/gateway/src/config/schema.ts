@@ -190,7 +190,7 @@ const oauthEndpointsSchema = z.strictObject({
 /** token_vault / esc のソース OAuth(ADR-022 決定 7・8)。 */
 const sourceOAuthSchema = z.strictObject({
   /** 端点と本人照合の方式のプリセット。custom は endpoints が必須 */
-  preset: z.enum(["github", "google", "slack", "custom"]),
+  preset: z.enum(["github", "google", "slack", "esa", "custom"]),
   clientId: z.string().min(1),
   /** client secret を保持する環境変数の名前(値ではない) */
   clientSecretEnv: z.string().regex(ENV_VAR_NAME_PATTERN, {
@@ -204,6 +204,14 @@ const sourceOAuthSchema = z.strictObject({
    */
   identityCheck: z.enum(["email", "none"]).default("email"),
   confirmIdentityCheckDisabled: z.boolean().optional(),
+  /**
+   * RFC 8707 の resource(トークンの受け手)。省略時はプリセットの既定(esa は
+   * https://mcp.esa.io)。リモート MCP サーバーを上流にする custom のソースで使う(ADR-023)
+   */
+  resource: httpsOrLoopbackUrl("resource").optional(),
+}).refine((o) => o.resource === undefined || o.preset === "esa" || o.preset === "custom", {
+  path: ["resource"],
+  error: "resource is only for preset esa or custom (sources whose upstream is a remote MCP server)",
 });
 
 const connectorAuthSchema = z.discriminatedUnion("provider", [

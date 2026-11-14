@@ -22,6 +22,7 @@ Accepted 化する根拠を与える。各セルの記述には一次情報(公�
 | GitHub | ◎ Search API | ×(GitHub App OAuthのみ) | GitHub App user-to-server token | ◎(app∩user権限) | 不要 | Org承認・SAML SSO要件あり |
 | SharePoint/OneDrive | ◎ Graph `/search/query` | **◎ Entra ID OBO(唯一の成立例)** | OBO(delegated) | ◎ | 不要 | admin consent 必須 |
 | Confluence | ◎ CQL `/wiki/rest/api/search` | ×(3LOのみ) | 個別OAuth(3LO) | ◎ | 不要 | 組織のアプリ承認ポリシー次第 |
+| esa | ◎ 公式リモート MCP `esa_search_posts`(`https://mcp.esa.io`、β) | ×(jwt-bearer 非対応。token-exchange の受け付け条件は未確認。ADR-023) | 個別OAuth(`resource=https://mcp.esa.io`、scope `mcp`) | ◎(メンバー・ゲストのカテゴリ制限を esa が判定) | 不要 | owner がリモート MCP のアクセスを許可(既定は拒否)。アプリごとの承認も可 |
 | Notion | △ `/v1/search`(共有範囲のみ) | ×(public integration OAuthのみ) | 個別OAuth(bot user) | **△ 部分的** | 不要(ただし検索範囲に構造的限界) | Enterprise承認リスト |
 | Box(参考) | ◎ `GET /search` | △(RFC 8693はdownscope用途) | 個別OAuth + downscope | ◎ | 不要 | 組織設定次第 |
 | ファイル共有(SMB/NAS) | ×(中央検索API不在) | ×(OIDC→Kerberos直接経路なし) | KCD/RBCD + S4U(**T-017で検証**) | ○(ACL評価は本人SID、資格はサービスアサート) | **必須(index-required)** | AD管理者設定 |
@@ -213,7 +214,7 @@ Notion を採用する場合、この限界を describe/README で利用者に�
 
 | 方式 | 該当ソース | Token Vault 要否 |
 |---|---|---|
-| A. 個別OAuth(3-legged、本人トークン) | Google Drive, Slack, GitHub, Confluence, Notion, Box | **要**(リフレッシュトークン保管・失効) |
+| A. 個別OAuth(3-legged、本人トークン) | Google Drive, Slack, GitHub, Confluence, Notion, Box, esa(ADR-023) | **要**(リフレッシュトークン保管・失効) |
 | B. token exchange(OBO) | SharePoint/OneDrive(Entra ID)のみ | 不要(都度交換。IdPセッションに追随) |
 | C. delegated identity(委譲身元) | SMB/NAS(RBCD+S4U)、S3(identity propagation)、社内DB(SET ROLE) | 不要(ただし方式ごとにADR承認必須) |
 | D. サービスアカウント+本人判定(DWD等) | Google Drive(DWD)— 既定不採用、ソース別ADRで例外承認 | — |
@@ -242,6 +243,7 @@ Notion を採用する場合、この限界を describe/README で利用者に�
 - Atlassian: 組織アプリ承認ポリシーの既定と near-real-time 失効の有無
 - Box: 即時失効仕様
 - Slack: docs.slack.dev の一部ページは anti-bot のため全文精読未了(スコープ名・数値は裏取り済み)
+- esa: ADR-023「残る確認事項」(resource 付きトークンでの接続、`/v1/user` の可否、更新トークンの寿命、メンバー削除での失効、レート制限、ゲストのカテゴリ制限)
 
 ## 13. 後続タスクへの反映
 

@@ -516,12 +516,14 @@ describe("起動時の検証", () => {
         LEISEN_KEYCLOAK_CLIENT_SECRET: "x",
         LEISEN_ESC_KEY: randomBytes(32).toString("base64"),
         LEISEN_GITHUB_APP_SECRET: "y",
+        LEISEN_ESA_CLIENT_SECRET: "e",
         LEISEN_LIBRECHAT_CLIENT_SECRET: "z",
         LEISEN_ADMIN_CREDENTIAL: "q".repeat(40),
       },
     });
     opened.push(assembled);
     expect(assembled.credentialsDescription).toContain("github=token_vault");
+    expect(assembled.credentialsDescription).toContain("esa=token_vault");
     expect(assembled.credentialsDescription).toContain("authorization server on");
   });
 

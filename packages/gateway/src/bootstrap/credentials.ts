@@ -278,6 +278,7 @@ export function createSourceCredentialProvider(
   for (const [name, url] of Object.entries(o.endpoints ?? {})) {
     checkEndpoint(url, `${path}.oauth.endpoints.${name}`, issues, warnings);
   }
+  checkEndpoint(o.resource, `${path}.oauth.resource`, issues, warnings);
   if (o.identityCheck === "none") {
     if (o.confirmIdentityCheckDisabled !== true) {
       issues.push({
@@ -317,6 +318,7 @@ export function createSourceCredentialProvider(
       ? { endpoints: Object.fromEntries(Object.entries(o.endpoints).filter(([, v]) => v !== undefined)) as Record<string, string> }
       : {}),
     fetchIdentity: o.identityCheck === "email",
+    ...(o.resource !== undefined ? { resource: o.resource } : {}),
   }, runtime.fetchImpl !== undefined ? { fetchImpl: runtime.fetchImpl } : {});
   runtime.sources.set(connector.id, { sourceId: connector.id, kind: auth.provider, oauth, identityCheck: o.identityCheck });
   const publicBaseUrl = config.gateway.publicBaseUrl;
