@@ -17,6 +17,7 @@
 - `Credential.expiresAt`(connector-sdk)が 0 以下の場合の意味(「失効時刻不明」)を Token Vault の表現と合わせて確定し、ADR-016 追補に記す。現状は SDK 未定義で、connector-github は暫定で「判定せず GitHub の 401 に委ねる」(`packages/connector-github/src/api.ts` の TODO。NaN / ±Infinity は失効扱い)
 
 ## 人間への確認事項(T-003 セキュリティレビュー 2026-09-27 からの申し送り)
+- **ADR-022(Proposed、2026-10-20)**: 本人資格情報の置き場所の検討。既定は Token Vault を維持したうえで、Token Store の共通 IF、接続・解除・失効の監査事象、接続時の本人照合、Slack の識別子を保管しないことを本タスクの内容と受け入れ条件に加える案。確認事項 1〜4(認可サーバー化、永続化しないことを要件とするか、Token Store の境界、失効の責任分担)の判断が先
 - **H2**: `IdpAdapter.authenticate`(HTTP配線によりMCPリクエストごとに呼ばれる)の結果キャッシュを導入する場合、キャッシュキーはセッショントークンのハッシュ(トークン値そのものを保持しない)、TTL は「IdP 側の失効がGatewayに反映されるまでの遅延上限」として本タスクで定める。現状はキャッシュなし・毎リクエスト検証(T-003 注記)
 
 ## 受け入れ条件

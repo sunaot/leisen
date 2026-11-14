@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>個人の認可の実現方式</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 検討ドキュメント。1 本の縦の読み物で、結論 → 前提 → 選択肢と評価 → Token Vault → 推奨構成 → 未決事項。図と表は横スクロール可能な枠に入れる */
+:root {
+  --bg: #f4f7f6;
+  --surface: #ffffff;
+  --ink: #16201d;
+  --muted: #586661;
+  --line: #d3dcd8;
+  --accent: #0b6e5f;
+  --accent-soft: #dbeee9;
+  --on-accent: #ffffff;
+  --warn: #9a5806;
+  --warn-soft: #fbeedb;
+  --bad: #a3322a;
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-body: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1513; --surface: #17201d; --ink: #e4ece9; --muted: #98a8a2; --line: #2b3733;
+    --accent: #4cc3ad; --accent-soft: #15382f; --on-accent: #0a1a16; --warn: #e2a456; --warn-soft: #382a15; --bad: #ef8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1513; --surface: #17201d; --ink: #e4ece9; --muted: #98a8a2; --line: #2b3733;
+  --accent: #4cc3ad; --accent-soft: #15382f; --on-accent: #0a1a16; --warn: #e2a456; --warn-soft: #382a15; --bad: #ef8a80;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.8;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+main { max-width: 1020px; margin: 0 auto; display: grid; gap: 60px; }
+section { display: grid; gap: 16px; min-width: 0; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.35; }
+h1 { font-size: clamp(28px, 4.6vw, 40px); font-weight: 700; }
+h2 { font-size: 23px; font-weight: 700; display: flex; gap: 12px; align-items: baseline; }
+h2 .no { font-family: var(--font-mono); font-size: 14px; font-weight: 500; color: var(--accent); }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; max-width: 70ch; }
+ul, ol { margin: 0; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; color: var(--accent); text-transform: uppercase; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 500; }
+.lead { font-size: 17px; color: var(--muted); }
+.note { font-size: 13px; color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.tbd { color: var(--warn); font-size: 12px; font-weight: 500; white-space: nowrap; }
+
+/* 結論 */
+.summary { background: var(--surface); border: 1px solid var(--accent); border-radius: 12px; padding: 20px 22px; display: grid; gap: 12px; }
+.summary ol { padding-left: 1.4em; display: grid; gap: 10px; }
+.summary li::marker { font-family: var(--font-mono); color: var(--accent); }
+
+/* 表 */
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.6; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-top: 1px solid var(--line); }
+thead th { border-top: 0; background: var(--bg); font-weight: 700; font-size: 13px; white-space: nowrap; }
+tbody th { font-weight: 500; white-space: nowrap; }
+td small { display: block; color: var(--muted); font-size: 12px; }
+td.c, th.c { text-align: center; white-space: nowrap; }
+tr.rec { background: var(--accent-soft); }
+.mk { font-weight: 700; }
+.mk.g { color: var(--accent); }
+.mk.m { color: var(--warn); }
+.mk.b { color: var(--bad); }
+
+/* 比較の帯 */
+.flows { display: grid; gap: 14px; }
+.flow { display: grid; grid-template-columns: 150px 1fr auto; gap: 16px; align-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.flow.ours { border-color: var(--accent); }
+.flow-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.4; }
+.flow-name span { display: block; font-family: var(--font-body); font-weight: 400; font-size: 12px; color: var(--muted); }
+.steps { display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: center; min-width: 0; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.act { border-color: var(--ink); color: var(--ink); font-weight: 500; }
+.ours .chip.act { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chip.sys { border-style: dashed; }
+.sep { color: var(--muted); font-size: 12px; }
+.count { text-align: right; font-family: var(--font-mono); font-size: 12px; color: var(--muted); line-height: 1.3; }
+.count b { display: block; font-size: 26px; color: var(--ink); font-weight: 500; }
+.ours .count b { color: var(--accent); }
+@media (max-width: 720px) {
+  .flow { grid-template-columns: 1fr; gap: 10px; }
+  .count { text-align: left; }
+  .count b { display: inline; margin-right: 6px; }
+}
+
+/* 図 */
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 12px 10px; overflow-x: auto; }
+.figure svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--muted); padding: 0 8px 4px; }
+.legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--muted); vertical-align: middle; margin-right: 6px; }
+.legend i.a { border-color: var(--accent); }
+.legend i.d { border-top-style: dashed; }
+.legend i.w { border-color: var(--warn); border-top-style: dashed; }
+svg text { font-family: var(--font-body); font-size: 13px; fill: var(--ink); }
+svg .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+svg .actor { fill: var(--bg); stroke: var(--line); }
+svg .actor-t { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+svg .actor-s { font-size: 11px; fill: var(--muted); }
+svg .ll { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 5; }
+svg .m { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+svg .m.a { stroke: var(--accent); stroke-width: 2.2; }
+svg .m.d { stroke-dasharray: 6 5; }
+svg .m.w { stroke: var(--warn); stroke-dasharray: 6 4; stroke-width: 1.8; }
+svg .gap { stroke: var(--surface); stroke-width: 8; fill: none; }
+svg .ah { fill: var(--muted); }
+svg .ah-a { fill: var(--accent); }
+svg .ah-w { fill: var(--warn); }
+svg .lbl-a { fill: var(--accent); font-weight: 700; }
+svg .lbl-w { fill: var(--warn); font-size: 12px; }
+svg .act-box { fill: var(--accent-soft); stroke: var(--accent); }
+svg .note-box { fill: var(--surface); stroke: var(--accent); }
+svg .note-t { font-size: 12px; }
+svg .num { fill: var(--accent); }
+svg .num-t { fill: var(--on-accent); font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+svg .frame { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+svg .frame-t { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .box.key { fill: var(--accent-soft); stroke: var(--accent); }
+svg .box.opt { stroke-dasharray: 5 4; }
+svg .box.src { fill: var(--bg); }
+svg .bt { font-weight: 700; font-size: 13px; }
+svg .bs { font-size: 11px; fill: var(--muted); }
+svg .axis { stroke: var(--line); stroke-width: 1; }
+svg .tick-t { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
+svg .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; }
+svg .ev { fill: var(--warn); }
+svg .ev.ok { fill: var(--accent); }
+svg .band { fill: var(--warn-soft); stroke: var(--warn); stroke-dasharray: 4 3; }
+svg .row-t { font-size: 13px; font-weight: 500; }
+svg .row-s { font-size: 11px; fill: var(--muted); }
+svg .cnt { font-family: var(--font-mono); font-size: 13px; font-weight: 500; fill: var(--warn); }
+svg .cnt.ok { fill: var(--accent); }
+svg .xm { stroke: var(--bad); stroke-width: 3; stroke-linecap: round; }
+svg .gate { stroke: var(--ink); stroke-width: 3; }
+svg .lbl-b { fill: var(--bad); font-size: 12px; font-weight: 500; }
+svg .m.b { stroke: var(--bad); stroke-width: 1.8; }
+.legend i.b { border-color: var(--bad); }
+
+/* カード群 */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.cards.two { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 820px) { .cards, .cards.two { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.card.pick { border-color: var(--accent); }
+.card-k { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.card ul { padding-left: 1.1em; font-size: 14px; display: grid; gap: 4px; }
+.card p { font-size: 14px; }
+.card .cond { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; }
+.meter { display: flex; gap: 4px; }
+.meter span { width: 22px; height: 6px; border-radius: 3px; background: var(--line); }
+.meter span.on { background: var(--accent); }
+
+.reqs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 28px; }
+@media (max-width: 720px) { .reqs { grid-template-columns: 1fr; } }
+.req { display: grid; gap: 4px; padding: 14px 0; border-top: 1px solid var(--line); min-width: 0; }
+.req h3 { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.req h3 span { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--accent); }
+.req p { font-size: 14px; color: var(--muted); }
+.callout { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 14px; max-width: 78ch; }
+.callout b { color: var(--warn); }
+
+.funnel { display: flex; flex-wrap: wrap; gap: 6px; }
+.funnel div { flex: 1 1 140px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.funnel div b { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--accent); font-weight: 500; }
+.decisions { padding-left: 1.4em; display: grid; gap: 10px; max-width: 76ch; }
+.decisions li { padding-left: 4px; }
+.decisions li b { font-weight: 700; }
+.refs { font-size: 13px; color: var(--muted); padding-left: 1.2em; display: grid; gap: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body style="margin:0">
+<main>
+<p class="note" style="font-size:.88rem;color:var(--muted);border-left:2px solid var(--line);padding-left:1em;margin:1em 0">編集注(2026-10-20): 本書で「封緘(資格情報)」「開封」と呼んでいるものは、後の検討(docs/notes/2026-10-19-auth-methods-comparison.html、ADR-022)で ESC(encrypted self-contained credential、暗号化した自己完結型資格情報)と「復号」に呼び直した。</p>
+  <header style="display:grid;gap:14px">
+    <div class="eyebrow">Leisen · 検討ドキュメント · ドラフト</div>
+    <h1>個人の認可の実現方式</h1>
+    <div class="meta">
+      <span><b>日付</b> 2026-10-14</span>
+      <span><b>状態</b> 検討中(ADR 起案前)</span>
+      <span><b>関連</b> ADR-005 / ADR-010 / ADR-013 / ADR-014 / ADR-018 / T-004 / auth-matrix</span>
+    </div>
+    <p class="lead">利用者本人の資格情報で各ソースにアクセスする仕組みを、利用者の体験、管理者の負担、安全性の 3 つの面から比べます。目標は、Claude のコネクタ(設定で「接続」を押し、OAuth に同意すれば使える)と同等以上の体験を、Leisen の不変条件を守ったまま実現することです。</p>
+  </header>
+
+  <section aria-labelledby="s0">
+    <h2 id="s0"><span class="no">0</span>結論</h2>
+    <div class="summary">
+      <ol>
+        <li><b>接続は質問の中で求める。</b>未接続のソースがあれば部分的な回答と接続ボタンを返し、許可が済んだら同じ質問を自動でやり直す。設定画面での事前接続は補助の導線にする。</li>
+        <li><b>接続の画面は Gateway が持つ。</b>どのチャット UI や MCP クライアントから使っても同じ導線になり、保管・失効・監査が Gateway の中で完結する。</li>
+        <li><b>操作の要らない方式に寄せられるソースは寄せる。</b>SharePoint / OneDrive は Entra ID の On-Behalf-Of で利用者の操作が要らない。IdP 起点のアクセス許可(ID-JAG)に対応したソースがあれば同じ扱いにできるので、調査する。</li>
+        <li><b>本人ごとの OAuth を使うソースでは、Token Vault の機能は必須。</b>ただし実装先は差し替えられるようにし、既定は内蔵の保管(KMS で暗号化)とする。Keycloak の identity brokering は検証してから判断する。</li>
+        <li><b>leisen を通さない直接接続は、権限は越えないが統制が抜ける経路として扱う。</b>leisen への同意は OAuth アプリ単位なので直接接続の許可にはならない。ソース側のアプリ許可リストと Gateway の <code>allowedClients</code> で塞ぎ、塞げない経路は規程で扱う。接続の設計では、トークンを Gateway の外に出さないことと、leisen の方が便利な体験にすることで迂回の動機を消す。</li>
+      </ol>
+    </div>
+  </section>
+
+  <section aria-labelledby="s1">
+    <h2 id="s1"><span class="no">1</span>前提と制約</h2>
+    <h3>Claude のコネクタが簡潔に見える理由</h3>
+    <p>Claude の体験が短いのは、裏の作業が済んでいるからです。OAuth クライアントの登録と各社の審査(Google の Restricted scope など)を Anthropic が済ませているため、利用者は同意画面を 1 度通るだけで済みます。Leisen は 1 デプロイ = 1 社で、アプリの登録と承認は導入企業が行います(Slack は類型 (a) で確定)。そのため、利用者の体験と管理者の体験を分けて評価します。</p>
+    <p>一方で Leisen には、Claude にない有利な条件が 2 つあります。社内 IdP の SSO がすでに通っていること、そして利用者が何を聞こうとしているかが分かった状態で接続を求められることです。</p>
+
+    <h3>守るべき不変条件</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>不変条件</th><th>この検討への影響</th></tr></thead>
+        <tbody>
+          <tr><th>1 認可はソースに委譲</th><td>ソース API は本人の資格情報で呼ぶ。サービスアカウント系(Google のドメインワイド委任など)は ADR で承認した場合に限る。</td></tr>
+          <tr><th>2 全呼び出しを監査</th><td>Gateway を通らない経路を作らない。トークンをチャット UI に持たせる設計はこれに反する。接続・解除・失効も監査に残す。</td></tr>
+          <tr><th>4 キャッシュキーに userId</th><td>保管したトークンも userId と sourceId 単位で分け、ユーザー間で共有しない。</td></tr>
+          <tr><th>6 秘密情報をログに出さない</th><td>トークンの値はログ・監査・エラーに出さない(<code>redactAuthContext()</code>)。</td></tr>
+          <tr><th>7 Slack 由来データを永続化しない</th><td>Slack のトークン応答に含まれる Slack のユーザー ID も対象。本人照合はその場で行い、ID は保存しない。</td></tr>
+          <tr><th>8 個社差分をコアに入れない</th><td>保管先の差し替えは deployment.yaml とプラグイン境界で吸収する。境界を増やすなら ADR が要る。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>ソースごとの成立する方式(auth-matrix 2026-07-09 より)</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>ソース</th><th>方式</th><th>利用者の操作</th><th>管理者の事前作業</th></tr></thead>
+        <tbody>
+          <tr><th>SharePoint / OneDrive</th><td>B. token exchange(Entra ID の OBO)</td><td>なし</td><td>delegated 権限の admin consent</td></tr>
+          <tr><th>Google Drive</th><td>A. 本人の OAuth</td><td>初回の許可</td><td>OAuth クライアント登録、Admin Console での事前承認</td></tr>
+          <tr><th>Slack</th><td>A. 本人の OAuth(user token)</td><td>初回の許可。private / DM は Slack 内で追加の同意</td><td>アプリ登録とワークスペースでの承認</td></tr>
+          <tr><th>GitHub</th><td>A. GitHub App の user-to-server token</td><td>初回の許可</td><td>App 登録、Org の承認、SCIM 連携(SAML 単独では退職後もトークンが残る)</td></tr>
+          <tr><th>Confluence / Notion</th><td>A. 本人の OAuth</td><td>初回の許可</td><td>組織のアプリ承認</td></tr>
+          <tr><th>SMB / S3 / 社内 DB</th><td>C. 委譲された身元</td><td>なし(方式による)</td><td>AD や AWS の設定。方式ごとに ADR(T-017)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s2">
+    <h2 id="s2"><span class="no">2</span>選択肢</h2>
+    <p>選択肢は 3 つの軸に分かれます。軸ごとに 1 つ選ぶのではなく、組み合わせて使います。</p>
+
+    <h3>軸 A:いつ、どこで接続させるか</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>案</th><th>内容</th><th>成立するソース</th></tr></thead>
+        <tbody>
+          <tr><th>A1 事前接続</th><td>設定画面のソース一覧で「接続」を押す。Claude のコネクタと同じ形。</td><td>方式 A 全般</td></tr>
+          <tr class="rec"><th>A2 質問の中で接続</th><td>質問した時点で未接続のソースがあれば、回答に接続ボタンを出す。許可が済んだら同じ質問を自動でやり直す。</td><td>方式 A 全般</td></tr>
+          <tr><th>A3 初回の一括接続</th><td>初回ログイン時に、管理者が推奨したソースを順に許可していく。</td><td>方式 A 全般</td></tr>
+          <tr><th>A4 操作なし</th><td>管理者側の設定だけで本人の資格情報が手に入る。</td><td>OBO(M365)。ID-JAG 対応ソース <span class="tbd">要調査</span>。ドメインワイド委任は ADR で承認した場合のみ</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>軸 B:同意の手間を減らす(どの案とも組み合わせられる)</h3>
+    <div class="cards">
+      <div class="card"><div class="card-k">事前承認</div><p>Google のドメインインストール、Slack のアプリ承認、GitHub の Org 承認を管理者が済ませておく。「承認待ち」や「未確認アプリ」の警告が消える。</p></div>
+      <div class="card"><div class="card-k">SSO と login_hint</div><p>ソース側も同じ IdP で SSO していればログイン画面が出ない。<code>login_hint</code> でアカウント選択も省ける。</p></div>
+      <div class="card"><div class="card-k">段階的な範囲</div><p>最初は狭い範囲で許可を取り、Slack の private や DM は必要になった時点で追加する(<code>privateScopes</code> 既定 excluded と整合)。</p></div>
+    </div>
+
+    <h3>軸 C:接続の画面を誰が持つか</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>案</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr class="rec"><th>C1 Gateway</th><td>クライアントが違っても同じ導線になる(ADR-018 の複数クライアント前提に合う)。Token Vault と同じ境界にあり、監査も Gateway に一本化できる。</td></tr>
+          <tr><th>C2 チャット UI の MCP OAuth</th><td>LibreChat の MCP OAuth は Orchestrator への認可であって、各ソースへの認可ではない。仕組みが噛み合わない。トークンを UI 経由で流すのは MCP 仕様が禁じるトークンの中継にもあたる。</td></tr>
+          <tr><th>C3 コネクタごと</th><td>ソースごとに UI と個社差分が散らばる。却下。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s3">
+    <h2 id="s3"><span class="no">3</span>評価</h2>
+    <h3>評価基準</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>観点</th><th>測り方</th></tr></thead>
+        <tbody>
+          <tr><th>初回の手間</th><td>最初の回答に届くまでのクリック数・画面遷移・所要時間</td></tr>
+          <tr><th>接続の完了率</th><td>接続ボタンの表示から完了までの各段階の離脱率</td></tr>
+          <tr><th>2 回目以降の手間</th><td>1 人あたり月何回の再接続か(トークンの寿命と保管の有無で決まる)</td></tr>
+          <tr><th>見落としが見えるか</th><td>未接続で検索しなかったソースを、回答の中で利用者が認識できるか</td></tr>
+          <tr><th>管理者の負担</th><td>導入時の登録・承認の作業量、導入チェックリスト(T-012)の項目数</td></tr>
+          <tr><th>不変条件への適合</th><td>本人の資格情報か(1)、接続事象が監査に残るか(2)、秘密情報の扱い(6)</td></tr>
+          <tr><th>安全性</th><td>別アカウントの誤接続、state の取り違え、フィッシングに見える遷移、退職者のトークンが残らないか</td></tr>
+          <tr><th>移植性</th><td>UI やクライアントが違っても同じ導線になるか</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>軸 A の比較(利用者体験の観点)</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>案</th><th class="c">初回の手間</th><th class="c">完了率</th><th class="c">管理者負担</th><th class="c">不変条件</th><th>備考</th></tr></thead>
+        <tbody>
+          <tr><th>A1 事前接続</th><td class="c"><span class="mk m">中</span></td><td class="c"><span class="mk m">低〜中</span></td><td class="c"><span class="mk g">低</span></td><td class="c"><span class="mk g">◎</span></td><td>接続が必要な理由が利用者に伝わりにくい</td></tr>
+          <tr class="rec"><th>A2 質問の中で接続</th><td class="c"><span class="mk g">低</span></td><td class="c"><span class="mk g">高</span></td><td class="c"><span class="mk g">低</span></td><td class="c"><span class="mk g">◎</span></td><td>初回だけ回答が 2 段になる</td></tr>
+          <tr><th>A3 初回の一括接続</th><td class="c"><span class="mk b">高</span></td><td class="c"><span class="mk m">中</span></td><td class="c"><span class="mk m">中</span></td><td class="c"><span class="mk g">◎</span></td><td>同意画面がソースの数だけ続く</td></tr>
+          <tr><th>A4 OBO</th><td class="c"><span class="mk g">なし</span></td><td class="c"><span class="mk g">100%</span></td><td class="c"><span class="mk m">中</span></td><td class="c"><span class="mk g">◎</span></td><td>M365 のみ</td></tr>
+          <tr><th>A4 ドメインワイド委任</th><td class="c"><span class="mk g">なし</span></td><td class="c"><span class="mk g">100%</span></td><td class="c"><span class="mk b">高</span></td><td class="c"><span class="mk m">要 ADR</span></td><td>既定不採用(ADR-010 決定 4)</td></tr>
+          <tr><th>A4 ID-JAG</th><td class="c"><span class="mk g">なし</span></td><td class="c"><span class="mk g">100%</span></td><td class="c"><span class="mk m">中</span></td><td class="c"><span class="mk m">要検証</span></td><td>対応ソースは <span class="tbd">要調査</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>利用者の操作の比較</h3>
+    <div class="flows">
+      <div class="flow">
+        <div class="flow-name">Claude のコネクタ<span>事前に設定で接続</span></div>
+        <div class="steps">
+          <span class="chip act">設定を開く</span><span class="sep">→</span>
+          <span class="chip act">コネクタを追加</span><span class="sep">→</span>
+          <span class="chip act">接続</span><span class="sep">→</span>
+          <span class="chip act">ブラウザで同意</span><span class="sep">→</span>
+          <span class="chip act">会話でオンにする</span><span class="sep">→</span>
+          <span class="chip act">質問する</span>
+        </div>
+        <div class="count"><b>6</b>操作・質問の前に</div>
+      </div>
+      <div class="flow ours">
+        <div class="flow-name">Leisen の推奨案<span>質問の中で接続</span></div>
+        <div class="steps">
+          <span class="chip act">質問する</span><span class="sep">→</span>
+          <span class="chip sys">部分回答と接続ボタン</span><span class="sep">→</span>
+          <span class="chip act">接続を押す</span><span class="sep">→</span>
+          <span class="chip act">許可を押す</span><span class="sep">→</span>
+          <span class="chip sys">自動で再実行</span><span class="sep">→</span>
+          <span class="chip sys">完全な回答</span>
+        </div>
+        <div class="count"><b>3</b>操作・必要なときだけ</div>
+      </div>
+    </div>
+    <p class="note">塗りの付いた項目が利用者の操作、破線は自動で進む段階です。Claude 側の「会話でオンにする」は、そのコネクタが会話でオフになっているときだけ必要です。</p>
+  </section>
+
+  <section aria-labelledby="s4">
+    <h2 id="s4"><span class="no">4</span>Token Vault の検討</h2>
+    <p>Token Vault は、本人ごとの OAuth で得たトークンを暗号化して保管し、更新し、失効させる部品です(ADR-010 決定 2)。要るかどうかは方式で決まります。</p>
+
+    <h3>方式ごとの要否</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>方式</th><th>該当ソース</th><th class="c">保管</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><th>A. 本人の OAuth</th><td>Google、Slack、GitHub、Confluence、Notion</td><td class="c"><span class="mk b">要</span></td><td>同意で得たトークンを次回以降も使うには、どこかに保管するしかない</td></tr>
+          <tr><th>B. token exchange</th><td>SharePoint / OneDrive</td><td class="c"><span class="mk g">不要</span></td><td>毎回 IdP のトークンから交換する。失効は IdP のセッションに追随する</td></tr>
+          <tr><th>ID-JAG</th><td><span class="tbd">要調査</span></td><td class="c"><span class="mk g">不要</span></td><td>B と同じく毎回交換する</td></tr>
+          <tr><th>C. 委譲された身元</th><td>SMB、S3、社内 DB</td><td class="c"><span class="mk g">不要</span></td><td>方式ごとに ADR が要る(T-017)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>保管しない場合の再同意(方式 A)</h3>
+    <p>保管しない場合、アクセストークンの寿命が切れるたびに同意をやり直すことになります。下の図は、9 時から 18 時まで使い続けた場合の同意の回数です。</p>
+    <div class="figure" role="img" aria-label="9 時から 18 時の間の再同意の回数。保管しない場合は Google Drive が 9 回、GitHub が 2 回、Slack は利用のたび。保管した場合は最初の 1 回だけ。">
+      <svg viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg">
+        <!-- 軸: 9:00 = x200, 1 時間 = 76px, 18:00 = x884 -->
+        <g>
+          <line class="grid" x1="200" y1="30" x2="200" y2="244"/><line class="grid" x1="276" y1="30" x2="276" y2="244"/>
+          <line class="grid" x1="352" y1="30" x2="352" y2="244"/><line class="grid" x1="428" y1="30" x2="428" y2="244"/>
+          <line class="grid" x1="504" y1="30" x2="504" y2="244"/><line class="grid" x1="580" y1="30" x2="580" y2="244"/>
+          <line class="grid" x1="656" y1="30" x2="656" y2="244"/><line class="grid" x1="732" y1="30" x2="732" y2="244"/>
+          <line class="grid" x1="808" y1="30" x2="808" y2="244"/><line class="grid" x1="884" y1="30" x2="884" y2="244"/>
+          <line class="axis" x1="200" y1="244" x2="884" y2="244"/>
+          <text class="tick-t" x="200" y="262" text-anchor="middle">9:00</text><text class="tick-t" x="352" y="262" text-anchor="middle">11:00</text>
+          <text class="tick-t" x="504" y="262" text-anchor="middle">13:00</text><text class="tick-t" x="656" y="262" text-anchor="middle">15:00</text>
+          <text class="tick-t" x="808" y="262" text-anchor="middle">17:00</text><text class="tick-t" x="884" y="262" text-anchor="middle">18:00</text>
+        </g>
+        <!-- Google: 1 時間ごと -->
+        <text class="row-t" x="16" y="56">Google Drive</text>
+        <text class="row-s" x="16" y="72">アクセストークン 約 1 時間</text>
+        <text class="cnt" x="186" y="64" text-anchor="end">9 回</text>
+        <line class="axis" x1="200" y1="60" x2="884" y2="60"/>
+        <circle class="ev" cx="200" cy="60" r="6"/><circle class="ev" cx="276" cy="60" r="6"/><circle class="ev" cx="352" cy="60" r="6"/>
+        <circle class="ev" cx="428" cy="60" r="6"/><circle class="ev" cx="504" cy="60" r="6"/><circle class="ev" cx="580" cy="60" r="6"/>
+        <circle class="ev" cx="656" cy="60" r="6"/><circle class="ev" cx="732" cy="60" r="6"/><circle class="ev" cx="808" cy="60" r="6"/>
+        <!-- GitHub: 8 時間 -->
+        <text class="row-t" x="16" y="110">GitHub</text>
+        <text class="row-s" x="16" y="126">アクセストークン 8 時間</text>
+        <text class="cnt" x="186" y="118" text-anchor="end">2 回</text>
+        <line class="axis" x1="200" y1="114" x2="884" y2="114"/>
+        <circle class="ev" cx="200" cy="114" r="6"/><circle class="ev" cx="808" cy="114" r="6"/>
+        <!-- Slack: 期限なしの 1 本。捨てると利用のたび -->
+        <text class="row-t" x="16" y="164">Slack</text>
+        <text class="row-s" x="16" y="180">期限なしのトークン 1 本</text>
+        <text class="cnt" x="186" y="172" text-anchor="end">毎回</text>
+        <rect class="band" x="200" y="158" width="684" height="20" rx="4"/>
+        <text class="lbl-w" x="542" y="172" text-anchor="middle">保管先がないので、利用のたびに許可し直す</text>
+        <!-- 保管あり -->
+        <text class="row-t" x="16" y="220">保管あり(全ソース)</text>
+        <text class="row-s" x="16" y="236">更新トークンで自動更新</text>
+        <text class="cnt ok" x="186" y="228" text-anchor="end">1 回</text>
+        <line class="axis" x1="200" y1="224" x2="884" y2="224"/>
+        <circle class="ev ok" cx="200" cy="224" r="6"/>
+        <text class="row-s" x="214" y="214">最初の許可だけ</text>
+      </svg>
+    </div>
+    <p class="note">前提: 「保管しない」は、更新トークンを捨ててアクセストークンだけを使う運用。Gateway のメモリにだけ持つ運用では、再起動やスケールアウトのたびに全員が許可し直す。Slack の user token はトークンのローテーションを有効にしない限り期限がない。Confluence(1 時間)や Notion の寿命は実装時に確認する <span class="tbd">要確認</span>。</p>
+
+    <div class="callout"><b>保管しない代わりにチャット UI やブラウザにトークンを持たせる案は成り立ちません。</b>MCP 仕様が禁じるトークンの中継にあたり、Gateway を通らない経路ができやすく(不変条件 2)、退職時の一括失効もできなくなります。</div>
+
+    <h3>Token Vault が満たすべき要件</h3>
+    <div class="reqs">
+      <div class="req"><h3>暗号化して保管<span>TM / T-004</span></h3><p>KMS の鍵でデータ鍵を包む封筒暗号化。開発用はローカルの鍵ファイルでもよいが、本番では拒否する。</p></div>
+      <div class="req"><h3>本人単位で分ける<span>不変条件 4</span></h3><p>キーは userId と sourceId の組。ユーザー間で共有しない。</p></div>
+      <div class="req"><h3>値を外に出さない<span>不変条件 6</span></h3><p>ログ・監査・エラーには値を出さず、<code>redactAuthContext()</code> を通す。</p></div>
+      <div class="req"><h3>自動で更新する<span>体験</span></h3><p>更新トークンで静かに更新し、更新トークンのローテーションにも追随する。<code>Credential.expiresAt</code> の意味を T-004 で確定する。</p></div>
+      <div class="req"><h3>退職時に一括失効<span>TM-C4</span></h3><p>IdP の利用停止(SCIM 等)を受けて、その人の全ソースのトークンを失効させる。Slack の <code>tokens_revoked</code> などソース側の通知も取り込む。</p></div>
+      <div class="req"><h3>本人が解除できる<span>体験</span></h3><p>接続中のソース一覧から本人が解除できる。解除・失効・接続は監査に記録する(不変条件 2)。</p></div>
+      <div class="req"><h3>Slack の識別子を残さない<span>不変条件 7</span></h3><p>トークン応答に含まれる Slack のユーザー ID などは保管しない。本人照合は接続時に済ませて捨てる。</p></div>
+      <div class="req"><h3>失効を体験に変える<span>T-004</span></h3><p>失効やスコープ不足はエラーではなく「再接続」の導線として返す。</p></div>
+    </div>
+
+    <h3>実装先の選択肢と評価</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>案</th><th class="c">再同意の少なさ</th><th class="c">IdP 非依存</th><th class="c">失効連動</th><th class="c">運用の軽さ</th><th class="c">外部依存の少なさ</th><th class="c">ADR-005 適合</th><th>所見</th></tr></thead>
+        <tbody>
+          <tr><th>V0 保管しない</th><td class="c"><span class="mk b">×</span></td><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk m">△</span></td><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk g">◎</span></td><td>開発・評価用に限る(今の <code>mock_env</code> と T-025 の PAT)</td></tr>
+          <tr class="rec"><th>V1 内蔵の保管<small>KMS で封筒暗号化 + DB</small></th><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk m">△</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk g">◎</span></td><td>既定として推奨。鍵管理と失効の連動は自前で作る</td></tr>
+          <tr><th>V2 Keycloak の identity brokering<small>トークン保存 + アカウント連携</small></th><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk b">×</span></td><td class="c"><span class="mk m">要検証</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk m">△</span></td><td>参照構成の Keycloak で使えるが、他の IdP では使えない。外部トークンの自動更新と失効の連動を検証する</td></tr>
+          <tr><th>V3 外部の Token Vault サービス<small>Auth0 Token Vault など</small></th><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk m">△</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk b">×</span></td><td class="c"><span class="mk m">△</span></td><td>運用はいちばん軽いが、トークンが社外に置かれる。シングルテナントの導入方針と合うか</td></tr>
+          <tr><th>V4 汎用の秘密情報保管<small>HashiCorp Vault など</small></th><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk g">◎</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk m">△</span></td><td class="c"><span class="mk g">○</span></td><td class="c"><span class="mk g">○</span></td><td>導入先に既にあることが多い。保管だけで、更新・失効のロジックは Leisen 側に残る</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>推奨は、Gateway に保管の共通 IF(Token Store)を置き、既定の実装を V1 にすることです。V3 と V4 は、2 社以上で要望が再現してから contrib または追加の実装にします(不変条件 9)。V2 は参照構成との相性が良いので、ADR の前に小さく検証します。</p>
+  </section>
+
+  <section aria-labelledby="s5">
+    <h2 id="s5"><span class="no">5</span>推奨構成</h2>
+    <h3>部品の配置</h3>
+    <div class="figure" role="img" aria-label="Gateway の中に接続ページ、監査、MCP の受付、方式別の Auth Adapter(A 本人の OAuth、B token exchange、C 委譲された身元)、Token Store と保管の実装(内蔵、外部は任意)を置いた構成図。IdP は OBO の交換と利用停止による一括失効で Gateway とつながる。">
+      <svg viewBox="0 0 980 470" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="b-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="b-ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="b-ah-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-w" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <!-- 左: 利用者側 -->
+        <rect class="box" x="20" y="40" width="160" height="56" rx="8"/>
+        <text class="bt" x="100" y="64" text-anchor="middle">チャット UI</text>
+        <text class="bs" x="100" y="82" text-anchor="middle">LibreChat などの MCP クライアント</text>
+        <rect class="box" x="20" y="190" width="160" height="56" rx="8"/>
+        <text class="bt" x="100" y="214" text-anchor="middle">Orchestrator</text>
+        <text class="bs" x="100" y="232" text-anchor="middle">leisen-ask</text>
+        <line class="m" x1="100" y1="96" x2="100" y2="188" marker-end="url(#b-ah)"/>
+        <text class="halo" x="108" y="146">MCP</text>
+
+        <!-- Gateway 枠 -->
+        <rect class="frame" x="230" y="14" width="420" height="440" rx="12"/>
+        <text class="frame-t" x="246" y="40">Gateway</text>
+
+        <!-- Gateway 左列 -->
+        <rect class="box key" x="250" y="52" width="180" height="48" rx="6"/>
+        <text class="bt" x="340" y="72" text-anchor="middle">接続ページ</text>
+        <text class="bs" x="340" y="89" text-anchor="middle">同意の受け取りと本人照合</text>
+        <rect class="box" x="250" y="120" width="180" height="48" rx="6"/>
+        <text class="bt" x="340" y="140" text-anchor="middle">監査</text>
+        <text class="bs" x="340" y="157" text-anchor="middle">接続・解除・失効も記録</text>
+        <rect class="box" x="250" y="194" width="180" height="48" rx="6"/>
+        <text class="bt" x="340" y="214" text-anchor="middle">MCP の受付</text>
+        <text class="bs" x="340" y="231" text-anchor="middle">IdP トークンの検証・runId</text>
+        <rect class="box" x="250" y="300" width="180" height="48" rx="6"/>
+        <text class="bt" x="340" y="320" text-anchor="middle">内蔵の保管</text>
+        <text class="bs" x="340" y="337" text-anchor="middle">KMS で封筒暗号化(既定)</text>
+        <rect class="box opt" x="250" y="368" width="180" height="56" rx="6"/>
+        <text class="bt" x="340" y="390" text-anchor="middle">外部の保管(任意)</text>
+        <text class="bs" x="340" y="408" text-anchor="middle">Keycloak・Auth0・Vault</text>
+
+        <!-- Gateway 右列 -->
+        <rect class="box" x="470" y="52" width="160" height="48" rx="6"/>
+        <text class="bt" x="550" y="72" text-anchor="middle">B: token exchange</text>
+        <text class="bs" x="550" y="89" text-anchor="middle">OBO・保管なし</text>
+        <rect class="box" x="470" y="150" width="160" height="48" rx="6"/>
+        <text class="bt" x="550" y="170" text-anchor="middle">A: 本人の OAuth</text>
+        <text class="bs" x="550" y="187" text-anchor="middle">同意・更新</text>
+        <rect class="box key" x="470" y="248" width="160" height="56" rx="6"/>
+        <text class="bt" x="550" y="272" text-anchor="middle">Token Store</text>
+        <text class="bs" x="550" y="290" text-anchor="middle">保管の共通 IF</text>
+        <rect class="box" x="470" y="380" width="160" height="48" rx="6"/>
+        <text class="bt" x="550" y="400" text-anchor="middle">C: 委譲された身元</text>
+        <text class="bs" x="550" y="417" text-anchor="middle">T-017 の結果待ち</text>
+
+        <!-- 右: IdP とソース -->
+        <rect class="box" x="700" y="30" width="260" height="52" rx="8"/>
+        <text class="bt" x="830" y="52" text-anchor="middle">IdP</text>
+        <text class="bs" x="830" y="70" text-anchor="middle">Keycloak・Entra ID など</text>
+        <rect class="box src" x="700" y="94" width="260" height="36" rx="6"/>
+        <text class="bt" x="830" y="117" text-anchor="middle">SharePoint / OneDrive</text>
+        <rect class="box src" x="700" y="150" width="260" height="140" rx="8"/>
+        <text class="bs" x="716" y="172">本人の OAuth のソース</text>
+        <text class="bt" x="716" y="198">Google Drive</text>
+        <text class="bt" x="716" y="222">Slack</text>
+        <text class="bt" x="716" y="246">GitHub</text>
+        <text class="bt" x="716" y="270">Confluence・Notion</text>
+        <rect class="box src" x="700" y="382" width="260" height="44" rx="6"/>
+        <text class="bt" x="830" y="409" text-anchor="middle">SMB / S3 / 社内 DB</text>
+
+        <!-- 利用停止 → 一括失効(先に描き、横線で切れ目を入れる) -->
+        <path class="m w" d="M700,44 H665 V276 H632" marker-end="url(#b-ah-w)"/>
+        <text class="lbl-w" x="478" y="326">↑ IdP の利用停止を受けて</text>
+        <text class="lbl-w" x="478" y="342">全ソースのトークンを失効</text>
+
+        <!-- 切れ目 -->
+        <line class="gap" x1="650" y1="64" x2="690" y2="64"/>
+        <line class="gap" x1="650" y1="98" x2="690" y2="98"/>
+        <line class="gap" x1="650" y1="174" x2="690" y2="174"/>
+
+        <!-- 呼び出し -->
+        <line class="m" x1="700" y1="64" x2="632" y2="64" marker-end="url(#b-ah)"/>
+        <line class="m" x1="630" y1="98" x2="698" y2="98" marker-end="url(#b-ah)"/>
+        <line class="m" x1="630" y1="174" x2="698" y2="174" marker-end="url(#b-ah)"/>
+        <line class="m" x1="630" y1="404" x2="698" y2="404" marker-end="url(#b-ah)"/>
+        <text class="bs halo" x="682" y="58" text-anchor="middle">交換</text>
+
+        <line class="m a" x1="180" y1="68" x2="248" y2="76" marker-end="url(#b-ah-a)"/>
+        <text class="bs halo" x="214" y="62" text-anchor="middle">ブラウザ</text>
+        <line class="m" x1="180" y1="218" x2="248" y2="218" marker-end="url(#b-ah)"/>
+        <path class="m a" d="M430,76 H450 V174 H468" marker-end="url(#b-ah-a)"/>
+        <line class="m" x1="550" y1="198" x2="550" y2="246" marker-end="url(#b-ah)"/>
+        <text class="bs halo" x="558" y="226">読み書き</text>
+        <path class="m" d="M470,276 H450 V324 H432" marker-end="url(#b-ah)"/>
+        <path class="m d" d="M450,324 V396 H432" marker-end="url(#b-ah)"/>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="a"></i>接続の流れ</span>
+      <span><i></i>呼び出し</span>
+      <span><i class="d"></i>任意の実装</span>
+      <span><i class="w"></i>利用停止による失効</span>
+    </div>
+    <p class="note">Token Store を新しいプラグイン境界にするか、Auth Adapter(または IdP Adapter)の内側に収めるかは ADR で決めます(ADR-005 は境界を Connector / IdP Adapter / Search Backend の 3 つに限っている)。</p>
+
+    <h3>接続の流れ(Google Drive が未接続の場合)</h3>
+    <div class="figure" role="img" aria-label="利用者、チャット UI、Orchestrator、Gateway、Google Drive の間のやり取りを示すシーケンス図。利用者の操作は質問、接続、許可の 3 回。">
+      <svg viewBox="0 0 970 800" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+        <g>
+          <rect class="actor" x="20" y="10" width="140" height="54" rx="8"/>
+          <text class="actor-t" x="90" y="34" text-anchor="middle">利用者</text>
+          <text class="actor-s" x="90" y="52" text-anchor="middle">ブラウザ</text>
+          <rect class="actor" x="200" y="10" width="140" height="54" rx="8"/>
+          <text class="actor-t" x="270" y="34" text-anchor="middle">チャット UI</text>
+          <text class="actor-s" x="270" y="52" text-anchor="middle">MCP クライアント</text>
+          <rect class="actor" x="380" y="10" width="140" height="54" rx="8"/>
+          <text class="actor-t" x="450" y="34" text-anchor="middle">Orchestrator</text>
+          <text class="actor-s" x="450" y="52" text-anchor="middle">leisen-ask</text>
+          <rect class="actor" x="570" y="10" width="160" height="54" rx="8"/>
+          <text class="actor-t" x="650" y="34" text-anchor="middle">Gateway</text>
+          <text class="actor-s" x="650" y="52" text-anchor="middle">接続ページ + Token Vault</text>
+          <rect class="actor" x="810" y="10" width="140" height="54" rx="8"/>
+          <text class="actor-t" x="880" y="34" text-anchor="middle">Google Drive</text>
+          <text class="actor-s" x="880" y="52" text-anchor="middle">接続先のソース</text>
+        </g>
+        <line class="ll" x1="90" y1="66" x2="90" y2="790"/>
+        <line class="ll" x1="270" y1="66" x2="270" y2="790"/>
+        <line class="ll" x1="450" y1="66" x2="450" y2="790"/>
+        <line class="ll" x1="650" y1="66" x2="650" y2="790"/>
+        <line class="ll" x1="880" y1="66" x2="880" y2="790"/>
+
+        <line class="m a" x1="90" y1="104" x2="270" y2="104" marker-end="url(#ah-a)"/>
+        <circle class="num" cx="110" cy="88" r="10"/><text class="num-t" x="110" y="92" text-anchor="middle">1</text>
+        <text class="halo lbl-a" x="126" y="93">質問する</text>
+        <line class="m" x1="270" y1="140" x2="450" y2="140" marker-end="url(#ah)"/>
+        <text class="halo" x="360" y="132" text-anchor="middle">ask</text>
+        <line class="m" x1="450" y1="176" x2="650" y2="176" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="168" text-anchor="middle">describe(全ソース)</text>
+        <line class="m d" x1="650" y1="206" x2="450" y2="206" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="198" text-anchor="middle">Google Drive は未接続</text>
+        <line class="m" x1="450" y1="242" x2="650" y2="242" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="234" text-anchor="middle">接続済みのソースを検索</text>
+        <line class="m d" x1="650" y1="272" x2="450" y2="272" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="264" text-anchor="middle">本人の権限で絞られた結果</text>
+        <line class="m" x1="450" y1="316" x2="90" y2="316" marker-end="url(#ah)"/>
+        <text class="halo" x="270" y="308" text-anchor="middle">部分回答と「Google Drive を接続」ボタン</text>
+
+        <line class="m a" x1="90" y1="362" x2="650" y2="362" marker-end="url(#ah-a)"/>
+        <circle class="num" cx="110" cy="346" r="10"/><text class="num-t" x="110" y="350" text-anchor="middle">2</text>
+        <text class="halo lbl-a" x="126" y="351">「接続」を押す(ブラウザで Gateway の接続ページへ)</text>
+        <line class="m" x1="650" y1="400" x2="880" y2="400" marker-end="url(#ah)"/>
+        <text class="halo" x="765" y="392" text-anchor="middle">OAuth 認可要求</text>
+        <line class="m d" x1="880" y1="438" x2="90" y2="438" marker-end="url(#ah)"/>
+        <text class="halo" x="485" y="430" text-anchor="middle">同意画面(SSO 済みのためログイン不要・管理者が事前承認済み)</text>
+
+        <line class="m a" x1="90" y1="476" x2="880" y2="476" marker-end="url(#ah-a)"/>
+        <circle class="num" cx="110" cy="460" r="10"/><text class="num-t" x="110" y="464" text-anchor="middle">3</text>
+        <text class="halo lbl-a" x="126" y="465">「許可」を押す</text>
+        <line class="m" x1="880" y1="514" x2="660" y2="514" marker-end="url(#ah)"/>
+        <text class="halo" x="770" y="506" text-anchor="middle">コールバック(認可コード)</text>
+
+        <rect class="act-box" x="642" y="522" width="16" height="96" rx="3"/>
+        <rect class="note-box" x="670" y="526" width="196" height="86" rx="6"/>
+        <text class="note-t" x="682" y="548">・本人を照合(私用は拒否)</text>
+        <text class="note-t" x="682" y="572">・Token Vault に暗号化保存</text>
+        <text class="note-t" x="682" y="596">・監査に「接続」を記録</text>
+
+        <line class="m" x1="650" y1="652" x2="450" y2="652" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="644" text-anchor="middle">接続完了 → 同じ質問を自動で再実行</text>
+        <line class="m" x1="450" y1="690" x2="650" y2="690" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="682" text-anchor="middle">Google Drive も含めて検索</text>
+        <line class="m d" x1="650" y1="718" x2="450" y2="718" marker-end="url(#ah)"/>
+        <text class="halo" x="550" y="710" text-anchor="middle">結果</text>
+        <line class="m a" x1="450" y1="762" x2="90" y2="762" marker-end="url(#ah-a)"/>
+        <text class="halo lbl-a" x="270" y="754" text-anchor="middle">出典付きの完全な回答</text>
+      </svg>
+    </div>
+    <p class="note">接続ボタンは、クライアントが対応していれば MCP の URL モードの入力要求で出し、対応していなければ回答のリンクで出します(2026-07-28 版仕様の MRTR での扱いは要確認)。OAuth 要求には PKCE、IdP セッションに結び付けた <code>state</code>、<code>login_hint</code> を付けます。</p>
+
+    <h3>ソースごとの手間の段階</h3>
+    <div class="cards">
+      <div class="card">
+        <div class="card-k">操作なし</div>
+        <div class="meter" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h3>管理者の設定だけで使える</h3>
+        <ul>
+          <li>SharePoint / OneDrive(OBO)</li>
+          <li>ID-JAG 対応ソース <span class="tbd">要調査</span></li>
+        </ul>
+        <p class="cond">保管不要。ドメインワイド委任もここに入るが、ADR で例外承認した場合に限る。</p>
+      </div>
+      <div class="card">
+        <div class="card-k">1 回の許可</div>
+        <div class="meter" aria-hidden="true"><span class="on"></span><span></span><span></span></div>
+        <h3>質問の中で 1 度だけ許可する</h3>
+        <ul>
+          <li>Google Drive、Slack(公開)、GitHub</li>
+          <li>Confluence、Notion</li>
+        </ul>
+        <p class="cond">Token Vault が必要。管理者の事前承認と SSO で警告とログインが消える。</p>
+      </div>
+      <div class="card">
+        <div class="card-k">追加の許可</div>
+        <div class="meter" aria-hidden="true"><span class="on"></span><span class="on"></span><span></span></div>
+        <h3>必要になったときに範囲を広げる</h3>
+        <ul>
+          <li>Slack の private チャンネル・DM</li>
+          <li>既定で外している範囲(<code>privateScopes</code>)</li>
+        </ul>
+        <p class="cond">最初の許可は狭く。広げるのは本人の判断に任せる。</p>
+      </div>
+    </div>
+
+    <h3>Claude のコネクタにはない安全策</h3>
+    <div class="reqs">
+      <div class="req"><h3>本人の照合</h3><p>接続直後に、ソース側のアカウントと IdP の本人が一致するかを確かめる。私用アカウントの誤接続を拒否する。</p></div>
+      <div class="req"><h3>セッションへの結び付け</h3><p><code>state</code> を IdP セッションに結び付け、PKCE を使う。他人が始めた接続を自分のものとして完了させられない。</p></div>
+      <div class="req"><h3>接続も監査に残す</h3><p>接続・解除・失効を Gateway の監査に記録する。トークンの値は記録しない。</p></div>
+      <div class="req"><h3>退職時の一括失効</h3><p>IdP の利用停止で全ソースのトークンを失効させる。GitHub は SCIM 連携を導入の前提にする。</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="sd">
+    <h2 id="sd"><span class="no">6</span>leisen を通さない直接接続の扱い</h2>
+    <p>エージェント(Claude・ChatGPT・Claude Code など)から、公式の MCP サーバーやコネクタで各ソースへ直接つなぐ場合の扱いです。既存の分析(docs/direct-connection.md)と導入チェックリスト(docs/install.md §10.1)を、個人の認可の設計とつなげて整理します。</p>
+
+    <div class="cards">
+      <div class="card"><div class="card-k">権限</div><h3>迂回しても権限は越えない</h3><p>直接接続も leisen も本人の資格情報で動くので、見えるデータの範囲は同じ。失われるのは統制(文脈付きの監査、プライベートの既定除外、Slack データの非永続化、LLM の送り先の選択、一括失効)。</p></div>
+      <div class="card"><div class="card-k">同意</div><h3>同意は OAuth アプリ単位</h3><p>利用者が leisen に与えた同意は、leisen のアプリへの同意。エージェント製品のコネクタは別のアプリなので、leisen への同意で直接接続が許されることはない。</p></div>
+      <div class="card"><div class="card-k">範囲</div><h3>経路を完全に一本にはできない</h3><p>不変条件 2 が保証するのは、leisen 自身が抜け道を作らないことまで。組織全体の経路を絞れるかは、導入先のソース側の設定で決まる(threat-model §7)。</p></div>
+    </div>
+
+    <h3>経路と止め方</h3>
+    <div class="figure" role="img" aria-label="利用者のエージェントからソースへの経路の図。leisen-ask serve と Gateway を通る正規の経路だけがソース側のアプリ許可リストを通過する。Gateway への直接接続は allowedClients で、公式 MCP やコネクタはアプリ許可リストで拒否される。PAT とブラウザ操作のエージェントはアプリ許可リストでは止まらず、別の手段で塞ぐ。">
+      <svg viewBox="0 0 980 380" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="d-ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="d-ah-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-w" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <!-- エージェント -->
+        <rect class="box" x="20" y="150" width="170" height="100" rx="8"/>
+        <text class="bt" x="105" y="190" text-anchor="middle">利用者のエージェント</text>
+        <text class="bs" x="105" y="210" text-anchor="middle">Claude・ChatGPT・</text>
+        <text class="bs" x="105" y="226" text-anchor="middle">Claude Code など</text>
+
+        <!-- leisen -->
+        <rect class="frame" x="290" y="60" width="320" height="150" rx="12"/>
+        <text class="frame-t" x="306" y="86">leisen</text>
+        <rect class="box" x="310" y="110" width="130" height="56" rx="6"/>
+        <text class="bt" x="375" y="134" text-anchor="middle">leisen-ask serve</text>
+        <text class="bs" x="375" y="152" text-anchor="middle">Orchestrator</text>
+        <rect class="box key" x="470" y="110" width="120" height="56" rx="6"/>
+        <text class="bt" x="530" y="134" text-anchor="middle">Gateway</text>
+        <text class="bs" x="530" y="152" text-anchor="middle">Token Vault</text>
+
+        <!-- ソースとアプリの許可リスト -->
+        <rect class="box src" x="760" y="60" width="200" height="290" rx="8"/>
+        <text class="bs" x="776" y="84">ソース</text>
+        <text class="bt" x="776" y="118">Google Drive</text>
+        <text class="bt" x="776" y="172">Slack</text>
+        <text class="bt" x="776" y="202">GitHub</text>
+        <text class="bt" x="776" y="232">Microsoft 365</text>
+        <text class="bt" x="776" y="262">Notion</text>
+        <line class="gate" x1="740" y1="60" x2="740" y2="350"/>
+        <text class="bs" x="740" y="50" text-anchor="middle">アプリの許可リスト(ソース側)</text>
+
+        <!-- 正規の経路 -->
+        <path class="m a" d="M190,170 H260 V138 H308" marker-end="url(#d-ah-a)"/>
+        <line class="m a" x1="440" y1="138" x2="468" y2="138" marker-end="url(#d-ah-a)"/>
+        <line class="m a" x1="590" y1="138" x2="758" y2="138" marker-end="url(#d-ah-a)"/>
+        <text class="halo lbl-a" x="664" y="128" text-anchor="middle">leisen のアプリだけ承認</text>
+
+        <!-- Gateway へ直接 -->
+        <path class="m b" d="M190,160 H240 V36 H530 V90"/>
+        <line class="xm" x1="523" y1="91" x2="537" y2="105"/><line class="xm" x1="537" y1="91" x2="523" y2="105"/>
+        <text class="halo" x="385" y="28" text-anchor="middle">Gateway へ直接(Orchestrator を通さない)</text>
+        <text class="halo lbl-b" x="546" y="100">allowedClients 外は拒否</text>
+
+        <!-- 公式 MCP・コネクタ -->
+        <path class="m b" d="M190,215 H230 V256 H732"/>
+        <line class="xm" x1="733" y1="249" x2="747" y2="263"/><line class="xm" x1="747" y1="249" x2="733" y2="263"/>
+        <text class="halo" x="480" y="248" text-anchor="middle">公式 MCP・コネクタ(エージェント側の別の OAuth アプリ)</text>
+        <text class="halo lbl-b" x="728" y="278" text-anchor="end">許可リスト外のアプリとして拒否</text>
+
+        <!-- PAT・ブラウザ操作 -->
+        <path class="m w" d="M190,235 H210 V318 H756" marker-end="url(#d-ah-w)"/>
+        <text class="halo lbl-w" x="470" y="310" text-anchor="middle">PAT・ブラウザを操作するエージェント(アプリの許可リストでは止まらない)</text>
+        <text class="halo bs" x="470" y="340" text-anchor="middle">Org の PAT 制限、ブラウザ拡張の許可リスト、エージェント製品の組織設定で塞ぐ</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="a"></i>正規の経路</span>
+      <span><i class="b"></i>拒否される経路</span>
+      <span><i class="w"></i>別の手段で塞ぐ経路</span>
+    </div>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>経路</th><th>例</th><th>止める手段</th><th>設定する人</th><th class="c">効き</th></tr></thead>
+        <tbody>
+          <tr><th>エージェント → ソース<small>公式 MCP・コネクタ</small></th><td>Claude の Google Drive コネクタ、Slack の公式 MCP</td><td>ソースのアプリ承認制で leisen のアプリだけを許可する。Google の「社内アプリを自動で信頼」は切り、Slack は利用者が作ったアプリも承認制に含める</td><td>ソースの管理者</td><td class="c"><span class="mk g">◎</span></td></tr>
+          <tr><th>エージェント → Gateway<small>Orchestrator を通さない</small></th><td>自作の MCP クライアントから Gateway へ</td><td><code>idp.adapter.allowedClients</code>(azp の検証)。本番では <code>["*"]</code> で起動できない。正規に使うクライアントは IdP に登録してリストに足す</td><td>leisen の運用者</td><td class="c"><span class="mk g">◎</span></td></tr>
+          <tr><th>GitHub の PAT</th><td>公式 GitHub MCP を PAT で設定</td><td>Org で classic PAT を禁止し、fine-grained PAT を承認制にする</td><td>GitHub Org の管理者</td><td class="c"><span class="mk g">○</span></td></tr>
+          <tr><th>ブラウザを操作するエージェント</th><td>ブラウザ拡張、computer use</td><td>ブラウザ拡張の許可リスト、エージェント製品の組織管理設定。ソースからは本人の操作と区別できない</td><td>端末の管理者</td><td class="c"><span class="mk g">○</span></td></tr>
+          <tr><th>セッショントークンの流用・規約外の自作アプリ</th><td>意図的に回避する少数</td><td>利用規程と事後の検知</td><td>導入先</td><td class="c"><span class="mk m">△</span></td></tr>
+          <tr><th>エクスポート・コピー&amp;ペースト</th><td>いちばん多い</td><td>利用規程と、leisen の方が便利な状態を作ること</td><td>導入先</td><td class="c"><span class="mk m">△</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>個人の認可の設計に入れること</h3>
+    <div class="reqs">
+      <div class="req"><h3>接続ページは機密クライアントで<span>許可リストの前提</span></h3><p>leisen の OAuth クライアントはシークレットをサーバー側に持ち、リダイレクト先を固定する。利用者がこのクライアントを流用できないことが、ソース側の許可リストを成り立たせる。</p></div>
+      <div class="req"><h3>トークンを Gateway の外に出さない<span>不変条件 2</span></h3><p>Token Vault の値をチャット UI やエージェントへ返す API を作らない。作った時点で、leisen の同意で得たトークンによる直接接続の抜け道になる。</p></div>
+      <div class="req"><h3>同意画面で正規の経路と分かるように<span>安全性</span></h3><p>同意画面に出るアプリ名・発行元を導入先の名義で明確にし、利用規程に「承認してよいのはこのアプリだけ」と書く。似せたアプリへの同意を防ぐ。</p></div>
+      <div class="req"><h3>迂回の動機を体験で消す<span>direct-connection §7</span></h3><p>直接接続は「エージェントの数 × ソースの数」だけ同意が要る。leisen はソースごとに 1 回、しかも質問の中で済む。leisen が不便だと、利用は統制の弱い直接接続へ流れる。</p></div>
+    </div>
+    <div class="callout"><b>アプリ承認制を使っていない組織では、leisen の導入と関係なく今日すでに直接接続ができます。</b>leisen が穴を開けるのではなく、導入を機に既存の穴を塞げるかどうかの問題です。止め方は許可リストにします。ソースに見えるのはクライアント ID だけで、クライアント名は自己申告のため、拒否リストでエージェント製品を見分ける方法は成り立ちません。</div>
+  </section>
+
+  <section aria-labelledby="s6">
+    <h2 id="s6"><span class="no">7</span>計測</h2>
+    <p>接続の各段階を監査の事象として残し、どこで利用者が離れたかを見ます。再接続は 1 人あたり月何回かで追います。この離脱率が、週次アクティブ率の目標(product-design-v3 §8)にいちばん直接効きます。</p>
+    <div class="funnel">
+      <div><b>段階 1</b>接続ボタンを表示</div>
+      <div><b>段階 2</b>ボタンを押した</div>
+      <div><b>段階 3</b>許可した</div>
+      <div><b>段階 4</b>本人照合を通過</div>
+      <div><b>段階 5</b>再実行で回答が届いた</div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s7">
+    <h2 id="s7"><span class="no">8</span>未決事項と次の作業</h2>
+    <ol class="decisions">
+      <li><b>ADR の起案:</b>接続画面を Gateway が持つこと、本人照合、接続事象の監査スキーマ、Token Store の位置付け(新しいプラグイン境界か、Auth Adapter の内側か)。認可方式と監査に関わるため人のレビューが要る。</li>
+      <li><b>ID-JAG / Cross App Access の調査:</b>対応ソースがあれば auth-matrix を改訂し、「操作なし」の段階と保管不要のソースを増やす。</li>
+      <li><b>Keycloak identity brokering の検証:</b>外部トークンの保存・自動更新・失効の連動が V2 として成り立つかを小さく確かめる。</li>
+      <li><b>接続リンクと ADR-018 の両立:</b>回答本文から URL を除く規則と、接続ボタンのリンクをどう両立させるか。リンクは設定から組み立てた信頼できる値だけにする。</li>
+      <li><b>直接接続の統制との接続:</b>「Token Vault の値を外に返す API を作らない」「接続ページは機密クライアント」を ADR の決定に入れ、導入チェックリスト §10.1 から参照する。利用者単位の取得量の上限と、取得の偏りを見つける監査クエリ(direct-connection §5 で次の候補とされたもの)の扱いも決める。</li>
+      <li><b>T-004 の受け入れ条件の追加:</b>接続の段階ごとの監査事象、再接続の回数、Slack の識別子を保管しないことのテスト。</li>
+    </ol>
+    <h3>参照</h3>
+    <ul class="refs">
+      <li>docs/adr/ADR-010-source-auth-and-token-vault.md(ソース別認可方式と Token Vault)</li>
+      <li>docs/auth-matrix.md(認可実現性マトリクス、2026-07-09 調査)</li>
+      <li>docs/backlog/T-004-auth-adapter-token-vault.md</li>
+      <li>docs/product-design-v3.md §1・§8(初回同意 UX、採用率の目標)</li>
+      <li>docs/direct-connection.md(直接接続との関係と leisen の位置づけ)</li>
+      <li>docs/install.md §10.1(導入チェックリスト「直接接続の統制」)/ docs/threat-model.md §7</li>
+      <li>docs/adr/ADR-005-deployment-profile.md / ADR-013 / ADR-014 / ADR-018(追記 2026-10-09: allowedClients)</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
