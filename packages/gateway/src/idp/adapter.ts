@@ -45,16 +45,22 @@ export abstract class CredentialResolvingIdpAdapter implements IdpAdapter {
         `no credential provider registered for source: ${sourceId}`,
       );
     }
-    const credential = await this.cache.getOrLoad(
-      identity.userId,
-      sourceId,
-      () => provider.getCredential(identity),
-    );
+    const credential =
+      provider.cacheable === false
+        ? await provider.getCredential(identity)
+        : await this.cache.getOrLoad(identity.userId, sourceId, () =>
+            provider.getCredential(identity),
+          );
     return { userId: identity.userId, credential };
   }
 
   invalidateUser(userId: string): void {
     this.cache.invalidateUser(userId);
+  }
+
+  /** 登録済みのプロバイダ(接続ページ・失効処理が方式を引く)。 */
+  provider(sourceId: string): CredentialProvider | undefined {
+    return this.providers.get(sourceId);
   }
 
   /** 単一ソースの失効(コネクタの auth_expired 検知時等)。 */

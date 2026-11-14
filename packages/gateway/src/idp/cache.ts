@@ -116,7 +116,8 @@ export class CredentialCache {
 
   private entryExpiry(credential: Credential): number {
     const byTtl = this.now() + this.ttlMs;
-    if (credential.kind === "oauth_bearer") {
+    // expiresAt が 0 以下は「失効時刻不明」(ADR-016 追補 2026-11-14)。TTL だけで切る
+    if (credential.kind === "oauth_bearer" && credential.expiresAt > 0) {
       return Math.min(byTtl, credential.expiresAt - this.safetyMarginMs);
     }
     return byTtl;

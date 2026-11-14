@@ -196,7 +196,7 @@ export class InMemoryAuditStore implements AuditStoreWriter {
 /**
  * 監査レコードの冪等キー(レコード種別ごと: tool_invocation は requestId、answer_run は
  * runId、answer_run_finish / answer_run_feedback は recordId、audit_access は accessId、
- * retention_purge は purgeId)。at-least-once の再送で
+ * retention_purge は purgeId、credential_event は recordId)。at-least-once の再送で
  * 同じレコードが複数回書かれうるため(BufferedAuditSink、JSONL の重複行)、読み手・
  * 受け手はこのキーで重複を除く。同じキーのレコードは後から書かれたものを採る
  * (InMemoryAuditStore、promotion-report の集計)。
@@ -215,6 +215,8 @@ export function auditRecordIdempotencyKey(record: AuditRecord): string {
       return `audit_access:${record.accessId}`;
     case "retention_purge":
       return `retention_purge:${record.purgeId}`;
+    case "credential_event":
+      return `credential_event:${record.recordId}`;
   }
 }
 
