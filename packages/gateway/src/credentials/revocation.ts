@@ -103,41 +103,55 @@ export class CredentialRevocation {
     return false;
   }
 
-  /** 利用停止(IdP 起点)。 */
+  /**
+   * 利用停止(IdP 起点)。拒否の登録とキャッシュの破棄を先に行い、ソースごとの失効は個別に
+   * 扱う(途中の失敗で拒否まで届かない状態を作らない)。部分的な失敗は結果で返す
+   */
   async deprovision(userId: string): Promise<DeprovisionResult> {
     const { vault, store, sources, events } = this.#o;
-    let revokedAtSource = 0;
-    let deleted = 0;
-    const failed: string[] = [];
-    if (vault !== undefined) {
-      for (const sourceId of await vault.sourcesForUser(userId)) {
-        const client = sources.vault.get(sourceId);
-        const entry = await vault.get(userId, sourceId).catch(() => null);
-        const accepted = client !== undefined && entry !== null ? await client.revoke(entry.tokens) : false;
-        if (accepted) {
-          revokedAtSource += 1;
-        } else {
-          failed.push(sourceId);
-        }
-        if (await vault.delete(userId, sourceId)) {
-          deleted += 1;
-        }
-        await events({
-          userId,
-          event: "revoked",
-          sourceId,
-          method: "token_vault",
-          outcome: accepted ? "success" : "failure",
-          ...(accepted ? {} : { reason: "source_revocation_failed" }),
-        });
-      }
-    }
     if (store !== undefined) {
       const now = this.#now();
       // 同じミリ秒に発行されたトークンも拒否する(+1)
       await store.addDenial("sub", userId, now + 1, now + this.#o.denialRetentionMs);
     }
     this.#o.invalidateUser(userId);
+    let revokedAtSource = 0;
+    let deleted = 0;
+    const failed: string[] = [];
+    let sourceIds: string[] = [];
+    if (vault !== undefined) {
+      try {
+        sourceIds = await vault.sourcesForUser(userId);
+      } catch {
+        failed.push("*");
+      }
+    }
+    for (const sourceId of sourceIds) {
+      let accepted = false;
+      try {
+        const client = sources.vault.get(sourceId);
+        const entry = await (vault as TokenVault).get(userId, sourceId).catch(() => null);
+        accepted = client !== undefined && entry !== null ? await client.revoke(entry.tokens) : false;
+        if (await (vault as TokenVault).delete(userId, sourceId)) {
+          deleted += 1;
+        }
+      } catch {
+        accepted = false;
+      }
+      if (accepted) {
+        revokedAtSource += 1;
+      } else {
+        failed.push(sourceId);
+      }
+      await events({
+        userId,
+        event: "revoked",
+        sourceId,
+        method: "token_vault",
+        outcome: accepted ? "success" : "failure",
+        ...(accepted ? {} : { reason: "source_revocation_failed" }),
+      }).catch(() => undefined);
+    }
     await events({
       userId,
       event: "deprovisioned",

@@ -255,7 +255,16 @@ export class SourceOAuthClient {
       form["grant_type"] = "authorization_code";
     }
     const raw = await this.#rawCodeExchange(form);
-    const verifiedEmails = this.#config.fetchIdentity ? await this.#fetchVerifiedEmails(raw.tokens, raw.slackUserId) : [];
+    let verifiedEmails: string[] = [];
+    if (this.#config.fetchIdentity) {
+      try {
+        verifiedEmails = await this.#fetchVerifiedEmails(raw.tokens, raw.slackUserId);
+      } catch (error) {
+        // 本人照合ができなかったトークンは使わない。ソースへ失効を依頼して捨てる
+        await this.revoke(raw.tokens);
+        throw error;
+      }
+    }
     return { tokens: raw.tokens, verifiedEmails };
   }
 
@@ -419,6 +428,15 @@ export function extractVerifiedEmails(preset: OAuthPreset, body: unknown): strin
     return out;
   }
   if (isRecord(body) && (body["email_verified"] === true || body["email_verified"] === "true")) {
+    if (preset === "google") {
+      // 個人の Google アカウント(会社のメールアドレスで作ったものを含む)を除く: Workspace の
+      // アカウントだけが持つ hd(ホストドメイン)がメールアドレスのドメインと一致すること
+      const email = typeof body["email"] === "string" ? body["email"].toLowerCase() : "";
+      const hd = typeof body["hd"] === "string" ? body["hd"].toLowerCase() : undefined;
+      if (hd === undefined || !email.endsWith(`@${hd}`)) {
+        return out;
+      }
+    }
     push(body["email"]);
   }
   return out;

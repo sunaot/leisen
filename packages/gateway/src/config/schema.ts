@@ -174,6 +174,7 @@ const connectorSettingsSchema = z
  * ここにも秘密情報を置かない(環境変数名で参照する)。有効なコネクタに auth がない構成は
  * 起動コードが拒否する(connector_auth_provider_missing)。
  */
+/** 絶対 URL。平文 http のループバック以外は起動コードが本番で拒否する(plain_http_endpoint) */
 const httpsOrLoopbackUrl = (what: string) =>
   z.url({ error: `${what} must be an absolute URL` });
 

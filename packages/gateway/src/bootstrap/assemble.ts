@@ -410,6 +410,14 @@ export async function assembleGateway(
     ...(auth.handler !== undefined ? { auth: auth.handler } : {}),
   });
 
+  // 期限切れの拒否リスト・使用済みの印を定期的に消す(1 時間ごと。停止を妨げない)
+  const purgeTimer =
+    credentialRuntime.store !== undefined && options.validateOnly !== true
+      ? setInterval(() => {
+          credentialRuntime.store?.purgeExpired(Date.now()).catch(() => undefined);
+        }, 3_600_000)
+      : undefined;
+  purgeTimer?.unref();
   let closing: Promise<void> | undefined;
   return {
     gateway,
@@ -423,6 +431,7 @@ export async function assembleGateway(
     close: () =>
       (closing ??= (async () => {
         await stopHttpServer(httpServer);
+        if (purgeTimer !== undefined) clearInterval(purgeTimer);
         credentialRuntime.close();
         // BufferedAuditSink の未永続レコードを書き切る。書けなければ例外
         // (停止時の監査欠落に気づけるようにする、TM-F2)。書き込み先の生の

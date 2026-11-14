@@ -460,6 +460,47 @@ describe("MCP 認可サーバーと ESC", () => {
   });
 });
 
+describe("セキュリティレビューの指摘の回帰(HTTP)", () => {
+  it("M1: ログイン後の戻り先は接続ページ配下だけ(タブ・別オリジンへ飛ばさない)", async () => {
+    const { base } = await startGateway({ authorizationServer: false });
+    for (const ret of ["/%09/evil.example", "//evil.example", "https://evil.example/", "/connections\t/evil"]) {
+      const browser = new Browser(base);
+      const done = await mockLogin(browser, await browser.request(`/login?return=${encodeURIComponent(decodeURIComponent(ret))}`), "alice-token");
+      expect(done.headers.get("location")).toBe("/connections");
+    }
+  });
+
+  it("M4: 利用停止の後は、それより前のブラウザのセッションで接続できない", async () => {
+    const { base } = await startGateway({ authorizationServer: false });
+    const browser = new Browser(base);
+    await mockLogin(browser, await browser.request("/connections"), "alice-token");
+    expect((await browser.request("/connections")).status).toBe(200);
+    await fetch(`${base}/admin/deprovision`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ADMIN_CRED}`, "content-type": "application/json" },
+      body: JSON.stringify({ userId: "alice" }),
+    });
+    // セッションは無効になり、ログインからやり直しになる(モック IdP のフォーム)
+    const again = await browser.request("/connections");
+    expect(await again.text()).toContain("開発用ログイン");
+  });
+
+  it("M6: 未認証の /authorize を大量に送っても取引は作られず、正規の認可は通る", async () => {
+    const { base } = await startGateway();
+    const challenge = "a".repeat(43);
+    for (let i = 0; i < 50; i++) {
+      await fetch(`${base}/authorize?response_type=code&client_id=test-client&redirect_uri=${encodeURIComponent(CLIENT_REDIRECT)}&code_challenge=${challenge}&code_challenge_method=S256`, { redirect: "manual" });
+    }
+    expect((await authorize(base)).status).toBe(200);
+  });
+
+  it("L3: 不正な Basic ヘッダは 401 の JSON", async () => {
+    const { base } = await startGateway();
+    const res = await tokenRequest(base, { grant_type: "refresh_token", refresh_token: "x" }, { authorization: `Basic ${Buffer.from("%E0%A4%A:x").toString("base64")}` });
+    expect(res).toMatchObject({ status: 401, body: { error: "invalid_client" } });
+  });
+});
+
 describe("起動時の検証", () => {
   it("examples/deployment.credentials.yaml は秘密を環境変数で与えれば検証を通る", async () => {
     const { loadDeploymentConfig } = await import("../src/index.js");

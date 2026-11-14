@@ -3,7 +3,8 @@
  * (TrentService.Encrypt / Decrypt)を SigV4 で署名して直接呼ぶ。
  *
  * - DEK を KMS の Encrypt で包む。context は EncryptionContext(`leisen` キー)に入れ、
- *   Decrypt で同じ値を要求させる(行の差し替えでは解けない)
+ *   Decrypt で同じ値を要求させる(行の差し替えでは解けない)。CloudTrail に平文で残るため、
+ *   context そのものではなく SHA-256 を入れる(userId を残さない)
  * - 基盤の資格情報(KMS を呼ぶための IAM)は環境変数 AWS_ACCESS_KEY_ID /
  *   AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN、またはコンテナの資格情報
  *   (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI / _FULL_URI。ECS・EKS Pod Identity)から得る。
@@ -11,6 +12,11 @@
  * - 資格情報・署名・平文の DEK をログ・エラーに出さない(不変条件6)
  */
 import { createHash, createHmac } from "node:crypto";
+
+/** EncryptionContext は CloudTrail に平文で残るため、context(userId を含む)のハッシュを入れる。 */
+function contextDigest(context: string): string {
+  return createHash("sha256").update(context, "utf8").digest("base64url");
+}
 import {
   HttpCallError,
   HttpClient,
@@ -213,7 +219,7 @@ export class AwsKmsKeyProvider implements KeyProvider {
     const json = await this.#call("Encrypt", {
       KeyId: this.#keyId,
       Plaintext: Buffer.from(dek).toString("base64"),
-      EncryptionContext: { leisen: context },
+      EncryptionContext: { leisen: contextDigest(context) },
     });
     if (typeof json["CiphertextBlob"] !== "string") {
       throw new KeyProviderError("invalid", "aws_kms: Encrypt returned no ciphertext");
@@ -232,7 +238,7 @@ export class AwsKmsKeyProvider implements KeyProvider {
       // KMS は暗号文から鍵を特定する。KeyId を添えて別鍵での復号を拒ませる
       KeyId: wrapped.kekId.slice("aws_kms:".length),
       CiphertextBlob: Buffer.from(wrapped.wrapped, "base64url").toString("base64"),
-      EncryptionContext: { leisen: context },
+      EncryptionContext: { leisen: contextDigest(context) },
     });
     if (typeof json["Plaintext"] !== "string") {
       throw new KeyProviderError("invalid", "aws_kms: Decrypt returned no plaintext");

@@ -10,7 +10,7 @@
  *   (リフレッシュトークンの最長期間)を過ぎてから旧鍵を外す
  * 鍵・平文をログ・エラーに出さない(不変条件6)。
  */
-import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 export type SealPurpose =
   | "access_token"
@@ -109,10 +109,16 @@ export class Sealer {
     if (derived === undefined) {
       throw new SealError("sealed with an unknown key");
     }
+    const iv = Buffer.from(ivB64, "base64url");
+    const tag = Buffer.from(tagB64, "base64url");
+    // 認証タグは 16 バイト固定(切り詰めたタグを受けると偽造の試行が安くなる)、IV は 12 バイト
+    if (iv.byteLength !== 12 || tag.byteLength !== 16) {
+      throw new SealError("sealed token could not be opened");
+    }
     try {
-      const decipher = createDecipheriv("aes-256-gcm", derived.keys.get(purpose) as Buffer, Buffer.from(ivB64, "base64url"));
+      const decipher = createDecipheriv("aes-256-gcm", derived.keys.get(purpose) as Buffer, iv, { authTagLength: 16 });
       decipher.setAAD(Buffer.from(headerB64, "ascii"));
-      decipher.setAuthTag(Buffer.from(tagB64, "base64url"));
+      decipher.setAuthTag(tag);
       const plain = Buffer.concat([decipher.update(Buffer.from(ctB64, "base64url")), decipher.final()]);
       return JSON.parse(plain.toString("utf8")) as unknown;
     } catch {
@@ -154,5 +160,5 @@ export function isValidCodeVerifier(value: string): boolean {
 export function safeEqual(a: string, b: string): boolean {
   const ha = createHash("sha256").update(a).digest();
   const hb = createHash("sha256").update(b).digest();
-  return ha.equals(hb) && a.length === b.length;
+  return timingSafeEqual(ha, hb) && a.length === b.length;
 }

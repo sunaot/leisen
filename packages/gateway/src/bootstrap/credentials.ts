@@ -112,6 +112,19 @@ function previousKeys(env: Env, name: string, path: string, issues: ConfigIssue[
   return keys;
 }
 
+/**
+ * 外部の端点が平文 http でループバック以外を指していないか(client secret・更新トークン・本人の
+ * IdP トークンが載る)。本番は拒否、それ以外は WARNING(issue #17 の confirmPlainHttp と同じ考え方)
+ */
+function checkEndpoint(url: string | undefined, path: string, issues: ConfigIssue[], warnings: string[]): void {
+  if (url === undefined || !url.startsWith("http:") || isLoopbackUrl(url)) return;
+  if (isProduction()) {
+    issues.push({ code: "plain_http_endpoint", path, message: "external endpoints must use https in production" });
+  } else {
+    warnings.push(`${path} uses plain http on a non-loopback host (development only)`);
+  }
+}
+
 /** token_vault / esc / 認可サーバーのどれかを使うか。 */
 export function needsCredentialInfrastructure(config: DeploymentConfig): boolean {
   return (
@@ -172,6 +185,10 @@ export function resolveCredentialRuntime(
   // Token Vault の鍵(KMS)
   let keys: KeyProvider | undefined;
   const k = credentials.keys;
+  if (k.kind !== "local") {
+    checkEndpoint(k.endpoint, "gateway.credentials.keys.endpoint", issues, warnings);
+  }
+  checkEndpoint(config.gateway.authorizationServer.orchestratorResource, "gateway.authorizationServer.orchestratorResource", issues, warnings);
   const usesVault = config.connectors.some((c) => c.enabled && c.auth?.provider === "token_vault");
   if (usesVault) {
     switch (k.kind) {
@@ -233,6 +250,7 @@ export function createSourceCredentialProvider(
   if (auth === undefined || auth.provider === "mock_env") return undefined;
   if (auth.provider === "token_exchange") {
     const x = auth.exchange;
+    checkEndpoint(x.tokenEndpoint, `${path}.exchange.tokenEndpoint`, issues, warnings);
     const secret = secretFromEnv(env, x.clientSecretEnv, `${path}.exchange.clientSecretEnv`, issues);
     if (x.kind === "entra_obo" && x.scope === undefined) {
       issues.push({ code: "token_exchange_scope_missing", path: `${path}.exchange.scope`, message: "entra_obo requires scope (e.g. https://graph.microsoft.com/.default)" });
@@ -257,6 +275,9 @@ export function createSourceCredentialProvider(
   }
   // token_vault / esc
   const o = auth.oauth;
+  for (const [name, url] of Object.entries(o.endpoints ?? {})) {
+    checkEndpoint(url, `${path}.oauth.endpoints.${name}`, issues, warnings);
+  }
   if (o.identityCheck === "none") {
     if (o.confirmIdentityCheckDisabled !== true) {
       issues.push({

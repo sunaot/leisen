@@ -49,6 +49,8 @@ const TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const TX_TTL_MS = 10 * 60_000;
 const MAX_TX = 10_000;
+/** ログイン済みの利用者 1 人あたりの進行中の取引の上限 */
+const MAX_TX_PER_USER = 20;
 const MAX_FORM_BYTES = 64 * 1024;
 
 export interface ConfiguredSource {
@@ -101,6 +103,7 @@ export interface AuthHttpOptions {
 }
 
 interface BrowserSession {
+  readonly iat: number;
   readonly sub: string;
   readonly email?: string;
   readonly name?: string;
@@ -108,8 +111,19 @@ interface BrowserSession {
   readonly exp: number;
 }
 
+/** /authorize の要求(IdP ログインまではサーバーに置かず、封じた state に入れて運ぶ)。 */
+interface AuthorizeRequest {
+  readonly clientId: string;
+  readonly redirectUri: string;
+  readonly state?: string;
+  readonly codeChallenge: string;
+  readonly resource: string;
+  readonly requestedScope: readonly string[];
+}
+
 interface AuthorizeTx {
   readonly id: string;
+  readonly createdAt: number;
   readonly csrf: string;
   readonly client: RegisteredClient;
   readonly redirectUri: string;
@@ -124,7 +138,7 @@ interface AuthorizeTx {
 }
 
 type StatePayload =
-  | { readonly k: "login"; readonly ret: string; readonly ver: string; readonly bnd: string; readonly tx?: string; readonly exp: number }
+  | { readonly k: "login"; readonly ret: string; readonly ver: string; readonly bnd: string; readonly az?: AuthorizeRequest; readonly exp: number }
   | {
       readonly k: "connect";
       readonly src: string;
@@ -171,7 +185,8 @@ export function isAllowedRedirectUri(uri: string): boolean {
 
 /** 同じオリジン内の相対パスだけを戻り先に許す(オープンリダイレクトの防止)。 */
 function safeReturnPath(value: string | null | undefined, fallback: string): string {
-  if (value === null || value === undefined || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
+  // 戻り先は接続ページ配下だけ(制御文字・タブを含むものはブラウザが除いて別オリジンに解釈しうる)
+  if (value === null || value === undefined || !/^\/connections(?:[/?][\x21-\x7e]*)?$/.test(value)) {
     return fallback;
   }
   return value;
@@ -380,24 +395,37 @@ export class AuthHttpHandler {
 
   // ---- ブラウザのセッション ----
 
-  #session(req: IncomingMessage): BrowserSession | undefined {
+  /** ブラウザのセッション。利用停止(拒否リストの sub)より前に始まったものは無効。 */
+  async #session(req: IncomingMessage): Promise<BrowserSession | undefined> {
     const raw = parseCookies(req.headers.cookie).get(this.#sessionCookie);
     if (raw === undefined) {
       return undefined;
     }
+    let value: BrowserSession;
     try {
-      const value = this.#o.sealer.open("browser_session", raw) as BrowserSession;
-      if (typeof value.sub !== "string" || typeof value.csrf !== "string" || typeof value.exp !== "number" || value.exp <= this.#now()) {
-        return undefined;
-      }
-      return value;
+      value = this.#o.sealer.open("browser_session", raw) as BrowserSession;
     } catch {
       return undefined;
     }
+    if (
+      typeof value.sub !== "string" ||
+      typeof value.csrf !== "string" ||
+      typeof value.exp !== "number" ||
+      typeof value.iat !== "number" ||
+      value.exp <= this.#now()
+    ) {
+      return undefined;
+    }
+    const revokedBefore = await this.#o.store.denial("sub", value.sub);
+    if (revokedBefore !== undefined && value.iat < revokedBefore) {
+      return undefined;
+    }
+    return value;
   }
 
   #sessionCookieFor(identity: Identity): { cookie: string; session: BrowserSession } {
     const session: BrowserSession = {
+      iat: this.#now(),
       sub: identity.userId,
       ...(identity.email !== undefined ? { email: identity.email } : {}),
       ...(identity.displayName !== undefined ? { name: identity.displayName } : {}),
@@ -511,22 +539,43 @@ export class AuthHttpHandler {
     }
     const clearNonce = this.#cookie(this.#nonceCookie, "", 0);
     const { cookie } = this.#sessionCookieFor(identity);
-    if (state.tx !== undefined) {
-      const tx = this.#getTx(state.tx);
-      if (tx === undefined) {
-        this.#html(res, 400, messagePage("ログインできませんでした", "認可の要求が期限切れです。クライアントからやり直してください。"));
+    if (state.az !== undefined) {
+      // 取引はログイン済みの利用者についてだけ作る(未認証の要求でメモリを埋めさせない)
+      const client = this.#authorizationServerEnabled() ? this.#resolveClient(state.az.clientId) : undefined;
+      this.#pruneTx();
+      const mine = [...this.#tx.values()].filter((t) => t.identity?.userId === identity.userId).length;
+      if (client === undefined || mine >= MAX_TX_PER_USER || this.#tx.size >= MAX_TX) {
+        this.#html(res, 429, messagePage("認可できませんでした", "進行中の認可が多すぎます。時間をおいてクライアントからやり直してください。"));
         return;
       }
-      tx.identity = identity;
-      tx.idp = tokens;
-      this.#redirect(res, `/authorize/consent?tx=${encodeURIComponent(tx.id)}`, [clearNonce, cookie]);
+      const tx: AuthorizeTx = {
+        id: randomId(),
+        createdAt: this.#now(),
+        csrf: randomId(),
+        client,
+        redirectUri: state.az.redirectUri,
+        ...(state.az.state !== undefined ? { state: state.az.state } : {}),
+        codeChallenge: state.az.codeChallenge,
+        resource: state.az.resource,
+        requestedScope: state.az.requestedScope,
+        expiresAt: this.#now() + TX_TTL_MS,
+        identity,
+        idp: tokens,
+        src: {},
+      };
+      this.#tx.set(tx.id, tx);
+      this.#redirect(res, `/authorize/consent?tx=${encodeURIComponent(tx.id)}`, [
+        clearNonce,
+        cookie,
+        this.#cookie(this.#txCookie, tx.id, TX_TTL_MS / 1000),
+      ]);
       return;
     }
     this.#redirect(res, safeReturnPath(state.ret, "/connections"), [clearNonce, cookie]);
   }
 
   async #logout(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const session = this.#session(req);
+    const session = await this.#session(req);
     const form = await this.#form(req);
     if (session !== undefined && !safeEqual(form?.get("csrf") ?? "", session.csrf)) {
       this.#html(res, 403, messagePage("操作できませんでした", "ページを開き直してから操作してください。"));
@@ -540,7 +589,7 @@ export class AuthHttpHandler {
   // ---- 接続ページ(token_vault) ----
 
   async #connections(req: IncomingMessage, res: ServerResponse, query: URLSearchParams): Promise<void> {
-    const session = this.#session(req);
+    const session = await this.#session(req);
     const highlight = query.get("source") ?? undefined;
     if (session === undefined) {
       const ret = `/connections${highlight !== undefined ? `?source=${encodeURIComponent(highlight)}` : ""}`;
@@ -589,7 +638,7 @@ export class AuthHttpHandler {
 
   /** フォームの CSRF とブラウザのセッションを確かめる。 */
   async #sessionForm(req: IncomingMessage, res: ServerResponse): Promise<{ session: BrowserSession; form: URLSearchParams } | undefined> {
-    const session = this.#session(req);
+    const session = await this.#session(req);
     const form = await this.#form(req);
     if (session === undefined) {
       this.#redirect(res, "/connections");
@@ -647,8 +696,8 @@ export class AuthHttpHandler {
           tx.identity?.userId === state.sub &&
           safeEqual(parseCookies(req.headers.cookie).get(this.#txCookie) ?? "", tx.id) &&
           safeEqual(hashBinding(tx.csrf), state.bnd)
-        : (() => {
-            const session = this.#session(req);
+        : await (async () => {
+            const session = await this.#session(req);
             return session !== undefined && session.sub === state.sub && safeEqual(hashBinding(session.csrf), state.bnd);
           })();
     const method = source?.kind === "esc" ? "esc" : "token_vault";
@@ -676,7 +725,7 @@ export class AuthHttpHandler {
       this.#html(res, 502, messagePage("接続できませんでした", `${source.sourceId} とのやり取りに失敗しました。時間をおいてやり直してください。`, "err", { href: back, label: "戻る" }));
       return;
     }
-    const idpEmail = tx?.identity?.email ?? this.#session(req)?.email;
+    const idpEmail = tx?.identity?.email ?? (await this.#session(req))?.email;
     if (source.identityCheck === "email" && !emailMatches(idpEmail, result.verifiedEmails)) {
       // 誤接続(私用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
       await source.oauth.revoke(result.tokens);
@@ -694,8 +743,14 @@ export class AuthHttpHandler {
       return;
     }
     if (tx !== undefined) {
+      // 監査に残せない接続は成立させない(不変条件2): 記録してから取引に入れる
+      try {
+        await this.#o.events({ userId: state.sub, event: "connected", sourceId: source.sourceId, method: "esc", outcome: "success", clientId: this.#clientLabel(tx.client) });
+      } catch (error) {
+        await source.oauth.revoke(result.tokens);
+        throw error;
+      }
       tx.src[source.sourceId] = result.tokens;
-      await this.#o.events({ userId: state.sub, event: "connected", sourceId: source.sourceId, method: "esc", outcome: "success", clientId: this.#clientLabel(tx.client) });
       this.#redirect(res, back);
       return;
     }
@@ -733,6 +788,7 @@ export class AuthHttpHandler {
       return;
     }
     if (presented === undefined || !safeEqual(presented, expected)) {
+      await this.#o.events({ userId: "anonymous", event: "deprovisioned", outcome: "failure", reason: "admin_unauthorized" });
       this.#json(res, 401, { error: "unauthorized" }, { "www-authenticate": "Bearer" });
       return;
     }
@@ -752,6 +808,10 @@ export class AuthHttpHandler {
   }
 
   // ---- 認可サーバー ----
+
+  #authorizationServerEnabled(): boolean {
+    return this.#o.authorizationServer !== undefined;
+  }
 
   #as(): AuthorizationServerSettings {
     const as = this.#o.authorizationServer;
@@ -845,25 +905,16 @@ export class AuthHttpHandler {
     if (requestedScope.some((s) => !supported.has(s))) {
       return fail("invalid_scope", "unknown scope");
     }
-    this.#pruneTx();
-    if (this.#tx.size >= MAX_TX) {
-      return fail("temporarily_unavailable", "too many pending authorizations");
-    }
-    const tx: AuthorizeTx = {
-      id: randomId(),
-      csrf: randomId(),
-      client,
+    const az: AuthorizeRequest = {
+      clientId: client.clientId,
       redirectUri,
       ...(state !== undefined ? { state } : {}),
       codeChallenge: challenge,
       resource,
       requestedScope,
-      expiresAt: this.#now() + TX_TTL_MS,
-      src: {},
     };
-    this.#tx.set(tx.id, tx);
-    // IdP でのログインは毎回行う(IdP のトークンを得るため。IdP 側の SSO で通常は画面が出ない)
-    const cookies = [this.#cookie(this.#txCookie, tx.id, TX_TTL_MS / 1000)];
+    // IdP でのログインは毎回行う(IdP のトークンを得るため。IdP 側の SSO で通常は画面が出ない)。
+    // ログインまでの要求は封じた state で運び、サーバーに置かない
     const nonce = randomId();
     const ver = randomId(32);
     const sealedState = this.#o.sealer.seal("state", {
@@ -871,10 +922,10 @@ export class AuthHttpHandler {
       ret: "/connections",
       ver,
       bnd: hashBinding(nonce),
-      tx: tx.id,
+      az,
       exp: this.#now() + STATE_TTL_MS,
     } satisfies StatePayload);
-    cookies.push(this.#cookie(this.#nonceCookie, nonce, STATE_TTL_MS / 1000));
+    const cookies = [this.#cookie(this.#nonceCookie, nonce, STATE_TTL_MS / 1000)];
     const url = this.#o.login.authorizationUrl({
       state: sealedState,
       codeChallenge: pkceChallenge(ver),
@@ -912,7 +963,9 @@ export class AuthHttpHandler {
       res,
       200,
       consentPage({
-        clientName: tx.client.name ?? (this.#as().clients.has(tx.client.clientId) ? tx.client.clientId : "登録されたクライアント"),
+        clientName: this.#as().clients.has(tx.client.clientId)
+          ? (tx.client.name ?? tx.client.clientId)
+          : `未確認のクライアント(自己申告の名前: ${tx.client.name ?? "なし"}、戻り先: ${new URL(tx.redirectUri).origin})`,
         resourceLabel: tx.resource === this.resource ? "Leisen Gateway" : "Leisen(質問への回答)",
         displayName: tx.identity?.displayName ?? tx.identity?.userId ?? "",
         tx: tx.id,
@@ -967,6 +1020,12 @@ export class AuthHttpHandler {
     url.searchParams.set("iss", this.#o.publicBaseUrl);
     const clearTx = this.#cookie(this.#txCookie, "", 0);
     const identity = tx.identity as Identity;
+    const revokedBefore = await this.#o.store.denial("sub", identity.userId);
+    if (revokedBefore !== undefined && tx.createdAt < revokedBefore) {
+      url.searchParams.set("error", "access_denied");
+      this.#redirect(res, url.toString(), [clearTx]);
+      return;
+    }
     if (form.get("decision") !== "allow" || tx.idp === undefined) {
       url.searchParams.set("error", "access_denied");
       await this.#o.events({ userId: identity.userId, event: "token_issued", method: "gateway_token", outcome: "failure", reason: "access_denied", clientId: this.#clientLabel(tx.client) });
@@ -997,8 +1056,12 @@ export class AuthHttpHandler {
       const decoded = Buffer.from(basic, "base64").toString("utf8");
       const colon = decoded.indexOf(":");
       if (colon < 0) return { error: "invalid_client" };
-      clientId = decodeURIComponent(decoded.slice(0, colon));
-      secret = decodeURIComponent(decoded.slice(colon + 1));
+      try {
+        clientId = decodeURIComponent(decoded.slice(0, colon));
+        secret = decodeURIComponent(decoded.slice(colon + 1));
+      } catch {
+        return { error: "invalid_client" };
+      }
     }
     if (clientId === undefined) return { error: "invalid_client" };
     const as = this.#as();
@@ -1077,6 +1140,7 @@ export class AuthHttpHandler {
       (resource !== null && resource !== code.aud)
     ) {
       await as.tokens.revokeSession(code.sid);
+      await this.#o.events({ userId: code.sub, event: "token_issued", method: "gateway_token", outcome: "failure", reason: "code_request_mismatch", clientId: this.#clientLabel(client) });
       return this.#oauthError(res, 400, "invalid_grant", "authorization code does not match the request");
     }
     const { redirectUri: _r, codeChallenge: _c, v: _v, iat: _i, exp: _e, jti: _j, ...claims } = code;
@@ -1101,6 +1165,7 @@ export class AuthHttpHandler {
     }
     if (payload.cid !== client.clientId) {
       await as.tokens.revokeSession(payload.sid);
+      await this.#o.events({ userId: payload.sub, event: "token_refreshed", method: "gateway_token", outcome: "failure", reason: "client_mismatch", clientId: this.#clientLabel(client) });
       return this.#oauthError(res, 400, "invalid_grant", "refresh token was issued to another client");
     }
     // IdP のトークンを更新し、本人がまだ有効か IdP に確かめる(利用停止の反映)
@@ -1169,7 +1234,15 @@ export class AuthHttpHandler {
     if (target !== this.resource) {
       return this.#oauthError(res, 400, "invalid_target", "token exchange can only target this gateway");
     }
-    const subject = await as.tokens.openAccessToken(form.get("subject_token") ?? "", as.orchestratorResource);
+    let subject;
+    try {
+      subject = await as.tokens.openAccessToken(form.get("subject_token") ?? "", as.orchestratorResource);
+    } catch (error) {
+      if (error instanceof TokenRejected) {
+        await this.#o.events({ userId: "anonymous", event: "token_exchanged", method: "gateway_token", outcome: "failure", reason: `subject_${error.kind}`, clientId: ORCHESTRATOR_CLIENT_ID });
+      }
+      throw error;
+    }
     const { v: _v, iat: _i, exp, jti: _j, ...claims } = subject;
     const issued = as.tokens.issue({ ...claims, aud: this.resource }, { withRefresh: false, maxExp: exp });
     await this.#o.events({ userId: subject.sub, event: "token_exchanged", method: "gateway_token", outcome: "success", clientId: ORCHESTRATOR_CLIENT_ID });

@@ -77,6 +77,8 @@ export type ConfigIssueCode =
   | "duplicate_client_id"
   /** 認可サーバーのクライアントのリダイレクト先が https / ループバックでない */
   | "redirect_uri_not_allowed"
+  /** 本番で外部の端点(OAuth・token exchange・KMS・Orchestrator)がループバック以外の平文 http */
+  | "plain_http_endpoint"
   /** 監査シンクの出力先が使えない(書き込めない、rawQueryPath が監査ログと同じ等) */
   | "audit_sink_options_invalid"
   /** コネクタ kind の実装が見つからない(プログラム登録・組み込み・プラグインのいずれにもない) */

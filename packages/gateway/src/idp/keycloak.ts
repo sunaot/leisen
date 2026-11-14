@@ -278,7 +278,8 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
     const userId = body.sub ?? "";
     const displayName = body.name ?? body.preferred_username;
     const email =
-      typeof body.email === "string" && body.email !== "" && body.email_verified !== false
+      // 本人照合に使うため、IdP が確認したメールアドレス(email_verified: true)だけを採る
+      typeof body.email === "string" && body.email !== "" && body.email_verified === true
         ? body.email
         : undefined;
     return {
