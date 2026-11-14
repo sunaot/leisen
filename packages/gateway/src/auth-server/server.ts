@@ -722,6 +722,11 @@ export class AuthHttpHandler {
     } catch (error) {
       const reason = error instanceof SourceOAuthError ? `oauth_${error.kind}` : "oauth_failed";
       await this.#o.events({ userId: state.sub, event: "connect_failed", sourceId: source.sourceId, method, outcome: "failure", reason });
+      // 切り分け用にどの段階で失敗したかをサーバーログへ(SourceOAuthError の文言は段階・HTTP 状態・
+      // 正規化した OAuth のエラーコードだけで、トークン・応答本文・利用者を含まない。不変条件6)
+      this.#o.warn?.(
+        `connecting source "${source.sourceId}" failed: ${error instanceof SourceOAuthError ? error.message : "unexpected error"}`,
+      );
       this.#html(res, 502, messagePage("接続できませんでした", `${source.sourceId} とのやり取りに失敗しました。時間をおいてやり直してください。`, "err", { href: back, label: "戻る" }));
       return;
     }
@@ -1205,6 +1210,9 @@ export class AuthHttpHandler {
       } catch (error) {
         const kind = error instanceof SourceOAuthError ? error.kind : "failed";
         await this.#o.events({ userId: payload.sub, event: "refresh_failed", sourceId, method: "esc", outcome: "failure", reason: kind });
+        this.#o.warn?.(
+          `refreshing source "${sourceId}" failed: ${error instanceof SourceOAuthError ? error.message : "unexpected error"}`,
+        );
         if (kind !== "invalid_grant") {
           src[sourceId] = tokens; // 一時的な失敗は持ち越す(アクセストークンからは外れる)
         }

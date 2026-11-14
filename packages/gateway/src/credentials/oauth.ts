@@ -240,7 +240,10 @@ export class SourceOAuthClient {
         code === "invalid_refresh_token" ||
         code === "token_revoked" ||
         code === "token_expired";
-      throw new SourceOAuthError(invalidGrant ? "invalid_grant" : "rejected", `token endpoint rejected the request (${code})`);
+      throw new SourceOAuthError(
+        invalidGrant ? "invalid_grant" : "rejected",
+        `token endpoint rejected the request (HTTP ${response.status}, ${code})`,
+      );
     }
     const tokenRecord =
       this.preset === "slack" && isRecord(body["authed_user"]) ? body["authed_user"] : body;
@@ -315,7 +318,7 @@ export class SourceOAuthClient {
       if (response.status >= 500) {
         throw new SourceOAuthError("unavailable", `token endpoint returned HTTP ${response.status}`);
       }
-      throw new SourceOAuthError("rejected", `token endpoint rejected the request (${oauthErrorCode(body)})`);
+      throw new SourceOAuthError("rejected", `token endpoint rejected the request (HTTP ${response.status}, ${oauthErrorCode(body)})`);
     }
     const authedUser = body["authed_user"];
     const userId = typeof authedUser["id"] === "string" ? authedUser["id"] : undefined;
