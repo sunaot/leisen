@@ -17,6 +17,8 @@ connector-sdk v0.4 の `Connector`(`search` / `fetch` / `list` / `describe`)を�
 | ESC | `auth.provider: esc` | Gateway の認可サーバーの同意画面で接続し、esa のトークンを Gateway の鍵で封じた暗号文を MCP クライアントが持つ |
 | 開発用 | `auth.provider: mock_env` | `LEISEN_MOCK_TOKEN_ESA` の固定トークン(本番では拒否) |
 
+手元で自分の esa チームを試す手順は、リポジトリ直下の README「自分の esa で試す」(`examples/deployment.dev-esa.yaml`)。
+
 どちらの本番方式も Gateway の OAuth プリセット `esa` を使う(`resource=https://mcp.esa.io`、scope `mcp`、本人照合は `GET /v1/user` の email、失効は RFC 7009)。設定の書き方は docs/personal-auth.md「esa」。
 
 esa チームの owner は「SETTINGS > API・アプリ・MCP > アクセス設定 > リモートMCPサーバー」でアクセスを許可する(既定は拒否)。「ポリシー+アプリごとに承認」にして leisen のクライアントだけを承認し、ポリシーで読み取り系に絞ることを推奨する。
