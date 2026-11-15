@@ -1,116 +1,130 @@
-# 公開リポジトリには規則と決定だけを残す
+# 公開リポジトリにはルールと決定記録だけを残す
 
-エージェント開発を積極的に行う OSS の主流は、公開リポジトリに「短い規則ファイル」「手順としてのスキル」「長く効く決定記録と現状の設計書」だけを置き、進行中のタスク・計画・評価ログは GitHub Issues やプライベートな置き場に出している。調査した約 50 のリポジトリで、ファイル単位のバックログを既定ブランチに常設している例は 1 つも見つからず、36,710 リポジトリを調べた研究でもコミットされた計画ファイルは 10 リポジトリの 85 個にとどまる ([ESEM 2026](https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ESEM.2026.54))。leisen の「backlog・ADR・設計書・.claude を全部入り」は、この分布の外側にある。問題は量ではなく、状態の正本が決まっていないことである。CLAUDE.md の本文の約 69% が日付付きの状況ログで、同じ進捗が少なくとも 4 層に手で複写され、ADR-018 の Status や SDK の版ですでに食い違いが出ている ([棚卸し](../research_notes/エージェント開発OSSの開発環境管理/leisen_inventory.md))。提案は次の 3 点である。(1) 規則ファイルを恒久ルールだけの約 5,000 文字に戻して AGENTS.md を正本にする。(2) タスクと未決事項の正本を GitHub Issues に移し、完了済み backlog は履歴として凍結する。(3) ADR は残すが、追補を重ねる運用をやめて「変わらない決定記録」と「現状を書く設計書」に分ける。内部正本と公開ミラーの二重化は、数人以下のチームには割に合わないので採らない。ただし「全部入り」を支持する根拠もある(OpenAI の社内事例)。その根拠は翻訳経由でしか確認できておらず、公開 OSS での実例ではない。
+エージェントによる開発を積極的に行う OSS の多くは、公開リポジトリに置くものを「短い指示ファイル」「手順を定義したスキル」「長期間有効な決定記録と現行の設計書」に絞り、進行中のタスク・計画・評価結果は GitHub Issues や非公開の保管先で管理している。調査した約 50 のリポジトリのうち、タスクを 1 件 1 ファイルで管理するバックログをデフォルトブランチに常時置いている例は 1 つも見つからなかった。36,710 リポジトリを調べた研究でも、コミットされた計画ファイルは 10 リポジトリの 85 個にとどまる ([ESEM 2026](https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ESEM.2026.54))。backlog・ADR・設計書・`.claude` をすべてリポジトリに置く leisen の構成は、この傾向から外れている。ただし、問題は文書の量ではなく、進捗や決定の状態について正本(唯一の信頼できる情報源)が決まっていないことにある。CLAUDE.md の本文の約 69% が日付付きの進捗記録で、同じ進捗が少なくとも 4 種類の文書に手作業で転記されており、ADR-018 の Status や SDK のバージョンですでに記述の不一致が生じている ([棚卸し](../research_notes/エージェント開発OSSの開発環境管理/leisen_inventory.md))。提案は次の 3 点である。(1) 指示ファイルを恒久的なルールだけの約 5,000 文字に戻し、AGENTS.md を正本にする。(2) タスクと未決事項の正本を GitHub Issues に移し、完了済みの backlog は変更しない履歴として残す。(3) ADR は残すが、追補を重ねる運用をやめ、「決定後は書き換えない決定記録」と「現在の状態を記述する設計書」に分ける。非公開の内部リポジトリを正本とし、公開リポジトリをそのミラーにする二重管理は、数人以下のチームではコストに見合わないので採用しない。なお、すべてをリポジトリに置く構成を支持する根拠もある(OpenAI の社内事例)。ただし、その根拠は日本語訳でしか確認できておらず、公開 OSS での実例でもない。
 
-## 現在のプラクティスは 6 類型に分かれ、主流は「規則とスキルだけ同梱」である
+## 用語
 
-調査対象は、コーディングエージェントのベンダー自身のリポジトリ 17 と、エージェントを多用するプロダクトのリポジトリ約 35 である。いずれも 2026-11-15 時点の既定ブランチを clone して確認した。類型は排他ではなく、B の上に C を重ね、個人の作業物を E に逃がす組み合わせが最も多い。
+本レポートでは次の用語を以下の意味で使う。
 
-| 類型 | 何をリポジトリに置くか | 採用例 | 利点 | コスト | 評価 |
+| 用語 | 意味 |
+|---|---|
+| ハーネス | エージェントを動作させるための設定一式。指示ファイル、スキル、サブエージェント定義、フック、ツール設定を含む |
+| 指示ファイル | エージェントがセッション開始時に読み込む、リポジトリ固有の指示を書いたファイル。AGENTS.md、CLAUDE.md、GEMINI.md などの総称 |
+| スキル | 特定の作業の手順を記述し、必要なときだけエージェントが読み込む定義ファイル |
+| 決定記録 | 設計上の決定とその理由を、決定した時点の内容で残す文書。ADR、RFC など |
+| 現行仕様・現行の設計書 | システムが現在どう動作するかを記述し、変更のたびに更新する文書 |
+| 正本 | 同じ情報が複数の場所にあるとき、内容が食い違った場合に正しいとみなす唯一の場所 |
+| 追補 | leisen の ADR で、既存の ADR の末尾に日付付きで追記している変更・検証結果の記述 |
+
+## 現在のプラクティスは 6 つの類型に分かれ、主流は「ルールとスキルをリポジトリに置く型」である
+
+調査対象は、コーディングエージェントを開発しているベンダー自身のリポジトリ 17 と、エージェントを多用して開発されているプロダクトのリポジトリ約 35 である。いずれも 2026-11-15 時点のデフォルトブランチを clone して確認した。以下の A〜F は本レポートで定義した分類である。類型は互いに排他的ではなく、B に C を組み合わせ、個人の作業中の資料だけを E の方法で分ける構成が最も多い。
+
+| 類型 | リポジトリに置くもの | 採用例 | 利点 | コスト | 評価 |
 |---|---|---|---|---|---|
-| A. 最小ハーネス | 数行〜数十行の規則ファイルのみ、または何も置かない | simonw/llm(24 行)、datasette(5 行)、antirez の各リポジトリ(なし)、minijinja(プロンプト 2 本)、workers-oauth-provider(AGENTS.md 295 行のみ) | 陳腐化するものがない。公開の記録はコミット履歴とテスト | 手順の知識が個人に残る。規則をテストや lint で表現できる成熟が要る | 単独メンテナの小さなライブラリ向き。不変条件が 9 つある leisen には足りない |
-| B. 規則+スキル同梱(主流) | 短いルート規則、ディレクトリ別の規則、スキル、少数のフック。作業項目は Issues / Projects | opencode、gemini-cli、goose、next.js、sentry、PostHog、zed、OpenHands、modelcontextprotocol/servers | 外部の貢献者のエージェントも同じ規則で動く。常時読み込む量が小さい | スキルの保守。複数ツール対応の symlink 管理 | 公開 OSS の事実上の標準。leisen の土台にすべき型 |
-| C. 決定記録と現状仕様の同梱 | B に加えて ADR / RFC と「今どう動くか」の設計書 | cloudflare/agents(design/ 58 ファイル、RFC 27 本)、vercel/ai(2026-03 に ADR 採用)、beads(engdocs/adr)、opencode(specs/v2)、MCP 仕様(seps/ 48 本) | 「なぜ」を再調査せずに済む。却下済みの案の蒸し返しを防ぐ | 索引と状態欄を保たないと読まれない | 認可・監査が価値の中心にある leisen には必須。ただし現状の書き方は直す |
-| D. 変更単位の計画・仕様の同梱 | 変更ごとの proposal / plan / tasks、またはファイル型バックログ | sentry-mcp(OpenSpec と日付付き plan)、spec-kit、OpenSpec、Backlog.md、OpenAI の社内プロダクト(exec-plans/active・completed。翻訳経由) | エージェントがオフラインで読める。計画をレビューできる | 第二のコードベースになり腐る。並行エージェントで書き込みが衝突する | 完了後に凍結・アーカイブ・削除のいずれかを決めた場合だけ成立する。常設は少数派 |
-| E. 私的な置き場への分離 | 規則とスキルは公開、調査・計画・タスクメモは別リポジトリかローカル | humanlayer(`/thoughts/` を gitignore し別リポジトリへ)、beads(メンテナ用の台帳は非公開、公開の追跡は Issues)、Ronacher(個人ハーネスを別リポジトリ agent-stuff に)、sentry(スキルを agents.toml で外部から取得) | 率直なメモを公開面に出さずに版管理できる | symlink とフックが各マシンに要る。クラウドセッションでは別リポジトリとして付ける必要がある(推論) | 公開に向かない少量の資料にだけ使うのが現実的 |
-| F. 内部正本+公開ミラー | 公開側は派生物。ハーネスの本体は内部 | openai/codex(全コミットが copyberry、2026-09-30 にルート AGENTS.md と .codex/ を削除)、anthropics/claude-code(製品ソースなし)、E2B(仕様を Copybara で同期) | 内部資料が公開に出ない保証が最も強い | 外部 PR の取り込みが壊れやすい(snippet・未検証)。同期の保守が常時かかる | 大手ベンダーの型。数人のチームには割に合わない |
+| A. 最小構成 | 数行〜数十行の指示ファイルのみ、または何も置かない | simonw/llm(24 行)、datasette(5 行)、antirez の各リポジトリ(なし)、minijinja(プロンプト 2 本)、workers-oauth-provider(AGENTS.md 295 行のみ) | 陳腐化する文書がない。公開される記録はコミット履歴とテストである | 手順に関する知識が個人に属人化する。ルールをテストや lint で表現できるだけの成熟が必要になる | 単独メンテナの小規模なライブラリに向く。不変条件が 9 つある leisen には不足する |
+| B. ルールとスキルを置く型(主流) | 短いルートの指示ファイル、ディレクトリ別の指示ファイル、スキル、少数のフック。タスクは Issues / Projects で管理する | opencode、gemini-cli、goose、next.js、sentry、PostHog、zed、OpenHands、modelcontextprotocol/servers | 外部のコントリビューターが使うエージェントも同じルールで動作する。毎セッション読み込まれる分量が小さい | スキルの保守。複数のツールに対応するためのシンボリックリンクの管理 | 公開 OSS の事実上の標準である。leisen はこの型を基本にすべきである |
+| C. 決定記録と現行仕様も置く型 | B に加えて、ADR / RFC と現行の設計書 | cloudflare/agents(design/ 58 ファイル、RFC 27 本)、vercel/ai(2026-03 に ADR を採用)、beads(engdocs/adr)、opencode(specs/v2)、MCP 仕様(seps/ 48 本) | 決定の理由を再調査せずに済む。却下済みの案が再び議論されることを防げる | 索引と Status を維持しなければ参照されなくなる | 認可と監査が価値の中心である leisen には必須である。ただし現在の書き方は改める必要がある |
+| D. 変更単位の計画・仕様も置く型 | 変更ごとの提案・計画・タスク、またはファイル形式のバックログ | sentry-mcp(OpenSpec と日付付きの計画)、spec-kit、OpenSpec、Backlog.md、OpenAI の社内プロダクト(exec-plans/active・completed。日本語訳で確認) | エージェントがネットワークなしで参照できる。計画をレビューできる | コードとは別に保守対象が増え、更新が追いつかず陳腐化する。複数のエージェントが並行して書き込むと競合する | 完了後の扱い(変更せず残す・アーカイブする・削除する)を決めた場合にだけ成立する。常時置く運用は少数派である |
+| E. 非公開の保管先に分ける型 | ルールとスキルは公開し、調査・計画・タスクのメモは別リポジトリかローカルに置く | humanlayer(`/thoughts/` を gitignore し、別リポジトリで管理)、beads(メンテナ用のタスク管理データは非公開、公開のタスク管理は Issues)、Ronacher(個人用のハーネスを別リポジトリ agent-stuff で管理)、sentry(スキルを agents.toml で外部リポジトリから取得) | 率直な内容のメモを公開せずにバージョン管理できる | 各マシンでシンボリックリンクとフックの設定が必要になる。クラウドセッションでは別リポジトリとして追加する必要がある(推論) | 公開に適さない少量の資料に限って使うのが現実的である |
+| F. 内部リポジトリを正本とし、公開ミラーを持つ型 | 公開リポジトリは内部リポジトリから生成される。ハーネスの本体は内部にある | openai/codex(全コミットのコミッターが copyberry、2026-09-30 にルートの AGENTS.md と .codex/ を削除)、anthropics/claude-code(製品のソースコードなし)、E2B(仕様を Copybara で同期) | 内部資料が公開されないことを最も確実に保証できる | 外部からの PR を取り込む処理が不安定になりやすい(検索結果の要約のみで、元のページは未確認)。同期の仕組みを継続的に保守する必要がある | 大手ベンダー向けの型である。数人のチームではコストに見合わない |
 
-A・B・C の根拠は直接確認したツリーである。opencode は方針を一文で書いている。「GitHub issues own active work; Git history preserves removed plans and scratchpads.」([specs/v2/README.md](https://github.com/anomalyco/opencode/blob/HEAD/specs/v2/README.md))。goose は issue を作業の正本とし、公開の Projects ボードで状態が Ready になるまでエージェントに実装させない ([AGENTS.md](https://github.com/aaif-goose/goose/blob/HEAD/AGENTS.md))。gemini-cli、Roo-Code、pi-mono は計画用のディレクトリ(`conductor/`、`plans/`、`todo.md`)を gitignore している ([gemini-cli .gitignore](https://github.com/google-gemini/gemini-cli/blob/HEAD/.gitignore)、[pi-mono .gitignore](https://github.com/earendil-works/pi-mono/blob/HEAD/.gitignore))。OpenHands は設計書を PR 本文に書き、一時的な成果物を置く `.pr/` はリリース時に消す決まりにしている ([software-agent-sdk AGENTS.md](https://github.com/OpenHands/software-agent-sdk/blob/HEAD/AGENTS.md))。
+A・B・C は、clone したリポジトリのファイル構成を直接確認した結果に基づく。opencode は方針を一文で明記している。「GitHub issues own active work; Git history preserves removed plans and scratchpads.」([specs/v2/README.md](https://github.com/anomalyco/opencode/blob/HEAD/specs/v2/README.md))。goose は issue をタスクの正本とし、公開の Projects ボードでステータスが Ready になるまでエージェントに実装させない ([AGENTS.md](https://github.com/aaif-goose/goose/blob/HEAD/AGENTS.md))。gemini-cli、Roo-Code、pi-mono は計画用のディレクトリやファイル(`conductor/`、`plans/`、`todo.md`)を gitignore している ([gemini-cli .gitignore](https://github.com/google-gemini/gemini-cli/blob/HEAD/.gitignore)、[pi-mono .gitignore](https://github.com/earendil-works/pi-mono/blob/HEAD/.gitignore))。OpenHands は設計内容を PR の本文に書き、一時的な成果物を置く `.pr/` はリリース時に削除すると定めている ([software-agent-sdk AGENTS.md](https://github.com/OpenHands/software-agent-sdk/blob/HEAD/AGENTS.md))。
 
-**D の常設がうまくいかなかった実例が beads である。** リポジトリ内の issue ファイルを広めた当のプロジェクトが、今は自分の `.beads/` を gitignore し、「GitHub Issues is the public tracker」と書いている ([beads AGENTS.md](https://github.com/steveyegge/beads/blob/HEAD/AGENTS.md))。理由は、多数のエージェントが互いの書き込みを上書きして復旧できなくなったことだと説明されている。ただしこの説明は Dolt の開発元の記事によるもので、作者本人の記述は確認していない ([DoltHub](https://www.dolthub.com/blog/2026-03-13-multi-agent-persistence/))。
+**D を常時運用して失敗した実例が beads である。** beads はリポジトリ内に issue をファイルとして置く方式を広めたプロジェクトだが、現在は自身の `.beads/` を gitignore し、「GitHub Issues is the public tracker」と明記している ([beads AGENTS.md](https://github.com/steveyegge/beads/blob/HEAD/AGENTS.md))。理由は、多数のエージェントが互いの書き込みを上書きし、復旧できなくなったためだと説明されている。ただし、この説明は Dolt の開発元の記事によるもので、作者本人の記述は確認していない ([DoltHub](https://www.dolthub.com/blog/2026-03-13-multi-agent-persistence/))。
 
-F の codex では、最近 500 コミットのすべてでコミッターが `copyberry` であり、`GitOrigin-RevId` が付いている。ルートの AGENTS.md と `.codex/skills/` を消した PR は理由を書いていない ([PR #49713](https://github.com/openai/codex/pull/49713))。「ハーネスは非公開にすべきだ」と明文化した方針はどのリポジトリにも見つからなかった。既定はコミットである。
+F の codex では、直近 500 コミットのすべてでコミッターが `copyberry` であり、`GitOrigin-RevId` トレーラーが付いている。ルートの AGENTS.md と `.codex/skills/` を削除した PR には理由が書かれていない ([PR #49713](https://github.com/openai/codex/pull/49713))。「ハーネスは非公開にすべきである」と明文化した方針は、どのリポジトリにも見つからなかった。ハーネスはコミットするのが標準である。
 
-## 規則ファイルは短く、手順はスキルへ、決定は不変の記録へ
+## 指示ファイルは短くし、手順はスキルに、決定は書き換えない記録にする
 
-類型を横断して、成果物の種類ごとの扱いはほぼ揃っている。
+成果物の種類ごとの扱いは、類型が違ってもほぼ共通している。
 
-**規則ファイルは「コードから読み取れないこと」に絞られている。** ベンダー自身のルートファイルは 5〜240 行で、中身はコマンド、依存の向き、禁止事項である。Anthropic の文書は 1 ファイル 200 行未満を目安とし、規則ファイルは「context, not enforced configuration」であって、確実に止めたい操作には PreToolUse フックを使えと書く ([Claude Code docs](https://code.claude.com/docs/en/memory))。ETH Zurich らの評価は、コンテキストファイルは一般にタスク成功率を上げず、推論コストを平均 20% 以上増やし、リポジトリ概要は役に立たないと結論した(確認したのは要旨のみ。[arXiv:2602.11988](https://arxiv.org/abs/2602.11988))。現場の規則も同じ方向を向いている。modelcontextprotocol/servers は「規則はこのファイル、手順はオンデマンドで読み込むスキル」と分け、「このファイルの規則はすべて現在のリポジトリについて真である」と定める ([AGENTS.md](https://github.com/modelcontextprotocol/servers/blob/HEAD/AGENTS.md))。workers-sdk は、版・規則一覧・件数を写すと古くなるので、正本の設定や文書を参照せよと書く ([AGENTS.md](https://github.com/cloudflare/workers-sdk/blob/HEAD/AGENTS.md))。
+**指示ファイルの内容は「コードからは読み取れないこと」に絞られている。** ベンダー自身のルートの指示ファイルは 5〜240 行で、内容はコマンド、依存の方向、禁止事項である。Anthropic のドキュメントは 1 ファイル 200 行未満を目安とし、指示ファイルは「context, not enforced configuration」であるため、確実に禁止したい操作には PreToolUse フックを使うよう求めている ([Claude Code docs](https://code.claude.com/docs/en/memory))。ETH Zurich などによる評価研究は、指示ファイルは一般にタスクの成功率を向上させず、推論コストを平均 20% 以上増加させ、リポジトリの概要説明は効果がないと結論している(確認したのは要旨のみ。[arXiv:2602.11988](https://arxiv.org/abs/2602.11988))。各プロジェクトのルールも同じ方向である。modelcontextprotocol/servers は「ルールは指示ファイルに、手順は必要なときに読み込むスキルに」と分け、「このファイルのルールはすべて、現在のリポジトリについて正しい」と定めている ([AGENTS.md](https://github.com/modelcontextprotocol/servers/blob/HEAD/AGENTS.md))。workers-sdk は、バージョン・ルールの一覧・件数を転記すると古くなるので、正本である設定ファイルやドキュメントを参照するよう指示している ([AGENTS.md](https://github.com/cloudflare/workers-sdk/blob/HEAD/AGENTS.md))。
 
-**正本は AGENTS.md で、CLAUDE.md は 1 行の取り込みにする形が多い。** sentry、supabase、tldraw、ruff、mastra、goose の CLAUDE.md は `@AGENTS.md` だけである ([sentry CLAUDE.md](https://github.com/getsentry/sentry/blob/HEAD/CLAUDE.md))。Claude Code は CLAUDE.md がなければ AGENTS.md を直接読み、両方あれば CLAUDE.md が取り込んだ場合にだけ AGENTS.md を読む ([Claude Code docs](https://code.claude.com/docs/en/memory))。スキルの置き場は、ツールに依存しない `.agents/skills/` を実体にして `.claude/skills` を symlink にする形が広い。仕事の種類はリリース、PR 作成とレビュー、issue のトリアージ、テスト作成、動作検証に集中する。サブエージェント定義は少なく、まとまった数を持つのは PostHog(11 個)と claude-code-action(レビュー用 5 個)くらいである。
+**AGENTS.md を正本とし、CLAUDE.md にはインポートの 1 行だけを書く構成が多い。** sentry、supabase、tldraw、ruff、mastra、goose の CLAUDE.md は `@AGENTS.md` の 1 行だけである ([sentry CLAUDE.md](https://github.com/getsentry/sentry/blob/HEAD/CLAUDE.md))。Claude Code は、CLAUDE.md がなければ AGENTS.md を直接読み込み、両方ある場合は CLAUDE.md がインポートしたときにだけ AGENTS.md を読み込む ([Claude Code docs](https://code.claude.com/docs/en/memory))。スキルは、特定のツールに依存しない `.agents/skills/` に実体を置き、`.claude/skills` をシンボリックリンクにする構成が広く使われている。スキルの対象は、リリース、PR の作成とレビュー、issue のトリアージ、テストの作成、動作検証に集中している。サブエージェント定義をコミットしている例は少なく、まとまった数を持つのは PostHog(11 個)と claude-code-action(レビュー用 5 個)程度である。
 
-**フックは狭いガードにとどまる。** コミットされているのは、編集後の整形、対話コマンドの遮断、セッション開始時のセットアップ程度で、大きなポリシーエンジンを置く例はなかった。leisen の 2 本のフックはこの水準に合っている。一方で、リポジトリが持つ設定は攻撃面でもある。Check Point は `.claude/settings.json` のフックや MCP の自動承認が、確認なしでコマンドを実行する経路になっていた問題を報告した。いずれも修正済みで、同社は設定ファイルを実行コードと同じ注意でレビューせよと勧める ([Check Point Research](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/))。秘密情報の漏えいは `.claude/settings.local.json` で起きている。Apiiro は 1,994 の公開リポジトリから 2,539 件を見つけたと報じられた。ただし件数は媒体によって食い違う ([Privacy Guides](https://www.privacyguides.org/news/2026/11/10/claude-code-leaks-secrets-and-passwords-in-public-github-repositories/))。原因は、除外設定が利用者のマシンのグローバル設定にしか書かれず、リポジトリの `.gitignore` には入らないことである。ガードレールの定義を公開したこと自体が悪用された事例は見つかっていない。
+**フックは用途を限定した検査にとどまる。** コミットされているフックは、編集後のフォーマット、対話型コマンドのブロック、セッション開始時のセットアップ程度で、大規模なポリシーエンジンを置いている例はなかった。leisen の 2 本のフックはこの水準に合っている。一方で、リポジトリに含まれるエージェント設定は攻撃対象にもなる。Check Point は、`.claude/settings.json` のフックや MCP サーバーの自動承認が、ユーザーの確認なしにコマンドを実行する経路になっていた脆弱性を報告した。いずれも修正済みで、同社は設定ファイルを実行コードと同じ水準でレビューするよう推奨している ([Check Point Research](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/))。秘密情報の漏えいは `.claude/settings.local.json` で発生している。Apiiro は 1,994 の公開リポジトリから 2,539 件の秘密情報を発見したと報じられた。ただし、件数は媒体によって異なる ([Privacy Guides](https://www.privacyguides.org/news/2026/11/10/claude-code-leaks-secrets-and-passwords-in-public-github-repositories/))。原因は、このファイルの除外設定が利用者のマシンのグローバルな git 設定にしか書かれず、リポジトリの `.gitignore` には含まれないことである。ガードレールの定義を公開したこと自体が悪用につながった事例は見つかっていない。
 
-**決定記録は「現状を書く文書」と「変えないスナップショット」に分ける形が最も整理されている。** cloudflare/agents は、設計書を「今どう動くか」を書く生きた文書とし、RFC は決定後に更新せず、却下されたものも消さないと定める。手順は「提案 → 状態を accepted / rejected に更新 → 関連する設計書を更新」である ([design/AGENTS.md](https://github.com/cloudflare/agents/blob/HEAD/design/AGENTS.md))。vercel/ai は、アーキテクチャに触れる前に ADR を確認し、既存の ADR と矛盾するなら止まって人間と相談するよう AGENTS.md で指示する。ADR の起案はスキルにしてある ([AGENTS.md](https://github.com/vercel/ai/blob/HEAD/AGENTS.md))。
+**決定記録は、「現在の状態を記述する文書」と「決定時点の内容を保持する文書」に分ける構成が最も整理されている。** cloudflare/agents は、設計書を「現在どう動作するか」を記述して随時更新する文書と位置づけ、RFC は決定後に更新せず、却下されたものも削除しないと定めている。手順は「提案する → Status を accepted / rejected に更新する → 関連する設計書を更新する」である ([design/AGENTS.md](https://github.com/cloudflare/agents/blob/HEAD/design/AGENTS.md))。vercel/ai は、アーキテクチャに関わる変更の前に ADR を確認し、既存の ADR と矛盾する場合は作業を止めて人間に相談するよう AGENTS.md で指示している。ADR の起案手順はスキルとして定義されている ([AGENTS.md](https://github.com/vercel/ai/blob/HEAD/AGENTS.md))。
 
-**計画については 3 つの立場がある。** 完了した計画を残す(OpenAI の社内事例。翻訳経由)、現状仕様に畳み込んで残りをアーカイブする(OpenSpec)、消して事実をコード・テスト・短い ADR に移す、の 3 つである。3 番目は「変更が出荷されたら大半は消えるべき」とする論考による ([The Main Thread](https://www.the-main-thread.com/p/spec-driven-development-exit-strategy))。どの立場も、完了した計画を編集し続ける対象としては扱わない。
+**完了した計画の扱いには 3 つの考え方がある。** そのまま残す(OpenAI の社内事例。日本語訳で確認)、内容を現行仕様に反映したうえで残りをアーカイブする(OpenSpec)、削除して、残すべき事実だけをコード・テスト・短い ADR に移す、の 3 つである。3 番目は「変更がリリースされたら、仕様の大半は削除すべきである」とする記事に基づく ([The Main Thread](https://www.the-main-thread.com/p/spec-driven-development-exit-strategy))。いずれの考え方でも、完了した計画を継続的に更新する対象とはしていない。
 
-**評価は、定義をコミットし、実行結果はコミットしないのが普通である。** gemini-cli は `evals/logs/` を、humanlayer は評価の出力先を gitignore している ([gemini-cli .gitignore](https://github.com/google-gemini/gemini-cli/blob/HEAD/.gitignore)、[humanlayer .gitignore](https://github.com/humanlayer/humanlayer/blob/HEAD/.gitignore))。日付付きの評価レポートを既定ブランチに置く例は、調べた範囲にはなかった。
+**評価は、定義をコミットし、実行結果はコミットしないのが一般的である。** gemini-cli は `evals/logs/` を、humanlayer は評価結果の出力先を gitignore している ([gemini-cli .gitignore](https://github.com/google-gemini/gemini-cli/blob/HEAD/.gitignore)、[humanlayer .gitignore](https://github.com/humanlayer/humanlayer/blob/HEAD/.gitignore))。日付付きの評価レポートをデフォルトブランチに置いている例は、調査した範囲にはなかった。
 
-**外部貢献の統治は「理解している人間が責任を持つ」に収束している。** ghostty は、メンテナ自身が AI を多用すると明記したうえで、外部の貢献者にだけ開示と理解を求める ([AI_POLICY.md](https://github.com/ghostty-org/ghostty/blob/HEAD/AI_POLICY.md))。goose と cline は issue の承認を PR の前提にし、codex は外部 PR を受け付けない ([docs/contributing.md](https://github.com/openai/codex/blob/HEAD/docs/contributing.md))。開示の方法は割れている。ASF は `Generated-by` か `Co-authored-by` を勧める ([ASF](https://www.apache.org/legal/generative-tooling.html))。Linux カーネルは 2026 年 10 月に、必須だった `Assisted-by` タグを廃止する合意に達したと報じられた。マージ済みかどうかは確認していない ([The Register](https://www.theregister.com/ai-and-ml/2026/10/14/linux-kernel-devs-drop_obligatory_confession_of_ai_tool_usage/5303140))。
+**外部からのコントリビューションに関するガバナンスは、「内容を理解している人間が責任を負う」という点で共通している。** ghostty は、メンテナ自身が AI を多用していると明記したうえで、外部のコントリビューターにだけ AI 利用の開示と内容の理解を求めている ([AI_POLICY.md](https://github.com/ghostty-org/ghostty/blob/HEAD/AI_POLICY.md))。goose と cline は issue の承認を PR の前提条件とし、codex は外部からの PR を受け付けていない ([docs/contributing.md](https://github.com/openai/codex/blob/HEAD/docs/contributing.md))。開示の方法はプロジェクトによって異なる。ASF は `Generated-by` または `Co-authored-by` トレーラーを推奨している ([ASF](https://www.apache.org/legal/generative-tooling.html))。Linux カーネルは 2026 年 10 月に、必須としていた `Assisted-by` タグを廃止することで合意したと報じられた。マージ済みかどうかは確認していない ([The Register](https://www.theregister.com/ai-and-ml/2026/10/14/linux-kernel-devs-drop_obligatory_confession_of_ai_tool_usage/5303140))。
 
-## leisen の課題は量ではなく、状態の正本が 4 層に複写されていること
+## leisen の課題は文書の量ではなく、状態の正本が決まっていないことにある
 
-leisen の文書は 9,602 行で、ソースとテストの約 15% にあたる。量だけなら、PostHog の 273 スキルや cloudflare/agents の 58 設計文書と比べて突出しているわけではない。違いは中身にあり、文書の約 6 割(約 5,800 行)がプロセスと判断のログである ([棚卸し](../research_notes/エージェント開発OSSの開発環境管理/leisen_inventory.md))。
+leisen の文書は 9,602 行で、ソースコードとテストコードの合計の約 15% にあたる。量だけを見れば、PostHog の 273 個のスキルや cloudflare/agents の 58 本の設計文書と比べて特に多いわけではない。違いは内容にあり、文書の約 6 割(約 5,800 行)が開発の経過と判断の記録である ([棚卸し](../research_notes/エージェント開発OSSの開発環境管理/leisen_inventory.md))。
 
-**常時読み込まれる規則ファイルが状況ログになっている。** CLAUDE.md は 58 行で、行数だけなら 200 行の目安に収まる。しかし 15,592 文字のうち「現在のフェーズ」が 10,223 文字を占め、恒久ルールは約 4,600 文字しかない。この節には、ADR-018 を Proposed とする誤り(実際は Accepted)がある。MCP SDK の版は、CLAUDE.md が 1.32.1、backlog README が 1.30.1、package.json が 1.32.2 と 3 通りある。規則ファイルの指示はよく守られるという評価結果を踏まえると、誤った状況記述はそのままエージェントの判断に入る。
+**毎セッション読み込まれる指示ファイルが、進捗記録になっている。** CLAUDE.md は 58 行で、行数だけなら 200 行の目安に収まる。しかし、15,592 文字のうち「現在のフェーズ」の節が 10,223 文字を占め、恒久的なルールは約 4,600 文字しかない。この節には、ADR-018 を Proposed とする誤りがある(実際は Accepted)。MCP SDK のバージョンは、CLAUDE.md では 1.32.1、backlog README では 1.30.1、package.json では 1.32.2 と 3 通りの記述がある。指示ファイルに書かれた指示はエージェントによく守られるという評価結果を踏まえると、誤った状況の記述はそのままエージェントの判断に影響する。
 
-**同じ事実を手で複写している。** PR #14 のマージ記述は 8 ファイルにある。backlog README が完了とする T-001 / T-002 / T-010 / T-014 のチェックボックスは未チェックのままである。サブエージェント定義は connector-sdk を v0.3、ADR の次番号を 017 と書く。PR テンプレートの不変条件 7 は、CLAUDE.md の現行の文言に追随していない。workers-sdk が避けよと書いている失敗がそのまま起きている。
+**同じ事実を手作業で複数の文書に転記している。** PR #14 がマージされたという記述は 8 ファイルにある。backlog README が完了としている T-001 / T-002 / T-010 / T-014 は、各タスクのチェックボックスが未チェックのままである。サブエージェント定義には、connector-sdk が v0.3、ADR の次の番号が 017 と書かれている。PR テンプレートの不変条件 7 は、CLAUDE.md の現在の文言に更新されていない。workers-sdk が避けるよう指示している問題が、そのまま発生している。
 
-**ADR が決定とログを兼ねている。** 22 本のうち 12 本に追補があり、ADR-001 には追補が 9 回、日付が 15 種ある。決定の現在形を知るには全文(合計 233,787 文字)を読む必要がある。cloudflare/agents の「RFC は決定後に更新しない」の逆をやっている。
+**ADR が、決定の記録と経過の記録を兼ねている。** 22 本のうち 12 本に追補があり、ADR-001 には追補が 9 回、日付が 15 種類ある。現在有効な決定内容を知るには、全文(合計 233,787 文字)を読む必要がある。cloudflare/agents の「RFC は決定後に更新しない」とは逆の運用である。
 
-**率直な内部メモが公開面に出ている。** 本物の秘密は見つかっていない。気になるのは次の記述が規則ファイルと利用者向け文書に散っていることである。未修正の指摘を符号で並べた記述(`minor-N` が 17 ファイル 59 か所、`H1` が 27 ファイル 63 か所)、商用配布と有償支援の論点、承認待ちの一覧、オーナーの手元の環境の記述。公開された ADR やバックログが攻撃に使われた事例は調査では見つからなかった。したがって扱いはリスクの見積もりの問題であり、実害の実証はない。
+**内部向けの率直な記述が、公開される文書に含まれている。** 実際の秘密情報は見つかっていない。懸念されるのは、次の記述が指示ファイルと利用者向け文書に分散していることである。未修正の指摘を指摘番号で列挙した記述(`minor-N` が 17 ファイル 59 か所、`H1` が 27 ファイル 63 か所)、商用配布と有償支援に関する論点、承認待ちの項目の一覧、オーナー個人の開発環境に関する記述。公開された ADR やバックログが攻撃に利用された事例は、調査では見つからなかった。したがって、これらの扱いはリスク評価の問題であり、実害が確認されているわけではない。
 
-**外部の貢献者に向けた入口がない。** CONTRIBUTING / SECURITY / issue テンプレート / CODEOWNERS がなく、フックの検査は Claude Code を使わない貢献者には効かない。コミットの 64% がエージェント名義で、71% に Co-Authored-By が付いている。体制はオーナー 1 人とエージェントであり、ASF の推奨の範囲には収まっている。
+**外部のコントリビューターを受け入れるための文書がない。** CONTRIBUTING / SECURITY / issue テンプレート / CODEOWNERS がなく、フックによる検査は Claude Code を使わないコントリビューターには適用されない。コミットの 64% はエージェントが作者として記録されており、71% に Co-Authored-By トレーラーが付いている。開発体制はオーナー 1 人とエージェントであり、ASF の推奨の範囲には収まっている。
 
-**全部入りを支持する根拠もある。** OpenAI の社内プロダクトの報告は、エージェントが届かない場所の知識は存在しないのと同じだとして、計画・技術的負債・設計書をすべてリポジトリに置いたとする。ただし AGENTS.md は短い地図にとどめ、文書の鮮度・相互リンク・構造を lint と CI で検査し、定期的にエージェントが修正 PR を出す前提である。原文は取得できておらず、翻訳経由の確認である ([npaka 訳](https://note.com/npaka/n/nb4c5488e82fd?hl=en)、原文は [openai.com](https://openai.com/index/harness-engineering/))。leisen に欠けているのは、この機械的な検査と、進行中と完了済みの分離である。エージェントが GitHub の issue を読める構成であれば、「届かない」という論拠は Issues にはあてはまらない。
+**すべてをリポジトリに置く構成を支持する根拠もある。** OpenAI の社内プロダクトに関する報告は、エージェントが参照できない場所にある知識は存在しないのと同じであるとして、計画・技術的負債・設計書をすべてリポジトリに置いたとしている。ただし、AGENTS.md は目次の役割にとどめて短くし、文書の鮮度・相互リンク・構造を lint と CI で検査し、定期的にエージェントが修正の PR を出すことを前提としている。原文は取得できておらず、日本語訳で確認した ([npaka 訳](https://note.com/npaka/n/nb4c5488e82fd?hl=en)、原文は [openai.com](https://openai.com/index/harness-engineering/))。leisen に不足しているのは、この自動検査と、進行中の文書と完了済みの文書の分離である。また、エージェントが GitHub の issue を読める構成であれば、「エージェントが参照できない」という論拠は Issues にはあてはまらない。
 
-## 成果物ごとの判断: 規則は短く、状態は Issues へ、決定は凍結して残す
+## 成果物ごとの判断: ルールは短くし、状態は Issues に移し、決定は書き換えずに残す
 
-判断の基準は 1 つである。**貢献者のエージェントが正しい仕事をするのに必要なものはリポジトリに置き、コアチームの進行状況と内部の事情は外に出す。** 置き場は README がすでに示している 3 読者(導入 / 設計理解 / 開発)に合わせる。
+判断基準は 1 つである。**コントリビューターのエージェントが正しく作業するために必要なものはリポジトリに置き、コアチームの進捗と内部の事情はリポジトリの外で管理する。** 文書の配置は、README がすでに示している 3 種類の読者(導入する人 / 設計を理解したい人 / 開発する人)に合わせる。
 
-| 成果物 | 判断 | 置き場と書き方 |
+| 成果物 | 判断 | 保管先と書き方 |
 |---|---|---|
-| CLAUDE.md の恒久ルール(不変条件・構成・開発ルール・進め方、約 4,600 文字) | 残す。正本を移す | `AGENTS.md` を正本にし、`CLAUDE.md` は `@AGENTS.md` の 1 行にする。版番号・ADR の追補番号・PR 番号は書かない |
-| CLAUDE.md「現在のフェーズ」(10,223 文字) | 移す | 着手順と前提待ちは GitHub Issues とラベルまたは Project に移す。「人間の未決事項」は issue 化する(例: ラベル `decision-needed`)。規則ファイルには「現在の作業は Issues を見る」の 1 行だけ残す |
-| パッケージ固有の契約(audit の import 境界、gateway/run、コネクタの IF) | 移す | `packages/*/AGENTS.md` に数行〜数十行で書く。ルートからは一覧で参照する |
-| サブエージェント 3 本 | security-reviewer は残して更新する。他の 2 本は短くして移す | adr-keeper と connector-implementer は手順なのでスキルにする(実体は `.agents/skills/`、`.claude/skills` は symlink)。古い番号と版は消す |
-| フック 2 本と scripts/guard | 残す。CI にも載せる | 同じ grep 検査を `npm run` のスクリプトにして CI の build-test で走らせる。`.claude/`、`scripts/guard/`、`.github/workflows/` は CODEOWNERS で人間のレビューを必須にする |
-| ローカルのエージェント状態 | 捨てる(追跡しない) | リポジトリの `.gitignore` に `.claude/settings.local.json` と `CLAUDE.local.md` を明記する |
-| ADR 22 本 | 残す。追補をやめる | 決定後は Status 以外を書き換えない。変更は新しい ADR で行い、旧 ADR に Superseded / Amended by を付ける。`docs/adr/README.md` に「主題 → 現行の ADR → 現在の決定の 1 行要約」の索引を置く。Status 行は状態と日付だけにする。「実装の記録・検証結果」は今後 PR の説明に書く |
-| 設計書 v1 / v2 / v3(538 行) | 短くする(統合) | 現状を書く 1 本の設計書にまとめる。差分形式の v2 / v3 は Git 履歴に任せる。規則ファイルの必読指定は「プロダクト原則」の 1 か所にする |
-| backlog 29 タスク | 未着手は移す。完了は凍結する | 未着手・進行中は issue にする。issue テンプレートに「前提(人手)/ 内容 / 受け入れ条件」を持たせる。完了分は履歴用のディレクトリに移して読み取り専用と明記する。コード中の T 番号参照 216 か所が切れないよう、削除はしない。新しいコードコメントには T 番号と PR 番号を書かない |
-| README 冒頭の進捗段落、backlog README の進捗段落 | 捨てる | タグと GitHub Releases(または CHANGELOG)を進捗の公開記録にする |
-| 評価(docs/eval 2 本) | 定義は残す。結果は移す | 質問セットと手順は orchestrator パッケージ側に置く。日付付きの結果は該当の PR か issue に貼る。手元の環境名とモデル名は結果側にだけ書く |
-| 検討メモ HTML 4 本(2,396 行) | 移すか捨てる | 決定ではない分析なので公開ツリーから外す。棚卸しでは全文を精読していないので、外す前に固有名の有無を確認する |
-| スパイク(文書 307 行、コード 1,027 行) | 当面残し、決定後に捨てる | SDK v2 への移行時期が未決の間は残す。決定したら結論を ADR に移して削除する |
-| 公開チェックリスト | 移す | 作者アドレスに触れる記述があるので、ツリーから外して非公開の置き場に移す |
-| 脅威モデル、auth-matrix、導入・運用ガイド | 残す | 利用者向けと設計理解向けにディレクトリを分ける。「受容した残余リスク」は導入者に必要なので残す |
-| 未修正の指摘の符号(minor-N、H1) | 短くする(言い換える) | 利用者向け文書では、症状と緩和策を平文で書く(例: リクエスト期限がないのでリバースプロキシで制限する)。符号つきの残件一覧は非公開の置き場で持つ |
-| 商用配布・有償支援の論点 | 移す | 技術的な決定(Slack の導入形態は類型 (a))だけを ADR に残す。事業上の論点は issue #59 か非公開の置き場に寄せる |
-| PR テンプレートの不変条件チェック | 短くする | 文言を複写せず、AGENTS.md の不変条件を番号で参照する |
-| OSS の定番ファイル | 新設する | SECURITY.md、CONTRIBUTING.md、AI 利用の方針、issue テンプレート、CODEOWNERS |
+| CLAUDE.md の恒久的なルール(不変条件・構成・開発ルール・タスクの進め方、約 4,600 文字) | 残す。正本を変更する | `AGENTS.md` を正本とし、`CLAUDE.md` は `@AGENTS.md` の 1 行にする。バージョン番号・ADR の追補番号・PR 番号は書かない |
+| CLAUDE.md の「現在のフェーズ」(10,223 文字) | 移す | 着手の順序と、人手による前提条件を待っているタスクは、GitHub Issues とラベルまたは Projects に移す。「人間の未決事項」は issue にする(例: ラベル `decision-needed`)。指示ファイルには「現在の作業は Issues を参照する」という 1 行だけを残す |
+| パッケージ固有の制約(audit の import 境界、gateway/run、コネクタの IF) | 移す | `packages/*/AGENTS.md` に数行〜数十行で書く。ルートの指示ファイルからは一覧で参照する |
+| サブエージェント 3 本 | security-reviewer は残して更新する。他の 2 本は短くして移す | adr-keeper と connector-implementer は内容が手順なので、スキルにする(実体は `.agents/skills/` に置き、`.claude/skills` はシンボリックリンクにする)。古い番号とバージョンの記述は削除する |
+| フック 2 本と scripts/guard | 残す。CI でも実行する | 同じ grep による検査を `npm run` のスクリプトにして、CI の build-test で実行する。`.claude/`、`scripts/guard/`、`.github/workflows/` は CODEOWNERS で人間のレビューを必須にする |
+| エージェントのローカル状態 | Git で管理しない | リポジトリの `.gitignore` に `.claude/settings.local.json` と `CLAUDE.local.md` を明記する |
+| ADR 22 本 | 残す。追補をやめる | 決定後は Status 以外を書き換えない。変更は新しい ADR で行い、元の ADR には Superseded / Amended by を記載する。`docs/adr/README.md` に「主題 → 現在有効な ADR → 現在の決定の 1 行要約」の索引を置く。Status 行には状態と日付だけを書く。実装の記録と検証結果は、今後は PR の説明に書く |
+| 設計書 v1 / v2 / v3(538 行) | 短くする(統合する) | 現在の状態を記述する 1 本の設計書にまとめる。差分形式の v2 / v3 の経緯は Git の履歴で参照する。指示ファイルで必ず読むよう指定する箇所は「プロダクト原則」の 1 か所にする |
+| backlog 29 タスク | 未着手のものは移す。完了したものは変更せずに残す | 未着手・進行中のタスクは issue にする。issue テンプレートに「前提(人手)/ 内容 / 受け入れ条件」の項目を設ける。完了したタスクは履歴用のディレクトリに移し、読み取り専用であることを明記する。コード中に T 番号への参照が 216 か所あるため、削除はしない。新しく書くコードコメントには T 番号と PR 番号を書かない |
+| README 冒頭の進捗の段落、backlog README の進捗の段落 | 削除する | タグと GitHub Releases(または CHANGELOG)を、進捗の公開記録とする |
+| 評価(docs/eval 2 本) | 定義は残す。結果は移す | 質問セットと実行手順は orchestrator パッケージに置く。日付付きの結果は、該当する PR か issue に記載する。実行環境の名前とモデル名は結果の側にだけ書く |
+| 検討メモ HTML 4 本(2,396 行) | 移すか削除する | 決定ではなく分析の資料なので、公開リポジトリから外す。棚卸しでは全文を確認していないので、外す前に固有名詞が含まれていないかを確認する |
+| スパイク(文書 307 行、コード 1,027 行) | 当面は残し、決定後に削除する | SDK v2 への移行時期が未決の間は残す。決定したら、結論を ADR に記載して削除する |
+| 公開チェックリスト | 移す | コミットの作者のメールアドレスに関する記述があるので、公開リポジトリから外して非公開の保管先に移す |
+| 脅威モデル、auth-matrix、導入・運用ガイド | 残す | 利用者向けと設計を理解したい人向けに、ディレクトリを分ける。「受容した残余リスク」は導入する側に必要な情報なので残す |
+| 未修正の指摘の指摘番号(minor-N、H1) | 短くする(書き換える) | 利用者向け文書では、指摘番号ではなく、事象と緩和策を文章で書く(例: リクエストに期限がないため、リバースプロキシで制限する)。指摘番号つきの未対応項目の一覧は、非公開の保管先で管理する |
+| 商用配布・有償支援に関する論点 | 移す | 技術的な決定(Slack の導入形態は類型 (a))だけを ADR に残す。事業上の論点は issue #59 か非公開の保管先にまとめる |
+| PR テンプレートの不変条件チェック | 短くする | 文言を転記せず、AGENTS.md の不変条件を番号で参照する |
+| OSS で一般的に用意されるファイル | 新しく作成する | SECURITY.md、CONTRIBUTING.md、AI 利用に関する方針、issue テンプレート、CODEOWNERS |
 
-移行は、判断が要らないものから順に行う。1 項目を 1 PR にする。
+移行は、オーナーの判断を必要としないものから順に進める。1 つの手順を 1 つの PR にする。
 
-| 優先 | 手順 | 前提となる決定 | 根拠 |
+| 優先順位 | 手順 | 前提となる決定 | 根拠 |
 |---|---|---|---|
-| 1 | CLAUDE.md の事実誤り(ADR-018 の Status、SDK の版)、サブエージェントの古い番号、PR テンプレートの不変条件 7 を直す。`.gitignore` にローカルのエージェント状態を足す | なし | 誤った規則がエージェントの判断に入る。秘密情報の漏えい経路をふさぐ |
-| 2 | SECURITY.md と CODEOWNERS を置く | 脆弱性報告窓口(論点 3) | 公開リポジトリの最低線。設定ファイルは実行コードと同じ扱いにする |
-| 3 | 未決事項と未着手タスクを issue にし、CLAUDE.md から「現在のフェーズ」を削る。AGENTS.md を正本にする | 状態の正本(論点 1) | 最大の効果が出る。毎セッションの読み込みが約 3 分の 1 になる |
-| 4 | 完了済み backlog を凍結し、README 類の進捗段落を消し、最初のタグを打つ | 論点 1 | 複写の発生源をなくす |
-| 5 | ADR の索引を作り、追補をやめる運用を ADR として書く。設計書 3 本を 1 本に統合する | ADR の運用(論点 4) | 現在の決定を全文を読まずに引ける |
-| 6 | 検討メモ・公開チェックリスト・評価結果・符号つきの残件を公開ツリーから外す | 非公開の置き場(論点 2) | 公開面の整理。履歴の書き換えはしない |
-| 7 | 文書の検査を CI に足す。AGENTS.md の文字数上限と日付・PR 番号の禁止、ADR の索引の網羅、リンク切れ、guard の grep 検査 | なし | 再発防止。OpenAI の事例が示す前提条件 |
-| 8 | CONTRIBUTING.md と AI 利用の方針を置く。手順をスキルにし、パッケージ別の AGENTS.md を足す | 外部貢献の受け方(論点 5) | 外部の貢献者とそのエージェントの入口 |
+| 1 | CLAUDE.md の事実の誤り(ADR-018 の Status、SDK のバージョン)、サブエージェント定義の古い番号、PR テンプレートの不変条件 7 を修正する。`.gitignore` にエージェントのローカル状態を追加する | なし | 誤ったルールがエージェントの判断に影響する。秘密情報が漏えいする経路を塞ぐ |
+| 2 | SECURITY.md と CODEOWNERS を置く | 脆弱性の報告窓口(論点 3) | 公開リポジトリの最低限の要件である。エージェント設定は実行コードと同じ扱いにする |
+| 3 | 未決事項と未着手のタスクを issue にし、CLAUDE.md から「現在のフェーズ」を削除する。AGENTS.md を正本にする | 状態の正本(論点 1) | 最も効果が大きい。毎セッション読み込まれる分量が約 3 分の 1 になる |
+| 4 | 完了済みの backlog を読み取り専用の履歴にし、README などの進捗の段落を削除し、最初のタグを付ける | 論点 1 | 重複した記載が生じる原因をなくす |
+| 5 | ADR の索引を作成し、追補をやめる運用を ADR として記録する。設計書 3 本を 1 本に統合する | ADR の運用(論点 4) | 現在有効な決定を、全文を読まずに確認できる |
+| 6 | 検討メモ・公開チェックリスト・評価結果・指摘番号つきの未対応項目を公開リポジトリから外す | 非公開の保管先(論点 2) | 公開される文書を整理する。履歴の書き換えは行わない |
+| 7 | 文書の検査を CI に追加する。AGENTS.md の文字数の上限と日付・PR 番号の禁止、ADR の索引の網羅性、リンク切れ、guard の grep による検査 | なし | 再発を防止する。OpenAI の事例が前提としている条件である |
+| 8 | CONTRIBUTING.md と AI 利用に関する方針を置く。手順をスキルにし、パッケージ別の AGENTS.md を追加する | 外部からのコントリビューションの受け入れ方針(論点 5) | 外部のコントリビューターとそのエージェントが参加するために必要である |
 
-手順 6 で履歴を書き換えないのは、公開後の書き換えが既存の clone や fork からは何も消さないためである。この一般論は検索結果の要約に基づくもので、元のページは開いていない(snippet・未検証)。リポジトリが現在公開されているかどうかは、棚卸しでは確認できていない。まだ非公開であれば、履歴に含まれる作者アドレスの扱いを公開前に決める機会が 1 度だけある。CI からエージェントを起動するトリアージや重複検出は、ベンダー各社が自社リポジトリで行っているが、leisen では外部からの issue が増えるまで見送る。公開 issue の文面を読むエージェントにはプロンプトインジェクションの報告があるためである(snippet・未検証。[Aikido](https://aikido.dev/blog/promptpwnd-github-actions-ai-agents))。
+手順 6 で履歴を書き換えないのは、公開後に履歴を書き換えても、既存の clone や fork からは何も削除されないためである。この説明は検索結果の要約に基づくもので、元のページは確認していない。リポジトリが現在公開されているかどうかは、棚卸しでは確認できていない。まだ非公開であれば、履歴に含まれる作者のメールアドレスの扱いを、公開前に 1 度だけ決めることができる。CI からエージェントを起動して行う issue のトリアージや重複検出は、ベンダー各社が自社のリポジトリで実施しているが、leisen では外部からの issue が増えるまで導入を見送る。公開された issue の本文を読むエージェントに対して、プロンプトインジェクションが報告されているためである(検索結果の要約のみで、元のページは未確認。[Aikido](https://aikido.dev/blog/promptpwnd-github-actions-ai-agents))。
 
-オーナーが決めるべき論点は次の 8 つである。
+オーナーが決定すべき論点は次の 8 つである。
 
 | # | 論点 | 選択肢 | 推奨 |
 |---|---|---|---|
-| 1 | タスクと未決事項の正本 | GitHub Issues / リポジトリ内の 1 ファイルに一本化 / 現状維持 | Issues。エージェントが issue を読める構成が条件。満たせないなら 1 ファイルに一本化し、他の文書からは参照だけにする |
-| 2 | 非公開の置き場を持つか | 持たない / 非公開の companion リポジトリ / ローカルのみ | 符号つきのセキュリティ残件と事業上の論点に限って、小さな非公開リポジトリを持つ。クラウドセッションでは 2 つ目のリポジトリとして付ける必要がある(推論) |
-| 3 | 脆弱性報告窓口と未修正の指摘の公開範囲 | GitHub の Private Vulnerability Reporting / メール / 保留を続ける | Private Vulnerability Reporting。curl は報奨金の廃止後にこれへ移った(二次資料経由。[curl](https://daniel.haxx.se/blog/2026/01/26/the-end-of-the-curl-bug-bounty/)) |
-| 4 | ADR の運用 | 追補を続ける / 新しい ADR で置き換える / 既存 ADR も書き直す | 新しい ADR で置き換える。既存の 22 本は書き直さず、索引と 1 行要約で現在形を示す |
-| 5 | 外部貢献の受け方 | 受け付けない(codex)/ issue の承認を前提にする(goose、cline)/ 自由 | issue の承認を前提にする。ADR の起案は誰でもでき、Accepted にするのはオーナーだけ、と明記する |
-| 6 | AI 利用の開示 | Co-Authored-By を続ける / やめる / 外部の貢献者にだけ求める | 続ける。ghostty の形で、メンテナの利用を明記し、外部には理解と開示を求める。コミットに付くセッション URL の行は第三者が開けないので、残すかどうかを別に決める |
-| 7 | 規則ファイルと文書の言語 | 日本語のみ / AGENTS.md と README だけ英語を併記 | 調査に根拠となる資料がない。導入先の想定で決める |
-| 8 | 完了した計画・評価結果の残し方 | 凍結して残す / PR と issue にだけ残す / 削除 | backlog は凍結(コードからの参照があるため)。新しい計画と評価結果は PR と issue にだけ残す |
+| 1 | タスクと未決事項の正本 | GitHub Issues / リポジトリ内の 1 ファイルに集約する / 現状を維持する | Issues。エージェントが issue を読める構成であることが条件である。満たせない場合は 1 ファイルに集約し、他の文書からは参照だけにする |
+| 2 | 非公開の保管先を持つか | 持たない / 非公開の別リポジトリ / ローカルのみ | 指摘番号つきのセキュリティ上の未対応項目と事業上の論点に限定して、小規模な非公開リポジトリを持つ。クラウドセッションでは 2 つ目のリポジトリとして追加する必要がある(推論) |
+| 3 | 脆弱性の報告窓口と、未修正の指摘を公開する範囲 | GitHub の Private Vulnerability Reporting / メール / 保留を続ける | Private Vulnerability Reporting。curl は報奨金制度の廃止後にこの方式へ移行した(二次資料で確認。[curl](https://daniel.haxx.se/blog/2026/01/26/the-end-of-the-curl-bug-bounty/)) |
+| 4 | ADR の運用 | 追補を続ける / 新しい ADR で置き換える / 既存の ADR も書き直す | 新しい ADR で置き換える。既存の 22 本は書き直さず、索引と 1 行要約で現在有効な決定を示す |
+| 5 | 外部からのコントリビューションの受け入れ方針 | 受け付けない(codex)/ issue の承認を前提条件にする(goose、cline)/ 制限しない | issue の承認を前提条件にする。ADR の起案は誰でもでき、Accepted にできるのはオーナーだけであることを明記する |
+| 6 | AI 利用の開示 | Co-Authored-By を続ける / やめる / 外部のコントリビューターにだけ求める | 続ける。ghostty と同じ形式で、メンテナが AI を利用していることを明記し、外部のコントリビューターには内容の理解と開示を求める。コミットに付くセッション URL の行は第三者が開けないので、残すかどうかを別途決める |
+| 7 | 指示ファイルと文書の言語 | 日本語のみ / AGENTS.md と README だけ英語を併記する | 調査では判断の根拠となる資料が得られなかった。想定する導入先に合わせて決める |
+| 8 | 完了した計画と評価結果の残し方 | 変更せずにリポジトリに残す / PR と issue にだけ残す / 削除する | backlog は変更せずに残す(コードから参照されているため)。新しい計画と評価結果は PR と issue にだけ残す |
 
-## Conclusion
+## 結論
 
-調査で分かったのは、エージェント開発の先端にいるプロジェクトほど、リポジトリに置く文書を「いつ読んでも真であるもの」に絞っているということである。規則、手順、決定、現状の設計がそれにあたる。「ある時点で真だったもの」(進捗、計画、評価結果、レビュー指摘)は、日付と状態が自動で付く場所、つまり issue、PR、コミット、リリースに任せている。leisen の全部入りは、エージェントに文脈を渡すという目的では正しかった。ただしそれは、オーナー 1 人とエージェントという閉じた体制で、全文書を毎 PR 更新できる間だけ成り立つ設計である。食い違いがすでに出ていることから、その限界は越えている。
+調査で明らかになったのは、エージェントによる開発が進んでいるプロジェクトほど、リポジトリに置く文書を「いつ読んでも内容が正しい文書」に絞っていることである。ルール、手順、決定、現行の設計がこれにあたる。「特定の時点では正しかった記録」(進捗、計画、評価結果、レビューでの指摘)は、日付と状態が自動的に記録される場所、すなわち issue、PR、コミット、リリースで管理している。すべてをリポジトリに置く leisen の構成は、エージェントにコンテキストを渡すという目的に対しては妥当だった。ただし、この構成が成立するのは、オーナー 1 人とエージェントという閉じた体制で、PR のたびにすべての文書を更新できる間だけである。記述の不一致がすでに生じていることから、その限界は超えている。
 
-leisen は認可と監査を売りにするプロダクトなので、ADR と脅威モデルを公開していること自体は、導入を評価する側にとって価値がある。捨てるべきなのは決定の記録ではなく、決定の記録に混ざった作業ログである。今回の調査では確かめられなかった点が 2 つある。完了済みの計画を残すことがエージェントの成績を上げるか下げるかを測ったデータは見つかっていない。エージェントで開発したプロジェクトが公開時にプロセス文書をどう再編したかの事例も見つかっていない。leisen の移行は、その最初の記録の 1 つになりうる。
+leisen は認可と監査を強みとするプロダクトなので、ADR と脅威モデルを公開していること自体は、導入を検討する側にとって価値がある。削除すべきなのは決定の記録ではなく、決定の記録に混在している作業の記録である。今回の調査で確認できなかった点が 2 つある。完了済みの計画を残すことがエージェントの作業の成功率を上げるのか下げるのかを測定したデータは見つかっていない。エージェントで開発されたプロジェクトが、公開時に開発プロセスに関する文書をどう再編成したかの事例も見つかっていない。leisen の移行は、その最初の記録の 1 つになりうる。
