@@ -79,7 +79,7 @@ import {
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
-import { runServe, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import { runServe, settingsFromDeployment, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
 import {
   INSECURE_UPSTREAM_HINT,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -96,7 +96,7 @@ export const USAGE = [
   "  セッショントークンは環境変数 LEISEN_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(Gateway が認証した利用者と食い違えば run は error になります)。",
-  "  --config の orchestrator セクション(maxIterations / costLimitPerQuery)を探索の設定にします(--max-iterations が優先)。",
+  "  --config の orchestrator セクション(maxIterations / costLimitPerQuery / runTimeoutSec)を探索の設定にします(--max-iterations が優先)。",
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
   ...LLM_USAGE_LINES,
@@ -448,11 +448,7 @@ export async function runCli(
   let settings: OrchestratorSettingsInput = {};
   if (args.config !== undefined) {
     try {
-      const { maxIterations, costLimitPerQuery } = loadDeploymentConfig(resolve(args.config)).orchestrator;
-      settings = {
-        maxIterations,
-        ...(costLimitPerQuery !== undefined ? { costLimitPerQuery } : {}),
-      };
+      settings = settingsFromDeployment(loadDeploymentConfig(resolve(args.config)));
     } catch (error) {
       await gateway.close();
       // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)

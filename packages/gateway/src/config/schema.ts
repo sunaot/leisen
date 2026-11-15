@@ -585,6 +585,14 @@ const orchestratorSchema = z.strictObject({
   maxIterations: z.number().int().min(1).max(20).default(6),
   /** 1質問あたりのLLMコスト上限(通貨単位は導入先の課金通貨)。消費者はT-007 */
   costLimitPerQuery: z.number().positive().optional(),
+  /**
+   * 探索フェーズの時間上限(秒、run の開始から)。省略時は Orchestrator の既定(120 秒)。
+   * 手元の LLM(LM Studio 等)では 1 手に数十秒かかり、長い本文の読み込みで既定を超えうる。
+   * 上限に達した後に回答を促す最終ターン(60 秒)が別にある。Orchestrator は runId の有効期間
+   * (gateway.runs.ttlSec、既定 900 秒)に収まるよう短くする(WARNING)。呼び出し側(LibreChat の
+   * MCP の timeout 等)の待ち時間は「この値 + 最終ターン」より長くする
+   */
+  runTimeoutSec: z.number().int().min(10).max(3_600).optional(),
 });
 
 /** 起動コード(bootstrap/audit.ts)が解決できる監査シンクの識別子。 */

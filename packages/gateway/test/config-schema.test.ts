@@ -109,6 +109,14 @@ describe("deployment config schema rejection", () => {
     expect(() => parseDeploymentConfig(yaml)).toThrow(DeploymentConfigError);
   });
 
+  it("orchestrator.runTimeoutSec は省略可(Orchestrator の既定)、10〜3600 秒の整数だけを受ける", () => {
+    expect(parseDeploymentConfig(MINIMAL_YAML).orchestrator.runTimeoutSec).toBeUndefined();
+    expect(parseDeploymentConfig(MINIMAL_YAML + `orchestrator:\n  runTimeoutSec: 600\n`).orchestrator.runTimeoutSec).toBe(600);
+    for (const value of ["9", "3601", "12.5", '"600"']) {
+      expect(() => parseDeploymentConfig(MINIMAL_YAML + `orchestrator:\n  runTimeoutSec: ${value}\n`)).toThrow(DeploymentConfigError);
+    }
+  });
+
   it("orchestrator.maxIterationsの上限超過を拒否する(TM-D3)", () => {
     const yaml = MINIMAL_YAML + `orchestrator:\n  maxIterations: 21\n`;
     expect(() => parseDeploymentConfig(yaml)).toThrow(DeploymentConfigError);

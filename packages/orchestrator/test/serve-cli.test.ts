@@ -33,6 +33,7 @@ import {
   SERVE_USAGE,
   parseListen,
   servePortInUseMessage,
+  settingsFromDeployment,
   type ServeEndpoint,
 } from "../src/bin/serve.js";
 import {
@@ -179,6 +180,25 @@ describe("leisen-ask serve: 不変条件7(永続化不可のソース)", () => {
     const d = deps();
     expect(await runCli(serveArgs(config), io, d)).toBe(0);
     expect(d.endpoints).toHaveLength(1);
+  });
+});
+
+describe("leisen-ask serve: orchestrator セクションの探索の上限", () => {
+  it("runTimeoutSec を探索の時間上限にし、起動ログに出す。省略時は既定の 120 秒", async () => {
+    const withTimeout = await writeYaml(deploymentYaml([], ["orchestrator:", "  maxIterations: 4", "  runTimeoutSec: 600"]));
+    const a = capture();
+    expect(await runCli(serveArgs(withTimeout), a.io, deps())).toBe(0);
+    expect(a.err.join("\n")).toContain("max-iterations=4, run-timeout=600s");
+
+    const without = await writeYaml(deploymentYaml());
+    const b = capture();
+    expect(await runCli(serveArgs(without), b.io, deps())).toBe(0);
+    expect(b.err.join("\n")).toContain("max-iterations=6, run-timeout=120s");
+  });
+
+  it("settingsFromDeployment は秒をミリ秒に換算し、省略した項目を渡さない", () => {
+    expect(settingsFromDeployment({ orchestrator: { maxIterations: 6, runTimeoutSec: 300 } })).toEqual({ maxIterations: 6, runTimeoutMs: 300_000 });
+    expect(settingsFromDeployment({ orchestrator: { maxIterations: 6 } })).toEqual({ maxIterations: 6 });
   });
 });
 
@@ -349,7 +369,7 @@ describe("leisen-ask serve: 起動と停止", () => {
       "leisen-ask serve: deployment: t021-serve",
       "leisen-ask serve: gateway: http://127.0.0.1:9",
       "leisen-ask serve: run api: gateway (orchestrator credential: env LEISEN_ORCHESTRATOR_CREDENTIAL)",
-      "leisen-ask serve: limits: max-concurrent-runs=2, max-question-chars=500, max-iterations=3",
+      "leisen-ask serve: limits: max-concurrent-runs=2, max-question-chars=500, max-iterations=3, run-timeout=120s",
       "leisen-ask serve: llm: anthropic (model: claude-opus-5, effort: high)",
       "leisen-ask serve: test-stop received, shutting down",
       "leisen-ask serve: stopped",
