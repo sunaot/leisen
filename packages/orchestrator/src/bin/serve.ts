@@ -145,9 +145,9 @@ export interface ServeEndpoint {
   readonly healthUrl: string;
 }
 
-class ServeUsageError extends Error {}
+export class ServeUsageError extends Error {}
 
-interface ServeArgs {
+export interface ServeArgs {
   readonly gateway: string;
   readonly config: string;
   readonly listen: { readonly host: string; readonly port: number };
@@ -230,7 +230,7 @@ function parseServeArgsStrict(argv: readonly string[]) {
   });
 }
 
-function parseServeArgs(
+export function parseServeArgs(
   argv: readonly string[],
   env: CliDependencies["env"],
 ): ServeArgs | "help" {

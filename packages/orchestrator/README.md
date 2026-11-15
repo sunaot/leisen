@@ -214,6 +214,25 @@ npx leisen-promotion-report \
 - 進捗のストリーミング(MCP の progress 通知)はしない(応答は単発 JSON)
 - TLS・Host / Origin の検証・利用者単位の流量制御はリバースプロキシで担う(docs/install.md)。`--max-concurrent-runs` はプロセス全体の上限
 
+### 接続の診断(leisen-ask doctor)
+
+`serve` が動かない・回答が `llm_unavailable` や `gateway_unauthorized` で失敗するときは、**`serve` を `doctor` に置き換えた同じコマンド**(同じ環境変数)を、Orchestrator を起動するターミナルで実行する。serve は起動せず、Orchestrator から見た経路を順に確かめて一覧にする(問題があれば終了コード 1)。
+
+```bash
+leisen-ask doctor --gateway http://127.0.0.1:8787/mcp --config var/deployment.yaml --llm openai-compatible [serve と同じ残りの引数]
+```
+
+| 区分 | 確かめること |
+|---|---|
+| 設定 | deployment.yaml の読み込み、探索の時間上限(`orchestrator.runTimeoutSec`)と runId・トークンの有効期間の釣り合い |
+| LLM | 接続先のホストが引くアドレス(IPv4 / IPv6)と各アドレスへの TCP 接続、`GET /models` とモデルの有無、短い会話の要求 1 回の応答時間(`--skip-chat` で省く) |
+| Gateway | アドレスと TCP 接続、`/healthz`。`--authorization-server` があれば認可サーバーのメタデータと、`/token` での Orchestrator の資格情報の照合(交換の中身を送らないので監査に残らない) |
+| serve | 待ち受け先で serve が既に応答しているか |
+
+- LLM の接続先が Mac のネットワークのアドレス(`192.168.x.x` / `172.16〜31.x.x` / `10.x.x.x`)を指していると注意を出す。Wi-Fi・テザリング等でネットワークが変わるとアドレスが変わって届かなくなるため、同じ Mac の LM Studio なら `127.0.0.1` を指定する
+- `localhost` が IPv6(`::1`)と IPv4 の両方を引き、片方にしか接続できない場合も注意を出す(Node が届かないほうを先に試すことがある)
+- `--json` で結果を JSON で出す。トークン・API キー・Orchestrator の資格情報・プロンプトの本文は出さない
+
 ## LM Studio で使う(OpenAI 互換バックエンド)
 
 **実際の LM Studio で、合成コーパスの 4 問を通すところまで確認しました(2026-10-08。[評価レポート](../../docs/eval/2026-10-08-explore-v3.md))。精度は保証しません**(評価ハーネス T-008 で測るまで判断しない。ADR-017)。

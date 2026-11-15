@@ -31,6 +31,7 @@
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
  * サブコマンド `leisen-ask serve`(bin/serve.ts): Orchestrator を MCP サーバーとして公開する
+ * サブコマンド `leisen-ask doctor`(bin/doctor.ts): serve と同じ引数で、設定・LLM・Gateway への経路を診断する
  * (T-021、ADR-018)。最初の引数が `serve` のときだけ振り分ける。
  *
  * npm の bin(`npx leisen-ask`)からは、リポジトリに含まれる起動シム packages/orchestrator/bin/leisen-ask.js
@@ -80,6 +81,7 @@ import {
   parseLlmCliOptions,
 } from "./llm-options.js";
 import { runServe, settingsFromDeployment, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import { runDoctor } from "./doctor.js";
 import {
   INSECURE_UPSTREAM_HINT,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -102,6 +104,7 @@ export const USAGE = [
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
   "  MCP サーバーとして起動する: leisen-ask serve --gateway <URL> --config <deployment.yaml>(詳細は leisen-ask serve --help)",
+  "  接続を診断する: leisen-ask doctor <serve と同じ引数>(設定・LLM・Gateway への経路を順に確かめる。leisen-ask doctor --help)",
 ].join("\n");
 
 export {
@@ -366,6 +369,9 @@ export async function runCli(
 ): Promise<number> {
   if (argv[0] === "serve") {
     return runServe(argv.slice(1), io, deps);
+  }
+  if (argv[0] === "doctor") {
+    return runDoctor(argv.slice(1), io, { env: deps.env });
   }
   // 回答を返せない失敗: 説明を stderr に出し、--json なら失敗の表現を stdout に1つ出す
   // (出力契約。終了コードは --json の有無で変えない)
