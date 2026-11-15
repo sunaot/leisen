@@ -8,6 +8,6 @@
 | 2026-10-15 | [2026-10-15-credential-locality.html](2026-10-15-credential-locality.html) | 資格情報の置き場所。bearer token の根本的な困難、設計空間、標準・製品・事故の実例、ローカル寄せの案の評価 | ADR-022 |
 | 2026-10-19 | [2026-10-19-auth-methods-comparison.html](2026-10-19-auth-methods-comparison.html) | 個人認可の方式比較。Token Vault / IdP トークン方式 / キーチェーンと MCP クライアント方式 / ESC 方式の実現方法、要件、評価、論点(2026-10-20 改訂) | ADR-022 |
 | 2026-11-14 | [2026-11-14-token-store-boundary.html](2026-11-14-token-store-boundary.html) | Token Store の境界。ADR-022 確認事項 3 の文脈、論点、選択肢の空間(A / A' / B / B'' ほか)、A と B の位置付け、B へ移る判断基準 | ADR-022 / ADR-005 |
-| 2026-11-15 | [2026-11-15-quality-observability-plan.html](2026-11-15-quality-observability-plan.html) | 品質の観測計画。計測基盤の設計要件と用語定義、コンポーネント構成、現状の評価、品質カテゴリと指標、評価方法、観測手段(監査ログ / 構造化運用ログ / 分離テレメトリ)、可視化手段(ロール別の関心事項とレポート構成)、ベースライン計測、実施計画 | ADR-011 / ADR-012 / T-008 |
+| 2026-11-15 | [2026-11-15-quality-observability-plan.html](2026-11-15-quality-observability-plan.html) | 品質の観測計画。計測基盤の設計要件と用語定義、コンポーネント構成、現状の評価、品質カテゴリと指標、評価方法、観測手段(監査ログ / 構造化運用ログ / 分離テレメトリ)、時間に関する指標(タイムアウト、ターンアラウンドタイム)、計装の実現方式、可視化手段(ロール別の関心事項とレポート構成)、ベースライン計測、実施計画 | ADR-011 / ADR-012 / T-008 |
 
 2026-10-14 と 10-15 のメモで「封緘」「開封」と呼んでいるものは、10-19 のメモと ADR-022 で ESC(encrypted self-contained credential)と「復号」に呼び直した。
