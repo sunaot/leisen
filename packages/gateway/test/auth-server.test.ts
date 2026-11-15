@@ -16,6 +16,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseAuditRecord } from "@leisen/audit";
 import { assembleGateway, parseDeploymentConfig, DeploymentConfigError, type AssembledGateway } from "../src/index.js";
+import { FRESH_SUBJECT_WINDOW_MS, subjectLifetimeDecision } from "../src/auth-server/server.js";
 import { jsonResponse, mockFetch } from "./helpers/mock-fetch.js";
 
 const EXAMPLES_DIR = fileURLToPath(new URL("../../../examples/", import.meta.url));
@@ -422,6 +423,39 @@ describe("MCP 認可サーバーと ESC", () => {
     expect((await mcpCall(base, exchanged.body["access_token"] as string, "esc-docs")).isError).toBe(false);
     // Gateway 宛てのトークンを交換に出しても受けない(受け手の取り違え)
     expect((await tokenRequest(base, { ...exchangeForm, subject_token: exchanged.body["access_token"] as string }, basic(ORCH_CRED))).status).toBe(400);
+  });
+
+  it("交換の min_lifetime: 更新直後のトークンは残りが足りなくても受け、値の形を検査する", async () => {
+    const { base, audit } = await startGateway();
+    const { body } = await authorize(base, { connect: ["esc-docs"], resource: `${base}/ask/mcp` });
+    const form = (extra: Record<string, string>) => ({
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      subject_token: body["access_token"] as string,
+      subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      resource: `${base}/mcp`,
+      ...extra,
+    });
+    const basic = { authorization: `Basic ${Buffer.from(`leisen-orchestrator:${ORCH_CRED}`).toString("base64")}` };
+    // 発行直後(既定 300 秒)のトークンに 690 秒を求めても、更新しても延びないので受ける
+    const fresh = await tokenRequest(base, form({ min_lifetime: "690" }), basic);
+    expect(fresh.status).toBe(200);
+    expect(Number(fresh.body["expires_in"])).toBeLessThanOrEqual(300);
+    for (const bad of ["0", "-5", "1.5", "abc", "86401"]) {
+      expect((await tokenRequest(base, form({ min_lifetime: bad }), basic)).status).toBe(400);
+    }
+    const events = (await audit()).filter((r) => r.recordType === "credential_event" && r.event === "token_exchanged");
+    expect(events.every((r) => (r as { outcome: string }).outcome === "success")).toBe(true);
+  });
+
+  it("交換の min_lifetime の判定: 残りが足りず更新直後でもなければ expires_soon", () => {
+    const base = { issuedAt: 0, expiresAt: 300_000, minLifetimeMs: 690_000 };
+    // 残りは足りないが、発行から 60 秒以内(更新直後): 受ける
+    expect(subjectLifetimeDecision({ ...base, now: FRESH_SUBJECT_WINDOW_MS })).toBe("ok");
+    // 発行から 61 秒: 拒否して更新させる
+    expect(subjectLifetimeDecision({ ...base, now: FRESH_SUBJECT_WINDOW_MS + 1_000 })).toBe("expires_soon");
+    // 残りが足りる: 受ける。min_lifetime がない: 受ける
+    expect(subjectLifetimeDecision({ issuedAt: 0, expiresAt: 3_600_000, minLifetimeMs: 690_000, now: 120_000 })).toBe("ok");
+    expect(subjectLifetimeDecision({ issuedAt: 0, expiresAt: 10_000, minLifetimeMs: undefined, now: 9_000 })).toBe("ok");
   });
 
   it("/revoke で系列を失効させ、esc のソースのトークンもソースへ失効を依頼する", async () => {

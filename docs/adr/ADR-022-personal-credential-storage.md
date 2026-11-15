@@ -100,6 +100,14 @@ Orchestrator の経由について、「ESC は中継者に無意味だから渡
 - MCP の Client ID Metadata Documents(クライアント ID を URL にする方式)への対応時期
 - 接続後の同じ質問の自動再実行(決定 7)を Orchestrator のどの段で行うか
 
+## 追補(2026-11-15): 長い run とトークンの残り時間
+
+LibreChat から ESC 方式で esa を使った確認(ADR-023)で、探索の時間上限を延ばした run(`orchestrator.runTimeoutSec`)が、途中で Gateway 宛てのトークンの期限切れにより失敗した。交換後のトークンの期限は「発行から `accessTokenTtlSec`」と「元のトークンの残り時間」の短いほうで、LibreChat は期限切れまで同じトークンを使うため、残りわずかなトークンで run が始まりうる。
+
+- **トークン交換の拡張パラメータ `min_lifetime`(秒)**: Orchestrator は `ask` の前に、run に要る残り時間(探索の時間上限 + 最終ターン + 30 秒)を添えて交換する。Gateway は、元のトークンの残りが足りず、**かつ発行から 60 秒を過ぎている**ときだけ `invalid_grant` で拒否し、監査に `token_exchanged` の失敗(`subject_expires_soon`)を残す。Orchestrator は 401(`error="invalid_token"` と理由)を返し、クライアントが更新してやり直す
+- 更新直後のトークンは、残りが足りなくても受け付ける(IdP・ソースのトークンの期限で延びない構成で、401 と更新を繰り返さないため)。この構成では run の途中で期限切れになりうるので、Orchestrator は `accessTokenTtlSec` が run に要る時間より短いと起動時に WARNING を出す
+- `initialize`・`tools/list`・`feedback` には残り時間を求めない(短い要求で更新を起こさない)
+
 ## 参照
 
 - 検討メモ(docs/notes/): 「個人の認可の実現方式」(2026-10-14-personal-auth-study.html)、「資格情報の置き場所」(2026-10-15-credential-locality.html)、「個人認可の方式比較」(2026-10-19-auth-methods-comparison.html、10-20 改訂)
