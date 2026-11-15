@@ -145,6 +145,7 @@ describe("leisen-ask doctor", () => {
       deps({ now: () => t, routes: { "POST http://127.0.0.1:1234/v1/chat/completions": () => ((t += 45_000), json({ choices: [] })) } }),
     );
     expect(slow.out).toContain("⚠ 会話の要求: HTTP 200、45.0 秒");
+    expect(slow.out).not.toContain("45.0 秒(45.0 秒)");
   });
 
   it("Orchestrator の資格情報が Gateway と違えば ✘(資格情報の値は出さない)", async () => {
