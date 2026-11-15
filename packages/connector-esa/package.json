@@ -19,6 +19,6 @@
   },
   "dependencies": {
     "@leisen/connector-sdk": "0.4.0",
-    "@modelcontextprotocol/sdk": "1.32.1"
+    "@modelcontextprotocol/sdk": "1.32.2"
   }
 }
