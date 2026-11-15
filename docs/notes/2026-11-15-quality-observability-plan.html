@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>品質の観測計画</title>
+<meta name="description" content="leisen を単独で評価できる部品の集まりとして捉え、いまの設計の評価方法、観測する品質の観点、観測の手段、可視化の手段を選択肢の比較とともにまとめた企画。">
+<style>
+/* 配色は OKLCH で設計し HEX で記す。コントラスト比は WCAG 2.x の式で計算した値(対 背景 / 対 面)。 */
+:root {
+  --bg:      #fbfaf7; /* oklch(0.985 0.004 90) 背景 */
+  --surface: #f3f2ed; /* oklch(0.96 0.006 90) 注記・表頭の面 */
+  --text:    #1f2227; /* oklch(0.25 0.010 260) 本文: 15.28 / 14.23 */
+  --muted:   #535861; /* oklch(0.46 0.015 260) 補助テキスト: 6.85 / 6.38 */
+  --rule:    #ced1d6; /* oklch(0.86 0.008 260) 装飾の罫線(意味を持つ線には使わない) */
+  --main:    #133de3; /* oklch(0.47 0.25 265) メイン: 7.17 / 6.68、対 サブ面 6.30 */
+  --sub:     #deedff; /* oklch(0.94 0.03 255) サブ(面): 背景との L 差 4.5 */
+  --accent:  #c90000; /* oklch(0.52 0.22 30) アクセント: 5.78 / 5.38。メインと色相差 125° */
+  --cat2:    #006f50; /* oklch(0.47 0.12 170) 色分け2: 5.94 / 5.53。メインと色相差 95° */
+  --cat3:    #834e00; /* oklch(0.47 0.14 80) 色分け3: 6.59 / 6.13。cat2 と色相差 90° */
+  --font: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:      #13161b; /* oklch(0.20 0.010 260) */
+    --surface: #1e2228; /* oklch(0.25 0.012 260) */
+    --text:    #e1e5ea; /* oklch(0.92 0.008 260) 本文: 14.33 / 12.62 */
+    --muted:   #a4abb8; /* oklch(0.74 0.020 260) 補助: 7.85 / 6.92 */
+    --rule:    #3f4349; /* oklch(0.38 0.012 260) */
+    --main:    #71b4ff; /* oklch(0.76 0.14 255) メイン: 8.35 / 7.36、対 サブ面 5.65 */
+    --sub:     #1a3658; /* oklch(0.33 0.07 255) サブ(面): 背景との L 差 13 */
+    --accent:  #ff7f6c; /* oklch(0.74 0.16 30) アクセント: 7.34 / 6.47 */
+    --cat2:    #52caa5; /* oklch(0.76 0.12 170) 色分け2: 8.94 / 7.87 */
+    --cat3:    #dca744; /* oklch(0.76 0.13 80) 色分け3: 8.33 / 7.34 */
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:      #13161b; /* oklch(0.20 0.010 260) */
+  --surface: #1e2228; /* oklch(0.25 0.012 260) */
+  --text:    #e1e5ea; /* oklch(0.92 0.008 260) 本文: 14.33 / 12.62 */
+  --muted:   #a4abb8; /* oklch(0.74 0.020 260) 補助: 7.85 / 6.92 */
+  --rule:    #3f4349; /* oklch(0.38 0.012 260) */
+  --main:    #71b4ff; /* oklch(0.76 0.14 255) メイン: 8.35 / 7.36、対 サブ面 5.65 */
+  --sub:     #1a3658; /* oklch(0.33 0.07 255) サブ(面): 背景との L 差 13 */
+  --accent:  #ff7f6c; /* oklch(0.74 0.16 30) アクセント: 7.34 / 6.47 */
+  --cat2:    #52caa5; /* oklch(0.76 0.12 170) 色分け2: 8.94 / 7.87 */
+  --cat3:    #dca744; /* oklch(0.76 0.13 80) 色分け3: 8.33 / 7.34 */
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 16px; line-height: 1.85;
+  -webkit-text-size-adjust: 100%;
+}
+.page { max-width: 50em; margin: 0 auto; padding-block: 3rem 5rem; padding-left: max(1.25rem, env(safe-area-inset-left, 0px)); padding-right: max(1.25rem, env(safe-area-inset-right, 0px)); }
+p, ul, ol, dl, blockquote { max-width: 40em; }
+h1, h2, h3, h4 { font-weight: 700; line-height: 1.5; margin: 0; text-wrap: balance; }
+h1 { font-size: 1.6rem; margin-bottom: .4rem; }
+h2 { font-size: 1.25rem; margin-top: 3.2rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+h3 { font-size: 1.05rem; margin-top: 2rem; }
+h4 { font-size: 1rem; margin-top: 1.4rem; font-weight: 500; }
+h2 .n, h3 .n { color: var(--main); font-variant-numeric: tabular-nums; margin-right: .6em; font-weight: 500; }
+p { margin: .9em 0; }
+ul, ol { padding-left: 1.5em; margin: .7em 0; }
+li { margin: .25em 0; }
+a { color: var(--main); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+strong { font-weight: 700; }
+em { font-style: normal; font-weight: 500; }
+code { font-family: var(--mono); font-size: .9em; }
+.lead { color: var(--muted); font-size: .95rem; margin-top: 0; }
+.meta { font-size: .85rem; color: var(--muted); margin: 0 0 2.5rem; line-height: 1.7; }
+.meta span + span::before { content: " · "; }
+.note { font-size: .88rem; color: var(--muted); padding-left: 1.1em; border-left: 2px solid var(--rule); margin: 1em 0; line-height: 1.75; }
+.toc { font-size: .9rem; margin: 1.5rem 0 0; }
+.toc ol { list-style: none; padding-left: 0; counter-reset: toc; }
+.toc li { counter-increment: toc; margin: .15em 0; }
+.toc li::before { content: counter(toc) " "; color: var(--main); font-variant-numeric: tabular-nums; margin-right: .4em; }
+.toc a { text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+dl { margin: .8em 0; }
+dt { font-weight: 700; margin-top: .9em; }
+dd { margin: .1em 0 0 1.2em; }
+
+/* 図 */
+figure { margin: 1.8rem 0; }
+figure .fig { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+figure .fig svg { display: block; width: 100%; min-width: 700px; height: auto; font-family: var(--font); }
+figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; line-height: 1.7; }
+figcaption b { color: var(--text); font-weight: 700; margin-right: .5em; }
+svg text { fill: var(--text); font-size: 13px; }
+svg .s { font-size: 11.5px; fill: var(--muted); }
+svg .t { font-size: 13.5px; font-weight: 700; }
+svg .mt { fill: var(--main); font-weight: 700; }
+svg .at { fill: var(--accent); font-weight: 700; }
+svg .box { fill: var(--bg); stroke: var(--muted); stroke-width: 1.2; }
+svg .box.sub { fill: var(--sub); stroke: var(--main); }
+svg .box.hl { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+svg .box.dash { stroke-dasharray: 4 3; }
+svg .ln { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+svg .ln.m { stroke: var(--main); stroke-width: 1.6; }
+svg .ln.dash { stroke-dasharray: 5 4; }
+svg .ln.c2 { stroke: var(--cat2); stroke-width: 1.6; }
+svg .ln.c3 { stroke: var(--cat3); stroke-width: 1.6; stroke-dasharray: 6 3; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+svg .dot { fill: var(--main); }
+svg .dot.o { fill: var(--bg); stroke: var(--main); stroke-width: 1.6; }
+svg .dot.h { fill: var(--sub); stroke: var(--main); stroke-width: 1.4; }
+svg .dot.sq { fill: var(--cat3); }
+svg .arr { fill: var(--muted); }
+svg .arr.m { fill: var(--main); }
+svg .arr.c2 { fill: var(--cat2); }
+svg .arr.c3 { fill: var(--cat3); }
+
+/* 表 */
+figure.tblfig .tbl { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; line-height: 1.65; }
+th, td { text-align: left; vertical-align: top; padding: .5em .7em; border-bottom: 1px solid var(--rule); }
+thead th { border-bottom: 1.5px solid var(--muted); font-weight: 700; white-space: nowrap; }
+tbody th { font-weight: 500; white-space: nowrap; }
+td.c { text-align: center; white-space: nowrap; }
+.mark { font-weight: 700; }
+.mark.ng { color: var(--accent); }
+table small { display: block; color: var(--muted); font-size: .82rem; white-space: normal; }
+table.wide th:first-child, table.wide td:first-child { min-width: 9em; }
+table.cmp { min-width: 740px; }
+table.opt { min-width: 720px; }
+table.opt th:first-child, table.opt td:first-child { width: 6.5em; min-width: 6.5em; }
+.ok { font-weight: 700; color: var(--cat2); }
+pre { font-family: var(--mono); font-size: .85rem; line-height: 1.6; background: var(--surface); padding: .8em 1em; overflow-x: auto; max-width: 40em; margin: .8em 0; }
+svg .cc { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; }
+svg .ce { fill: var(--sub); stroke: var(--main); stroke-width: 1.2; }
+svg .cx { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+svg .cb { fill: var(--bg); stroke: var(--cat3); stroke-width: 1.6; stroke-dasharray: 4 3; }
+table.cmp th:first-child, table.cmp td:first-child { width: 8.5em; min-width: 8.5em; }
+table.cmp thead th { white-space: normal; }
+table.req { min-width: 760px; }
+
+.refs { font-size: .86rem; line-height: 1.7; }
+.refs ol { padding-left: 2em; }
+.refs li { margin: .35em 0; word-break: break-word; }
+
+svg .gap { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+svg tspan.s { font-size: 11.5px; fill: var(--muted); }
+table.num td { font-variant-numeric: tabular-nums; }
+table.cmp.opt th:first-child, table.cmp.opt td:first-child { width: 3em; min-width: 3em; }
+th[rowspan] { white-space: normal; }
+
+@media (max-width: 600px) {
+  body { font-size: 15.5px; }
+  .page { padding-block: 2rem 4rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1 { font-size: 1.4rem; }
+  tbody th { white-space: normal; }
+}
+@media print {
+  html, body { background: #fff; color: #000; }
+  .page { max-width: none; padding: 0; }
+  a { color: #000; }
+  h2 { break-after: avoid; }
+  figure { break-inside: avoid; }
+  .fig, .tbl { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+<header>
+  <h1>品質の観測計画</h1>
+  <p class="lead">leisen を、単独で動かして評価できる部品の集まりとして捉え直し、部品ごとの品質を測りながら改善できるようにするための企画。いまの設計をどう評価するか、何を観測するか、どう観測するか、どう見せるかを、それぞれ選択肢を並べて評価し、推奨をまとめる。</p>
+  <p class="meta"><span>Leisen 検討ドキュメント</span><span>2026-11-15</span><span>状態: 企画(設計判断ではない。決定が要るものは ADR で起こす)</span><span>対象: リポジトリ全体(main 相当、2026-11-15 時点)</span></p>
+  <nav class="toc" aria-label="目次">
+    <ol>
+      <li><a href="#summary">結論の要約</a></li>
+      <li><a href="#model">本来の姿: 計測の仕組みが守る性質と、部品の地図</a></li>
+      <li><a href="#questions">先に決めたい問い</a></li>
+      <li><a href="#diagnosis">現状の診断</a></li>
+      <li><a href="#aspects">何を観測するか: 品質の観点</a></li>
+      <li><a href="#method">どう評価するか: 評価の方法</a></li>
+      <li><a href="#means">どう観測するか: 観測の手段</a></li>
+      <li><a href="#viz">どう見せるか: 可視化の手段</a></li>
+      <li><a href="#baseline">スコアカード v0: 今日取れた値</a></li>
+      <li><a href="#plan">進め方</a></li>
+      <li><a href="#stress">案を揺さぶる</a></li>
+      <li><a href="#open">仮定と、確かめていないこと</a></li>
+    </ol>
+  </nav>
+</header>
+
+<section id="summary">
+  <h2><span class="n">1</span>結論の要約</h2>
+  <ul>
+    <li><strong>部品は 13 個に分けられ、どれも単独で動かす手段をすでに持っている。</strong>モック IdP、開発用コネクタ、台本どおりに応答する LLM、偽の GitHub API があり、局所化の土台はできている。足りないのは、部品ごとに同じ物差しを当てる仕組みである。</li>
+    <li><strong>いま測れているのは「約束」と「機能の正しさ」に偏っている。</strong>不変条件の検査、監査ログ、1,747 件のテストは厚い。運用時の性能と可用性は監査の <code>latencyMs</code> と <code>errorClass</code> だけ、構造の品質は型検査と 2 境界の import 検査だけ、回答の質は合成 7 文書の 20 問だけで測っている。</li>
+    <li><strong>観点は 4 面に整理する。</strong>約束(不変条件。合否で扱う)、回答の質、運用の質、構造の質。ISO/IEC 25010 は対応表として持ち、物差しそのものにはしない。</li>
+    <li><strong>評価は「CI で回る適応度関数」と「プラグイン境界ごとの適合キット」を土台にする。</strong>回答の質は評価ハーネス(dev-eval から T-008 へ)、設計の筋書きレビューは四半期に人が行う。</li>
+    <li><strong>観測の経路は 3 本に限る。</strong>監査ログ(既存)、運用イベント(新設。型に置き場がないことで不変条件を守る JSONL)、分離テレメトリ(ADR-011 で決定済み、書き込み先が未実装)。OpenTelemetry と Prometheus はコアに入れず、運用イベントからの変換として contrib に置く。</li>
+    <li><strong>可視化は静的レポートを標準にする。</strong>開発時は CI のサマリとリポジトリ内のスコアカード、運用時は JSONL から HTML を出す CLI(昇格判定レポートと同じ型)。Grafana などの常時監視は compose の overlay として任意にする。</li>
+    <li><strong>最初の一歩は、新しい計装なしで出せるスコアカード v0。</strong>今日の時点の値は <a href="#baseline">9 章</a>に載せた。運用イベントと分離テレメトリは不変条件 3・6・7 に触れるので、実装の前に ADR を起こす。</li>
+  </ul>
+</section>
+
+<section id="model">
+  <h2><span class="n">2</span>本来の姿: 計測の仕組みが守る性質と、部品の地図</h2>
+  <p>案を並べる前に、計測の仕組みそのものが満たすべき性質を置く。以降の選択肢はこの 5 つで評価する。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>性質</th><th>内容</th><th>理由(何が変わったときに直す場所が小さく済むか)</th></tr></thead>
+        <tbody>
+          <tr><th>S1 計測が約束を破らない</th><td>計測の経路は、未認可候補とその件数、秘密情報、Slack 由来のデータを運ばない。規律ではなく、型に置き場がないことで守る。</td><td>指標を足すたびに不変条件 3・6・7 のレビューをやり直さずに済む。</td></tr>
+          <tr><th>S2 部品だけで同じ指標が取れる</th><td>部品を単独で動かしたときと、全体の中で動かしたときに、同じ名前と定義の指標が出る。</td><td>コネクタの内部をネイティブ検索から検索層へ差し替えたとき(Phase 2)、前後を同じ表で比べられる。</td></tr>
+          <tr><th>S3 定義は一か所、書き手は一つ</th><td>指標の定義表は 1 つ。各経路の書き手は 1 つ(監査は Gateway だけ、と同じ規律)。</td><td>定義を変えるときに、集計側とレポート側を別々に直さずに済む。</td></tr>
+          <tr><th>S4 追加の基盤なしで回る</th><td>標準の出力はファイルと CLI。収集基盤や監視基盤は導入先の選択にする。</td><td>1 デプロイ = 1 社で導入企業が運用する。基盤を前提にすると個社差分がコアに入る(不変条件 8)。</td></tr>
+          <tr><th>S5 開発時と運用時で同じ物差し</th><td>dev-eval が出す指標と、本番の監査から出す指標を同じ定義にそろえる。</td><td>プロンプトやモデルを変えたとき、手元の結果から本番の変化を見積もれる。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>部品の地図</h3>
+  <p>評価の単位にする部品は次の 13 個。境界は、既存のパッケージとディレクトリ、ADR-005 の 3 つのプラグイン境界、ADR-017 の LLM クライアント境界に沿わせた。新しい切り方は入れていない。</p>
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 420" role="img" aria-label="部品の地図。利用者の面、Orchestrator、Gateway、コネクタ、監査ストア、昇格判定レポートの関係と、観測できている点・できていない点">
+        <!-- 利用者の面 -->
+        <text x="20" y="34" class="t">利用者の面</text>
+        <rect class="box" x="20" y="60" width="140" height="34"/><text x="30" y="82">MCP クライアント</text>
+        <rect class="box" x="20" y="110" width="140" height="34"/><text x="30" y="132">LibreChat</text>
+        <rect class="box" x="20" y="160" width="140" height="34"/><text x="30" y="182">leisen-ask CLI</text>
+        <!-- Orchestrator -->
+        <rect class="box dash" x="195" y="44" width="220" height="162"/>
+        <text x="205" y="34" class="t">Orchestrator</text>
+        <rect class="box sub" x="205" y="60" width="200" height="34"/><text x="215" y="82">サーバー面 <tspan class="s">server/</tspan></text>
+        <rect class="box sub" x="205" y="110" width="200" height="34"/><text x="215" y="132">探索ループ</text>
+        <rect class="box sub" x="205" y="160" width="200" height="34"/><text x="215" y="182">LLM 境界 <tspan class="s">llm/</tspan></text>
+        <rect class="box dash" x="205" y="240" width="200" height="34"/><text x="215" y="262" class="s">LLM バックエンド(外部)</text>
+        <!-- Gateway -->
+        <rect class="box dash" x="450" y="44" width="250" height="274"/>
+        <text x="460" y="34" class="t">Gateway</text>
+        <rect class="box sub" x="460" y="60" width="230" height="34"/><text x="470" y="82">プロキシ <tspan class="s">proxy/</tspan></text>
+        <rect class="box sub" x="460" y="104" width="230" height="34"/><text x="470" y="126">run API <tspan class="s">run/</tspan></text>
+        <rect class="box sub" x="460" y="148" width="230" height="34"/><text x="470" y="170">本人資格情報 <tspan class="s">credentials/</tspan></text>
+        <rect class="box sub" x="460" y="192" width="230" height="34"/><text x="470" y="214">設定 <tspan class="s">config/</tspan></text>
+        <rect class="box sub" x="460" y="236" width="230" height="34"/><text x="470" y="258">認証 <tspan class="s">idp/</tspan></text>
+        <rect class="box sub" x="460" y="280" width="230" height="34"/><text x="470" y="302">監査 <tspan class="s">@leisen/audit</tspan></text>
+        <!-- コネクタ -->
+        <text x="740" y="34" class="t">コネクタ</text>
+        <rect class="box sub" x="740" y="60" width="145" height="34"/><text x="750" y="82">connector-github</text>
+        <rect class="box" x="740" y="104" width="145" height="34"/><text x="750" y="126">dev-fixture</text>
+        <rect class="box dash" x="740" y="148" width="145" height="34"/><text x="750" y="170" class="s">Drive / Slack / wiki</text>
+        <rect class="box dash" x="740" y="192" width="145" height="34"/><text x="750" y="214" class="s">検索層(Phase 2)</text>
+        <rect class="box dash" x="740" y="236" width="145" height="34"/><text x="750" y="258" class="s">IdP(外部)</text>
+        <!-- 下段 -->
+        <rect class="box" x="460" y="360" width="230" height="40"/><text x="470" y="385">監査ストア <tspan class="s">JSONL・生クエリ表</tspan></text>
+        <rect class="box sub" x="195" y="360" width="220" height="40"/><text x="205" y="385">昇格判定レポート</text>
+        <rect class="box sub" x="20" y="360" width="140" height="40"/><text x="30" y="385">参照デプロイ <tspan class="s">deploy/</tspan></text>
+        <!-- 線 -->
+        <path class="ln" d="M90,60 V20 H640 V60"/><polygon class="arr" points="640,60 636,51 644,51"/>
+        <text x="300" y="15" class="s">直接接続(tools/call)</text>
+        <path class="ln" d="M160,127 L205,82"/><polygon class="arr" points="205,82 196,85 201,91"/>
+        <path class="ln" d="M160,177 L205,132"/><polygon class="arr" points="205,132 196,135 201,141"/>
+        <path class="ln m" d="M405,127 L460,82"/><polygon class="arr m" points="460,82 451,85 456,91"/>
+        <path class="ln m" d="M405,127 L460,121"/><polygon class="arr m" points="460,121 451,117 451,126"/>
+        <path class="ln" d="M305,194 V240"/><polygon class="arr" points="305,240 301,231 309,231"/>
+        <path class="ln m" d="M690,77 H740"/><polygon class="arr m" points="740,77 731,73 731,81"/>
+        <path class="ln" d="M715,77 V209 M715,121 H740 M715,165 H740 M715,209 H740"/>
+        <path class="ln" d="M690,253 H740"/><polygon class="arr" points="740,253 731,249 731,257"/>
+        <path class="ln" d="M575,314 V360"/><polygon class="arr" points="575,360 571,351 579,351"/>
+        <path class="ln" d="M460,380 H415"/><polygon class="arr" points="415,380 424,376 424,384"/>
+        <!-- 観測できている点(塗り) -->
+        <g font-size="11" font-weight="700" text-anchor="middle">
+          <circle class="dot" cx="672" cy="297" r="9"/><text x="672" y="301" style="fill:var(--bg)">1</text>
+          <circle class="dot" cx="672" cy="121" r="9"/><text x="672" y="125" style="fill:var(--bg)">2</text>
+          <circle class="dot" cx="672" cy="165" r="9"/><text x="672" y="169" style="fill:var(--bg)">3</text>
+          <circle class="dot" cx="387" cy="127" r="9"/><text x="387" y="131" style="fill:var(--bg)">4</text>
+          <circle class="dot" cx="672" cy="77" r="9"/><text x="672" y="81" style="fill:var(--bg)">5</text>
+          <circle class="dot" cx="387" cy="77" r="9"/><text x="387" y="81" style="fill:var(--bg)">5</text>
+          <!-- 観測できていない点(白抜き) -->
+          <circle class="gap" cx="648" cy="77" r="9"/><text x="648" y="81" class="at">A</text>
+          <circle class="gap" cx="672" cy="380" r="9"/><text x="672" y="384" class="at">B</text>
+          <circle class="gap" cx="387" cy="177" r="9"/><text x="387" y="181" class="at">C</text>
+          <circle class="gap" cx="867" cy="77" r="9"/><text x="867" y="81" class="at">D</text>
+          <circle class="gap" cx="363" cy="77" r="9"/><text x="363" y="81" class="at">E</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption><b>図 1</b>部品の地図と観測点。青い面が評価の単位にする部品、破線は外部または予定。塗りの番号はいま記録がある点: 1 ツール呼び出し(ToolInvocation: 所要時間、エラー分類、再試行、認可済み返却件数)、2 run の開始・終了・フィードバック(AnswerRun)、3 接続・解除・失効(credential_event)、4 dev-eval(合否、ターン数、トークン、所要時間。手元の実行時だけ)、5 死活確認(/healthz)。白抜きの英字は記録がない点: A ツール呼び出しに至らない拒否と期限切れ、B 分離テレメトリの書き込み先、C LLM の使用量と費用の永続、D カナリア検証、E 同時実行の上限による断り。</figcaption>
+  </figure>
+
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>部品</th><th>責務</th><th>単独で動かす手段(観測)</th><th>知らなくてよいこと</th></tr></thead>
+        <tbody>
+          <tr><th>P1 コネクタ IF<small>connector-sdk</small></th><td>コネクタの 4 ツールと型、エラー分類を定める。</td><td>型と補助関数のテスト 10 件</td><td>Gateway、IdP、監査の形式</td></tr>
+          <tr><th>P2 コネクタ<small>connector-github ほか</small></th><td>本人の資格情報でソースの API を呼び、IF の形に写す。</td><td>偽の GitHub API(<code>test/helpers/fake-github.ts</code>)でテスト 243 件</td><td>利用者の認証方法、監査、他のソース</td></tr>
+          <tr><th>P3 認証<small>gateway/idp</small></th><td>セッショントークンから利用者を確定する。</td><td>モック IdP、Keycloak の E2E(CI)、<code>auth-check</code></td><td>ソースの API、検索の中身</td></tr>
+          <tr><th>P4 本人資格情報<small>gateway/credentials, auth-server</small></th><td>利用者ごとのソース資格情報を取得・保管・失効させる。</td><td>モックの鍵と SQLite で検証(実 KMS・実 SaaS は未疎通)</td><td>ツール呼び出しの内容</td></tr>
+          <tr><th>P5 プロキシ<small>gateway/proxy</small></th><td>ツール呼び出しを受け、流量と期限と方針を適用してコネクタへ渡す。</td><td>dev-fixture とモック IdP、<code>gateway-smoke.sh</code></td><td>LLM、質問の意味</td></tr>
+          <tr><th>P6 run API<small>gateway/run</small></th><td>run の開始・終了・フィードバックを受け、runId を発行・検証する。</td><td>import 境界つきの単体テスト</td><td>MCP、コネクタ IF、設定の形式</td></tr>
+          <tr><th>P7 監査<small>packages/audit</small></th><td>監査レコードの型、不可逆化、保持、書き込み先を定める。</td><td>依存は zod だけ。テスト 70 件</td><td>誰が書くか、HTTP、MCP</td></tr>
+          <tr><th>P8 設定<small>gateway/config, bootstrap</small></th><td>deployment.yaml を検証し、部品を組み立てる。</td><td><code>leisen-gateway validate</code></td><td>実行時の要求の中身</td></tr>
+          <tr><th>P9 探索ループ<small>orchestrator</small></th><td>質問から検索と取得を繰り返し、出典付きの回答を作る。</td><td>台本どおりに応答する LLM(<code>llm/scripted.ts</code>)、dev-eval</td><td>IdP の種類、資格情報の方式</td></tr>
+          <tr><th>P10 LLM 境界<small>orchestrator/llm</small></th><td>LLM バックエンドの差を吸収する。</td><td>Anthropic / OpenAI 互換 / 台本の 3 実装を同じ IF で差し替え</td><td>探索の方針、Gateway</td></tr>
+          <tr><th>P11 サーバー面<small>orchestrator/server, bin</small></th><td>ask と feedback を MCP と CLI で公開し、同時実行を抑える。</td><td><code>orchestrator-smoke.sh</code></td><td>プロンプトの中身</td></tr>
+          <tr><th>P12 昇格判定レポート<small>promotion-report</small></th><td>監査から未解決率などを集計し、補強するソースの判断材料を出す。</td><td>合成の監査レコードでテスト 66 件</td><td>稼働中のプロセス</td></tr>
+          <tr><th>P13 参照デプロイ<small>deploy/</small></th><td>イメージと compose で全体を起動できる形にまとめる。</td><td>CI の <code>reference-deploy</code>(起動とスモーク)</td><td>各部品の内部</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>予定の部品(検索層の Search Backend Adapter、Source Catalog)は、入った時点で同じ表に行を足す。</figcaption>
+  </figure>
+</section>
+
+<section id="questions">
+  <h2><span class="n">3</span>先に決めたい問い</h2>
+  <p>答えによって案の形が変わるものだけを挙げる。どれも材料からは決められなかった。以降の章は、それぞれ推奨側の答えを仮に置いて書いている。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>問い</th><th>答えが A なら</th><th>答えが B なら</th><th>仮の答え</th></tr></thead>
+        <tbody>
+          <tr><th>Q1 運用イベントを監査と結合できるようにするか</th><td>結合できる(requestId を持つ): 遅い呼び出しの原因を 1 回の問い合わせで追える。運用イベントの閲覧も監査と同じ統制(指名制、audit_access の記録)に乗せる必要がある。</td><td>結合できない: 運用担当が自由に見られる。切り分けは時刻の突き合わせになる。</td><td>B。結合が要る調査は監査側で行う</td></tr>
+          <tr><th>Q2 目標値(SLO)を製品が既定で持つか</th><td>既定を持つ: レポートに合否が出る。値の根拠が要る。</td><td>持たない: 分布だけを出し、目標は導入先が deployment.yaml で置く。</td><td>B で始め、2 社で同じ値に落ち着いたら既定にする(不変条件 9)</td></tr>
+          <tr><th>Q3 LLM のトークン数と費用を run 単位で残すか</th><td>残す: 運用時の費用と探索効率が出せる。answer_run_finish の型が変わるので ADR が要る。</td><td>残さない: 費用は LLM 事業者の請求と dev-eval でしか見えない。</td><td>A。ただし監査ではなく運用イベントに置く(Q1 が B なら利用者と結び付かない)</td></tr>
+          <tr><th>Q4 構造の指標で CI を止めるか</th><td>止める: 依存の向きの違反や認可まわりの網羅率低下でマージできない。</td><td>止めない: 推移を報告するだけ。</td><td>依存の向きと約束に関わるものだけ止める。行数や複雑度は推移だけ</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+</section>
+
+<section id="diagnosis">
+  <h2><span class="n">4</span>現状の診断</h2>
+  <p>部品を 4 つの観点(5 章で定義)に当て、いま何で測れているかを並べた。記号は、<span class="ok">◎</span> 継続して測れている、○ 手段はあるが手動または一部、<span class="mark ng">△</span> 文書や設計だけ、<span class="mark ng">×</span> 手段がない。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>部品</th><th>約束</th><th>回答の質</th><th>運用の質</th><th>構造の質</th></tr></thead>
+        <tbody>
+          <tr><th>コネクタ(P1, P2)</th><td><span class="ok">◎</span> 認可分岐のテスト、post-edit の検査<small>カナリアは設計だけ <span class="mark ng">△</span></small></td><td>—</td><td>○ 監査の所要時間とエラー分類<small>実 API では未計測</small></td><td>○ 型検査<small>コネクタ共通の適合テストなし</small></td></tr>
+          <tr><th>認証・資格情報(P3, P4)</th><td><span class="ok">◎</span> テスト、Keycloak の E2E、credential_event</td><td>—</td><td><span class="mark ng">×</span> 認証の拒否率、IdP の応答時間、キャッシュの効きは記録なし</td><td>○ 型検査<small>auth-server/server.ts が 1,323 行</small></td></tr>
+          <tr><th>プロキシ・run API(P5, P6)</th><td><span class="ok">◎</span> 全ツール呼び出しの監査、fail-closed</td><td>—</td><td>○ ToolInvocation<small>拒否・期限・本文読み込みは記録なし(minor-6 は未計測のまま)</small></td><td><span class="ok">◎</span> run は import 境界を CI で検査<small>proxy は型検査だけ</small></td></tr>
+          <tr><th>監査・設定(P7, P8)</th><td><span class="ok">◎</span> strict な型、保持と削除の記録、validate</td><td>—</td><td><span class="mark ng">×</span> 書き込みの遅延、バッファの滞留、fail-closed の発動回数</td><td><span class="ok">◎</span> audit は import 境界を CI で検査</td></tr>
+          <tr><th>Orchestrator(P9〜P11)</th><td>○ サニタイズと引用のテスト<small>注入への耐性は率で未追跡</small></td><td>○ dev-eval(合成 7 文書、20 問 × 2 回で 37 / 40)<small>T-008 は未着手、実コーパスなし</small></td><td><span class="mark ng">×</span> ターン数・トークン・費用・上限到達は回答の出力にだけあり、残らない</td><td>○ 型検査<small>orchestrator.ts が 1,261 行</small></td></tr>
+          <tr><th>昇格判定レポート(P12)</th><td><span class="ok">◎</span> 分離テレメトリを入力に取らない</td><td>○ 未解決率、利用者フィードバックの集計</td><td>○ 放棄・孤立の run の区別</td><td>○ 型検査</td></tr>
+          <tr><th>参照デプロイ(P13)</th><td>○ 開発用部品の本番拒否</td><td>—</td><td>○ 起動とスモーク<small>起動時間、負荷時の挙動は未計測</small></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>ずれの一覧</h3>
+  <ol>
+    <li><strong>運用時の信号が監査に寄っている。</strong>ToolInvocation には所要時間、エラー分類、再試行回数がある。ツール呼び出しに至らない事象(認証での拒否、/runs や認可サーバーへの要求、同時実行の上限による断り、起動時の警告)は stderr の自由文か、記録がない。性質 S2 に対して、P3・P4・P11 は単独で運用の質を測れない。</li>
+    <li><strong>分離テレメトリは決定済みで、書き込み先がない。</strong>保持日数(14 日)と削除の対象は実装されているが、<code>proxy/gateway.ts</code> に「書き込み先が未実装のため、現在は落とす処理だけを行う」と残っている。プライベート領域の除外件数や、Phase 2 の空振り率を置く場所がない。</li>
+    <li><strong>LLM 側の使用量が残らない。</strong>ターン数、トークン、費用の概算、打ち切りの理由は回答の出力と dev-eval にだけ出る。運用が始まると、費用と探索効率の推移を追えない。</li>
+    <li><strong>回答の質の物差しが 2 つに分かれ、間がない。</strong>手元は合成コーパスの合否、本番は利用者のフィードバック。権限プロファイルを固定した評価(T-008)とカナリア検証(threat-model §5)は設計だけで、性質 S5 が満たされていない。</li>
+    <li><strong>構造の品質は 2 境界しか見ていない。</strong>CI は型検査と、audit と run の import 境界だけを検査する。lint、網羅率、依存の向き全体、複雑度の計測はない。CLAUDE.md の「<code>any</code> は理由コメント必須」は道具で確かめていない。</li>
+    <li><strong>共有の語彙が Gateway パッケージに置かれている。</strong>Orchestrator の 7 ファイルと昇格判定レポートの 2 ファイルが <code>@leisen/gateway</code> から定数、ヘッダー名、runId の復号を import している。依存の向きを測り始めると最初に出てくる項目で、部品を単独で評価するときに Gateway 全体(MCP SDK、yaml)が付いてくる。</li>
+    <li><strong>テストは多いが、何を守っているかは測っていない。</strong>テストの行数は実装とほぼ同じ(27,756 行 対 29,504 行)。認可分岐を最優先で書く方針はあるが、その分岐を壊したときにテストが落ちるかは確かめていない。</li>
+  </ol>
+  <p class="note">判定: 局所の不具合ではなく構造の問題。個々の指標が欠けているのではなく、「どの信号を、どの経路に、誰が書くか」が監査以外で決まっていない。目標は「指標を増やす」ではなく、「部品ごとに 4 面の指標を、3 本の経路のどれかに、約束を破らずに置けるようにする」と言い直す。</p>
+</section>
+
+<section id="aspects">
+  <h2><span class="n">5</span>何を観測するか: 品質の観点</h2>
+  <h3>観点の立て方の選択肢</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>良い点</th><th>難点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>ISO/IEC 25010 の品質特性を、そのまま部品に当てる</td><td>網羅的で、外部の人と語彙を共有できる</td><td>特性が多く、測定に落ちない欄が大半になる。未認可候補の境界のような製品固有の約束が「セキュリティ」の 1 欄に埋もれる</td><td>対応表として使う</td></tr>
+          <tr><th>B</th><td>不変条件と SLO だけを見る</td><td>少なく、運用しやすい</td><td>回答の質、保守性、テスト可能性が抜ける。今回の目的に足りない</td><td>不採用</td></tr>
+          <tr><th>C</th><td>4 面(約束 / 回答の質 / 運用の質 / 構造の質)に分け、面ごとに 4〜6 個の指標を持つ</td><td>面ごとに扱いが違うことを表せる(約束は合否、ほかは分布と推移)。プロダクト原則と KPI にそのまま対応する</td><td>独自の分け方なので、25010 との対応を別に示す必要がある</td><td><span class="ok">推奨</span></td></tr>
+          <tr><th>D</th><td>デリバリーの指標(変更のリードタイム、失敗率など)を中心にする</td><td>改善の速さを直接測れる</td><td>公開前で変更の標本が少ない。部品の品質ではなくチームの流れを測る</td><td>構造の質の補助に 1 つだけ採る</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>4 面の指標</h3>
+  <p>「出どころ」が既存のものは、新しい計装なしで取れる。新設は 7 章の経路を前提にする。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>面</th><th>指標</th><th>定義</th><th>部品</th><th>出どころ</th></tr></thead>
+        <tbody>
+          <tr><th rowspan="5">約束<small>合否で扱う。目標は常に 0 件</small></th><td>権限逸脱</td><td>カナリア利用者の検索・取得・回答に、カナリアの語が現れた回数</td><td>P2, P5, P9</td><td>新設(検証ジョブ)</td></tr>
+          <tr><td>監査の欠落</td><td>受け付けたツール呼び出しの数と ToolInvocation の数の差</td><td>P5, P7</td><td>新設(運用イベントの計数と監査の突き合わせ)</td></tr>
+          <tr><td>境界からの漏れ</td><td>ログと運用イベントに、秘密・未認可件数・Slack 由来の欄や値が現れた回数</td><td>全部品</td><td>既存(post-edit、gitleaks)+ 新設(出力の走査)</td></tr>
+          <tr><td>監査を書けなかった呼び出し</td><td>fail-closed で失敗させた回数、バッファに滞留した件数</td><td>P7</td><td>新設(運用イベント)</td></tr>
+          <tr><td>開発用部品の本番混入</td><td>本番判定で拒否した起動、WARNING 付きで起動した回数</td><td>P8, P13</td><td>既存(validate)+ 新設</td></tr>
+          <tr><th rowspan="5">回答の質</th><td>解決率</td><td>resolved の run の割合(利用者フィードバック、評価では正解との一致)</td><td>P9</td><td>既存(AnswerRun、dev-eval)</td></tr>
+          <tr><td>引用の正確さ</td><td>引用した文書が正解文書に含まれる割合</td><td>P9</td><td>T-008</td></tr>
+          <tr><td>ないものをないと言う率</td><td>文書にない質問で unresolved を返した割合</td><td>P9</td><td>既存(dev-eval の absent)</td></tr>
+          <tr><td>探索の効率</td><td>run あたりのターン数、ツール呼び出し数、上限に達した run の割合</td><td>P9, P10</td><td>既存(dev-eval、監査の iteration)+ 新設</td></tr>
+          <tr><td>ぶれ</td><td>同じ質問を複数回流したときに結果が分かれた質問の割合</td><td>P9, P10</td><td>既存(dev-eval --repeat)</td></tr>
+          <tr><th rowspan="6">運用の質</th><td>ツール呼び出しの所要時間</td><td>ソース別・ツール別の p50 / p95</td><td>P2, P5</td><td>既存(ToolInvocation.latencyMs)</td></tr>
+          <tr><td>エラーの内訳</td><td>errorClass 別の割合、再試行した呼び出しの割合</td><td>P2, P5</td><td>既存</td></tr>
+          <tr><td>run の所要時間と行方</td><td>開始から終了までの時間、放棄・孤立の割合</td><td>P6, P9</td><td>既存(昇格判定レポートの統合)</td></tr>
+          <tr><td>入口での拒否</td><td>認証の拒否、流量制限、同時実行の断り、期限切れの回数</td><td>P3, P5, P11</td><td>新設(運用イベント)</td></tr>
+          <tr><td>資格情報の健全さ</td><td>接続の成功率、失効から反映までの時間、キャッシュの命中率</td><td>P3, P4</td><td>既存(credential_event)+ 新設</td></tr>
+          <tr><td>LLM の使用量</td><td>run あたりのトークン数と費用の概算、LLM の応答時間</td><td>P10</td><td>新設(Q3)</td></tr>
+          <tr><th rowspan="6">構造の質</th><td>依存の向き</td><td>許可リストに合わない import の数</td><td>全部品</td><td>既存(2 境界)を全パッケージへ広げる</td></tr>
+          <tr><td>単独で試せるか</td><td>部品のテストが他の部品の実体なしで通るか、その所要時間</td><td>全部品</td><td>既存(vitest の所要時間)</td></tr>
+          <tr><td>認可分岐の守られ方</td><td>認可・監査・境界のコードを壊したとき、テストが検出した割合(変異検出率)</td><td>P2〜P7</td><td>新設(変異テスト)</td></tr>
+          <tr><td>変更の局所性</td><td>1 つの PR が触った部品の数の分布</td><td>全部品</td><td>新設(git の履歴から集計)</td></tr>
+          <tr><td>公開 IF の安定</td><td>コネクタ IF・監査の型・設定スキーマの変更回数と、ADR が付いた割合</td><td>P1, P7, P8</td><td>新設(型の差分検査)</td></tr>
+          <tr><td>依存の健全さ</td><td>本番依存の high 以上の脆弱性、依存の数</td><td>全部品</td><td>既存(npm audit)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>ISO/IEC 25010 との対応: 約束 = セキュリティ、回答の質 = 機能適合性、運用の質 = 性能効率性と信頼性、構造の質 = 保守性と柔軟性。互換性は公開 IF の安定に、使用性は現時点では対象外(利用者の面は LibreChat に委ねている)。</figcaption>
+  </figure>
+  <p class="note">置かない指標: 検索の候補件数、絞り込み前後の比、利用者別の利用回数の順位。前の 2 つは不変条件 3 に、最後は ADR-013 の目的外利用に当たる。空振り率が要るときは分離テレメトリのバケット(0 / 1-10 / 11+)だけを使う。</p>
+</section>
+
+<section id="method">
+  <h2><span class="n">6</span>どう評価するか: 評価の方法</h2>
+  <p>「いまの設計をどう評価するか」には、1 回きりの診断と、続けて回る検査の 2 つがある。4 章は前者を今回分として行った結果で、ここでは続け方を選ぶ。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>向く面</th><th>良い点</th><th>難点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>筋書きによる設計レビュー(変化の筋書きを並べ、直す場所を人が数える)</td><td>構造</td><td>測れない性質(差し替えやすさ)を扱える。ADR と相性がよい</td><td>人手で、続かない。結果が数字にならない</td><td>四半期に 1 回、筋書きの更新として行う</td></tr>
+          <tr><th>B</th><td>適応度関数(設計の性質を自動の検査として CI に置く)</td><td>約束、構造</td><td>自動で続く。既存の lint:imports と post-edit の延長</td><td>書ける性質が限られる。回答の質は扱えない</td><td><span class="ok">推奨</span>(土台)</td></tr>
+          <tr><th>C</th><td>プラグイン境界ごとの適合キット(同じテスト群をどの実装にも当てる)</td><td>約束、運用、構造</td><td>実装を差し替えて同じ表で比べられる(S2)。OSS の外部実装者に配れる。2 つ目のコネクタを書く前に作ると安い</td><td>最初の作成に手間がかかる。IF の解釈を固定するので、IF 変更時は一緒に直す</td><td><span class="ok">推奨</span>(土台)</td></tr>
+          <tr><th>D</th><td>評価ハーネス(質問セットを流して回答を判定)</td><td>回答の質</td><td>dev-eval がすでにあり、T-008 の受け入れ条件と一致する</td><td>LLM の実走が要り、CI に入れられない。実クエリは人手の前提</td><td><span class="ok">推奨</span>(回答の質)</td></tr>
+          <tr><th>E</th><td>運用データによる目標値のレビュー</td><td>運用</td><td>実際の利用を反映する</td><td>導入後でないと標本がない。値は導入先ごとに違う</td><td>導入後に始める(Q2)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>適合キットを当てる境界</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>境界</th><th>キットが確かめること</th><th>キットが出す指標</th><th>いまの足場</th></tr></thead>
+        <tbody>
+          <tr><th>Connector</th><td>トークン欠落と権限外の拒否、エラー分類の対応、スニペットの長さ、scope の正規化、取得できない文書と存在しない文書の応答が同形であること</td><td>ツール別の所要時間、エラー分類の内訳</td><td>connector-github のテストと dev-fixture。共通化はしていない</td></tr>
+          <tr><th>IdP Adapter</th><td>無効・期限切れ・発行者違い・受け手違いの拒否、IdP 停止時の応答</td><td>確定までの時間、キャッシュの命中率</td><td>モックと Keycloak のテストが別々にある</td></tr>
+          <tr><th>LLM クライアント</th><td>ツール呼び出しの形、停止理由の対応、使用量の欠落時の扱い、期限と再試行</td><td>応答時間、トークン数</td><td>台本の実装がある</td></tr>
+          <tr><th>Search Backend<small>Phase 2</small></th><td>未認可候補が Adapter の外に出ないこと(件数を含む)、0 件の応答が通常と同形であること</td><td>所要時間、分離テレメトリのバケット</td><td>未着手。T-016 の比較に同じキットを使える</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>キットは <code>connector-sdk</code> の隣にテスト用のパッケージとして置き、各実装のテストから呼ぶ形を想定している。コネクタ IF そのものは変えないので、不変条件 5 の ADR は要らない。IF の解釈を固定する項目(たとえば「存在しない文書と権限のない文書の応答を同形にする」)が既存の ADR に書かれていない場合だけ、ADR-016 への追記が要る。</p>
+</section>
+
+<section id="means">
+  <h2><span class="n">7</span>どう観測するか: 観測の手段</h2>
+  <h3>運用時の経路</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>良い点</th><th>難点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>監査ログからの導出だけ(新しい経路を作らない)</td><td>追加なし。不変条件の検討が済んでいる。開発時と同じ集計が使える(S5)</td><td>ツール呼び出しに至らない事象、LLM、プロセスの状態が見えない。運用の調査のたびに監査閲覧の統制にかかる</td><td><span class="ok">採用</span>(主)</td></tr>
+          <tr><th>B</th><td>運用イベントを新設する(JSONL、strict な型、利用者・クエリ・文書の欄を持たない)</td><td>監査で見えない事象を埋める。型に置き場がないので S1 を満たす。ファイルなので S4 を満たす</td><td>新しい型と書き手が増える。stderr の自由文との住み分けを決める必要がある</td><td><span class="ok">採用</span>(補)</td></tr>
+          <tr><th>C</th><td>OpenTelemetry をコアに計装する(トレース、メトリクス、ログ)</td><td>標準で、道具が豊富。分散トレースが取れる</td><td>属性に任意の値を載せられ、型で S1 を守れない。収集基盤が前提になる(S4)。依存が増える</td><td>コアには入れない。B からの変換を contrib に置く</td></tr>
+          <tr><th>D</th><td>Prometheus 形式の /metrics を公開する</td><td>単純で、多くの監視基盤が読める</td><td>認証なしの面が増える。ラベルの規律が要る。再起動で値が消える</td><td>コアには入れない。C と同じく contrib</td></tr>
+          <tr><th>E</th><td>分離テレメトリ(ADR-011 決定 2)の書き込み先を実装する</td><td>決定済み。未認可・除外に関わる件数の唯一の置き場</td><td>用途が狭い。閲覧は高権限に限る</td><td><span class="ok">採用</span>(用途限定)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>トレースについて。run の中のツール呼び出しは runId と iteration ですでに順序付きでつながっており、監査がトレースの役を果たしている。Orchestrator と Gateway の 2 プロセスだけの構成で、別の伝搬の仕組みを足す利点は小さい。</p>
+
+  <h3>3 本の経路の分担</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>経路</th><th>書くもの</th><th>持たない欄</th><th>書き手</th><th>保持と閲覧</th></tr></thead>
+        <tbody>
+          <tr><th>監査ログ<small>既存</small></th><td>誰が、いつ、どのソースに、何をして、どう終わったか</td><td>未認可の件数、生のエラー文、Slack 由来の値</td><td>Gateway だけ</td><td>365 日。指名制、閲覧を記録</td></tr>
+          <tr><th>運用イベント<small>新設</small></th><td>部品、事象の種類、分類コード、所要時間、件数。例: 認証の拒否、流量制限、期限切れ、同時実行の断り、LLM の 1 回分の使用量、監査バッファの滞留、起動と停止</td><td>userId、runId、クエリ、文書 ID、件数のうち検索結果に由来するもの、sourceId 以外のソース由来の値</td><td>事象が起きたプロセス(Gateway、Orchestrator)</td><td>短期(例: 30 日)。運用担当が読める</td></tr>
+          <tr><th>分離テレメトリ<small>ADR-011</small></th><td>日単位の集計。sourceId、ツール、件数のバケット</td><td>利用者、クエリ、文書、時刻(日より細かいもの)</td><td>Gateway(将来は Search Backend Adapter)</td><td>14 日。セキュリティ担当の高権限だけ</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>運用イベントの欄は Q1 と Q3 の仮の答え(結合しない、LLM の使用量は運用イベントに置く)を前提にしている。stderr は「人が読む起動と警告」のまま残し、集計に使うものは運用イベントに移す(docs/install.md §7.1 の規則に 1 行足す形になる)。</figcaption>
+  </figure>
+
+  <h3>開発時の手段</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>測るもの</th><th>選択肢</th><th>推奨</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><th>依存の向き</th><td>(a) lint-imports.mjs を全パッケージへ広げる (b) dependency-cruiser (c) ESLint の境界プラグイン</td><td>(a)</td><td>許可リスト方式がすでに合意され、依存を足さずに済む。依存の図が欲しくなったら (b) を開発依存で足す</td></tr>
+          <tr><th>コードの規約</th><td>(a) typescript-eslint を型情報つきの少数の規則で入れる (b) Biome (c) 入れない</td><td>(a)</td><td>「<code>any</code> は理由コメント必須」と、待たれていない Promise を検査できる。規則は約束と事故に関わるものに絞る</td></tr>
+          <tr><th>網羅率</th><td>(a) 全体に閾値 (b) 認可・監査・境界のディレクトリだけ閾値、全体は推移 (c) 測らない</td><td>(b)</td><td>全体の閾値は数字合わせのテストを呼ぶ。守りたいのは認可分岐</td></tr>
+          <tr><th>テストの効き</th><td>(a) 変異テストを全体に (b) 認可・監査・境界に限って週次で (c) 行わない</td><td>(b)</td><td>実行が重い。網羅率では「分岐を通ったが結果を確かめていない」を見つけられない</td></tr>
+          <tr><th>公開 IF の変更</th><td>(a) 型定義の差分を CI で出す (b) レビューに任せる</td><td>(a)</td><td>不変条件 5 を道具で支える。差分があって ADR の変更がない PR に印を付ける</td></tr>
+          <tr><th>回答の質</th><td>(a) dev-eval を広げる (b) T-008 のハーネスを別に作る (c) 外部の評価基盤</td><td>(a) から (b) へ</td><td>dev-eval の判定と集計を T-008 の土台にすれば指標の定義が 1 つで済む(S3)。(c) は質問と回答を外へ送ることになる</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+</section>
+
+<section id="viz">
+  <h2><span class="n">8</span>どう見せるか: 可視化の手段</h2>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>良い点</th><th>難点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>CI のジョブサマリと PR へのコメント</td><td>変更した人がその場で見る。追加の置き場が要らない</td><td>履歴をたどりにくい</td><td><span class="ok">採用</span>(開発時)</td></tr>
+          <tr><th>B</th><td>リポジトリ内のスコアカード(JSON のスナップショットと、そこから生成する HTML)</td><td>推移が差分として残り、レビューできる。基盤が要らない</td><td>運用データは載せられない(導入先のもの)</td><td><span class="ok">採用</span>(開発時)</td></tr>
+          <tr><th>C</th><td>JSONL から静的な HTML を出す CLI(昇格判定レポートと同じ型)</td><td>1 デプロイ = 1 社に合う。監査を読む部分は閲覧の記録に乗る。基盤が要らない(S4)</td><td>その場の監視にはならない(日次や週次)</td><td><span class="ok">採用</span>(運用時の標準)</td></tr>
+          <tr><th>D</th><td>Grafana と収集基盤を compose の overlay として重ねる</td><td>常時の監視と通知ができる</td><td>運用の負担が増える。読ませてよいのは運用イベントだけで、監査を流し込むと閲覧の統制が外れる</td><td>contrib(任意)</td></tr>
+          <tr><th>E</th><td>問い合わせの見本を文書で持ち、都度集計する</td><td>柔軟。docs/audit-queries.md がすでにある</td><td>定型にならず、人によって定義がずれる</td><td>調査用に残す</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 390" role="img" aria-label="信号の出どころから置き場、見せ方までの流れ">
+        <text x="20" y="22" class="t">出どころ</text>
+        <text x="335" y="22" class="t">置き場</text>
+        <text x="635" y="22" class="t">見せ方</text>
+        <rect class="box" x="20" y="36" width="240" height="50"/><text x="30" y="57">静的検査(CI)</text><text x="30" y="75" class="s">依存の向き・規約・網羅率・変異</text>
+        <rect class="box" x="20" y="100" width="240" height="50"/><text x="30" y="121">部品別のハーネス</text><text x="30" y="139" class="s">適合キット・dev-eval・T-008</text>
+        <rect class="box sub" x="20" y="174" width="240" height="50"/><text x="30" y="195">監査ログ(既存)</text><text x="30" y="213" class="s">ToolInvocation・AnswerRun ほか</text>
+        <rect class="box hl" x="20" y="238" width="240" height="50"/><text x="30" y="259">運用イベント(新設)</text><text x="30" y="277" class="s">拒否・期限・流量・LLM の使用量</text>
+        <rect class="box hl" x="20" y="320" width="240" height="50"/><text x="30" y="341">分離テレメトリ(未実装)</text><text x="30" y="359" class="s">日単位・件数のバケット</text>
+
+        <rect class="box" x="335" y="62" width="220" height="60"/><text x="345" y="88">品質スナップショット</text><text x="345" y="106" class="s">JSON。CI の成果物とリポジトリ</text>
+        <rect class="box" x="335" y="200" width="220" height="60"/><text x="345" y="226">JSONL ファイル</text><text x="345" y="244" class="s">導入先のディスク。経路ごとに別</text>
+        <rect class="box" x="335" y="320" width="220" height="50"/><text x="345" y="341">別ファイル</text><text x="345" y="359" class="s">14 日保持・高権限だけ</text>
+
+        <rect class="box sub" x="635" y="36" width="250" height="50"/><text x="645" y="57">部品別スコアカード</text><text x="645" y="75" class="s">HTML と CI のサマリ</text>
+        <rect class="box sub" x="635" y="100" width="250" height="50"/><text x="645" y="121">評価レポート</text><text x="645" y="139" class="s">docs/eval。プロンプト変更の PR に添付</text>
+        <rect class="box sub" x="635" y="174" width="250" height="50"/><text x="645" y="195">昇格判定レポート(既存)</text><text x="645" y="213" class="s">監査だけを読む</text>
+        <rect class="box sub" x="635" y="238" width="250" height="50"/><text x="645" y="259">運用レポート</text><text x="645" y="277" class="s">CLI が HTML を出す。日次や週次</text>
+        <rect class="box" x="635" y="320" width="250" height="50"/><text x="645" y="341">セキュリティ担当向けの集計</text><text x="645" y="359" class="s">ほかのレポートと混ぜない</text>
+
+        <path class="ln" d="M260,61 L335,82"/><polygon class="arr" points="335,82 325,84 328,75"/>
+        <path class="ln" d="M260,125 L335,102"/><polygon class="arr" points="335,102 328,109 325,100"/>
+        <path class="ln" d="M260,199 L335,220"/><polygon class="arr" points="335,220 325,222 328,213"/>
+        <path class="ln" d="M260,263 L335,240"/><polygon class="arr" points="335,240 328,247 325,238"/>
+        <path class="ln" d="M260,345 H335"/><polygon class="arr" points="335,345 326,341 326,349"/>
+        <path class="ln" d="M555,82 L635,61"/><polygon class="arr" points="635,61 628,68 625,59"/>
+        <path class="ln" d="M555,102 L635,125"/><polygon class="arr" points="635,125 625,127 628,118"/>
+        <path class="ln" d="M555,220 L635,199"/><polygon class="arr" points="635,199 628,206 625,197"/>
+        <path class="ln" d="M555,240 L635,263"/><polygon class="arr" points="635,263 625,265 628,256"/>
+        <path class="ln" d="M555,345 H635"/><polygon class="arr" points="635,345 626,341 626,349"/>
+        <path class="ln dash" d="M650,288 V306"/><text x="662" y="306" class="s">任意: 監視基盤向けの変換(contrib)</text>
+      </svg>
+    </div>
+    <figcaption><b>図 2</b>信号の流れ。赤い枠は新しく作る経路。分離テレメトリは最後までほかの経路と合流させない。運用レポートは監査と運用イベントの両方を読むが、行として結合はしない(Q1 の仮の答え)。</figcaption>
+  </figure>
+  <p>スコアカードは、部品を行、4 面を列に取り、面ごとに代表の指標 1 つと前回からの変化を載せる。約束の列は数値ではなく合否にし、1 件でも破れたら行全体を赤にする。通知(カナリアの逸脱、監査を書けない状態)は見せ方ではなく threat-model §5.3 の通知経路の話で、この計画では扱わない。</p>
+</section>
+
+<section id="baseline">
+  <h2><span class="n">9</span>スコアカード v0: 今日取れた値</h2>
+  <p>新しい計装なしで取れる構造の質の値を、2026-11-15 にこのリポジトリで実測した(<code>npm ci</code>、<code>npm run build</code> のあと、パッケージごとに <code>npm test</code>)。行数は <code>src</code> 配下の <code>.ts</code> と、<code>*.test.ts</code> の合計。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide num">
+        <thead><tr><th>パッケージ</th><th>実装(行)</th><th>テスト(行)</th><th>テスト / 実装</th><th>テスト件数</th><th>所要時間(秒)</th><th>最大のファイル(行)</th></tr></thead>
+        <tbody>
+          <tr><th>audit</th><td>1,091</td><td>1,173</td><td>1.08</td><td>70</td><td>0.9</td><td>—</td></tr>
+          <tr><th>connector-sdk</th><td>316</td><td>249</td><td>0.79</td><td>10</td><td>0.2</td><td>316</td></tr>
+          <tr><th>connector-github</th><td>2,621</td><td>2,146</td><td>0.82</td><td>243</td><td>0.9</td><td>1,055</td></tr>
+          <tr><th>gateway</th><td>13,345</td><td>12,415</td><td>0.93</td><td>764(ほか 5 件は省略)</td><td>5.5</td><td>1,323</td></tr>
+          <tr><th>orchestrator</th><td>10,583</td><td>10,260</td><td>0.97</td><td>594</td><td>15.6</td><td>1,261</td></tr>
+          <tr><th>promotion-report</th><td>1,548</td><td>1,513</td><td>0.98</td><td>66</td><td>2.7</td><td>679</td></tr>
+          <tr><th>合計</th><td>29,504</td><td>27,756</td><td>0.94</td><td>1,747</td><td>25.8</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>全テストが通った。省略の 5 件は Keycloak の E2E(CI の別ジョブで実行)と読んだが、個別には確かめていない。ほかに手元で読めた値: 探索プロンプト v3 は 20 問 × 2 回で 37 / 40、所要時間の中央値 52.2 秒、上限に達した run が 8 件(docs/eval/2026-10-09)。</figcaption>
+  </figure>
+  <p>この表から読めること。テストの量は部品間でそろっている。所要時間は orchestrator が全体の 6 割を占め、単独で試す速さの面で最初に見る場所になる。1,000 行を超えるファイルが 3 つあり、どれも責務の文に「と」が入りやすい部品(認可サーバー、探索ループ、GitHub コネクタ)にある。行数は品質の指標ではないので閾値は置かず、推移だけを追う。</p>
+</section>
+
+<section id="plan">
+  <h2><span class="n">10</span>進め方</h2>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>段階</th><th>やること</th><th>できたら完了</th><th>前提</th></tr></thead>
+        <tbody>
+          <tr><th>0 物差しをそろえる</th><td>指標の定義表を 1 つ作る(名前、定義、面、部品、経路)。既存の信号だけでスコアカード v0 を CI で生成する</td><td>9 章の表と dev-eval・監査由来の値が、CI のサマリに毎回出る</td><td>なし</td></tr>
+          <tr><th>1 構造の適応度関数</th><td>lint-imports を全パッケージへ広げる(共有の語彙の置き場を先に決める)。型情報つきの lint を少数の規則で入れる。認可・監査・境界のディレクトリに網羅率の下限を置く</td><td>依存の向きの違反が 0 で CI が通る。<code>any</code> の理由コメントが検査される</td><td>Q4</td></tr>
+          <tr><th>2 適合キット</th><td>Connector のキットを作り、connector-github と dev-fixture に当てる。続いて IdP Adapter と LLM クライアント</td><td>2 つの実装が同じキットを通り、同じ表に指標が並ぶ</td><td>Drive や Slack のコネクタを書く前が安い</td></tr>
+          <tr><th>3 運用の経路</th><td>ADR を起こす: 運用イベントの型と書き手、分離テレメトリの書き込み先、stderr との住み分け。承認後に実装する</td><td>4 章のずれ 1〜3 が埋まり、監査の欠落(呼び出し数と記録数の差)が出せる</td><td>Q1、Q3。人間のレビューで停止する</td></tr>
+          <tr><th>4 回答の質と約束の常時検証</th><td>dev-eval の判定と集計を土台に T-008 のハーネスを作る。カナリア検証ジョブを同梱する。変異テストを認可まわりに限って週次で回す</td><td>T-008 の受け入れ条件 3 つ。カナリアの出現 0 が毎日記録される</td><td>実クエリと、権限を固定したテスト用の利用者(人手)</td></tr>
+          <tr><th>5 運用の見せ方</th><td>運用レポートの CLI を作る。監視基盤向けの変換と overlay を contrib に置く</td><td>参照デプロイで 1 日動かした JSONL から HTML が出る</td><td>段階 3。Q2</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>段階 0〜2 は人手の前提なしに着手できる。段階 3 は不変条件 3・6・7 に触れる新しい出力経路なので、CLAUDE.md の進め方どおり ADR の草案で止める。backlog のタスク ID は振っていない。</p>
+</section>
+
+<section id="stress">
+  <h2><span class="n">11</span>案を揺さぶる</h2>
+  <h3>変化の筋書き</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>起きること</th><th>計測の側で直す場所</th></tr></thead>
+        <tbody>
+          <tr><th>コネクタの内部を検索層に差し替える(Phase 2)</th><td>直さない。同じ適合キットと同じ監査由来の指標で前後を比べる。空振り率だけ分離テレメトリに項目を足す</td></tr>
+          <tr><th>Slack コネクタを有効にする</th><td>運用イベントの型は sourceId 以外のソース由来の値を持たないので、そのまま使える。評価の記録は真偽値だけにする(T-008 に記載済み)</td></tr>
+          <tr><th>MCP SDK を v2 系に移す</th><td>直さない。プロキシの適合(sdk-protocol のテストとスモーク)と所要時間の分布で回帰を見る</td></tr>
+          <tr><th>2 社目が導入する</th><td>目標値は deployment.yaml に置く。指標の定義とレポートはコアのまま</td></tr>
+          <tr><th>収集基盤を持つ導入先が OpenTelemetry を求める</th><td>contrib の変換を足す。コアの型は変えない</td></tr>
+          <tr><th>指標の定義を変える(たとえば解決率の分母)</th><td>定義表と集計の 1 か所。dev-eval と運用レポートが同じ集計を使っていることが前提(S3、S5)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>反例を作ってみた主張</h3>
+  <ul>
+    <li><strong>「運用の質は監査から全部出せる」</strong>は成り立たない。認証で拒否した要求は利用者が確定せず監査に入らない。LLM の待ち時間は Gateway を通らない。起動に失敗したプロセスは監査を書けない。この 3 つが運用イベントを足す根拠になっている。</li>
+    <li><strong>「運用イベントは利用者と結び付かない」</strong>は、欄を持たないだけでは成り立たない場合がある。利用者が 1 人の時間帯、sourceId が 1 人しか使わないソースの場合、時刻と sourceId から推定できる。保持を短くし、時刻の粒度と sourceId の扱いを ADR で決める必要がある。</li>
+    <li><strong>「部品だけで同じ指標が取れる」</strong>は、回答の質では成り立たない。探索ループの質は LLM とコーパスの組で決まり、部品単独の値にならない。回答の質は「プロンプトの版 × モデル × コーパス」の組に対して記録する。</li>
+  </ul>
+
+  <h3>名前</h3>
+  <p>「テレメトリ」は ADR-011 で分離テレメトリの意味に使われているので、新しい経路をテレメトリやメトリクスと呼ばない。この計画で使う名前は 4 つ: 監査ログ、運用イベント、分離テレメトリ、品質スナップショット。「ログ」だけの呼び方は stderr の人向けの出力に限る。</p>
+</section>
+
+<section id="open">
+  <h2><span class="n">12</span>仮定と、確かめていないこと</h2>
+  <ul>
+    <li><strong>観測したもの</strong>: パッケージ構成、行数、テストの件数と所要時間、CI のジョブ、<code>lint-imports.mjs</code> の境界、監査の型、<code>proxy/gateway.ts</code> の TODO、dev-eval の結果(docs/eval)、パッケージ間の import。</li>
+    <li><strong>コードを読んだだけで、動かして確かめていないもの</strong>: 認証で拒否した要求が監査に入らないこと。流量制限の拒否が ToolInvocation に <code>rate_limited</code> として入ること。コネクタ共通の適合テストがないこと(検索して見つからなかった)。</li>
+    <li><strong>測っていないもの</strong>: 網羅率、変異検出率、依存の向きの違反数、PR ごとの変更の局所性。道具が入っていないので値がない。9 章の表に列を足す形で段階 0〜1 で埋める。</li>
+    <li><strong>仮定</strong>: 運用は導入企業の情シスが行い、常時の監視基盤を持たない導入先がある。実 SaaS、実 IdP、実 KMS、Claude API との疎通は人手の前提待ちで、運用の質の実測値は参照デプロイと開発用コネクタでしか取れない。</li>
+    <li><strong>この文書の位置付け</strong>: 分析と企画であり、決定ではない。3 章の問いに答えが出た時点で、運用イベントと分離テレメトリは ADR に、合意した性質と名前は設計書に写す。</li>
+  </ul>
+</section>
+</main>
+</body>
+</html>
