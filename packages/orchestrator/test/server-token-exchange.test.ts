@@ -71,19 +71,43 @@ describe("GatewayTokenExchanger", () => {
     await expect(down.exchange("t")).rejects.toBeInstanceOf(TokenExchangeError);
   });
 
+  it("minLifetimeMs: キャッシュの残りが足りれば使い、足りなければ min_lifetime を添えて交換し直す", async () => {
+    let now = 0;
+    let expiresIn = 300;
+    const f = fakeFetch(() => new Response(JSON.stringify({ access_token: `gw-${f.calls.length}`, expires_in: expiresIn }), { status: 200 }));
+    const exchanger = new GatewayTokenExchanger({ tokenEndpoint: "http://x/token", gatewayResource: "r", credential: "c", fetchImpl: f.impl, now: () => now });
+    await exchanger.exchange("client-token");
+    expect(f.calls[0]?.get("min_lifetime")).toBeNull();
+    // 残り 300 秒 - 余裕 30 秒 > 200 秒: キャッシュを使う
+    expect(await exchanger.exchange("client-token", { minLifetimeMs: 200_000 })).toBe("gw-1");
+    expect(f.calls).toHaveLength(1);
+    // 120 秒後は残り 180 秒: 足りないので min_lifetime(秒、切り上げ)を添えて取り直す
+    now = 120_000;
+    expiresIn = 900;
+    expect(await exchanger.exchange("client-token", { minLifetimeMs: 200_500 })).toBe("gw-2");
+    expect(f.calls[1]?.get("min_lifetime")).toBe("201");
+  });
+
+  it("minLifetimeMs の交換を Gateway が拒否したら invalid(呼び出し元が 401 を返す)", async () => {
+    const f = fakeFetch(() => new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 }));
+    const exchanger = new GatewayTokenExchanger({ tokenEndpoint: "http://x/token", gatewayResource: "r", credential: "c", fetchImpl: f.impl });
+    await expect(exchanger.exchange("t", { minLifetimeMs: 690_000 })).rejects.toMatchObject({ kind: "invalid" });
+  });
+
   it("保護リソースメタデータの URL は resource のパスを well-known の後ろに付ける", () => {
     expect(protectedResourceMetadataUrl("https://x.example/ask/mcp")).toBe("https://x.example/.well-known/oauth-protected-resource/ask/mcp");
   });
 });
 
 describe("leisen-ask serve の受け口(認可サーバーを使う構成)", () => {
-  async function setup(exchanger: TokenExchanger) {
+  async function setup(exchanger: TokenExchanger, askTokenLifetimeMs?: number) {
     const gateway = await startGateway({ connectors: [new CorpusConnector("alpha", [EXPENSE_POLICY])] });
     cleanups.push(() => gateway.close());
     const server = await startOrchestratorServer({
       gatewayUrl: gateway.url,
       llm: new ScriptedLlmClient(searchThenSubmit()),
       tokenExchange: exchanger,
+      ...(askTokenLifetimeMs !== undefined ? { askTokenLifetimeMs } : {}),
       protectedResource: { resource: "https://leisen.example/ask/mcp", authorizationServer: "https://leisen.example" },
     });
     cleanups.push(() => server.close());
@@ -116,6 +140,34 @@ describe("leisen-ask serve の受け口(認可サーバーを使う構成)", () 
     expect((await rawPost(server.url, RAW_BODIES["tools/list"], "Bearer down")).status).toBe(503);
     const missing = await rawPost(server.url, RAW_BODIES["tools/list"]);
     expect(missing.headers.get("www-authenticate")).toContain("resource_metadata=");
+  });
+
+  it("ask の前だけ、run に要る残り時間を添えて交換し直し、拒否されたら 401 でクライアントに更新させる", async () => {
+    const seen: (number | undefined)[] = [];
+    let refuseLong = true;
+    const server = await setup(
+      {
+        async exchange(token, options) {
+          seen.push(options?.minLifetimeMs);
+          if (token !== "orchestrator-audience-token") throw new TokenExchangeError("invalid", "unknown");
+          if (options?.minLifetimeMs !== undefined && refuseLong) throw new TokenExchangeError("invalid", "expires soon");
+          return ALICE_TOKEN;
+        },
+      },
+      690_000,
+    );
+    // ask 以外(tools/list)は残り時間を求めない
+    expect((await rawPost(server.url, RAW_BODIES["tools/list"], "Bearer orchestrator-audience-token")).status).toBe(200);
+    expect(seen).toEqual([undefined]);
+    // ask: 残り時間が足りない(Gateway が拒否)なら 401 で、理由を添える
+    const refused = await rawPost(server.url, RAW_BODIES["tools/call"], "Bearer orchestrator-audience-token");
+    expect(refused.status).toBe(401);
+    expect(refused.headers.get("www-authenticate")).toContain('error="invalid_token"');
+    expect(refused.headers.get("www-authenticate")).toContain("expires before the answer run can finish");
+    expect(seen).toEqual([undefined, undefined, 690_000]);
+    // 更新後(足りる)なら ask を受ける
+    refuseLong = false;
+    expect((await rawPost(server.url, RAW_BODIES["tools/call"], "Bearer orchestrator-audience-token")).status).toBe(200);
   });
 
   it("保護リソースメタデータを公開する", async () => {

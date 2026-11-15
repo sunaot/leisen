@@ -150,6 +150,28 @@ type StatePayload =
     };
 
 const STATE_TTL_MS = 10 * 60_000;
+/**
+ * トークン交換の min_lifetime の判定で「更新直後」とみなす元のトークンの経過時間。これより新しい
+ * トークンは、残り時間が足りなくても受け付ける(更新しても延びない構成で 401 と更新を繰り返さない)
+ */
+export const FRESH_SUBJECT_WINDOW_MS = 60_000;
+
+/**
+ * トークン交換の min_lifetime の判定。元のトークンの残りが足りず、かつ更新直後でなければ
+ * "expires_soon"(クライアントが更新すれば延びうる)。それ以外は "ok"
+ */
+export function subjectLifetimeDecision(input: {
+  readonly now: number;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+  readonly minLifetimeMs: number | undefined;
+  readonly freshWindowMs?: number;
+}): "ok" | "expires_soon" {
+  if (input.minLifetimeMs === undefined || input.expiresAt - input.now >= input.minLifetimeMs) {
+    return "ok";
+  }
+  return input.now - input.issuedAt > (input.freshWindowMs ?? FRESH_SUBJECT_WINDOW_MS) ? "expires_soon" : "ok";
+}
 
 function hashBinding(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("base64url").slice(0, 32);
@@ -1242,6 +1264,16 @@ export class AuthHttpHandler {
     if (target !== this.resource) {
       return this.#oauthError(res, 400, "invalid_target", "token exchange can only target this gateway");
     }
+    // 拡張パラメータ min_lifetime(秒): 交換後のトークンに要る残り時間(Orchestrator の長い run)。
+    // 元のトークンの残りが足りず、かつ更新直後でなければ拒否して、クライアントに更新させる
+    const minLifetimeRaw = form.get("min_lifetime");
+    let minLifetimeMs: number | undefined;
+    if (minLifetimeRaw !== null) {
+      if (!/^\d{1,5}$/.test(minLifetimeRaw) || Number(minLifetimeRaw) < 1 || Number(minLifetimeRaw) > 86_400) {
+        return this.#oauthError(res, 400, "invalid_request", "min_lifetime must be an integer number of seconds (1-86400)");
+      }
+      minLifetimeMs = Number(minLifetimeRaw) * 1000;
+    }
     let subject;
     try {
       subject = await as.tokens.openAccessToken(form.get("subject_token") ?? "", as.orchestratorResource);
@@ -1250,6 +1282,11 @@ export class AuthHttpHandler {
         await this.#o.events({ userId: "anonymous", event: "token_exchanged", method: "gateway_token", outcome: "failure", reason: `subject_${error.kind}`, clientId: ORCHESTRATOR_CLIENT_ID });
       }
       throw error;
+    }
+    if (subjectLifetimeDecision({ now: this.#now(), issuedAt: subject.iat, expiresAt: subject.exp, minLifetimeMs }) === "expires_soon") {
+      // 更新すれば延びうる(更新直後のトークンは、延びなくても受け付ける。401 と更新を繰り返さない)
+      await this.#o.events({ userId: subject.sub, event: "token_exchanged", method: "gateway_token", outcome: "failure", reason: "subject_expires_soon", clientId: ORCHESTRATOR_CLIENT_ID });
+      return this.#oauthError(res, 400, "invalid_grant", "the subject token expires before the requested lifetime; refresh it and retry");
     }
     const { v: _v, iat: _i, exp, jti: _j, ...claims } = subject;
     const issued = as.tokens.issue({ ...claims, aud: this.resource }, { withRefresh: false, maxExp: exp });

@@ -151,6 +151,7 @@ leisen-ask serve --gateway http://gateway:8787/mcp --config deployment.yaml \
 
 - deployment.yaml の `authorizationServer.orchestratorResource` を `--public-url` と同じ URL にする
 - 交換のクライアント認証は `LEISEN_ORCHESTRATOR_CREDENTIAL`(run API と同じ値)。Gateway 宛ての受け手は `--gateway-resource`(既定 `<--authorization-server>/mcp`)
+- `ask` の前に、run に要る残り時間(`orchestrator.runTimeoutSec` + 最終ターン 60 秒 + 30 秒)を添えて交換する(拡張パラメータ `min_lifetime`)。元のトークンの残りが足りなければ、更新直後でない限り 401 を返し、LibreChat・MCP クライアントが更新してやり直す(ADR-022 追補 2026-11-15)。**`authorizationServer.accessTokenTtlSec` は run に要る時間より長くする**(既定の 120 秒の探索なら 210 秒以上。`runTimeoutSec: 600` なら 690 秒以上。上限 3600)。短いと Orchestrator が起動時に WARNING を出す
 - LibreChat は MCP サーバー(Orchestrator)の OAuth 設定で、`authorization_url` を `<publicBaseUrl>/authorize`、`token_url` を `<publicBaseUrl>/token`、`client_id` / `client_secret` を事前登録の値にする。LibreChat のコールバック URL を `redirectUris` に、`defaultResource` を `orchestratorResource` にする(設定キーは LibreChat のバージョンで異なる。docs/ui-librechat.md を参照し、導入時に実機で確かめる)
 
 ## 7. 失効と利用停止

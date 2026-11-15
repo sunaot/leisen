@@ -377,6 +377,34 @@ export function settingsFromDeployment(config: Pick<DeploymentConfig, "orchestra
   };
 }
 
+/** ask の run の後に finish を申告するまでの余裕(ms)。 */
+const ASK_TOKEN_MARGIN_MS = 30_000;
+
+/** ask の run に要るトークンの残り時間(探索の時間上限 + 最終ターン + 余裕)。 */
+export function askTokenLifetimeMs(settings: { readonly runTimeoutMs: number; readonly finalTurnTimeoutMs: number }): number {
+  return settings.runTimeoutMs + settings.finalTurnTimeoutMs + ASK_TOKEN_MARGIN_MS;
+}
+
+/**
+ * Gateway が発行するトークンの有効期間が ask の run より短い構成の WARNING(なければ undefined)。
+ * この構成でも更新直後のトークンは受け付けるが、run の途中で Gateway への呼び出しが期限切れになりうる
+ */
+export function accessTokenTtlWarning(
+  config: Pick<DeploymentConfig, "gateway">,
+  settings: { readonly runTimeoutMs: number; readonly finalTurnTimeoutMs: number },
+): string | undefined {
+  const needSec = Math.ceil(askTokenLifetimeMs(settings) / 1000);
+  const ttlSec = config.gateway.authorizationServer.accessTokenTtlSec;
+  if (ttlSec >= needSec) {
+    return undefined;
+  }
+  return (
+    `gateway.authorizationServer.accessTokenTtlSec (${ttlSec}s) is shorter than an answer run ` +
+    `(run timeout + final turn + margin = ${needSec}s); a run can fail when the token expires midway. ` +
+    `Set accessTokenTtlSec to at least ${needSec} (max 3600) or lower orchestrator.runTimeoutSec`
+  );
+}
+
 /** 起動ログ用の LLM バックエンドの説明(キー・ベース URL のパスとクエリは出さない)。 */
 function describeLlm(config: LlmBackendConfigInput): string {
   if (config.provider === "anthropic") {
@@ -543,6 +571,8 @@ export async function runServe(
               resource: args.authorizationServer.publicUrl,
               authorizationServer: args.authorizationServer.issuer,
             },
+            // ask の run が終わるまで交換後のトークンが持つように(途中で期限切れにしない)
+            askTokenLifetimeMs: askTokenLifetimeMs(orchestrator.settings),
           }
         : {}),
       limits,
@@ -588,6 +618,8 @@ export async function runServe(
     healthUrl: `${origin}${ORCHESTRATOR_HEALTH_PATH}`,
   };
   const { maxIterations, runTimeoutMs } = orchestrator.settings;
+  const tokenTtlWarning =
+    args.authorizationServer !== undefined ? accessTokenTtlWarning(config, orchestrator.settings) : undefined;
   io.stderr(`${PREFIX}: listening on ${endpoint.url} (health check: ${endpoint.healthUrl})`);
   io.stderr(`${PREFIX}: deployment: ${config.deployment.name}`);
   // Gateway の URL はホストだけ(パス・クエリは出さない)
@@ -610,6 +642,9 @@ export async function runServe(
       `run-timeout=${Math.round(runTimeoutMs / 1000)}s`,
   );
   io.stderr(`${PREFIX}: llm: ${describeLlm(args.llm)}`);
+  if (tokenTtlWarning !== undefined) {
+    io.stderr(`${PREFIX}: WARNING: ${tokenTtlWarning}`);
+  }
   // 平文 http の上流(--allow-insecure-upstream)は WARNING を1行出す(ホスト名だけ)
   const insecureWarning = args.allowInsecureUpstream
     ? insecureUpstreamWarning({ gatewayUrl: args.gateway, llm: args.llm })

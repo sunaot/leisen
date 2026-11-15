@@ -34,6 +34,8 @@ import {
   parseListen,
   servePortInUseMessage,
   settingsFromDeployment,
+  accessTokenTtlWarning,
+  askTokenLifetimeMs,
   type ServeEndpoint,
 } from "../src/bin/serve.js";
 import {
@@ -194,6 +196,14 @@ describe("leisen-ask serve: orchestrator セクションの探索の上限", () 
     const b = capture();
     expect(await runCli(serveArgs(without), b.io, deps())).toBe(0);
     expect(b.err.join("\n")).toContain("max-iterations=6, run-timeout=120s");
+  });
+
+  it("ask に要るトークンの残り時間と、Gateway のトークンの有効期間が短いときの WARNING", () => {
+    const settings = { runTimeoutMs: 600_000, finalTurnTimeoutMs: 60_000 };
+    expect(askTokenLifetimeMs(settings)).toBe(690_000);
+    const gateway = (ttl: number) => ({ gateway: { authorizationServer: { accessTokenTtlSec: ttl } } }) as never;
+    expect(accessTokenTtlWarning(gateway(300), settings)).toContain("at least 690");
+    expect(accessTokenTtlWarning(gateway(900), settings)).toBeUndefined();
   });
 
   it("settingsFromDeployment は秒をミリ秒に換算し、省略した項目を渡さない", () => {
