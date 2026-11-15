@@ -276,8 +276,8 @@ async function checkLlm(rec: Recorder, args: ServeArgs, deps: Required<Omit<Doct
     section,
     name: "会話の要求",
     status: chat.ms > 30_000 ? "warn" : "ok",
+    // 所要時間は detail に書く(ms を付けると括弧で二重に出る)
     detail: `HTTP 200、${(chat.ms / 1000).toFixed(1)} 秒`,
-    ms: chat.ms,
     ...(chat.ms > 30_000 ? { hint: "短い要求でも遅いです。探索の 1 手はさらに時間がかかります。モデルの推論の設定(thinking)や、orchestrator.runTimeoutSec を見直してください" } : {}),
   });
 }
