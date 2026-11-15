@@ -12,7 +12,7 @@
  *
  * - ツールは ask / feedback(server/tools.ts)。利用者の認証は Gateway に委譲する
  *   (server/http.ts の preflight。Orchestrator は IdP を持たず、独自の資格情報も持たない)
- * - --config(必須): orchestrator セクション(maxIterations / costLimitPerQuery)と不変条件7 の
+ * - --config(必須): orchestrator セクション(maxIterations / costLimitPerQuery / runTimeoutSec)と不変条件7 の
  *   判定に使う(citedDocIds の記録方針は Gateway の run API がかける。ADR-019 決定5)
  * - run の記録(AnswerRun)は Gateway の run API に申告する(ADR-019)。環境変数
  *   LEISEN_ORCHESTRATOR_CREDENTIAL(Gateway と共有する Orchestrator の資格情報)を Gateway への接続に
@@ -364,12 +364,16 @@ export function enabledSourceIds(config: Pick<DeploymentConfig, "connectors">): 
     .map((connector) => connector.id);
 }
 
-/** deployment.yaml の orchestrator セクション(maxIterations / costLimitPerQuery)を探索の設定にする。 */
-function settingsFromDeployment(config: DeploymentConfig): OrchestratorSettingsInput {
-  const { maxIterations, costLimitPerQuery } = config.orchestrator;
+/**
+ * deployment.yaml の orchestrator セクション(maxIterations / costLimitPerQuery / runTimeoutSec)を
+ * 探索の設定にする。
+ */
+export function settingsFromDeployment(config: Pick<DeploymentConfig, "orchestrator">): OrchestratorSettingsInput {
+  const { maxIterations, costLimitPerQuery, runTimeoutSec } = config.orchestrator;
   return {
     maxIterations,
     ...(costLimitPerQuery !== undefined ? { costLimitPerQuery } : {}),
+    ...(runTimeoutSec !== undefined ? { runTimeoutMs: runTimeoutSec * 1000 } : {}),
   };
 }
 
@@ -583,7 +587,7 @@ export async function runServe(
     url: `${origin}${args.path}`,
     healthUrl: `${origin}${ORCHESTRATOR_HEALTH_PATH}`,
   };
-  const { maxIterations } = orchestrator.settings;
+  const { maxIterations, runTimeoutMs } = orchestrator.settings;
   io.stderr(`${PREFIX}: listening on ${endpoint.url} (health check: ${endpoint.healthUrl})`);
   io.stderr(`${PREFIX}: deployment: ${config.deployment.name}`);
   // Gateway の URL はホストだけ(パス・クエリは出さない)
@@ -602,7 +606,8 @@ export async function runServe(
   }
   io.stderr(
     `${PREFIX}: limits: max-concurrent-runs=${limits.runs.maxConcurrentRuns}, ` +
-      `max-question-chars=${limits.maxQuestionChars}, max-iterations=${maxIterations}`,
+      `max-question-chars=${limits.maxQuestionChars}, max-iterations=${maxIterations}, ` +
+      `run-timeout=${Math.round(runTimeoutMs / 1000)}s`,
   );
   io.stderr(`${PREFIX}: llm: ${describeLlm(args.llm)}`);
   // 平文 http の上流(--allow-insecure-upstream)は WARNING を1行出す(ホスト名だけ)

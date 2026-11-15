@@ -35,7 +35,7 @@ node packages/orchestrator/dist/bin/leisen-ask.js \
 | `--allow-insecure-upstream` | 環境変数 `LEISEN_ALLOW_INSECURE_UPSTREAM=1` でも可。Gateway の URL と LLM のベース URL について、ループバック以外の `http` を許す(開発・評価用途。`NODE_ENV=production` では固定文言で拒否して終了コード 2。有効時は平文 http の上流をホスト名で列挙した WARNING を stderr に1行) |
 | `--max-iterations <N>` | ツールを呼べるターン数の上限(1〜20、既定 6) |
 | `--user-id <ID>` | 照合用の質問者の申告(環境変数 `LEISEN_USER_ID` でも可)。AnswerRun に記録されるのは Gateway が `POST /runs` の Bearer で認証した userId で、申告と食い違えば run は `error`(`user_mismatch`)。省略時は照合しない |
-| `--config <deployment.yaml>` | 任意。`orchestrator` セクション(`maxIterations` / `costLimitPerQuery`)を探索の設定にする(`--max-iterations` が優先)。citedDocIds の記録方針(Slack・プライベートスコープ)は Gateway が run API でかけるため、ここでは読まない(ADR-019 決定5)。読めない・不正なら終了コード 2。省略時は既定の設定で動く |
+| `--config <deployment.yaml>` | 任意。`orchestrator` セクション(`maxIterations` / `costLimitPerQuery` / `runTimeoutSec`)を探索の設定にする(`--max-iterations` が優先)。citedDocIds の記録方針(Slack・プライベートスコープ)は Gateway が run API でかけるため、ここでは読まない(ADR-019 決定5)。読めない・不正なら終了コード 2。省略時は既定の設定で動く |
 | 環境変数 `LEISEN_ORCHESTRATOR_CREDENTIAL` | Gateway と共有する Orchestrator の資格情報(16 文字以上、空白を含まない。Gateway 側は `gateway.runs.orchestratorCredentialEnv`、既定で同名の環境変数)。run API と、runId を申告する tools/call に HTTP ヘッダ `x-leisen-orchestrator-credential` で付ける。未設定なら開発用の既定値(`dev-only-orchestrator-credential`。Gateway も未設定で動いているときだけ通る)で動き、stderr に WARNING を1行出す。`NODE_ENV=production` では必須で、ないと固定文言で終了コード 2。値は表示・ログに出さない(`src/bin/credential-options.ts`) |
 | `--json` | Answer を JSON で出力する。回答を返せない失敗でも stdout に JSON を1つ出す(下記「leisen-ask の出力契約」) |
 
@@ -103,7 +103,7 @@ npx leisen-ask serve \
 | オプション | 既定 | 内容 |
 |---|---|---|
 | `--gateway <URL>` | (必須) | Gateway の MCP エンドポイント。ループバック以外は `https` 必須(`--allow-insecure-upstream` のときだけ例外)。資格情報・クエリ・フラグメントを含む URL は拒否(leisen-ask と同じ規則) |
-| `--config <deployment.yaml>` | (必須) | 探索の上限(`orchestrator.maxIterations` / `costLimitPerQuery`)、永続化不可のソースの判定(不変条件7)、Gateway のソースとの照合(下記)に使う。citedDocIds の記録方針は Gateway が run API でかけるため読まない(ADR-019 決定5)。読めない・不正なら終了コード 2 |
+| `--config <deployment.yaml>` | (必須) | 探索の上限(`orchestrator.maxIterations` / `costLimitPerQuery` / `runTimeoutSec`)、永続化不可のソースの判定(不変条件7)、Gateway のソースとの照合(下記)に使う。citedDocIds の記録方針は Gateway が run API でかけるため読まない(ADR-019 決定5)。読めない・不正なら終了コード 2 |
 | `--listen <ホスト:ポート>` | `127.0.0.1:8790`(環境変数 `LEISEN_LISTEN`) | 待ち受け。IPv6 は `[::1]:8790`。ループバック以外は `--confirm-exposed-host` が必要 |
 | `--path <パス>` | `/mcp` | MCP エンドポイントのパス(`/healthz` は不可) |
 | 環境変数 `LEISEN_ORCHESTRATOR_CREDENTIAL` | 開発用の既定値(WARNING) | Gateway と共有する Orchestrator の資格情報(leisen-ask と同じ規則。16 文字以上)。`ask` / `feedback` の Gateway クライアント(run API と runId を申告する tools/call)に付ける。preflight の `tools/list` には付けない。`NODE_ENV=production` では必須で、ないと固定文言で終了コード 2 |
@@ -115,7 +115,7 @@ npx leisen-ask serve \
 | `--allow-insecure-upstream` | なし(環境変数 `LEISEN_ALLOW_INSECURE_UPSTREAM=1`) | Gateway の URL(`--gateway`)と LLM のベース URL(`--llm-base-url`)の両方について、ループバック以外の `http` を許す(開発・評価用途)。`NODE_ENV=production` では固定文言で拒否して終了コード 2。有効時は平文 http の上流をホスト名だけで列挙した WARNING を起動ログに1行 |
 
 - リファレンス構成の LibreChat overlay(`deploy/compose/docker-compose.librechat.yml`)は、compose のネットワーク内の Gateway(`http://gateway:8787/mcp`)とホストの LM Studio(`http://host.docker.internal:1234/v1`)に平文の http で接続するため `--allow-insecure-upstream`(または `LEISEN_ALLOW_INSECURE_UPSTREAM=1`)を使う。平文の http では利用者のトークンと会話(利用者の権限で取得した文書の本文)が経路上で読めるので、本番では上流を https(またはループバック)にする
-- 起動ログ(stderr): `listening on …`、`deployment: …`、`gateway: <スキーム://ホスト:ポート>`(パス・クエリは出さない)、`run api: gateway (orchestrator credential: env LEISEN_ORCHESTRATOR_CREDENTIAL)`(開発用の既定値なら `development default` と WARNING を1行)、`limits: max-concurrent-runs=… max-question-chars=… max-iterations=…`、`llm: <プロバイダ> (model: …)`(`--allow-insecure-upstream` で平文の http の上流があるときは、そのホスト名を列挙した WARNING を1行)。トークン・API キー・Orchestrator の資格情報・環境変数の値は出さない
+- 起動ログ(stderr): `listening on …`、`deployment: …`、`gateway: <スキーム://ホスト:ポート>`(パス・クエリは出さない)、`run api: gateway (orchestrator credential: env LEISEN_ORCHESTRATOR_CREDENTIAL)`(開発用の既定値なら `development default` と WARNING を1行)、`limits: max-concurrent-runs=… max-question-chars=… max-iterations=… run-timeout=…s`、`llm: <プロバイダ> (model: …)`(`--allow-insecure-upstream` で平文の http の上流があるときは、そのホスト名を列挙した WARNING を1行)。トークン・API キー・Orchestrator の資格情報・環境変数の値は出さない
 - 終了コード: 0 停止の合図(SIGINT / SIGTERM)で正常に止まった、1 起動の拒否(不変条件7・公開境界・探索プロンプトがない・待ち受けの失敗。ポートが使用中なら `--listen`(`LEISEN_LISTEN`)での変え方を案内する)や停止時に進行中のリクエストが残った、2 引数・設定の不備(`--config` が読めない、`NODE_ENV=production` で `LEISEN_ORCHESTRATOR_CREDENTIAL` がない等)。`leisen-ask serve --help` で使い方
 - 停止: SIGINT / SIGTERM で受付を止め、進行中のリクエスト(run を含む)の応答を返し終えるまで最大 30 秒待つ。残ったものは接続を切って終了コード 1(2回目の合図は即時終了)
 - ライブラリとして組む場合は `createOrchestratorHttpServer({ orchestrator, gatewayUrl, orchestratorCredential, limits: new ServerLimits(...), sourcePolicy, feedbackTimeoutMs }, { path, maxBodyBytes, preflightTimeoutMs })`(`src/server/http.ts`)。`orchestratorCredential` を省くと Gateway の run API が拒否するので `ask` は失敗する。`sourcePolicy`(下記「Gateway のソースと --config の照合」)を省くと照合しない。`feedbackTimeoutMs` は feedback の申告の期限(既定 10 秒)。`ServerLimits` の `maxConcurrentFeedback`(既定 4)で feedback の同時実行数を変えられる
@@ -235,7 +235,7 @@ node packages/orchestrator/dist/bin/leisen-ask.js \
 - LM Studio はキー不要なので `--llm-api-key-env` は付けない(`Authorization` ヘッダを送らない)。キーを要求するサーバー(vLLM の `--api-key` 等)では、キーを環境変数に入れて `--llm-api-key-env その変数名` を付ける
 - `--llm-base-url` はループバック(`localhost` / `127.0.0.1` / `[::1]`)以外では `https` 必須(Gateway の URL と同じ規則。会話には取得した文書の本文が入る)。別のマシンの LM Studio / vLLM は https で公開するか、SSH のポート転送で localhost に向ける。開発・評価用途に限り `--allow-insecure-upstream` で平文の http を許せる(本番の `NODE_ENV=production` では拒否)
 - `--config`(探索の設定)と `--user-id`(照合用)は省略できる。`LEISEN_ORCHESTRATOR_CREDENTIAL` は手元の開発では省略できる(開発用の既定値。Gateway も未設定のときだけ通る)
-- ローカル推論は1ターンが遅いことがある。1リクエストのタイムアウトは 120 秒(`timeoutMs`)、run 全体の時間上限は `runTimeoutMs`(既定 120 秒)。上限に達すると、その時点の情報で回答を促す最終ターンを1回行う(警告に出る)
+- ローカル推論は1ターンが遅いことがある。1リクエストのタイムアウトは 120 秒(`timeoutMs`)、run 全体の時間上限は `runTimeoutMs`(既定 120 秒。`leisen-ask` / `leisen-ask serve` では deployment.yaml の `orchestrator.runTimeoutSec` で変える)。上限に達すると、その時点の情報で回答を促す最終ターンを1回行う(警告に出る)
 - 費用は価格表がないため「不明」と表示される(0 円とはみなさない)。`costLimitPerQuery` を設定していなければ探索は止まらない
 - 環境変数で指定する場合: `LEISEN_LLM_PROVIDER=openai-compatible LEISEN_LLM_BASE_URL=http://localhost:1234/v1 LEISEN_LLM_MODEL=<モデル名>`
 
@@ -472,4 +472,4 @@ node packages/orchestrator/dist/bin/dev-eval.js --label after -- \
 - **フィードバックの期間**: `feedback` は runId の発行から `gateway.runs.feedbackWindowSec`(既定 7 日)の間だけ Gateway が受け付け、過ぎると `run_not_accepted`。記録は Gateway の監査ストアに残るので `leisen-ask serve` の再起動では消えない。runId の署名鍵を入れ替えると(1 つ前の鍵も外すと)期限内の run の feedback も受け付けられなくなる
 - **iteration と T-014**: iteration は「run 内のツール呼び出しの通番」(describe を含む、並列呼び出しも個別に採番)。昇格判定レポート(T-014)の再検索回数は、2026-09-27 以降 run 内の `search` の ToolInvocation 件数(重複行を除き、(runId, userId) で束ねたもの)で数える。iteration は順序付けにのみ使う(ADR-017 確認事項4、docs/audit-queries.md §2)
 - **ストリーミングなし**: 途中経過の表示は T-009 で必要になった時点で検討する
-- **deployment.yaml との結合**: ライブラリの設定は自パッケージの zod スキーマで受ける。`leisen-ask`(`--config` は任意)と `leisen-ask serve`(必須)は `--config` の `orchestrator` セクション(`maxIterations` / `costLimitPerQuery`)を探索の設定に使う。それ以外の項目(`runTimeoutMs` 等)の結合は後続タスク。`runTimeoutMs` は Gateway の `gateway.runs.ttlSec`(既定 900 秒)より短くする必要があり、長ければ run ごとに短くして warnings に出す
+- **deployment.yaml との結合**: ライブラリの設定は自パッケージの zod スキーマで受ける。`leisen-ask`(`--config` は任意)と `leisen-ask serve`(必須)は `--config` の `orchestrator` セクション(`maxIterations` / `costLimitPerQuery` / `runTimeoutSec`)を探索の設定に使う(`runTimeoutSec` は秒で書き、`runTimeoutMs` に換算する)。それ以外の項目の結合は後続タスク。探索の時間上限は Gateway の `gateway.runs.ttlSec`(既定 900 秒)より短くする必要があり、長ければ run ごとに短くして warnings に出す。手元の LLM(LM Studio 等)で 1 手に数十秒かかる場合は、既定の 120 秒では長い本文を読む前に上限に達しうるので、`runTimeoutSec` を 300〜600 にする。呼び出し側(LibreChat の MCP の `timeout` 等)の待ち時間は「`runTimeoutSec` + 最終ターンの 60 秒」より長くする
