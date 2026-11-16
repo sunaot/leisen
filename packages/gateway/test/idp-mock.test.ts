@@ -209,10 +209,12 @@ describe("MockCredentialProvider", () => {
     await expect(redmine.getCredential(identity)).resolves.toEqual({
       kind: "api_key",
       apiKey: "test-key-alice",
+      expiresAt: 0,
     });
     await expect(redmine.getCredential({ ...identity, userId: "bob" })).resolves.toEqual({
       kind: "api_key",
       apiKey: "test-key-bob",
+      expiresAt: 0,
     });
     await expect(github.getCredential(identity)).resolves.toEqual({
       kind: "oauth_bearer",

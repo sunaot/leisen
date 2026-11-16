@@ -217,7 +217,7 @@ export class MockCredentialProvider implements CredentialProvider {
       );
     }
     if (this.credentialKind === "api_key") {
-      return { kind: "api_key", apiKey: token };
+      return { kind: "api_key", apiKey: token, expiresAt: 0 };
     }
     return { kind: "oauth_bearer", accessToken: token, expiresAt: this.now() + this.tokenLifetimeMs };
   }

@@ -9,7 +9,7 @@ const documentId = "issue-note:42:319";
 const noteUrl = `${baseUrl}issues/42#change-319`;
 
 function apiKeyAuth(userId: string): AuthContext {
-  return { userId, credential: { kind: "api_key", apiKey: `test-key-${userId}` } };
+  return { userId, credential: { kind: "api_key", apiKey: `test-key-${userId}`, expiresAt: 0 } };
 }
 
 function setup({ publicProject = true, privateIssue = false, privateNote = false } = {}) {
@@ -106,7 +106,19 @@ it("rejects an empty API key before contacting Redmine", async () => {
   const { connector, fetchImpl } = setup();
   await expect(connector.search({
     userId: "alice",
-    credential: { kind: "api_key", apiKey: "" },
+    credential: { kind: "api_key", apiKey: "", expiresAt: 0 },
   }, query)).rejects.toMatchObject({ errorClass: "invalid_request" });
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["過去の失効時刻", 1],
+  ["有限でない失効時刻", Number.NaN],
+])("rejects an API key with %s as auth_expired before contacting Redmine (ADR-024)", async (_label, expiresAt) => {
+  const { connector, fetchImpl } = setup();
+  await expect(connector.search({
+    userId: "alice",
+    credential: { kind: "api_key", apiKey: "test-key-alice", expiresAt },
+  }, query)).rejects.toMatchObject({ errorClass: "auth_expired" });
   expect(fetchImpl).not.toHaveBeenCalled();
 });

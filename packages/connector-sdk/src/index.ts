@@ -33,10 +33,13 @@ export type Credential =
     }
   | {
       readonly kind: "api_key";
-      /** ソース固有 API キー。ログ出力禁止。 */
+      /** ソース固有の個人 API キー(ADR-024)。ログ出力禁止(不変条件6) */
       readonly apiKey: string;
-      /** 失効時刻(epoch ms)。固定 API キーなど、期限不明なら省略 */
-      readonly expiresAt?: number;
+      /**
+       * キーの失効時刻(epoch ms)。oauth_bearer と同じく 0 以下は「失効時刻不明」で、
+       * 期限のない固定キーは 0 を入れる(ADR-016 追補3、ADR-024)
+       */
+      readonly expiresAt: number;
     }
   | {
       readonly kind: "delegated_identity";

@@ -70,7 +70,7 @@ describe("CredentialCache", () => {
     expect(calls).toBe(2);
   });
 
-  it("api_key の expiresAt があればそちらで、なければ TTL だけで失効する(ADR-024)", async () => {
+  it("api_key の expiresAt があればそちらで、0(不明)なら TTL だけで失効する(ADR-024)", async () => {
     const clock = fakeClock();
     const cache = new CredentialCache({ ttlMs: 60_000, expirySafetyMarginMs: 100, now: clock.now });
     let calls = 0;
@@ -86,7 +86,7 @@ describe("CredentialCache", () => {
     let plainCalls = 0;
     const withoutExpiry = async (): Promise<Credential> => {
       plainCalls++;
-      return { kind: "api_key", apiKey: `key-${plainCalls}` };
+      return { kind: "api_key", apiKey: `key-${plainCalls}`, expiresAt: 0 };
     };
     await cache.getOrLoad("bob", "redmine", withoutExpiry);
     clock.advance(59_999);

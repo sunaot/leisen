@@ -451,10 +451,12 @@ export class RedmineConnector implements Connector {
     if (credential.kind !== "api_key" || credential.apiKey.trim() === "") {
       throw new ConnectorError("invalid_request", "Redmine connector requires an api_key credential");
     }
-    if (
-      credential.expiresAt !== undefined &&
-      (!Number.isFinite(credential.expiresAt) || credential.expiresAt <= Date.now())
-    ) {
+    // 失効時刻は有限の epoch ms であること(NaN / ±Infinity は失効扱い)。0 以下は
+    // 「失効時刻不明」(期限のない固定キー。ADR-016 追補3、ADR-024)で、判定せず Redmine の 401 に委ねる
+    if (!Number.isFinite(credential.expiresAt)) {
+      throw new ConnectorError("auth_expired", "Redmine API key has no valid expiry time");
+    }
+    if (credential.expiresAt > 0 && credential.expiresAt <= Date.now()) {
       throw new ConnectorError("auth_expired", "Redmine API key is expired");
     }
     const url = new URL(path, this.baseUrl);

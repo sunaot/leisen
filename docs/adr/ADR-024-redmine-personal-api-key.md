@@ -21,7 +21,7 @@ connector-sdk の `Credential` は `oauth_bearer` と `delegated_identity` だ�
 
 ## 決定
 
-1. **`Credential` に `api_key` を加える(connector-sdk v0.5)。** `{ kind: "api_key", apiKey, expiresAt? }`。`apiKey` はログ出力禁止で、`redactAuthContext()` は kind だけを残す。`expiresAt` を省略した(または 0 以下の)資格情報は、Gateway の資格情報キャッシュで設定 TTL だけで失効させる(ADR-016 追補 2026-11-14 の「失効時刻不明」と同じ扱い)。コネクタ共通 IF の変更として本 ADR に記録する(不変条件 5)
+1. **`Credential` に `api_key` を加える(connector-sdk v0.5)。** `{ kind: "api_key", apiKey, expiresAt }`。`apiKey` はログ出力禁止で、`redactAuthContext()` は kind だけを残す。`expiresAt` は `oauth_bearer` と同じ取り決めにそろえて必須とし、0 以下を「失効時刻不明」とする(ADR-016 追補3)。期限のない固定キーは 0 を入れ、Gateway の資格情報キャッシュは設定 TTL だけで失効させる。起案時は省略可としていたが、同じ概念の表し方が 2 通りになるため改めた(2026-11-16)。コネクタ共通 IF の変更として本 ADR に記録する(不変条件 5)
 2. **`AuthMethod` に新しい分類は加えない。** `AuthMethod` は ADR-010 / ADR-022 の「資格情報をどう得るか」の分類で、今回の取得経路は開発用の `mock_env` だけである。`mock_env` に `credentialKind`(`oauth_bearer` / `api_key`、既定 `oauth_bearer`)を加え、モックが返す資格情報の形式だけを選べるようにする。起案時の `api_key_individual` は採らない
 3. **本番の経路はこの ADR の範囲外とし、別の ADR で決める。** 本 ADR で使えるのは開発用の `mock_env`(`NODE_ENV=production` では起動時に拒否)だけである。候補は「残る確認事項」に記す
 4. **Redmine コネクタは読み取り専用の `search` / `fetch` / `list` / `describe` に限る。** 本人の資格情報で Redmine API を呼び、アクセス可否の判断や ACL の複製は行わない。キーは `X-Redmine-API-Key` ヘッダーでだけ送り、URL のクエリ・ログ・エラー文・監査本文に含めない。リダイレクトは追従しない。`search` は `/search.json` の Issue・Issue のノート・Wiki ページを返し、ノートは親 Issue を本人のキーで取得して `journals` に含まれる場合に限って返す(直接の `fetch` も同じ検査を通す)。`list` は本人に見えるプロジェクトを列挙する。プロジェクトの公開状態と Issue・ノートの非公開フラグを `scope` に反映し、Gateway の既定 `privateScopes: excluded` で非公開のものを除く
