@@ -146,7 +146,9 @@ describe("e2e(Anthropic 経路・モック Messages API)", () => {
     expect(mock.requests).toHaveLength(3);
     const first = mock.requests[0];
     expect(first?.path).toBe("/v1/messages");
-    expect(first?.hasApiKey).toBe(true);
+    // SDK 1.x は API キーを Authorization: Bearer で送る(0.x の x-api-key から変わった)
+    expect(first?.hasAuthorization).toBe(true);
+    expect(first?.hasApiKey).toBe(false);
     expect(first?.anthropicVersion).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(first?.anthropicBeta).toBeUndefined(); // server-side fallbacks は既定 off
     expect(first?.body).toMatchObject({
