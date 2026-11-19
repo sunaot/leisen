@@ -282,7 +282,7 @@ export class RedmineConnector implements Connector {
     };
   }
 
-  async fetch(auth: AuthContext, documentId: string): Promise<FetchResult> {
+  async fetch(auth: AuthContext, documentId: string, pageCursor?: string): Promise<FetchResult> {
     const noteMatch = /^issue-note:([1-9]\d{0,11}):([1-9]\d{0,11})$/.exec(documentId);
     if (noteMatch) {
       const issueId = Number(noteMatch[1]);
@@ -309,11 +309,22 @@ export class RedmineConnector implements Connector {
     const issueMatch = /^issue:(\d{1,12})$/.exec(documentId);
     if (issueMatch) {
       const id = Number(issueMatch[1]);
-      const issue = await this.issue(auth, id);
+      const offset = cursorOffset(pageCursor);
+      const issue = await this.issue(auth, id, true);
       if (!issue) throw new ConnectorError("not_found", "Redmine issue is not available");
       const title = string(issue.subject) ?? `Issue #${id}`;
       const projectId = finiteInt(record(issue.project)?.id);
       const project = projectId === undefined ? undefined : await this.project(auth, String(projectId));
+      // Redmine standard search returns the parent issue when a journal matches.
+      // Keep individual note IDs so the caller can fetch and cite a matching note.
+      const journals = Array.isArray(issue.journals)
+        ? issue.journals.flatMap((entry) => {
+            const journal = record(entry);
+            const noteId = finiteInt(journal?.id);
+            const notes = safeText(journal?.notes);
+            return noteId !== undefined && notes ? [{ noteId, notes, privateNotes: journal?.private_notes }] : [];
+          })
+        : [];
       const content = [
         `# ${title}`,
         `Project: ${string(record(issue.project)?.name) ?? "(unknown)"}`,
@@ -321,13 +332,22 @@ export class RedmineConnector implements Connector {
         `Updated: ${string(issue.updated_on) ?? "(unknown)"}`,
         "",
         safeText(issue.description),
+        ...journals.map((journal) => [
+          "",
+          `## Note #${journal.noteId}`,
+          `documentId: ${issueNoteDocumentId(id, journal.noteId)}`,
+          `URL: ${this.webUrl(`issues/${id}#change-${journal.noteId}`)}`,
+          journal.notes,
+        ].join("\n")),
       ].join("\n");
       return {
         documentId,
         title: `Issue #${id}: ${title}`,
-        content: content.slice(0, 100_000),
+        content: content.slice(offset, offset + 100_000),
+        ...(offset + 100_000 < content.length ? { nextPageCursor: encodedCursor(offset + 100_000) } : {}),
         url: this.webUrl(`issues/${id}`),
-        scope: issue.is_private === true || project?.is_public !== true ? "private" : "shared",
+        scope: issue.is_private === true || project?.is_public !== true ||
+          journals.some((journal) => journal.privateNotes !== false) ? "private" : "shared",
       };
     }
     const wiki = decodeWikiDocumentId(documentId);

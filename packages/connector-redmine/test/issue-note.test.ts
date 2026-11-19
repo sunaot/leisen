@@ -12,7 +12,13 @@ function apiKeyAuth(userId: string): AuthContext {
   return { userId, credential: { kind: "api_key", apiKey: `test-key-${userId}`, expiresAt: 0 } };
 }
 
-function setup({ publicProject = true, privateIssue = false, privateNote = false } = {}) {
+function setup({
+  publicProject = true,
+  privateIssue = false,
+  privateNote = false,
+  standardSearch = false,
+  notes = noteText,
+} = {}) {
   const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
@@ -27,7 +33,9 @@ function setup({ publicProject = true, privateIssue = false, privateNote = false
         expect(url.searchParams.get("q")).toBe(query);
         return Response.json({
           // Simulate an index hit that still needs to be checked against the issue API.
-          results: [
+          results: standardSearch ? [
+            { id: 42, type: "issue", title: "Overlay support", description: "Issue description" },
+          ] : [
             { id: 108, type: "attachment", title: "overlay.patch" },
             {
               id: 319,
@@ -37,18 +45,18 @@ function setup({ publicProject = true, privateIssue = false, privateNote = false
               description: "Excerpt from the search index",
             },
           ],
-          total_count: 2,
+          total_count: standardSearch ? 1 : 2,
         });
       case "/redmine/issues/42.json":
-        expect(url.searchParams.get("include")).toBe("journals");
+        if (!standardSearch) expect(url.searchParams.get("include")).toBe("journals");
         return Response.json({
           issue: {
             id: 42,
             subject: "Overlay support",
             project: { id: 7 },
             is_private: privateIssue,
-            journals: key === "test-key-alice"
-              ? [{ id: 319, notes: noteText, private_notes: privateNote }]
+            journals: url.searchParams.get("include") !== "journals" ? [] : key === "test-key-alice"
+              ? [{ id: 319, notes, private_notes: privateNote }]
               : [{ id: 320, notes: "Another visible note", private_notes: false }],
           },
         });
@@ -79,6 +87,48 @@ it.each([
     content: noteText,
     url: noteUrl,
     scope,
+  });
+});
+
+it("follows a standard search issue hit to its notes and then to an anchored note", async () => {
+  const { connector } = setup({ standardSearch: true });
+  const auth = apiKeyAuth("alice");
+  const search = await connector.search(auth, query);
+  expect(search.hits[0]?.documentId).toBe("issue:42");
+  const issue = await connector.fetch(auth, search.hits[0]!.documentId);
+  expect(issue.content).toContain(noteText);
+  expect(issue.content).toContain(`documentId: ${documentId}`);
+  expect(issue.content).toContain(noteUrl);
+  expect(issue.scope).toBe("shared");
+  await expect(connector.fetch(auth, documentId)).resolves.toMatchObject({
+    content: noteText, url: noteUrl,
+  });
+});
+
+it("returns only journals visible to the user when fetching the parent issue", async () => {
+  const { connector } = setup({ standardSearch: true, privateNote: true });
+  const alice = await connector.fetch(apiKeyAuth("alice"), "issue:42");
+  expect(alice.content).toContain(noteText);
+  expect(alice.scope).toBe("private");
+  const bob = await connector.fetch(apiKeyAuth("bob"), "issue:42");
+  expect(bob.content).not.toContain(noteText);
+  expect(bob.content).not.toContain(documentId);
+  expect(bob.content).toContain("Another visible note");
+  expect(bob.scope).toBe("shared");
+});
+
+it("paginates long issue histories so later notes remain accessible", async () => {
+  const notes = "x".repeat(100_000) + " end of note";
+  const { connector } = setup({ standardSearch: true, notes });
+  const auth = apiKeyAuth("alice");
+  const first = await connector.fetch(auth, "issue:42");
+  expect(first.content).toHaveLength(100_000);
+  expect(first.nextPageCursor).toBe("offset:100000");
+  const second = await connector.fetch(auth, "issue:42", first.nextPageCursor);
+  expect(first.content + second.content).toContain(notes);
+  expect(second.nextPageCursor).toBeUndefined();
+  await expect(connector.fetch(auth, "issue:42", "bad-cursor")).rejects.toMatchObject({
+    errorClass: "invalid_request",
   });
 });
 

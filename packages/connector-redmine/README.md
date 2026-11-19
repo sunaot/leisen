@@ -12,6 +12,7 @@ Redmine REST API 用の読み取り専用プロトタイプです。検索は `/
 
 - `search`: `/search.json` の Issue / Wiki 結果と、`redmine_full_text_search` が返す `issue-note` に対応します。ノートは親 Issue の journals に含まれる場合に返します。検索フィルタは未対応です。
 - `fetch`: `issue:<id>`、`issue-note:<issueId>:<noteId>` または `wiki:<project>/<page>` の本文。最大 100,000 文字。ノートの出典は `#change-<noteId>` にリンクし、プロジェクト、Issue、ノートの公開状態を `scope` に反映します。
+- 標準検索が親 Issue を返した場合も、Issue の fetch に本人が閲覧できるノート本文・ノートの documentId・直リンクを含めます。Issue と履歴が長い場合は `nextPageCursor` で続きを取得できます。非公開または公開状態不明のノートを含む応答全体は `private` に分類します。
 - `list`: 利用者が見られる project 一覧。project が公開かどうかと Issue の `is_private` を `scope` に反映し、Gateway の既定 `privateScopes: excluded` で非公開 project / Issue を除外します。
 - 検索 1 回につき、ヒットごとに Issue とプロジェクトを取得します。`limit` を大きくすると Redmine のレート制限に当たりやすくなります。
 - `describe`: 上位 project のみ表示。検索層 ingest、書き込み操作、添付ファイル取得はありません。
