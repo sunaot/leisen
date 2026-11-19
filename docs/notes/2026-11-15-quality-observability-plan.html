@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>品質の観測計画</title>
+<meta name="description" content="leisen を単体で評価できるコンポーネントの集合として整理し、現行設計の評価方法、観測対象とする品質特性、観測手段、可視化手段を選択肢の比較とともにまとめた企画。">
+<style>
+/* 配色は OKLCH で設計し HEX で記す。コントラスト比は WCAG 2.x の式で計算した値(対 背景 / 対 面)。 */
+:root {
+  --bg:      #fbfaf7; /* oklch(0.985 0.004 90) 背景 */
+  --surface: #f3f2ed; /* oklch(0.96 0.006 90) 注記・表頭の面 */
+  --text:    #1f2227; /* oklch(0.25 0.010 260) 本文: 15.28 / 14.23 */
+  --muted:   #535861; /* oklch(0.46 0.015 260) 補助テキスト: 6.85 / 6.38 */
+  --rule:    #ced1d6; /* oklch(0.86 0.008 260) 装飾の罫線(意味を持つ線には使わない) */
+  --main:    #133de3; /* oklch(0.47 0.25 265) メイン: 7.17 / 6.68、対 サブ面 6.30 */
+  --sub:     #deedff; /* oklch(0.94 0.03 255) サブ(面): 背景との L 差 4.5 */
+  --accent:  #c90000; /* oklch(0.52 0.22 30) アクセント: 5.78 / 5.38。メインと色相差 125° */
+  --cat2:    #006f50; /* oklch(0.47 0.12 170) 色分け2: 5.94 / 5.53。メインと色相差 95° */
+  --cat3:    #834e00; /* oklch(0.47 0.14 80) 色分け3: 6.59 / 6.13。cat2 と色相差 90° */
+  --font: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:      #13161b; /* oklch(0.20 0.010 260) */
+    --surface: #1e2228; /* oklch(0.25 0.012 260) */
+    --text:    #e1e5ea; /* oklch(0.92 0.008 260) 本文: 14.33 / 12.62 */
+    --muted:   #a4abb8; /* oklch(0.74 0.020 260) 補助: 7.85 / 6.92 */
+    --rule:    #3f4349; /* oklch(0.38 0.012 260) */
+    --main:    #71b4ff; /* oklch(0.76 0.14 255) メイン: 8.35 / 7.36、対 サブ面 5.65 */
+    --sub:     #1a3658; /* oklch(0.33 0.07 255) サブ(面): 背景との L 差 13 */
+    --accent:  #ff7f6c; /* oklch(0.74 0.16 30) アクセント: 7.34 / 6.47 */
+    --cat2:    #52caa5; /* oklch(0.76 0.12 170) 色分け2: 8.94 / 7.87 */
+    --cat3:    #dca744; /* oklch(0.76 0.13 80) 色分け3: 8.33 / 7.34 */
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:      #13161b; /* oklch(0.20 0.010 260) */
+  --surface: #1e2228; /* oklch(0.25 0.012 260) */
+  --text:    #e1e5ea; /* oklch(0.92 0.008 260) 本文: 14.33 / 12.62 */
+  --muted:   #a4abb8; /* oklch(0.74 0.020 260) 補助: 7.85 / 6.92 */
+  --rule:    #3f4349; /* oklch(0.38 0.012 260) */
+  --main:    #71b4ff; /* oklch(0.76 0.14 255) メイン: 8.35 / 7.36、対 サブ面 5.65 */
+  --sub:     #1a3658; /* oklch(0.33 0.07 255) サブ(面): 背景との L 差 13 */
+  --accent:  #ff7f6c; /* oklch(0.74 0.16 30) アクセント: 7.34 / 6.47 */
+  --cat2:    #52caa5; /* oklch(0.76 0.12 170) 色分け2: 8.94 / 7.87 */
+  --cat3:    #dca744; /* oklch(0.76 0.13 80) 色分け3: 8.33 / 7.34 */
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 16px; line-height: 1.85;
+  -webkit-text-size-adjust: 100%;
+}
+.page { max-width: 50em; margin: 0 auto; padding-block: 3rem 5rem; padding-left: max(1.25rem, env(safe-area-inset-left, 0px)); padding-right: max(1.25rem, env(safe-area-inset-right, 0px)); }
+p, ul, ol, dl, blockquote { max-width: 40em; }
+h1, h2, h3, h4 { font-weight: 700; line-height: 1.5; margin: 0; text-wrap: balance; }
+h1 { font-size: 1.6rem; margin-bottom: .4rem; }
+h2 { font-size: 1.25rem; margin-top: 3.2rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+h3 { font-size: 1.05rem; margin-top: 2rem; }
+h4 { font-size: 1rem; margin-top: 1.4rem; font-weight: 500; }
+h2 .n, h3 .n { color: var(--main); font-variant-numeric: tabular-nums; margin-right: .6em; font-weight: 500; }
+p { margin: .9em 0; }
+ul, ol { padding-left: 1.5em; margin: .7em 0; }
+li { margin: .25em 0; }
+a { color: var(--main); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+strong { font-weight: 700; }
+em { font-style: normal; font-weight: 500; }
+code { font-family: var(--mono); font-size: .9em; }
+.lead { color: var(--muted); font-size: .95rem; margin-top: 0; }
+.meta { font-size: .85rem; color: var(--muted); margin: 0 0 2.5rem; line-height: 1.7; }
+.meta span + span::before { content: " · "; }
+.note { font-size: .88rem; color: var(--muted); padding-left: 1.1em; border-left: 2px solid var(--rule); margin: 1em 0; line-height: 1.75; }
+.toc { font-size: .9rem; margin: 1.5rem 0 0; }
+.toc ol { list-style: none; padding-left: 0; counter-reset: toc; }
+.toc li { counter-increment: toc; margin: .15em 0; }
+.toc li::before { content: counter(toc) " "; color: var(--main); font-variant-numeric: tabular-nums; margin-right: .4em; }
+.toc a { text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+dl { margin: .8em 0; }
+dt { font-weight: 700; margin-top: .9em; }
+dd { margin: .1em 0 0 1.2em; }
+
+/* 図 */
+figure { margin: 1.8rem 0; }
+figure .fig { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+figure .fig svg { display: block; width: 100%; min-width: 700px; height: auto; font-family: var(--font); }
+figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; line-height: 1.7; }
+figcaption b { color: var(--text); font-weight: 700; margin-right: .5em; }
+svg text { fill: var(--text); font-size: 13px; }
+svg .s { font-size: 11.5px; fill: var(--muted); }
+svg .t { font-size: 13.5px; font-weight: 700; }
+svg .mt { fill: var(--main); font-weight: 700; }
+svg .at { fill: var(--accent); font-weight: 700; }
+svg .box { fill: var(--bg); stroke: var(--muted); stroke-width: 1.2; }
+svg .box.sub { fill: var(--sub); stroke: var(--main); }
+svg .box.hl { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+svg .box.dash { stroke-dasharray: 4 3; }
+svg .ln { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+svg .ln.m { stroke: var(--main); stroke-width: 1.6; }
+svg .ln.dash { stroke-dasharray: 5 4; }
+svg .ln.c2 { stroke: var(--cat2); stroke-width: 1.6; }
+svg .ln.c3 { stroke: var(--cat3); stroke-width: 1.6; stroke-dasharray: 6 3; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+svg .dot { fill: var(--main); }
+svg .dot.o { fill: var(--bg); stroke: var(--main); stroke-width: 1.6; }
+svg .dot.h { fill: var(--sub); stroke: var(--main); stroke-width: 1.4; }
+svg .dot.sq { fill: var(--cat3); }
+svg .arr { fill: var(--muted); }
+svg .arr.m { fill: var(--main); }
+svg .arr.c2 { fill: var(--cat2); }
+svg .arr.c3 { fill: var(--cat3); }
+
+/* 表 */
+figure.tblfig .tbl { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; line-height: 1.65; }
+th, td { text-align: left; vertical-align: top; padding: .5em .7em; border-bottom: 1px solid var(--rule); }
+thead th { border-bottom: 1.5px solid var(--muted); font-weight: 700; white-space: nowrap; }
+tbody th { font-weight: 500; white-space: nowrap; }
+td.c { text-align: center; white-space: nowrap; }
+.mark { font-weight: 700; }
+.mark.ng { color: var(--accent); }
+table small { display: block; color: var(--muted); font-size: .82rem; white-space: normal; }
+table.wide th:first-child, table.wide td:first-child { min-width: 9em; }
+table.cmp { min-width: 740px; }
+table.opt { min-width: 720px; }
+table.opt th:first-child, table.opt td:first-child { width: 6.5em; min-width: 6.5em; }
+.ok { font-weight: 700; color: var(--cat2); }
+pre { font-family: var(--mono); font-size: .85rem; line-height: 1.6; background: var(--surface); padding: .8em 1em; overflow-x: auto; max-width: 40em; margin: .8em 0; }
+svg .cc { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; }
+svg .ce { fill: var(--sub); stroke: var(--main); stroke-width: 1.2; }
+svg .cx { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+svg .cb { fill: var(--bg); stroke: var(--cat3); stroke-width: 1.6; stroke-dasharray: 4 3; }
+table.cmp th:first-child, table.cmp td:first-child { width: 8.5em; min-width: 8.5em; }
+table.cmp thead th { white-space: normal; }
+table.req { min-width: 760px; }
+
+.refs { font-size: .86rem; line-height: 1.7; }
+.refs ol { padding-left: 2em; }
+.refs li { margin: .35em 0; word-break: break-word; }
+
+svg .gap { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+svg tspan.s { font-size: 11.5px; fill: var(--muted); }
+table.num td { font-variant-numeric: tabular-nums; }
+table.cmp.opt th:first-child, table.cmp.opt td:first-child { width: 3em; min-width: 3em; }
+.tag { display: inline-block; font-size: .75rem; font-weight: 500; color: var(--main); border: 1px solid var(--main); padding: 0 .35em; line-height: 1.5; white-space: nowrap; }
+th.grp { background: var(--surface); font-weight: 700; }
+th[rowspan] { white-space: normal; }
+
+@media (max-width: 600px) {
+  body { font-size: 15.5px; }
+  .page { padding-block: 2rem 4rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1 { font-size: 1.4rem; }
+  tbody th { white-space: normal; }
+}
+@media print {
+  html, body { background: #fff; color: #000; }
+  .page { max-width: none; padding: 0; }
+  a { color: #000; }
+  h2 { break-after: avoid; }
+  figure { break-inside: avoid; }
+  .fig, .tbl { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+<header>
+  <h1>品質の観測計画</h1>
+  <p class="lead">leisen を、単体で実行・評価できるコンポーネントの集合として整理し、コンポーネント単位で品質を計測しながら改善できるようにするための企画である。現行設計の評価方法、観測対象とする品質特性、観測手段、可視化手段について、それぞれ選択肢を比較し、推奨案をまとめる。</p>
+  <p class="meta"><span>Leisen 検討ドキュメント</span><span>2026-11-15</span><span>状態: 企画(設計判断ではない。決定が必要な事項は ADR として起票する)</span><span>対象: リポジトリ全体(main 相当、2026-11-15 時点)</span></p>
+  <nav class="toc" aria-label="目次">
+    <ol>
+      <li><a href="#summary">結論の要約</a></li>
+      <li><a href="#model">設計要件、用語定義、コンポーネント構成</a></li>
+      <li><a href="#questions">意思決定が必要な論点</a></li>
+      <li><a href="#diagnosis">現状の評価</a></li>
+      <li><a href="#aspects">観測対象: 品質特性と指標</a></li>
+      <li><a href="#method">評価方法</a></li>
+      <li><a href="#means">観測手段</a></li>
+      <li><a href="#timing">時間に関する指標: タイムアウトとターンアラウンドタイム</a></li>
+      <li><a href="#instrumentation">計装の実現方式</a></li>
+      <li><a href="#viz">可視化手段</a></li>
+      <li><a href="#baseline">ベースライン計測(2026-11-15)</a></li>
+      <li><a href="#plan">実施計画</a></li>
+      <li><a href="#stress">推奨案の妥当性検証</a></li>
+      <li><a href="#open">前提と未検証事項</a></li>
+    </ol>
+  </nav>
+</header>
+
+<section id="summary">
+  <h2><span class="n">1</span>結論の要約</h2>
+  <ul>
+    <li><strong>評価単位は 13 コンポーネントとする。いずれも単体で実行する手段をすでに備えている。</strong>モック IdP、開発用コネクタ、LLM のスタブ、GitHub API のフェイクが整備されており、コンポーネントを分離して検証する基盤はある。不足しているのは、各コンポーネントに共通の指標を適用する仕組みである。</li>
+    <li><strong>現在計測できているのは、不変条件と機能の正しさに偏っている。</strong>不変条件の検査、監査ログ、1,747 件のテストは充実している。一方、運用時の性能と信頼性は監査ログの <code>latencyMs</code> と <code>errorClass</code> のみ、内部品質は型検査と 2 つの import 境界検査のみ、回答品質は合成コーパス 7 文書に対する 20 問のみで計測している。</li>
+    <li><strong>品質特性は 4 カテゴリに整理する。</strong>不変条件(合否判定)、回答品質、運用品質(性能・信頼性)、内部品質(保守性・テスト容易性)である。ISO/IEC 25010 は対応表として参照し、指標体系そのものには採用しない。</li>
+    <li><strong>評価は、CI で実行する適応度関数と、プラグイン境界ごとの適合性テストスイートを基盤とする。</strong>回答品質は評価ハーネス(dev-eval を T-008 に拡張)で計測し、シナリオベースのアーキテクチャレビューは四半期ごとに人手で実施する。</li>
+    <li><strong>稼働時の記録は、求められる性質ごとに 3 種類に分ける。</strong>監査ログ(証跡に限定する)、利用ログ(新設。run の結果と利用者フィードバック。回答品質と利用状況の指標に用いる)、構造化運用ログ(新設。運用品質の指標に用いる)である。これに、ADR-011 で決定済みの分離テレメトリを加えた 4 系統を観測経路とする。記録どうしを導出し合わず、指標の算出に監査ログを用いない。OpenTelemetry と Prometheus はコアに組み込まず、構造化運用ログからのブリッジとして contrib に置く。</li>
+    <li><strong>可視化は静的レポートを標準とする。</strong>開発時は CI のジョブサマリとリポジトリ内のスコアカード、運用時は JSONL から HTML を生成する CLI(昇格判定レポートと同じ方式)を用いる。Grafana などによる常時監視は、compose の overlay として任意で追加する構成とする。</li>
+    <li><strong>時間に関する指標を、タイムアウト設定と対応付けて計測する。</strong>コード上には 13 種類の期限設定があり、実装方式と超過時のエラー分類が統一されていない。スパン別の所要時間の基本統計量、タイムアウト使用率、タイムアウト超過率、ターンアラウンドタイムとその内訳を指標として追加した(<a href="#timing">8 章</a>)。</li>
+    <li><strong>計装はコアロジックの外側に配置する。</strong>計測は横断的関心事であるため、ポートに対する計測デコレーターと、リクエスト単位のミドルウェアを構成処理で適用し、コアロジックは計測用のモジュールを import しない構造を推奨する。監査ログの記録は不変条件 2 に基づくコアの責務であり、計測とは区別して扱う(<a href="#instrumentation">9 章</a>)。</li>
+    <li><strong>可視化は、閲覧するロールごとにレポートを分ける。</strong>ロールは、参照できる観測経路が異なる単位として、導入企業側に 4、OSS 側に 2 を定め、関心事項とアクセス制御に基づいて 5 種類のレポートに整理した(<a href="#roles">10 章</a>)。この検討により、品質カテゴリには含まれない利用状況指標(利用率、利用量、コスト)と、可用性、保持期間の遵守などの指標を追加した。</li>
+    <li><strong>最初に着手するのは、指標定義表とスコアカード v0、および構造化運用ログの ADR である。</strong>本日時点の計測値を <a href="#baseline">11 章</a>に示す。構造化運用ログと分離テレメトリは不変条件 3・6・7 に関わる新しい出力経路であるため、実装前に ADR を起票する。</li>
+  </ul>
+</section>
+
+<section id="model">
+  <h2><span class="n">2</span>設計要件、用語定義、コンポーネント構成</h2>
+  <p>選択肢を比較する前に、計測基盤自体が満たすべき設計要件を定める。以降の選択肢は、この 5 項目を基準に評価する。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>要件</th><th>内容</th><th>根拠(将来の変更に対して修正範囲を限定できる点)</th></tr></thead>
+        <tbody>
+          <tr><th>R1 計測経路が不変条件に違反しない</th><td>計測経路には、未認可候補とその件数、秘密情報、Slack 由来のデータを出力しない。運用ルールやレビューに依存せず、出力スキーマに該当するフィールドを定義しないことで構造的に防止する。</td><td>指標を追加するたびに不変条件 3・6・7 への適合を個別にレビューする必要がなくなる。</td></tr>
+          <tr><th>R2 コンポーネント単体で同一の指標を取得できる</th><td>コンポーネントを単体で実行した場合と、システム全体に組み込んで実行した場合とで、同じ名称・同じ定義の指標が得られる。</td><td>コネクタの内部実装をネイティブ検索から検索層へ置き換える際(Phase 2)、置き換えの前後を同一の指標で比較できる。</td></tr>
+          <tr><th>R3 指標定義の一元管理と書き込み主体の単一化</th><td>指標の定義は 1 か所で管理する。各経路の書き込み主体は 1 つに限定する(監査ログの書き込みを Gateway に一本化した方針と同じ)。</td><td>定義を変更する際、集計処理とレポート処理を個別に修正する必要がなくなる。</td></tr>
+          <tr><th>R4 追加のインフラストラクチャを前提としない</th><td>標準の出力先はファイル、標準の集計手段は CLI とする。ログ収集基盤や監視基盤の利用は導入先の選択に委ねる。</td><td>1 デプロイ = 1 社で、運用は導入企業が担う。特定の基盤を前提にすると、個社差分がコアに混入する(不変条件 8)。</td></tr>
+          <tr><th>R5 開発時と運用時で指標定義を共通化する</th><td>dev-eval が出力する指標と、本番の監査ログから算出する指標を、同一の定義にそろえる。</td><td>プロンプトやモデルを変更した際、開発環境の結果から本番での変化を見積もることができる。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3 id="terms">用語定義</h3>
+  <p>本計画では、既存の語彙では表せない概念を次のとおり導入する。いずれも計測対象、計測経路、成果物を区別するために必要なものであり、合意した時点でプロジェクト共通の用語として設計書に登録する。「不変条件」「監査ログ」「分離テレメトリ」「プラグイン境界」「run」は既存の定義(CLAUDE.md、ADR-005、ADR-011、ADR-019)のまま用いる。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>用語</th><th>定義</th><th>既存の語彙との関係・区別</th></tr></thead>
+        <tbody>
+          <tr><th>コンポーネント</th><td>品質を計測・評価する単位。単一の責務を持ち、単体で実行・検証する手段を備えたパッケージまたはその下位ディレクトリを指す。本計画では P1〜P13 の 13 個を定める。</td><td>パッケージ(ビルドと配布の単位)とは一致しない。1 つのパッケージが複数のコンポーネントを含む場合がある(例: gateway は P3〜P6、P8)。</td></tr>
+          <tr><th>インターフェース契約</th><td>プラグイン境界において、すべての実装が満たすべき取り決め。入出力の形式、エラー分類、および不変条件に由来する振る舞い(例: 権限のない文書と存在しない文書とで応答を区別できないこと)から成る。</td><td>不変条件はシステム全体で常に成立すべき性質であり、インターフェース契約はそれを特定の境界における検証可能な振る舞いとして規定したものである。</td></tr>
+          <tr><th>品質カテゴリ</th><td>指標を、評価方法の違いによって分類した 4 区分。<br>不変条件: CLAUDE.md の不変条件への適合。合否で判定する。<br>回答品質: 質問に対して、正確で出典を伴う回答を返す能力。<br>運用品質: 稼働時の性能と信頼性。<br>内部品質: 保守性とテスト容易性。</td><td>ISO/IEC 25010 の品質特性を本プロジェクト向けに集約したもの(対応は 5 章)。</td></tr>
+          <tr><th>指標定義表</th><td>指標の名称、定義、品質カテゴリ、対象コンポーネント、観測経路を一元管理する表。集計処理とレポートは、この表のみを参照する(要件 R3)。</td><td>新設。現在は、dev-eval、昇格判定レポート、docs/audit-queries.md がそれぞれ個別に定義を持っている。</td></tr>
+          <tr><th>観測経路</th><td>稼働中のプロセスが計測データを出力する系統。スキーマ、書き込み主体、保持期間、アクセス制御の組によって定義する。本計画では、監査ログ、利用ログ、構造化運用ログの 3 種類の記録と、分離テレメトリの 4 系統とする。</td><td>docs/install.md §7.1 の出力規則(stdout、stderr、監査)を、計測データについて詳細化したもの。</td></tr>
+          <tr><th>利用ログ</th><td>run を単位として、結果(解決、未解決、エラー)、利用者フィードバック、確信度、失敗理由、探索の規模(ターン数、ツール呼び出し回数)を記録する追記専用のログ。回答品質と利用状況の指標の入力とする。利用者の実際の識別子を持たない。</td><td>新設。現在は監査ログ(AnswerRun)に記録されている内容のうち、証跡に当たらないものを移す。監査ログとは、目的、保持期間、アクセス制御が異なる。</td></tr>
+          <tr><th>構造化運用ログ</th><td>コンポーネントの稼働状況に関するイベントを、strict スキーマに従って記録する JSONL 形式のログ。利用者、クエリ、文書を識別するフィールドを持たない。</td><td>監査ログ(誰が何を行ったかの証跡)とは目的とアクセス制御が異なる。分離テレメトリ(未認可候補に関わる件数の日次集計)とも異なる。stderr に出力する非構造化ログは、人が読むためのものとして区別する。「テレメトリ」は ADR-011 で分離テレメトリを指すため、この経路の名称には用いない。</td></tr>
+          <tr><th>ポート</th><td>コアロジックが外部の処理を呼び出す際に依存するインターフェース。Connector、IdpAdapter、CredentialProvider、LlmClient、GatewayClient、AuditSink などが該当する。</td><td>ADR-005 のプラグイン境界は、ポートのうち導入先が実装を差し替えられるものを指す。ポートはそれより広く、内部でのみ実装を切り替えるインターフェースを含む。</td></tr>
+          <tr><th>スパン</th><td>開始と終了を持つ、計測対象の処理の単位。入れ子構造を取る。本計画では、ポートの呼び出し 1 回、HTTP リクエスト 1 件、run 1 件をスパンとして扱う。</td><td>分散トレーシングの用語と同じ意味で用いる。ただし、プロセス間でのトレースコンテキストの伝搬は行わない。</td></tr>
+          <tr><th>タイムアウト使用率</th><td>スパンの所要時間を、そのスパンに適用されるタイムアウト設定値で除した値。1 に近いほど、設定値に対する余裕が小さいことを示す。</td><td>新設。タイムアウト超過率(超過した件数の割合)と併せて用いる。</td></tr>
+          <tr><th>ターンアラウンドタイム</th><td>利用者が質問を送信してから、回答を受け取るまでの時間。計測点により、利用者体感(クライアントで計測)、サーバー側(Orchestrator が ask を受信してから応答を送信するまで)、run 所要時間(run の開始から終了まで)の 3 種類を区別する。</td><td>既存の「run の所要時間」は、このうち run 所要時間に当たる。</td></tr>
+          <tr><th>計測デコレーター</th><td>ポートと同じインターフェースを実装し、内側の実装への呼び出しを中継しながら、スパンの所要時間と結果の分類を記録するオブジェクト。構成処理(bootstrap)で適用する。</td><td>新設。デコレーターパターンの適用であり、コアロジックと実装のいずれも変更しない。</td></tr>
+          <tr><th>計測コンテキスト</th><td>1 件のリクエストの処理中に発生したスパンの所要時間を集約するための、リクエスト単位の領域。AsyncLocalStorage で保持し、処理の完了時に要約を 1 件のイベントとして出力する。利用者と run の識別子は保持しない。</td><td>新設。プロセス内に閉じた仕組みであり、監査ログの runId とは関連付けない(Q1)。</td></tr>
+          <tr><th>レコーダー</th><td>計測デコレーターとミドルウェアからイベントを受け取り、strict スキーマで検証したうえで構造化運用ログに書き込むコンポーネント。構造化運用ログの唯一の書き込み主体である。</td><td>監査ログにおける AuditLogger に相当する。コアロジックからは参照しない。計測デコレーター、計測コンテキストとともに、オブザーバビリティ層に属する。品質の観測は、出力された構造化運用ログの集計値を利用する。</td></tr>
+          <tr><th>適応度関数</th><td>アーキテクチャ特性(依存方向、インターフェースの安定性など)が維持されていることを自動的に判定する検査。CI で実行する。進化的アーキテクチャにおける fitness function の訳語である。</td><td>既存の <code>lint:imports</code> と post-edit フックは、適応度関数に該当する。</td></tr>
+          <tr><th>適合性テストスイート</th><td>プラグイン境界のインターフェース契約を検証するテスト群。境界のすべての実装に同一のものを適用し、合否とともに共通の指標を出力する。</td><td>個々の実装に固有の単体テストとは別に持つ。現在は存在しない。</td></tr>
+          <tr><th>品質スナップショット</th><td>特定のコミットにおける指標値を、指標定義表に従って記録した JSON ファイル。</td><td>新設。評価レポート(docs/eval)は特定の評価の記録であり、品質スナップショットは全指標の定点記録である。</td></tr>
+          <tr><th>利用状況指標</th><td>利用量、定着の度合い、コストを表す指標群。利用率、run 件数、LLM コストなどを含む。品質の良否を直接表すものではないが、品質指標を解釈する際の母数となり、活用推進と運用管理の判断材料となる。</td><td>品質カテゴリには含めず、指標定義表では独立した区分として管理する。設計書 4.6 節の KPI「週次アクティブ利用率」はここに属する。</td></tr>
+          <tr><th>ロール別レポート</th><td>特定のロールの関心事項に対応する指標を、そのロールが参照を許可された観測経路のみを入力として生成するレポート。活用状況、運用、監査状況、セキュリティ、開発の 5 種類を定める。</td><td>既存の昇格判定レポートは、活用状況レポートの一部として位置付ける。</td></tr>
+          <tr><th>共有用集計</th><td>導入企業が任意で leisen の開発者に提供する集計データ。利用者、クエリ、文書、ソース由来のデータを含まず、機能別の利用量、エラー分類の分布、導入構成のみから成る。</td><td>新設(論点 Q5)。導入企業の外部へ送信するデータは、これに限る。自動送信は行わない。</td></tr>
+          <tr><th>スコアカード</th><td>品質スナップショットを、コンポーネントと品質カテゴリの 2 軸で一覧表示したもの。</td><td>昇格判定レポート(ソースごとのインデックス補強の判断材料)とは目的が異なる。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>コンポーネント構成</h3>
+  <p>評価単位とするコンポーネントは次の 13 個である。境界は、既存のパッケージとディレクトリ、ADR-005 が定める 3 つのプラグイン境界、ADR-017 の LLM クライアント境界に合わせた。新たな分割は導入していない。</p>
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 420" role="img" aria-label="コンポーネント構成図。クライアント、Orchestrator、Gateway、コネクタ、監査ストア、昇格判定レポートの関係と、計測済みの観測点・未計測の観測点を示す">
+        <text x="20" y="34" class="t">クライアント</text>
+        <rect class="box" x="20" y="60" width="140" height="34"/><text x="30" y="82">MCP クライアント</text>
+        <rect class="box" x="20" y="110" width="140" height="34"/><text x="30" y="132">LibreChat</text>
+        <rect class="box" x="20" y="160" width="140" height="34"/><text x="30" y="182">leisen-ask CLI</text>
+        <rect class="box dash" x="195" y="44" width="220" height="162"/>
+        <text x="205" y="34" class="t">Orchestrator</text>
+        <rect class="box sub" x="205" y="60" width="200" height="34"/><text x="215" y="82">サーバー <tspan class="s">server/</tspan></text>
+        <rect class="box sub" x="205" y="110" width="200" height="34"/><text x="215" y="132">探索ループ</text>
+        <rect class="box sub" x="205" y="160" width="200" height="34"/><text x="215" y="182">LLM クライアント <tspan class="s">llm/</tspan></text>
+        <rect class="box dash" x="205" y="240" width="200" height="34"/><text x="215" y="262" class="s">LLM バックエンド(外部)</text>
+        <rect class="box dash" x="450" y="44" width="250" height="274"/>
+        <text x="460" y="34" class="t">Gateway</text>
+        <rect class="box sub" x="460" y="60" width="230" height="34"/><text x="470" y="82">プロキシ <tspan class="s">proxy/</tspan></text>
+        <rect class="box sub" x="460" y="104" width="230" height="34"/><text x="470" y="126">run API <tspan class="s">run/</tspan></text>
+        <rect class="box sub" x="460" y="148" width="230" height="34"/><text x="470" y="170">本人資格情報 <tspan class="s">credentials/</tspan></text>
+        <rect class="box sub" x="460" y="192" width="230" height="34"/><text x="470" y="214">設定 <tspan class="s">config/</tspan></text>
+        <rect class="box sub" x="460" y="236" width="230" height="34"/><text x="470" y="258">認証 <tspan class="s">idp/</tspan></text>
+        <rect class="box sub" x="460" y="280" width="230" height="34"/><text x="470" y="302">監査 <tspan class="s">@leisen/audit</tspan></text>
+        <text x="740" y="34" class="t">コネクタ</text>
+        <rect class="box sub" x="740" y="60" width="145" height="34"/><text x="750" y="82">connector-github</text>
+        <rect class="box" x="740" y="104" width="145" height="34"/><text x="750" y="126">dev-fixture</text>
+        <rect class="box dash" x="740" y="148" width="145" height="34"/><text x="750" y="170" class="s">Drive / Slack / wiki</text>
+        <rect class="box dash" x="740" y="192" width="145" height="34"/><text x="750" y="214" class="s">検索層(Phase 2)</text>
+        <rect class="box dash" x="740" y="236" width="145" height="34"/><text x="750" y="258" class="s">IdP(外部)</text>
+        <rect class="box" x="460" y="360" width="230" height="40"/><text x="470" y="385">監査ストア <tspan class="s">JSONL・生クエリ表</tspan></text>
+        <rect class="box sub" x="195" y="360" width="220" height="40"/><text x="205" y="385">昇格判定レポート</text>
+        <rect class="box sub" x="20" y="360" width="150" height="40"/><text x="30" y="385">リファレンスデプロイ</text>
+        <path class="ln" d="M150,60 V20 H640 V60"/><polygon class="arr" points="640,60 636,51 644,51"/>
+        <text x="300" y="15" class="s">直接接続(tools/call)</text>
+        <path class="ln" d="M160,127 L205,82"/><polygon class="arr" points="205,82 196,85 201,91"/>
+        <path class="ln" d="M160,177 L205,132"/><polygon class="arr" points="205,132 196,135 201,141"/>
+        <path class="ln m" d="M405,127 L460,82"/><polygon class="arr m" points="460,82 451,85 456,91"/>
+        <path class="ln m" d="M405,127 L460,121"/><polygon class="arr m" points="460,121 451,117 451,126"/>
+        <path class="ln" d="M305,194 V240"/><polygon class="arr" points="305,240 301,231 309,231"/>
+        <path class="ln m" d="M690,77 H740"/><polygon class="arr m" points="740,77 731,73 731,81"/>
+        <path class="ln" d="M715,77 V209 M715,121 H740 M715,165 H740 M715,209 H740"/>
+        <path class="ln" d="M690,253 H740"/><polygon class="arr" points="740,253 731,249 731,257"/>
+        <path class="ln" d="M575,314 V360"/><polygon class="arr" points="575,360 571,351 579,351"/>
+        <path class="ln" d="M460,380 H415"/><polygon class="arr" points="415,380 424,376 424,384"/>
+        <g font-size="11" font-weight="700" text-anchor="middle">
+          <circle class="dot" cx="672" cy="297" r="9"/><text x="672" y="301" style="fill:var(--bg)">1</text>
+          <circle class="dot" cx="672" cy="121" r="9"/><text x="672" y="125" style="fill:var(--bg)">2</text>
+          <circle class="dot" cx="672" cy="165" r="9"/><text x="672" y="169" style="fill:var(--bg)">3</text>
+          <circle class="dot" cx="387" cy="127" r="9"/><text x="387" y="131" style="fill:var(--bg)">4</text>
+          <circle class="dot" cx="672" cy="77" r="9"/><text x="672" y="81" style="fill:var(--bg)">5</text>
+          <circle class="dot" cx="387" cy="77" r="9"/><text x="387" y="81" style="fill:var(--bg)">5</text>
+          <circle class="gap" cx="648" cy="77" r="9"/><text x="648" y="81" class="at">A</text>
+          <circle class="gap" cx="672" cy="380" r="9"/><text x="672" y="384" class="at">B</text>
+          <circle class="gap" cx="387" cy="177" r="9"/><text x="387" y="181" class="at">C</text>
+          <circle class="gap" cx="867" cy="77" r="9"/><text x="867" y="81" class="at">D</text>
+          <circle class="gap" cx="363" cy="77" r="9"/><text x="363" y="81" class="at">E</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption><b>図 1</b>コンポーネント構成と観測点。青色の矩形が評価単位とするコンポーネント、破線は外部システムまたは実装予定のものを示す。塗りつぶしの番号は現在記録されている観測点である: 1 ツール呼び出し(ToolInvocation: レイテンシ、エラー分類、リトライ回数、認可済みの返却件数)、2 run の開始・終了・フィードバック(AnswerRun)、3 資格情報の接続・解除・失効(credential_event)、4 dev-eval(合否、ターン数、トークン数、所要時間。開発環境での実行時のみ)、5 ヘルスチェック(/healthz)。白抜きの英字は記録されていない観測点である: A ツール呼び出しに至る前の拒否とタイムアウト、B 分離テレメトリの書き込み先、C LLM の使用量とコストの永続化、D カナリア文書による検証、E 同時実行数の上限による拒否。</figcaption>
+  </figure>
+
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>コンポーネント</th><th>責務</th><th>単体での実行・検証手段(確認済み)</th><th>依存しない対象</th></tr></thead>
+        <tbody>
+          <tr><th>P1 コネクタ IF<small>connector-sdk</small></th><td>コネクタの 4 ツールのインターフェース、型、エラー分類を定義する。</td><td>型とヘルパー関数のテスト 10 件</td><td>Gateway、IdP、監査ログの形式</td></tr>
+          <tr><th>P2 コネクタ<small>connector-github ほか</small></th><td>利用者本人の資格情報でソースの API を呼び出し、結果をコネクタ IF の形式に変換する。</td><td>GitHub API のフェイク(<code>test/helpers/fake-github.ts</code>)によるテスト 243 件</td><td>利用者の認証方式、監査ログ、他のソース</td></tr>
+          <tr><th>P3 認証<small>gateway/idp</small></th><td>セッショントークンを検証し、利用者を特定する。</td><td>モック IdP、Keycloak との E2E テスト(CI)、<code>auth-check</code> コマンド</td><td>ソースの API、検索内容</td></tr>
+          <tr><th>P4 本人資格情報<small>gateway/credentials, auth-server</small></th><td>利用者ごとのソース資格情報を取得・保管・失効させる。</td><td>モックの鍵プロバイダーと SQLite による検証(実 KMS・実 SaaS との疎通は未実施)</td><td>ツール呼び出しの内容</td></tr>
+          <tr><th>P5 プロキシ<small>gateway/proxy</small></th><td>ツール呼び出しを受け付け、レート制限・タイムアウト・プライベート領域の方針を適用してコネクタへ転送する。</td><td>dev-fixture コネクタとモック IdP、<code>gateway-smoke.sh</code></td><td>LLM、質問の意味内容</td></tr>
+          <tr><th>P6 run API<small>gateway/run</small></th><td>run の開始・終了・フィードバックを受け付け、runId を発行・検証する。</td><td>import 境界を検査している単体テスト</td><td>MCP、コネクタ IF、設定の形式</td></tr>
+          <tr><th>P7 監査<small>packages/audit</small></th><td>監査レコードのスキーマ、文書 ID の不可逆化、保持期間、出力先(sink)を定義する。</td><td>依存は zod のみ。テスト 70 件</td><td>書き込み主体、HTTP、MCP</td></tr>
+          <tr><th>P8 設定<small>gateway/config, bootstrap</small></th><td>deployment.yaml を検証し、各コンポーネントを構成して起動する。</td><td><code>leisen-gateway validate</code></td><td>実行時のリクエスト内容</td></tr>
+          <tr><th>P9 探索ループ<small>orchestrator</small></th><td>質問に対して検索と取得を反復し、出典付きの回答を生成する。</td><td>LLM のスタブ(<code>llm/scripted.ts</code>)、dev-eval</td><td>IdP の種別、資格情報の取得方式</td></tr>
+          <tr><th>P10 LLM クライアント<small>orchestrator/llm</small></th><td>LLM バックエンド間の差異を吸収する。</td><td>Anthropic / OpenAI 互換 / スタブの 3 実装を同一のインターフェースで切り替え可能</td><td>探索戦略、Gateway</td></tr>
+          <tr><th>P11 サーバー<small>orchestrator/server, bin</small></th><td>ask と feedback を MCP サーバーおよび CLI として公開し、同時実行数を制限する。</td><td><code>orchestrator-smoke.sh</code></td><td>プロンプトの内容</td></tr>
+          <tr><th>P12 昇格判定レポート<small>promotion-report</small></th><td>監査ログから未解決率などを集計し、インデックス補強の対象ソースを判断する材料を出力する。</td><td>合成した監査レコードによるテスト 66 件</td><td>稼働中のプロセス</td></tr>
+          <tr><th>P13 リファレンスデプロイ<small>deploy/</small></th><td>コンテナイメージと compose 定義により、システム全体を起動可能な構成として提供する。</td><td>CI の <code>reference-deploy</code> ジョブ(起動とスモークテスト)</td><td>各コンポーネントの内部実装</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>実装予定のコンポーネント(検索層の Search Backend Adapter、Source Catalog)は、実装された時点で同じ表に行を追加する。</figcaption>
+  </figure>
+</section>
+
+<section id="questions">
+  <h2><span class="n">3</span>意思決定が必要な論点</h2>
+  <p>結論によって推奨案の構成が変わる論点のみを挙げる。いずれも既存の資料からは判断できなかった。以降の章は、暫定方針を前提として記述している。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>論点</th><th>選択肢 A</th><th>選択肢 B</th><th>暫定方針</th></tr></thead>
+        <tbody>
+          <tr><th>Q1 構造化運用ログを監査ログと結合可能にするか</th><td>結合可能にする(requestId を持たせる): レイテンシ悪化などの原因を 1 回のクエリで追跡できる。ただし、構造化運用ログの閲覧にも監査ログと同等のアクセス制御(指名制、audit_access への記録)が必要になる。</td><td>結合不可にする: 運用担当者が制限なく閲覧できる。原因調査はタイムスタンプによる突合となる。</td><td>B。結合が必要な調査は監査ログ側で行う</td></tr>
+          <tr><th>Q2 SLO の既定値を製品として持つか</th><td>既定値を持つ: レポートで合否を判定できる。値の根拠を示す必要がある。</td><td>持たない: 分布のみを出力し、目標値は導入先が deployment.yaml で設定する。</td><td>B で開始し、2 社で同じ値に収束した時点で既定値とする(不変条件 9)</td></tr>
+          <tr><th>Q3 LLM のトークン数とコストを run 単位で永続化するか</th><td>永続化する: 運用時のコストと探索効率を算出できる。answer_run_finish のスキーマ変更を伴うため ADR が必要になる。</td><td>永続化しない: コストは LLM プロバイダーの請求と dev-eval でしか把握できない。</td><td>A。ただし監査ログではなく構造化運用ログに記録する(Q1 が B であれば利用者と関連付けられない)</td></tr>
+          <tr><th>Q5 開発者が導入先の利用状況を把握する手段を設けるか</th><td>共有用集計を設ける: 導入企業が CLI で生成し、内容を確認したうえで任意に提供する。開発者は機能別の利用量とエラーの傾向を把握できる。</td><td>設けない: 開発者が得られる情報は、issue と導入支援時の聞き取りに限られる。</td><td>A。自動送信は行わず、出力項目を固定する</td></tr>
+          <tr><th>Q6 利用状況の集計に最小人数の閾値を設けるか</th><td>設ける: 対象者数が閾値未満の区分は表示しない。少人数の部門やソースで個人の行動が推定されることを防ぐ。ADR-013 への追補が必要になる。</td><td>設けない: 全区分を表示する。利用者の少ない導入初期でも値が得られるが、個人の特定につながるおそれがある。</td><td>A。部門別の内訳はコアでは提供しない(利用者と部門の対応付けは個社差分であるため)</td></tr>
+          <tr><th>Q7 期限、レート制限などの制御もコアロジックの外に移すか</th><td>計測のみを外に配置する: Gateway と Orchestrator のコアロジックは変更しない。期限とレート制限の実装は現状のまま残る。</td><td>期限、レート制限、リトライもポートのデコレーターに移す: コアロジックは認可に関わる処理のみになる。<code>Gateway.execute</code> の構造変更を伴う。</td><td>A で開始する。期限については、共通の関数への置き換えのみを先行し、B は ADR を起票して判断する</td></tr>
+          <tr><th>Q8 利用者に提示するリクエスト参照 ID を設けるか</th><td>設ける: 応答に乱数の識別子を含め、構造化運用ログのリクエストの要約にのみ記録する。利用者が問い合わせの際に提示した場合に限り、運用担当者が該当するイベントを特定できる。</td><td>設けない: 利用者からの問い合わせには、発生時刻による突合で対応する。</td><td>A。監査ログには記録しないため、Q1 の暫定方針(監査ログと結合しない)は維持される</td></tr>
+          <tr><th>Q9 監査ログを証跡に限定するか</th><td>限定する: run の結果、利用者フィードバック、確信度、失敗理由を利用ログへ、所要時間とリトライの回数を構造化運用ログへ移す。監査ログには、アクセスの記録、run の文脈、資格情報のイベント、監査自体の記録のみを残す。ADR-011 と ADR-019 の見直しを起票する。</td><td>限定しない: 現在のスキーマを維持し、指標の算出にも監査ログを用いる。</td><td>A。監査ログを、第三者に示す証拠として扱うことを前提とする(「オブザーバビリティの位置付け」5 章、論点 O6 と同一)</td></tr>
+          <tr><th>Q10 利用率と継続利用率のための、利用者の区別の方式</th><td>利用ログに、仮名化した識別子を持たせる: 記録どうしの独立を保てる。仮名も個人データに当たるため、生成方法、鍵の管理、保持期間を定める必要がある。</td><td>この 2 つの指標に限り、監査ログの側が集計値(期間内の利用者数)を算出して提供する: 利用ログは識別子を一切持たない。指標の算出に、監査ログへの依存が残る。</td><td>A。方式は ADR で定める。Q6(集計の最小人数)と併せて判断する</td></tr>
+          <tr><th>Q4 内部品質の指標を CI のゲートにするか</th><td>ゲートにする: 依存方向の違反や認可関連コードのカバレッジ低下があるとマージできない。</td><td>ゲートにしない: 推移を報告するのみとする。</td><td>依存方向と不変条件に関わる指標のみゲートとする。行数や複雑度は推移の報告にとどめる</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+</section>
+
+<section id="diagnosis">
+  <h2><span class="n">4</span>現状の評価</h2>
+  <p>各コンポーネントを 4 つの品質カテゴリ(5 章で定義)に照らし、現在の計測手段を整理した。記号の意味は次のとおりである。<span class="ok">◎</span> 継続的に計測している、○ 手段はあるが手動または部分的、<span class="mark ng">△</span> 設計または文書のみ、<span class="mark ng">×</span> 手段がない。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>コンポーネント</th><th>不変条件</th><th>回答品質</th><th>運用品質</th><th>内部品質</th></tr></thead>
+        <tbody>
+          <tr><th>コネクタ(P1, P2)</th><td><span class="ok">◎</span> 認可分岐のテスト、post-edit フックの検査<small>カナリア文書による検証は設計のみ <span class="mark ng">△</span></small></td><td>—</td><td>○ 監査ログのレイテンシとエラー分類<small>実 API では未計測</small></td><td>○ 型検査<small>コネクタ共通の適合性テストはない</small></td></tr>
+          <tr><th>認証・資格情報(P3, P4)</th><td><span class="ok">◎</span> テスト、Keycloak との E2E テスト、credential_event</td><td>—</td><td><span class="mark ng">×</span> 認証拒否率、IdP の応答時間、キャッシュヒット率を記録していない</td><td>○ 型検査<small>auth-server/server.ts が 1,323 行</small></td></tr>
+          <tr><th>プロキシ・run API(P5, P6)</th><td><span class="ok">◎</span> 全ツール呼び出しの監査記録、fail-closed</td><td>—</td><td>○ ToolInvocation<small>拒否、タイムアウト、リクエスト本文の読み込み時間は記録していない(minor-6 は未計測)</small></td><td><span class="ok">◎</span> run は import 境界を CI で検査<small>proxy は型検査のみ</small></td></tr>
+          <tr><th>監査・設定(P7, P8)</th><td><span class="ok">◎</span> strict スキーマ、保持期間と削除の記録、validate</td><td>—</td><td><span class="mark ng">×</span> 書き込み遅延、バッファの滞留件数、fail-closed の発動回数</td><td><span class="ok">◎</span> audit は import 境界を CI で検査</td></tr>
+          <tr><th>Orchestrator(P9〜P11)</th><td>○ サニタイズと引用のテスト<small>プロンプトインジェクション耐性は継続的に計測していない</small></td><td>○ dev-eval(合成コーパス 7 文書、20 問 × 2 回で 37 / 40)<small>T-008 は未着手、実データのコーパスはない</small></td><td><span class="mark ng">×</span> ターン数、トークン数、コスト、上限到達は回答の出力に含まれるのみで、永続化していない</td><td>○ 型検査<small>orchestrator.ts が 1,261 行</small></td></tr>
+          <tr><th>昇格判定レポート(P12)</th><td><span class="ok">◎</span> 分離テレメトリを入力としない</td><td>○ 未解決率、利用者フィードバックの集計</td><td>○ 放棄・孤立した run の判別</td><td>○ 型検査</td></tr>
+          <tr><th>リファレンスデプロイ(P13)</th><td>○ 開発用コンポーネントの本番環境での起動拒否</td><td>—</td><td>○ 起動確認とスモークテスト<small>起動時間、負荷時の挙動は未計測</small></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>課題</h3>
+  <ol>
+    <li><strong>運用時のデータが監査ログに集中している。</strong>ToolInvocation にはレイテンシ、エラー分類、リトライ回数が記録されている。一方、ツール呼び出しに至らない事象(認証エラー、/runs や認可サーバーへのリクエスト、同時実行数の上限による拒否、起動時の警告)は、stderr への非構造化ログとして出力されるか、記録されていない。このため、P3・P4・P11 は単体で運用品質を計測できず、要件 R2 を満たしていない。</li>
+    <li><strong>分離テレメトリは決定済みだが、書き込み先が実装されていない。</strong>保持期間(14 日)と削除処理の対象としては実装されているが、<code>proxy/gateway.ts</code> には「書き込み先が未実装のため、現在は落とす処理だけを行う」というコメントが残っている。プライベート領域の除外件数や、Phase 2 で必要になる空振り率を記録する手段がない。</li>
+    <li><strong>LLM の使用量が永続化されていない。</strong>ターン数、トークン数、コストの概算、打ち切り理由は、回答の出力と dev-eval にしか現れない。運用開始後に、コストと探索効率の推移を追跡できない。</li>
+    <li><strong>回答品質の評価が開発環境と本番環境で分断されている。</strong>開発環境では合成コーパスに対する合否、本番環境では利用者フィードバックを用いており、両者をつなぐ評価がない。権限プロファイルを固定した評価(T-008)とカナリア文書による検証(threat-model §5)は設計段階にとどまり、要件 R5 を満たしていない。</li>
+    <li><strong>内部品質の検査対象が 2 つの境界に限られている。</strong>CI が検査するのは、型と、audit および run の import 境界のみである。lint、カバレッジ、パッケージ全体の依存方向、複雑度は計測していない。CLAUDE.md が定める「<code>any</code> の使用は理由コメント必須」は、ツールによる検証が行われていない。</li>
+    <li><strong>共有される定数とプロトコル定義が Gateway パッケージに置かれている。</strong>Orchestrator の 7 ファイルと昇格判定レポートの 2 ファイルが、<code>@leisen/gateway</code> から定数、ヘッダー名、runId のデコード処理を import している。コンポーネントを単体で評価する際に Gateway 全体(MCP SDK、yaml)への依存が発生するため、依存方向の検査を導入すると最初に検出される項目になる。</li>
+    <li><strong>利用状況の指標と、閲覧者ごとの提供形態が定義されていない。</strong>設計書 4.6 節は週次アクティブ利用率を KPI として挙げているが、算出手段がない。また、既存のレポートは昇格判定レポートのみであり、運用管理者、監査担当、セキュリティ担当がそれぞれ何を参照するかが整理されていない。</li>
+    <li><strong>所要時間が、タイムアウト設定と対応する単位で記録されていない。</strong>ToolInvocation の <code>latencyMs</code> は、レート制限の判定、資格情報の取得、コネクタの呼び出し、結果の射影を合算した値である。資格情報の取得(既定 10 秒)とコネクタの呼び出し(既定 30 秒)のどちらに時間を要したかを区別できない。認証(IdP への問い合わせ)と監査ログの書き込みは含まれない。</li>
+    <li><strong>期限の実装方式と、超過時のエラー分類が統一されていない。</strong>期限は <code>AbortSignal.timeout</code>、Promise と <code>setTimeout</code> の競合、<code>AbortController</code>、MCP SDK のオプションの 4 通りで実装されており、超過時の分類も <code>timeout</code>、<code>run_timeout</code>、<code>llm_timeout</code> などに分かれている。設定値と実際の所要時間を同じ箇所で取得できないため、設定値の妥当性を検証する手段がない。</li>
+    <li><strong>計測の処理が、コアロジックの中に記述されている。</strong>所要時間の計測と監査レコードの組み立ては <code>Gateway.handleToolCall</code> の内部にあり、LLM の使用量の集計は探索ループの内部状態(RunState)が担っている。計測項目を追加するたびに、コアロジックの変更が必要になる。</li>
+    <li><strong>監査ログに、証跡以外の記録が含まれている。</strong>監査ログ(AnswerRun)は、run の結果、利用者フィードバック、確信度、失敗理由を持つ。これらは製品の評価と改善のための記録であり、誰が何にアクセスしたかの証跡ではない。設計書も、監査ログの設計を「Phase 2 への布石」と位置付けている。このため、回答品質や利用状況を集計する担当者が、監査ログの閲覧権限を必要とする構造になっている。</li>
+    <li><strong>テストは量的には十分だが、有効性を計測していない。</strong>テストコードの行数は実装コードとほぼ同等である(27,756 行に対し 29,504 行)。認可分岐のテストを最優先とする方針はあるが、認可分岐に欠陥を混入させた場合にテストが失敗するかどうかは検証していない。</li>
+  </ol>
+  <p class="note">判定: 個別の欠陥ではなく、設計上の課題である。個々の指標が不足しているのではなく、監査ログ以外について「どのデータを、どの経路に、どのコンポーネントが出力するか」が定義されていない。したがって目標は、指標の追加ではなく、「各コンポーネントについて 4 カテゴリの指標を、不変条件に違反せずに、3 系統の経路のいずれかへ出力できる状態にすること」と設定する。</p>
+</section>
+
+<section id="aspects">
+  <h2><span class="n">5</span>観測対象: 品質特性と指標</h2>
+  <h3>品質モデルの選択肢</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>利点</th><th>欠点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>ISO/IEC 25010 の品質特性を、そのまま各コンポーネントに適用する</td><td>網羅性が高く、外部の関係者と用語を共有できる</td><td>特性の数が多く、計測可能な指標に対応付けられない項目が大半を占める。未認可候補の境界のような製品固有の不変条件が「セキュリティ」の 1 項目に集約され、重要度が伝わらない</td><td>対応表として利用する</td></tr>
+          <tr><th>B</th><td>不変条件と SLO のみを対象とする</td><td>指標数が少なく、運用負荷が小さい</td><td>回答品質、保守性、テスト容易性が対象外となり、本企画の目的を満たさない</td><td>不採用</td></tr>
+          <tr><th>C</th><td>4 カテゴリ(不変条件 / 回答品質 / 運用品質 / 内部品質)に分類し、カテゴリごとに 6〜10 個の指標を定義する</td><td>カテゴリごとに評価方法が異なることを表現できる(不変条件は合否判定、他は分布と推移)。プロダクト原則と KPI に直接対応する</td><td>独自の分類であるため、ISO/IEC 25010 との対応を別途示す必要がある</td><td><span class="ok">推奨</span></td></tr>
+          <tr><th>D</th><td>デリバリー指標(変更のリードタイム、変更失敗率など)を中心とする</td><td>改善の速度を直接計測できる</td><td>公開前の段階では変更のサンプル数が少ない。計測対象がコンポーネントの品質ではなく、開発プロセスである</td><td>内部品質の補助指標として 1 項目のみ採用する</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>カテゴリ別の指標</h3>
+  <p>「データソース」が既存のものは、新規の計装なしで取得できる。新設のものは 7 章の経路を前提とする。<span class="tag">追加</span> は、10 章のロール別の検討によって追加した指標である。表の末尾の利用状況指標は品質カテゴリではないが、指標定義表で併せて管理する。回答品質と利用状況の指標は利用ログを、運用品質の指標は構造化運用ログをデータソースとする。監査ログは、品質の指標の算出には用いない。権限逸脱と不正利用の検知、および監査自体の健全性の確認(記録の欠落、保持期間の遵守、閲覧状況)は、監査ログの本来の用途であり、セキュリティの観測が担う(7 章)。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>カテゴリ</th><th>指標</th><th>定義</th><th>対象</th><th>データソース</th></tr></thead>
+        <tbody>
+          <tr><th rowspan="8">不変条件<small>合否判定とする。目標値は常に 0 件</small></th><td>権限逸脱</td><td>カナリア利用者の検索結果・取得結果・回答に、カナリアトークンが出現した回数</td><td>P2, P5, P9</td><td>新設(検証ジョブ)</td></tr>
+          <tr><td>監査記録の欠落</td><td>受け付けたツール呼び出しの件数と ToolInvocation の件数との差</td><td>P5, P7</td><td>新設(監査ログの件数と、構造化運用ログの呼び出し件数の照合。監査の自己点検として算出する)</td></tr>
+          <tr><td>機密情報の漏えい</td><td>ログおよび構造化運用ログに、秘密情報、未認可候補の件数、Slack 由来のデータが出現した回数</td><td>全コンポーネント</td><td>既存(post-edit フック、gitleaks)+ 新設(出力の走査)</td></tr>
+          <tr><td>監査書き込みの失敗</td><td>fail-closed によりツール呼び出しを失敗させた回数、バッファに滞留しているレコード数</td><td>P7</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>開発用コンポーネントの本番混入</td><td>本番判定により起動を拒否した回数、警告付きで起動した回数</td><td>P8, P13</td><td>既存(validate)+ 新設</td></tr>
+          <tr><td>保持期間の遵守 <span class="tag">追加</span></td><td>保持期間を超過して残存しているレコード数、削除処理(retention_purge)の実行間隔</td><td>P7</td><td>既存(retention_purge)</td></tr>
+          <tr><td>監査ログの閲覧状況 <span class="tag">追加</span></td><td>監査ログ、生クエリ表、分離テレメトリへのアクセス件数(目的別・区画別)</td><td>P7</td><td>既存(audit_access)</td></tr>
+          <tr><td>構成の安全性 <span class="tag">追加</span></td><td>安全側の既定から変更されている設定項目の数(fail-open、プライベート領域の included、<code>allowedClients: ["*"]</code>、平文 HTTP の許可など)</td><td>P8</td><td>既存(validate の警告)+ 新設</td></tr>
+          <tr><th rowspan="7">回答品質</th><td>解決率</td><td>結果が resolved である run の割合(本番は利用者フィードバック、評価時は正解との一致)</td><td>P9</td><td>新設(利用ログ)、既存(dev-eval)</td></tr>
+          <tr><td>引用の正確性</td><td>引用した文書のうち、正解文書に含まれるものの割合</td><td>P9</td><td>T-008</td></tr>
+          <tr><td>回答不能の判定精度</td><td>該当する文書が存在しない質問に対して unresolved を返した割合(ハルシネーションの抑止)</td><td>P9</td><td>既存(dev-eval の absent カテゴリ)</td></tr>
+          <tr><td>探索効率</td><td>run あたりの LLM ターン数とツール呼び出し回数、探索の上限に到達した run の割合</td><td>P9, P10</td><td>新設(利用ログ)、既存(dev-eval)</td></tr>
+          <tr><td>再現性</td><td>同一の質問を複数回実行した際に、合否が一致しなかった質問の割合</td><td>P9, P10</td><td>既存(dev-eval --repeat)</td></tr>
+          <tr><td>フィードバック回答率 <span class="tag">追加</span></td><td>終了した run のうち、利用者フィードバックが記録された割合(解決率の信頼性を示す)</td><td>P9, P11</td><td>新設(利用ログ)</td></tr>
+          <tr><td>未解決原因の分布 <span class="tag">追加</span></td><td>未解決の run の failureReason 別の内訳、ソース別の未解決率、放棄・孤立した run の割合</td><td>P2, P6, P9</td><td>新設(利用ログ)。昇格判定レポートの集計処理を利用する</td></tr>
+          <tr><th rowspan="13">運用品質<small>性能・信頼性</small></th><td>ツール呼び出しのレイテンシ</td><td>ソース別・ツール別の p50 / p95</td><td>P2, P5</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>エラー率</td><td>エラー分類別の発生割合、リトライが発生した呼び出しの割合</td><td>P2, P5</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>リクエストの拒否</td><td>認証エラー、レート制限、同時実行数の上限、タイムアウトによる拒否の件数</td><td>P3, P5, P11</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>資格情報管理</td><td>接続の成功率、失効から反映までの時間、キャッシュヒット率</td><td>P3, P4</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>LLM の使用量</td><td>run あたりのトークン数とコストの概算、LLM の応答時間</td><td>P10</td><td>新設(Q3)</td></tr>
+          <tr><td>スパン別の所要時間 <span class="tag">追加</span></td><td>スパンの種類ごとの基本統計量(件数、平均、標準偏差、最小、p50、p90、p95、p99、最大)と、その日次・週次の推移</td><td>P2〜P5, P9〜P11</td><td>新設(計測デコレーター)。8 章</td></tr>
+          <tr><td>タイムアウト使用率 <span class="tag">追加</span></td><td>タイムアウト設定ごとの、所要時間 ÷ 設定値の分布(p50、p95、p99、最大)と、0.8 を超えた呼び出しの割合</td><td>P2〜P5, P9〜P11</td><td>新設(計測デコレーター)。8 章</td></tr>
+          <tr><td>タイムアウト超過率 <span class="tag">追加</span></td><td>タイムアウト設定ごとの、超過件数 ÷ 試行件数。超過後の結果(リトライで回復、run の失敗、上限到達として回答)の内訳</td><td>P2〜P5, P9〜P11</td><td>新設(計測デコレーター)</td></tr>
+          <tr><td>ターンアラウンドタイム <span class="tag">追加</span></td><td>サーバー側のターンアラウンドタイムの基本統計量(結果別)と、その内訳(LLM の応答待ち、ツール呼び出し、それ以外)の構成比</td><td>P9〜P11</td><td>新設(ミドルウェアと計測コンテキスト)</td></tr>
+          <tr><td>可用性 <span class="tag">追加</span></td><td>ヘルスチェックの成功率、外部依存先(IdP、LLM バックエンド、各ソース)別の呼び出し失敗率</td><td>P3, P5, P10, P13</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>キャパシティ使用率 <span class="tag">追加</span></td><td>同時実行数の上限に対するピーク値の比率、ソース別のレート制限値に対する使用率</td><td>P5, P11</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><td>ストレージ使用量 <span class="tag">追加</span></td><td>監査ストア、生クエリ表、構造化運用ログのサイズと増加量、資格情報ストアの登録件数</td><td>P4, P7</td><td>新設</td></tr>
+          <tr><td>再接続要求率 <span class="tag">追加</span></td><td>資格情報の期限切れ(auth_expired)により失敗した呼び出しの割合、失効イベントの件数</td><td>P4</td><td>新設(構造化運用ログ)</td></tr>
+          <tr><th rowspan="6">内部品質<small>保守性・テスト容易性</small></th><td>依存方向</td><td>許可リストに適合しない import の件数</td><td>全コンポーネント</td><td>既存(2 境界)を全パッケージに拡張</td></tr>
+          <tr><td>テスト容易性</td><td>他のコンポーネントの実体に依存せずにテストを実行できるか、およびその実行時間</td><td>全コンポーネント</td><td>既存(vitest の実行時間)</td></tr>
+          <tr><td>テストの有効性</td><td>認可・監査・境界に関わるコードに対するミューテーションスコア</td><td>P2〜P7</td><td>新設(ミューテーションテスト)</td></tr>
+          <tr><td>変更の局所性</td><td>1 つの PR が変更したコンポーネント数の分布</td><td>全コンポーネント</td><td>新設(git 履歴から集計)</td></tr>
+          <tr><td>公開インターフェースの安定性</td><td>コネクタ IF、監査スキーマ、設定スキーマの変更回数と、ADR を伴った変更の割合</td><td>P1, P7, P8</td><td>新設(型定義の差分検査)</td></tr>
+          <tr><td>依存パッケージの脆弱性</td><td>本番依存における high 以上の脆弱性の件数、依存パッケージ数</td><td>全コンポーネント</td><td>既存(npm audit)</td></tr>
+          <tr><th rowspan="6">利用状況指標<small>品質カテゴリではない。すべて <span class="tag">追加</span></small></th><td>利用率</td><td>期間内に 1 回以上 run を実行した利用者数の、対象者数に対する割合(週次)</td><td>P6</td><td>新設(利用ログ)。利用者の区別の方式は Q10</td></tr>
+          <tr><td>継続利用率</td><td>前の期間に利用した利用者のうち、当期間にも利用した利用者の割合</td><td>P6</td><td>新設(利用ログ)。利用者の区別の方式は Q10</td></tr>
+          <tr><td>利用量</td><td>run 件数、ツール呼び出し件数(ソース別・ツール別・時間帯別)</td><td>P5, P6</td><td>新設(run 件数は利用ログ、ツール呼び出し件数は構造化運用ログ)</td></tr>
+          <tr><td>呼び出し主体の内訳</td><td>actor の種別(human / agent)別、run の申告の有無(Orchestrator 経由か直接接続か)別の件数</td><td>P5, P6</td><td>新設(利用ログ)</td></tr>
+          <tr><td>コスト</td><td>期間内の LLM コストの合計、run 1 件あたりのコスト、解決 1 件あたりのコスト</td><td>P10</td><td>新設(構造化運用ログ、Q3)。解決件数は利用ログの集計値を用いる</td></tr>
+          <tr><td>導入構成</td><td>バージョン、有効なコネクタの種別、資格情報の取得方式、LLM バックエンドの種別</td><td>P8</td><td>新設(設定から生成。共有用集計の項目、Q5)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>ISO/IEC 25010 との対応: 不変条件 = セキュリティ、回答品質 = 機能適合性、運用品質 = 性能効率性・信頼性、内部品質 = 保守性・柔軟性。互換性は公開インターフェースの安定性に含める。使用性は現時点では対象外とする(利用者向け UI は LibreChat に委ねているため)。</figcaption>
+  </figure>
+  <p class="note">指標として採用しないもの: 検索の候補件数、フィルタリング前後の件数比、利用者別の利用回数や解決率。前二者は不変条件 3 に、後者は ADR-013 が禁じる目的外利用(人事評価、日常的な行動監視)に該当する。利用状況指標は集計値としてのみ出力し、利用者を単位とする一覧は生成しない。空振り率が必要な場合は、分離テレメトリのバケット(0 / 1-10 / 11+)のみを使用する。</p>
+</section>
+
+<section id="method">
+  <h2><span class="n">6</span>評価方法</h2>
+  <p>現行設計の評価には、一度限りの評価と、継続的に実行する検査の 2 種類がある。4 章は前者を今回実施した結果である。本章では、継続的な評価の方法を選定する。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>適するカテゴリ</th><th>利点</th><th>欠点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>シナリオベースのアーキテクチャ評価(変更シナリオを列挙し、影響範囲を人手で評価する。ATAM に準じる)</td><td>内部品質</td><td>差し替え容易性のような、自動計測が難しい特性を扱える。ADR との整合がよい</td><td>人手を要し、継続しにくい。結果を定量化できない</td><td>四半期に 1 回、変更シナリオの見直しとして実施する</td></tr>
+          <tr><th>B</th><td>適応度関数(アーキテクチャ特性を自動検査として CI に組み込む)</td><td>不変条件、内部品質</td><td>自動で継続的に実行できる。既存の lint:imports と post-edit フックの延長として導入できる</td><td>検査として記述できる特性に限られる。回答品質は対象にできない</td><td><span class="ok">推奨</span>(基盤)</td></tr>
+          <tr><th>C</th><td>プラグイン境界ごとの適合性テストスイート(境界のインターフェース契約を検証する同一のテスト群を、全実装に適用する)</td><td>不変条件、運用品質、内部品質</td><td>実装を差し替えても同一の指標で比較できる(R2)。OSS として外部の実装者にも提供できる。2 つ目のコネクタを実装する前に整備すれば、導入コストが小さい</td><td>初期の作成コストがかかる。インターフェースの解釈を固定するため、IF の変更時にはスイートの修正も必要になる</td><td><span class="ok">推奨</span>(基盤)</td></tr>
+          <tr><th>D</th><td>評価ハーネス(質問セットを実行し、回答を判定する)</td><td>回答品質</td><td>dev-eval が既にあり、T-008 の受け入れ条件と一致する</td><td>LLM の実行を伴うため、CI に組み込めない。実クエリの収集は人手の作業が前提となる</td><td><span class="ok">推奨</span>(回答品質)</td></tr>
+          <tr><th>E</th><td>運用データに基づく SLO レビュー</td><td>運用品質</td><td>実際の利用状況を反映できる</td><td>導入後でなければデータが得られない。目標値は導入先ごとに異なる</td><td>導入後に開始する(Q2)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>適合性テストスイートの対象境界</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>境界</th><th>検証項目</th><th>出力する指標</th><th>既存の資産</th></tr></thead>
+        <tbody>
+          <tr><th>Connector</th><td>トークン欠落時および権限外アクセス時の拒否、エラー分類のマッピング、スニペット長の上限、scope の正規化、取得権限のない文書と存在しない文書とで応答が区別できないこと</td><td>ツール別のレイテンシ、エラー分類の内訳</td><td>connector-github のテストと dev-fixture コネクタ。共通化はされていない</td></tr>
+          <tr><th>IdP Adapter</th><td>無効なトークン、有効期限切れ、発行者の不一致、audience の不一致に対する拒否、IdP 停止時の応答</td><td>利用者の特定に要する時間、キャッシュヒット率</td><td>モック IdP と Keycloak のテストが個別に存在する</td></tr>
+          <tr><th>LLM クライアント</th><td>ツール呼び出しの形式、停止理由のマッピング、usage が欠落した応答の扱い、タイムアウトとリトライ</td><td>応答時間、トークン数</td><td>スタブ実装がある</td></tr>
+          <tr><th>Search Backend<small>Phase 2</small></th><td>未認可候補(件数を含む)が Adapter の外部に出ないこと、ヒット 0 件の応答が通常の応答と区別できないこと</td><td>レイテンシ、分離テレメトリのバケット</td><td>未着手。T-016 の比較評価で同じスイートを利用できる</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>適合性テストスイートは <code>connector-sdk</code> と並ぶテスト用パッケージとして配置し、各実装のテストから呼び出す構成を想定している。コネクタ IF 自体は変更しないため、不変条件 5 に基づく ADR は不要である。ただし、IF の解釈を固定する項目(例:「存在しない文書と権限のない文書とで応答を区別できないようにする」)が既存の ADR に明記されていない場合は、ADR-016 への追補が必要になる。</p>
+</section>
+
+<section id="means">
+  <h2><span class="n">7</span>観測手段</h2>
+  <h3>運用時の観測経路</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>利点</th><th>欠点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>監査ログからの算出のみとする(新しい経路を設けない)</td><td>追加実装が不要。不変条件への適合は検証済みである。開発時と同じ集計処理を利用できる(R5)</td><td>ツール呼び出しに至らない事象、LLM の呼び出し、プロセスの状態を観測できない。運用上の調査のたびに、監査ログの閲覧手続きが必要になる</td><td>不採用。監査ログは証跡に限定し、品質の指標の算出には用いない。セキュリティの検知と監査の自己点検は、監査ログの本来の用途として、セキュリティの観測が行う</td></tr>
+          <tr><th>B</th><td>構造化運用ログを新設する(JSONL、strict スキーマ。利用者・クエリ・文書を識別するフィールドを定義しない)</td><td>監査ログでは観測できない事象を補完できる。該当するフィールドがスキーマに存在しないため、R1 を満たす。出力先がファイルであるため、R4 を満たす</td><td>スキーマと書き込み主体が新たに増える。stderr への非構造化ログとの役割分担を定義する必要がある</td><td><span class="ok">採用</span>(運用品質の主経路)</td></tr>
+          <tr><th>C</th><td>OpenTelemetry をコアに計装する(トレース、メトリクス、ログ)</td><td>業界標準であり、対応ツールが豊富である。分散トレーシングを利用できる</td><td>属性に任意の値を設定できるため、スキーマによって R1 を保証できない。Collector などの収集基盤が前提となる(R4)。依存パッケージが増える</td><td>コアには組み込まない。B からのブリッジを contrib に置く(後述)</td></tr>
+          <tr><th>D</th><td>Prometheus 形式の /metrics エンドポイントを公開する</td><td>構成が単純で、多くの監視基盤が対応している</td><td>認証のないエンドポイントが増える。ラベルの設計に運用ルールが必要になる。プロセスの再起動でカウンターが初期化される</td><td>コアには組み込まない。C と同様に contrib とする</td></tr>
+          <tr><th>E</th><td>分離テレメトリ(ADR-011 決定 2)の書き込み先を実装する</td><td>決定済みである。未認可候補やプライベート領域の除外に関わる件数を記録できる唯一の経路である</td><td>用途が限定される。閲覧は高権限の担当者に限られる</td><td><span class="ok">採用</span>(用途限定)</td></tr>
+          <tr><th>F</th><td>利用ログを新設する(run の結果と利用者フィードバックを、監査ログとは別に記録する)</td><td>回答品質と利用状況の指標を、監査ログの閲覧権限なしに算出できる。監査ログのスキーマが小さくなる。集計後に元の記録を削除できる</td><td>ADR-011 と ADR-019 の見直し、run API の書き込み先の変更、昇格判定レポートの入力の変更を伴う</td><td><span class="ok">採用</span></td></tr>
+          <tr><th>G</th><td>単一の追記専用の履歴を設け、監査ログと各指標をそこから導出する</td><td>出来事を 1 か所に記録するだけで済む</td><td>履歴は、利用者の識別子、最長の保持期間、最も厳格なアクセス制御を持つことになり、運用や品質のための利用者もその権限を必要とする。完全性の保証(書き込めなければ処理を失敗させる)が、運用のイベントにも及ぶ。監査ログが導出の結果となり、証拠としての価値が導出処理に依存する</td><td>不採用</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>監査ログと運用データは、目的、保持期間、アクセス制御が異なるため、監査ログを運用上の計測に利用することは適切ではない(「オブザーバビリティの位置付け」5 章)。運用品質の指標は、同一の出来事を監査レコードとは別に構造化運用ログへ出力し、そこから算出する。構造化運用ログが実装されるまでの間も、監査ログからの算出は行わない。暫定の手段を設けると、監査ログに依存する集計処理が残り、後からの分離が困難になるためである。このため、構造化運用ログの実装を、実施計画の早い段階に置く(12 章)。</p>
+  <p>回答品質と利用状況の指標も、監査ログからは算出しない。現在の監査ログには、run の結果や利用者フィードバックなど、製品の評価と改善のための記録が含まれているが、これらは証跡ではない。これらを利用ログとして分離し、監査ログは証跡に限定する(案 F)。単一の履歴から導出する構成(案 G)は、保存先が持てる性質が 1 組に限られるため、採らない。出来事を捉える箇所を 1 つにすることと、すべての記録を追記のみとすることは、案 G の利点として取り入れる。</p>
+  <p>分散トレーシングについて補足する。run 内のツール呼び出しは、runId と iteration によってすでに順序付きで関連付けられており、監査ログがトレースに相当する役割を果たしている。プロセスが Orchestrator と Gateway の 2 つに限られる現在の構成では、トレースコンテキストの伝搬を別途導入する利点は小さい。</p>
+
+  <h3>記録の種類と役割分担</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>記録</th><th>目的と記録する内容</th><th>利用者の識別子</th><th>完全性と改変</th><th>書き込み主体</th><th>保持期間とアクセス制御</th></tr></thead>
+        <tbody>
+          <tr><th>監査ログ<small>既存。証跡に限定する</small></th><td>説明責任、および権限逸脱と不正利用の検知。誰が、いつ、どのソースに対して、どの操作を行い、何件が返されたか。run の文脈(誰の代理で、どの run の一部か)、資格情報のイベント、監査ログ自体の閲覧と削除の記録</td><td>実際の識別子を持つ</td><td>欠落を許容しない(書き込めなければ処理を失敗させる)。追記のみとし、改変しない</td><td>Gateway のみ</td><td>365 日。閲覧は指名制とし、閲覧自体を記録する</td></tr>
+          <tr><th>利用ログ<small>新設</small></th><td>製品の評価と改善。run の結果、利用者フィードバック、確信度、失敗理由、探索の規模、呼び出し主体の種別</td><td>持たない、または仮名化した識別子(Q10)</td><td>可能な限り記録するが、書き込みの失敗で処理を止めない。追記のみ。集計後に削除してよい</td><td>Gateway の run API</td><td>中期(推移は品質スナップショットで保持する)。活用推進担当が集計に用いる。生クエリ表は従来どおり短期保持とし、参照は指名された担当者に限る</td></tr>
+          <tr><th>構造化運用ログ<small>新設</small></th><td>稼働状況の把握。スパンの完了(所要時間、適用された期限、結果の分類)、リクエストの要約(ターンアラウンドタイム、内訳、処理の経過)、拒否、LLM の使用量、起動と停止</td><td>持たない</td><td>欠落を許容する。追記のみ</td><td>オブザーバビリティ層のレコーダー(Gateway、Orchestrator の各プロセス)</td><td>短期(例: 30 日)。運用担当者が閲覧できる</td></tr>
+          <tr><th>分離テレメトリ<small>ADR-011</small></th><td>未認可候補とプライベート領域の除外に関わる件数。日次の集計値(sourceId、ツール、件数のバケット)</td><td>持たない。利用者、クエリ、文書、日付より細かい時刻と結合できない</td><td>欠落を許容する</td><td>Gateway(将来は Search Backend Adapter)</td><td>14 日。セキュリティ担当の高権限者のみ</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>記録は、求められる性質の組が異なるため分ける。いずれも、境界で捉えた出来事から、発生した時点でそれぞれ直接書き込み、記録どうしを導出し合わない。stderr は従来どおり、起動メッセージと警告を人が読むための出力先とする(docs/install.md §7.1 の出力規則に、利用ログと構造化運用ログの項目を追加することになる)。</figcaption>
+  </figure>
+
+  <h3>現在の監査ログからの移動</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>項目</th><th>現在の記録先</th><th>移動先</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><th>run の結果(解決、未解決)、確信度、利用者フィードバック、失敗理由、検索したソース</th><td>監査ログ(AnswerRun、終了とフィードバックの追記レコード)</td><td>利用ログ</td><td>製品の評価のための記録であり、証跡ではない</td></tr>
+          <tr><th>生クエリ表(失敗したクエリの原文)</th><td>監査ログと、クエリのダイジェストで結合する別表</td><td>利用ログに付属する別表とする</td><td>昇格判定における失敗クエリの参照が目的である。監査ログには、ダイジェストのみを残す</td></tr>
+          <tr><th>所要時間(latencyMs)、リトライの回数(retryCount)</th><td>監査ログ(ToolInvocation)</td><td>構造化運用ログ</td><td>運用上の情報である。読み取る実装は見当たらない</td></tr>
+          <tr><th>ツール呼び出しの記録(利用者、ソース、ツール、クエリのダイジェスト、返却件数、結果の分類、反復の連番)</th><td>監査ログ(ToolInvocation)</td><td>移動しない</td><td>誰が何にアクセスし、何が開示されたかの証跡である</td></tr>
+          <tr><th>run の開始と終了、利用者、呼び出し主体、引用した文書</th><td>監査ログ(AnswerRun)</td><td>移動しない</td><td>ツール呼び出しが誰の代理で行われたか、どの文書の内容が利用者に提示されたかの証跡である</td></tr>
+          <tr><th>資格情報のイベント、監査ログの閲覧記録、削除の記録</th><td>監査ログ</td><td>移動しない</td><td>証跡である</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>利用ログには、run の開始、終了、フィードバックを関連付けるための鍵が必要である。フィードバックは、回答の後に時間をおいて届くためである。監査ログの runId をそのまま用いると、両者を結合できるため、一方向に変換した値を鍵とする。利用者の区別を要する指標(利用率、継続利用率)の扱いは、Q10 として判断する。</p>
+  <p>この変更は、ADR-011(監査データモデル)と ADR-019(run API)の見直しを伴い、昇格判定レポートは入力を監査ログから利用ログへ変更することになる。ADR-013 が定める監査ログの閲覧目的のうち「昇格判定・運用改善」は、利用ログが担うことになるため、併せて見直す。</p>
+
+  <h3 id="otel-bridge">OpenTelemetry へのブリッジ</h3>
+  <p>OpenTelemetry をコアに組み込まない理由は、属性に任意の値を設定できるためスキーマによって要件 R1 を保証できないこと、および収集基盤が前提となること(要件 R4)の 2 点である。いずれもコアの外側で変換を行えば解消するため、構造化運用ログから OpenTelemetry へのブリッジを提供する余地は残しておく。実装は、対応を求める導入先が現れた時点で行う(不変条件 9)。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>方式</th><th>内容</th><th>利点</th><th>欠点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>プロセス外での変換</th><td>構造化運用ログの JSONL ファイルを、OpenTelemetry Collector のファイル読み取り用レシーバーで取り込み、Collector の設定によってログおよびメトリクスに変換する</td><td>leisen 側の実装が不要である。依存パッケージが増えない。Collector の設定例を contrib に置くだけで提供できる</td><td>ファイルの読み取り間隔に応じた遅延が生じる。変換の定義が Collector の設定に依存する</td><td><span class="ok">先に提供する</span></td></tr>
+          <tr><th>プロセス内のエクスポーター</th><td>レコーダーの出力先を複数指定できるようにし、OTLP で送信する出力先を contrib のパッケージとして追加する</td><td>遅延が小さい。スパンとして送信できる</td><td>OpenTelemetry の SDK への依存が、Gateway と Orchestrator のプロセスに加わる。送信の失敗や遅延が処理に影響しないよう、非同期化とバッファの上限が必要になる</td><td>要求があれば追加する</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>いずれの方式でも、ブリッジに渡るのはレコーダーの strict スキーマで検証済みのイベントのみである。秘密情報と利用者の識別子が出力に含まれないという保証は、ブリッジの有無によって変わらない。</figcaption>
+  </figure>
+  <p>ブリッジを後から追加できるようにするため、構造化運用ログのスキーマを定める際に次の 2 点を満たす。いずれも追加の実装を要しない。</p>
+  <ul>
+    <li><strong>OpenTelemetry のデータモデルに対応付けられる構造とする。</strong>スパンの完了イベントには、スパンの種類、開始時刻、所要時間、結果の分類を持たせる。これらは OpenTelemetry のスパン、またはヒストグラム型のメトリクスに変換できる。</li>
+    <li><strong>属性を、取りうる値が有限のものに限る。</strong>スパンの種類、sourceId、エラー分類、LLM バックエンドの種別などである。これは要件 R1 を満たすための制約であると同時に、メトリクスのラベルとしても適切な条件である。</li>
+  </ul>
+  <p>ブリッジを提供しても、次のものは得られない。</p>
+  <ul>
+    <li><strong>プロセスをまたぐトレース。</strong>Orchestrator と Gateway のスパンを 1 つのトレースとして関連付けるには、トレースコンテキストの伝搬をコアに組み込む必要がある。本計画ではこれを行わないため、ブリッジ後もプロセス単位の表示となる。</li>
+    <li><strong>同一リクエストに属するスパンの関連付け。</strong>関連付けには、リクエスト単位の識別子をイベントに持たせる必要がある。個々のスパンのイベントには識別子を付与せず、内訳と処理の経過は、リクエストの要約イベント(8 章)にまとめて記録する。リクエスト参照 ID(Q8)を設ける場合も、記録するのはこの要約イベントのみとする。</li>
+  </ul>
+  <p>監査ログと分離テレメトリは、ブリッジの対象としない。監視基盤に取り込むと、ADR-011 と ADR-013 が定める閲覧のアクセス制御を迂回することになるためである。</p>
+  <p>障害の検知と原因の特定を目的とする運用時の活動(オブザーバビリティ)、および APM などの運用ツールの扱いは、本計画の対象外とし、対になる文書「オブザーバビリティの位置付け」(docs/notes/2026-11-15-observability-positioning.html)にまとめた。攻撃と違反の試みの検知、検証の実行状況の計測、監査ログの改ざん検知は、「セキュリティの観測」(docs/notes/2026-11-16-security-observation.html)にまとめた。本計画の品質カテゴリ「不変条件」は、そこで扱う検証の結果を、合否として要約したものである。</p>
+
+  <h3>開発時の計測手段</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>計測対象</th><th>選択肢</th><th>推奨</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><th>依存方向</th><td>(a) lint-imports.mjs を全パッケージに拡張する (b) dependency-cruiser (c) ESLint の境界検査プラグイン</td><td>(a)</td><td>許可リスト方式が既に合意されており、依存パッケージを追加せずに済む。依存グラフの可視化が必要になった時点で、(b) を開発依存として追加する</td></tr>
+          <tr><th>静的解析(lint)</th><td>(a) typescript-eslint を、型情報を用いる少数のルールに限定して導入する (b) Biome (c) 導入しない</td><td>(a)</td><td>「<code>any</code> の使用は理由コメント必須」と、await されていない Promise を検査できる。ルールは不変条件と障害に直結するものに限定する</td></tr>
+          <tr><th>カバレッジ</th><td>(a) 全体に閾値を設定する (b) 認可・監査・境界に関わるディレクトリのみに閾値を設定し、全体は推移を記録する (c) 計測しない</td><td>(b)</td><td>全体への閾値は、数値を満たすことだけを目的としたテストを誘発する。保証したいのは認可分岐の検証である</td></tr>
+          <tr><th>テストの有効性</th><td>(a) ミューテーションテストを全体に適用する (b) 認可・監査・境界に限定し、週次で実行する (c) 実施しない</td><td>(b)</td><td>実行コストが高い。カバレッジでは「分岐を実行しているが、結果を検証していない」テストを検出できない</td></tr>
+          <tr><th>公開インターフェースの変更</th><td>(a) 型定義の差分を CI で検出する (b) コードレビューに委ねる</td><td>(a)</td><td>不変条件 5 をツールで補強できる。差分があるにもかかわらず ADR の変更を伴わない PR を検出する</td></tr>
+          <tr><th>回答品質</th><td>(a) dev-eval を拡張する (b) T-008 のハーネスを別途実装する (c) 外部の評価サービスを利用する</td><td>(a) を経て (b)</td><td>dev-eval の判定処理と集計処理を T-008 の基盤とすれば、指標の定義を一元化できる(R3)。(c) は質問と回答を外部に送信することになる</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+</section>
+
+<section id="timing">
+  <h2><span class="n">8</span>時間に関する指標: タイムアウトとターンアラウンドタイム</h2>
+  <p>運用時には、各種のタイムアウト設定が実際の所要時間に対して妥当かどうか、超過がどの程度発生しているか、利用者が回答を得るまでにどれだけの時間を要しているかが、重要な判断材料となる。本章では、これらに関する現状の実装を確認したうえで、指標を定義する。</p>
+
+  <h3>これまでの記載で不足していた点</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>観点</th><th>5 章に記載していた指標</th><th>不足していた点</th></tr></thead>
+        <tbody>
+          <tr><th>タイムアウト設定に対する所要時間</th><td>ツール呼び出しのレイテンシ(p50 / p95)</td><td>設定値との対比がなく、余裕の大きさを判断できない。対象がツール呼び出しに限られ、LLM、IdP、資格情報の取得を含まない。統計量が 2 種類のみで、推移の記録を定めていない</td></tr>
+          <tr><th>超過の計測</th><td>リクエストの拒否(タイムアウトの件数)</td><td>どの設定による超過かを区別していない。試行件数に対する割合と、超過後の結果を定めていない</td></tr>
+          <tr><th>ターンアラウンドタイム</th><td>run の所要時間と終了状態</td><td>run の開始前後の処理(事前確認、トークン交換、応答の送信)を含まない。内訳がなく、時間を要している処理を特定できない。利用者体感の値を計測する手段を定めていない</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>タイムアウト設定の現状</h3>
+  <p>コードから確認できた期限の設定は次のとおりである。値は既定値であり、多くは設定で変更できる。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide num">
+        <thead><tr><th>設定</th><th>既定値</th><th>対象の処理</th><th>実装方式</th><th>超過時の分類</th><th>所要時間の記録</th></tr></thead>
+        <tbody>
+          <tr><th colspan="6" class="grp">Orchestrator</th></tr>
+          <tr><th>runTimeoutMs</th><td>120 秒</td><td>探索全体(run)</td><td>AbortController と setTimeout</td><td><code>run_timeout</code>(探索を打ち切り、最終ターンへ進む)</td><td>AnswerRun の開始・終了時刻</td></tr>
+          <tr><th>finalTurnTimeoutMs</th><td>60 秒</td><td>最終ターンの LLM 呼び出し</td><td>AbortSignal.timeout</td><td>未確認</td><td>なし</td></tr>
+          <tr><th>LLM の timeoutMs</th><td>60 秒(Anthropic)、120 秒(OpenAI 互換)</td><td>LLM 呼び出し 1 回</td><td>AbortSignal.timeout、SDK</td><td><code>llm_timeout</code></td><td>なし(dev-eval は全体の所要時間のみ)</td></tr>
+          <tr><th>requestTimeoutMs</th><td>60 秒</td><td>Gateway へのリクエスト 1 往復</td><td>AbortSignal.timeout、MCP SDK のオプション</td><td>未確認</td><td>なし</td></tr>
+          <tr><th>事前確認、feedback、トークン交換</th><td>各 10 秒</td><td>ask の受付時と feedback 時の Gateway への問い合わせ</td><td>AbortSignal.timeout</td><td>未確認</td><td>なし</td></tr>
+          <tr><th colspan="6" class="grp">Gateway</th></tr>
+          <tr><th>connectors[].limits.timeoutMs</th><td>30 秒</td><td>コネクタの呼び出し 1 回</td><td>Promise と setTimeout の競合。超過後も下流の処理は中断されない</td><td><code>timeout</code></td><td>ToolInvocation.latencyMs(資格情報の取得などとの合算)</td></tr>
+          <tr><th>IdP アダプターの timeoutMs</th><td>5 秒(Keycloak)</td><td>トークンのイントロスペクション</td><td>AbortSignal.timeout</td><td>未確認</td><td>なし</td></tr>
+          <tr><th>資格情報関連の HTTP</th><td>10 秒</td><td>OAuth のトークン取得・更新、KMS の呼び出し</td><td>AbortSignal.timeout</td><td>HttpCallError(<code>timeout</code>)。監査上の分類は未確認</td><td>なし</td></tr>
+          <tr><th>HTTP リクエストの受信</th><td>300 秒(Node の既定)</td><td>リクエスト本文の受信</td><td>Node の requestTimeout</td><td>接続の切断</td><td>なし(minor-6)</td></tr>
+          <tr><th>gateway.runs.ttlSec</th><td>900 秒</td><td>runId の有効期間</td><td>署名に含まれる期限の検証</td><td><code>invalid_run_id</code></td><td>なし</td></tr>
+          <tr><th colspan="6" class="grp">コネクタ</th></tr>
+          <tr><th>connector-github の timeoutMs</th><td>30 秒</td><td>GitHub API の呼び出し 1 回</td><td>AbortSignal.timeout</td><td>未確認</td><td>なし</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>資格情報のキャッシュ TTL(300 秒)、アクセストークンの有効期間などは、処理の期限ではなく有効期間の設定であるため、この表には含めていない。</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 330" role="img" aria-label="ターンアラウンドタイムの構成と、期限設定の入れ子関係">
+        <rect class="box dash" x="20" y="14" width="866" height="304"/>
+        <text x="30" y="32" class="s">利用者体感のターンアラウンドタイム(クライアントで計測。leisen の外側)</text>
+        <rect class="box" x="34" y="42" width="840" height="266"/>
+        <text x="44" y="60">サーバー側のターンアラウンドタイム <tspan class="s">ask の受信から応答の送信まで</tspan></text>
+        <rect class="cc" x="44" y="72" width="100" height="40"/><text x="52" y="89" class="s">事前確認</text><text x="52" y="104" class="s">10 秒</text>
+        <rect class="cc" x="150" y="72" width="100" height="40"/><text x="158" y="89" class="s">トークン交換</text><text x="158" y="104" class="s">10 秒</text>
+        <rect class="ce" x="258" y="72" width="606" height="228"/>
+        <text x="268" y="90">run(探索全体) <tspan class="s">runTimeoutMs 120 秒</tspan></text>
+        <rect class="cc" x="268" y="102" width="62" height="40"/><text x="274" y="119" class="s">開始申告</text><text x="274" y="134" class="s">60 秒</text>
+        <rect class="cc" x="336" y="102" width="104" height="40"/><text x="344" y="119" class="s">LLM 呼び出し</text><text x="344" y="134" class="s">60 / 120 秒</text>
+        <rect class="box" x="446" y="102" width="276" height="190"/>
+        <text x="456" y="120" class="s">ツール呼び出し(Gateway への 1 往復) 60 秒</text>
+        <rect class="cc" x="456" y="130" width="70" height="40"/><text x="463" y="147" class="s">認証</text><text x="463" y="162" class="s">5 秒</text>
+        <rect class="cc" x="532" y="130" width="70" height="40"/><text x="539" y="147" class="s">資格情報</text><text x="539" y="162" class="s">10 秒</text>
+        <rect class="cc" x="456" y="178" width="146" height="40"/><text x="463" y="195" class="s">監査ログの書き込み</text><text x="463" y="210" class="s">期限なし</text>
+        <rect class="cx" x="608" y="130" width="106" height="154"/>
+        <text x="615" y="147" class="s">コネクタ</text><text x="615" y="162" class="s">30 秒</text>
+        <rect class="cc" x="615" y="172" width="92" height="40"/><text x="621" y="189" class="s">ソース API</text><text x="621" y="204" class="s">30 秒</text>
+        <rect class="cc" x="728" y="102" width="66" height="40"/><text x="734" y="119" class="s">最終ターン</text><text x="734" y="134" class="s">60 秒</text>
+        <rect class="cc" x="800" y="102" width="58" height="40"/><text x="806" y="119" class="s">終了申告</text><text x="806" y="134" class="s">60 秒</text>
+        <path class="ln dash" d="M336,152 H440 M336,152 V148 M440,152 V148"/>
+        <text x="268" y="170" class="s">LLM 呼び出しとツール呼び出しは、</text>
+        <text x="268" y="186" class="s">最大 6 回(maxIterations)反復する</text>
+      </svg>
+    </div>
+    <figcaption><b>図 2</b>ターンアラウンドタイムの構成と期限設定の入れ子関係(値は既定値)。赤枠のコネクタ呼び出しのみ、現在 <code>latencyMs</code> として所要時間が記録されている(資格情報の取得を含む合算値)。それ以外の矩形には、所要時間の記録がない。矩形の幅は時間に比例していない。</figcaption>
+  </figure>
+
+  <h3>現状の設定から読み取れる課題</h3>
+  <ul>
+    <li><strong>内側の期限が外側の期限と同じ値になっている箇所がある。</strong>OpenAI 互換バックエンドの LLM 呼び出しの期限(120 秒)は、run 全体の期限(120 秒)と等しい。LLM 呼び出し 1 回で run の時間をすべて消費しうる。コネクタ呼び出しの期限(30 秒)と connector-github の API 呼び出しの期限(30 秒)も既定値が等しく、どちらが先に発火するかによってエラー分類が変わる可能性がある。</li>
+    <li><strong>超過した呼び出しの実際の所要時間が記録されない。</strong>Gateway はコネクタ呼び出しの超過時に <code>timeout</code> を返すが、下流の処理は中断されずに継続する。この処理が最終的に何秒で完了したかは、どこにも記録されない。期限をどこまで延長すれば成功するかを判断する材料がない。</li>
+    <li><strong>期限のない区間がある。</strong>監査ログの書き込みには期限がなく、fail-closed の設定下では、書き込みの遅延がそのままツール呼び出しの遅延となる。リクエスト本文の受信は Node の既定値に依存している(minor-6)。</li>
+    <li><strong>期限に近い値で分布が打ち切られる。</strong>期限を超えた呼び出しは期限の時点で打ち切られるため、所要時間の p99 や最大値は設定値に張り付き、本来の分布を表さない。所要時間の統計量は、タイムアウト超過率と併せて解釈する必要がある。</li>
+  </ul>
+
+  <h3>指標の定義</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>指標</th><th>定義</th><th>集計の単位</th><th>判断できること</th></tr></thead>
+        <tbody>
+          <tr><th>スパン別の所要時間</th><td>スパンの種類ごとの、件数、平均、標準偏差、最小、p50、p90、p95、p99、最大。成功した呼び出しと失敗した呼び出しを分けて集計する</td><td>スパンの種類 × ソースまたは LLM バックエンド × 日次・週次</td><td>性能の推移。リリースや設定変更の前後での変化</td></tr>
+          <tr><th>タイムアウト使用率</th><td>所要時間 ÷ 適用された期限の分布(p50、p95、p99、最大)と、0.8 を超えた呼び出しの割合</td><td>タイムアウト設定ごと × 日次・週次</td><td>設定値の余裕。超過が発生する前に、設定の見直しや性能改善の必要性を検知できる</td></tr>
+          <tr><th>タイムアウト超過率</th><td>超過件数 ÷ 試行件数。超過後の結果(リトライによる回復、run の失敗、上限到達として回答を返却)の内訳。期限後も下流の処理が継続する箇所では、完了までの実際の所要時間</td><td>タイムアウト設定ごと × 日次・週次</td><td>設定値が短すぎないか。超過が利用者に与えた影響</td></tr>
+          <tr><th>サーバー側のターンアラウンドタイム</th><td>Orchestrator が ask を受信してから応答を送信するまでの時間の基本統計量。結果(resolved、unresolved、error)別に集計する</td><td>結果 × 日次・週次</td><td>利用者が回答を得るまでの時間。「見つからない」と判断するまでの時間</td></tr>
+          <tr><th>ターンアラウンドタイムの内訳</th><td>1 件のリクエストにおける、LLM の応答待ち、ツール呼び出し、それ以外(事前確認、トークン交換、run の開始・終了の申告など)の時間と構成比。LLM のターン数とツール呼び出し回数を併記する</td><td>結果 × 日次・週次</td><td>時間を要している処理の特定。改善の対象が LLM、ソース、leisen 自体のいずれであるか</td></tr>
+          <tr><th>利用者体感のターンアラウンドタイム</th><td>クライアントが質問を送信してから回答を受信するまでの時間。固定した質問を定期的に実行する合成監視、または導入先のリバースプロキシのアクセスログによって計測する</td><td>日次</td><td>ネットワークとクライアント(LibreChat など)を含めた体感。サーバー側の値との差</td></tr>
+          <tr><th>期限設定の整合性</th><td>入れ子関係にある期限について、内側の値が外側の値以上となっている組の数</td><td>設定の検証時(静的)</td><td>設定の誤り。<code>leisen-gateway validate</code> および Orchestrator の設定検証に、警告として追加できる</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>これらの指標は、いずれも構造化運用ログから算出する。監査ログの開始・終了時刻と latencyMs から近似値を算出することは可能であるが、監査ログを運用上の計測に利用しない方針(7 章)に従い、採用しない。</figcaption>
+  </figure>
+  <p>ターンアラウンドタイムとその内訳は、利用者と run の識別子を持たないイベントとして構造化運用ログに記録する(Q1 の暫定方針)。1 件のリクエストに含まれる複数のスパンを集約する必要があるため、プロセス内の計測コンテキストで集約し、リクエストの完了時に要約を 1 件出力する。実現方式は 9 章で述べる。</p>
+</section>
+
+<section id="instrumentation">
+  <h2><span class="n">9</span>計装の実現方式</h2>
+  <p>計測は運用の基礎となるが、検索や認可といったアプリケーションのコアロジックではなく、横断的関心事である。コアロジックへの変更を最小限に抑え、疎結合に実現する方式を検討する。</p>
+
+  <h3>現状の構造</h3>
+  <p>コードを確認した結果は次のとおりである。</p>
+  <ul>
+    <li><strong>ポートと構成処理は分離されている。</strong>Connector、IdpAdapter、CredentialProvider、LlmClient、GatewayClient、AuditSink はいずれもインターフェースとして定義されており、実装の生成と組み立ては Gateway の <code>bootstrap/</code> と Orchestrator の <code>bin/</code> に集約されている。構成処理で実装を別のオブジェクトで包むことができる。</li>
+    <li><strong>エラーは分類コードに正規化されている。</strong>GatewayError、ConnectorError、LlmError はいずれも分類コードを持つ。呼び出しの外側から、メッセージを解析せずに結果を分類できる。</li>
+    <li><strong>時刻の取得は、多くのクラスで注入可能である。</strong>Gateway、資格情報、探索ループなどは <code>now</code> を引数として受け取る。</li>
+    <li><strong>計測はコアロジックの内部で行われている。</strong><code>Gateway.handleToolCall</code> は、runId の検証、ツールの実行、所要時間の算出、監査レコードの組み立て、監査ログへの書き込み、生クエリ表への書き込みを 1 つのメソッドで行う。<code>Gateway.execute</code> は、認可に関わる検査、レート制限、資格情報の取得、期限付きのコネクタ呼び出し、結果の射影を順に行う。</li>
+    <li><strong>イベントを外部に通知する仕組みはない。</strong>Gateway と探索ループには、処理の進行を通知するフックやオブザーバーがない。探索ループは、LLM の使用量と警告を内部状態(RunState)に蓄積し、結果として返却する。</li>
+    <li><strong>期限の実装は 4 通りある</strong>(8 章)。期限を適用する処理と、所要時間を取得する処理が分離しており、共通の抽象がない。</li>
+  </ul>
+
+  <h3>目標とする構造</h3>
+  <p>監査と計測は、いずれも呼び出しを記録する点で類似するが、位置付けが異なる。監査ログの記録は不変条件 2 が定めるコアの責務であり、fail-closed の設定下では、記録の失敗が呼び出しの失敗となる。計測は、失敗しても処理の結果に影響を与えてはならない。この違いに基づき、目標とする構造を次のように定める。</p>
+  <ul>
+    <li><strong>コアロジックは、ポートと監査のみに依存する。</strong>計測のためのモジュール(レコーダー、計測デコレーター)を import しない。この依存関係を import 境界の検査(適応度関数)で保証する。</li>
+    <li><strong>ポートの呼び出しは、計測デコレーターで計測する。</strong>構成処理において、各ポートの実装を計測デコレーターで包む。計測デコレーターは、構成時に適用される期限の値を受け取り、所要時間、期限、結果の分類を記録する。</li>
+    <li><strong>リクエスト全体は、ミドルウェアで計測する。</strong>HTTP サーバーのリクエストハンドラーをミドルウェアで包み、ターンアラウンドタイムと応答の状態を記録する。ミドルウェアは計測コンテキストを開始し、処理中に計測デコレーターが記録したスパンを集約する。</li>
+    <li><strong>出力はレコーダーに一本化する。</strong>計測デコレーターとミドルウェアは、引数として利用者の資格情報やクエリを受け取るが、レコーダーの strict スキーマにはそれらのフィールドがないため、出力には含まれない(要件 R1)。</li>
+    <li><strong>計測の失敗は、処理に影響させない。</strong>レコーダーへの書き込みで例外が発生した場合は、計測デコレーターの内部で処理し、呼び出し元に伝播させない。</li>
+  </ul>
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 300" role="img" aria-label="目標とする構造。ミドルウェア、コアロジック、ポート、計測デコレーター、実装の関係と、レコーダーへの出力">
+        <rect class="box hl" x="20" y="50" width="160" height="64"/><text x="30" y="76">ミドルウェア</text><text x="30" y="96" class="s">リクエスト単位の計測</text>
+        <rect class="box sub" x="225" y="50" width="180" height="64"/><text x="235" y="76">コアロジック</text><text x="235" y="96" class="s">Gateway、探索ループ</text>
+        <rect class="box" x="450" y="50" width="90" height="64"/><text x="460" y="76">ポート</text><text x="460" y="96" class="s">IF</text>
+        <rect class="box hl" x="585" y="50" width="150" height="64"/><text x="595" y="76">計測デコレーター</text><text x="595" y="96" class="s">スパン単位の計測</text>
+        <rect class="box" x="780" y="50" width="106" height="64"/><text x="790" y="76">実装</text><text x="790" y="96" class="s">各ポートの実装</text>
+        <path class="ln m" d="M180,82 H225"/><polygon class="arr m" points="225,82 216,78 216,86"/>
+        <path class="ln m" d="M405,82 H450"/><polygon class="arr m" points="450,82 441,78 441,86"/>
+        <path class="ln m" d="M540,82 H585"/><polygon class="arr m" points="585,82 576,78 576,86"/>
+        <path class="ln m" d="M735,82 H780"/><polygon class="arr m" points="780,82 771,78 771,86"/>
+        <rect class="box sub" x="225" y="150" width="180" height="44"/><text x="235" y="177">監査ログ <tspan class="s">コアの責務</tspan></text>
+        <path class="ln m" d="M315,114 V150"/><polygon class="arr m" points="315,150 311,141 319,141"/>
+        <rect class="box hl" x="450" y="226" width="170" height="50"/><text x="460" y="247">レコーダー</text><text x="460" y="265" class="s">strict スキーマで検証</text>
+        <rect class="box" x="680" y="226" width="200" height="50"/><text x="690" y="256">構造化運用ログ</text>
+        <path class="ln" d="M100,114 V251 H450"/><polygon class="arr" points="450,251 441,247 441,255"/>
+        <path class="ln" d="M660,114 V200 H535 V226"/><polygon class="arr" points="535,226 531,217 539,217"/>
+        <path class="ln" d="M620,251 H680"/><polygon class="arr" points="680,251 671,247 671,255"/>
+        <text x="20" y="30" class="s">青い矢印: 処理の呼び出し。灰色の矢印: 計測イベントの出力。コアロジックからレコーダーへの依存はない。</text>
+      </svg>
+    </div>
+    <figcaption><b>図 3</b>目標とする構造。赤枠が新たに追加する要素である。ミドルウェアと計測デコレーターは構成処理で適用するため、コアロジックと各実装は変更しない。</figcaption>
+  </figure>
+
+  <h3>実現方式の選択肢</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>計測できる範囲</th><th>コアロジックの変更</th><th>利点</th><th>欠点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>コアロジック内での計装(各処理の内部に計測の処理を記述する)</td><td>任意の箇所</td><td>計測項目ごとに必要</td><td>単純で、任意の粒度で計測できる</td><td>計測の処理がコアロジックに分散する。コアロジックは利用者とクエリを参照できるため、R1 を構造的に保証できない</td><td>不採用</td></tr>
+          <tr><th>B</th><td>計測デコレーター(ポートの実装を、構成処理で包む)</td><td>ポートの呼び出し。期限設定の大半がこれに対応する</td><td>不要</td><td>コアロジックと実装を変更しない。プラグインとして追加された実装にも自動的に適用される。期限の超過後に継続する処理の完了時刻も取得できる</td><td>ポートを経由しない内部の処理(レート制限の判定、探索ループの各段階)は計測できない</td><td><span class="ok">採用</span>(主)</td></tr>
+          <tr><th>C</th><td>ミドルウェアと計測コンテキスト(リクエストハンドラーを包み、AsyncLocalStorage でスパンを集約する)</td><td>リクエスト全体と、その内訳</td><td>不要</td><td>ターンアラウンドタイムと内訳を、コアロジックを変更せずに取得できる。認証エラーなど、コアロジックに到達しないリクエストも計測できる</td><td>AsyncLocalStorage の利用に伴う、わずかな実行時のオーバーヘッドがある。集約はプロセス内に限られる</td><td><span class="ok">採用</span>(主)</td></tr>
+          <tr><th>D</th><td>期限付き呼び出しの共通化(期限の適用と、所要時間・期限・結果の報告を 1 つの関数にまとめる)</td><td>期限を適用するすべての箇所</td><td>期限の実装箇所の置き換え</td><td>設定値と所要時間を同じ箇所で取得できる。実装方式とエラー分類を統一できる</td><td>コアロジックを含む複数の箇所の変更が必要である。コネクタ IF に中断の伝搬を追加する場合は、ADR が必要になる(不変条件 5)</td><td>段階的に採用(Q7)</td></tr>
+          <tr><th>E</th><td>イベントの発行(コアロジックが処理の節目でイベントを発行し、購読側が記録する)</td><td>ポートを経由しない内部の処理</td><td>発行箇所ごとに 1 行</td><td>内部の段階を、意味のある単位で取得できる。Node 標準の <code>diagnostics_channel</code> を用いれば、依存を追加せずに実現できる</td><td>コアロジックの変更を伴う。イベントの内容に利用者やクエリが含まれないよう、型を制限する必要がある</td><td>B と C で取得できない箇所に限って採用</td></tr>
+          <tr><th>F</th><td>ランタイムによる自動計装(OpenTelemetry の自動計装など、HTTP クライアントやサーバーへの処理の差し込み)</td><td>HTTP の送受信</td><td>不要</td><td>コードの変更が不要である</td><td>URL やヘッダーを参照するため、秘密情報が出力に含まれるおそれがあり、R1 を保証できない。どの期限設定に対応する呼び出しかを判別できない。依存パッケージが増える</td><td>不採用</td></tr>
+          <tr><th>G</th><td>外部からの観測(リバースプロキシのアクセスログ、固定した質問を定期的に実行する合成監視)</td><td>利用者体感のターンアラウンドタイム</td><td>不要</td><td>ネットワークとクライアントを含めた値を取得できる。合成監視はカナリア検証と仕組みを共用できる</td><td>内訳を取得できない。アクセスログは導入先の構成に依存する。合成監視は LLM の呼び出しコストを伴う</td><td>補完として採用</td></tr>
+          <tr><th>H</th><td>既存の記録からの算出(監査ログの時刻と latencyMs から算出する)</td><td>run 所要時間と、ツール呼び出しの合計時間</td><td>不要</td><td>新規の実装なしに、直ちに開始できる</td><td>監査ログの運用への転用に当たる。LLM の応答待ちとそれ以外を分離できない。認証と監査ログの書き込みを含まない。暫定の手段として導入しても、監査ログに依存する集計処理が残る</td><td>不採用</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>推奨は、B と C を主たる方式として実装し、G で利用者体感を補完する構成である。H は、暫定の手段としても採用しない。監査ログを運用上の計測に利用しないためである(7 章)。計装(計測デコレーター、ミドルウェア、レコーダー)はオブザーバビリティ層に属し、品質の観測は、出力された構造化運用ログの集計値を利用する(「オブザーバビリティの位置付け」10 章)。B と C は、いずれもコアロジックを変更しない。D は、期限の実装を共通の関数に置き換える範囲で先行し、制御全体をコアロジックの外に移すかどうかは Q7 として判断する。E は、B と C の適用後も計測できない箇所が残った場合にのみ用いる。</p>
+
+  <h3>現状との差分</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>対象</th><th>現状</th><th>目標</th><th>必要な変更</th><th>コアロジックの変更</th></tr></thead>
+        <tbody>
+          <tr><th>コネクタ、IdP、資格情報の呼び出し</th><td>合算した latencyMs のみを、Gateway の内部で算出している</td><td>ポートごとの計測デコレーターが、スパン単位で記録する</td><td><code>bootstrap/assemble.ts</code> で、各実装を計測デコレーターで包む</td><td>なし</td></tr>
+          <tr><th>LLM の呼び出し、Gateway へのリクエスト</th><td>使用量は RunState に蓄積される。所要時間は記録されない</td><td>LlmClient と GatewayClient の計測デコレーターが記録する</td><td>Orchestrator の構成処理(<code>bin/</code>)で、生成した実装を包む</td><td>なし</td></tr>
+          <tr><th>ターンアラウンドタイム</th><td>run の開始・終了時刻のみ(監査ログ)</td><td>ミドルウェアが、リクエスト単位で記録する</td><td>Orchestrator と Gateway の HTTP サーバーの生成箇所で、リクエストハンドラーを包む</td><td>なし</td></tr>
+          <tr><th>監査レコードの latencyMs と retryCount</th><td>Gateway の内部で算出し、監査レコードに書き込んでいる。読み取る実装は見当たらない</td><td>監査レコードから削除する。所要時間は、計測デコレーターがスパンごとに記録する</td><td>ADR-011 の追補(Q9)。監査スキーマと Gateway の書き込み処理の変更</td><td>あり(削除)</td></tr>
+          <tr><th>run の結果と利用者フィードバック</th><td>run API が、監査ログ(AnswerRun)に書き込んでいる</td><td>run API が、利用ログに書き込む。監査ログには、run の文脈のみを書き込む</td><td>ADR-011 と ADR-019 の見直し(Q9)。run API の書き込み先の分割</td><td>あり(run API)</td></tr>
+          <tr><th>期限の適用</th><td>4 通りの実装が、複数の箇所に分散している</td><td>共通の関数が、期限の適用と結果の報告を行う</td><td>各箇所を共通の関数に置き換える。実装が内部に持つ既定値(GitHub API の 30 秒など)を、構成時に取得できるようにする</td><td>あり(置き換えのみ)</td></tr>
+          <tr><th>レート制限の判定</th><td><code>Gateway.execute</code> の内部にある</td><td>当面は現状のまま維持する。拒否は監査ログの <code>rate_limited</code> から集計する</td><td>なし(Q7 の結論によっては、ポートのデコレーターに移す)</td><td>なし</td></tr>
+          <tr><th>探索ループの各段階</th><td>RunState に蓄積し、結果として返却している</td><td>LLM とツール呼び出しの回数・時間は、計測コンテキストから取得する。上限到達の種別は、返却された結果から取得する</td><td>ミドルウェアが、返却された結果を参照する</td><td>なし</td></tr>
+          <tr><th>計測モジュールの配置</th><td>存在しない</td><td>レコーダーとスキーマを独立したパッケージとし、計測デコレーターは各パッケージの構成処理の近くに置く</td><td>パッケージの追加。コアロジックのディレクトリから計測モジュールへの import を禁止する規則を、lint-imports に追加する</td><td>なし</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>計測デコレーターが扱えない点が 2 つある。1 つは、期限を適用する処理が計測デコレーターの外側にある場合(Gateway のコネクタ呼び出し)である。この場合、計測デコレーターは下流の処理の完了を観測できるが、外側で期限が発火したことは直接には分からないため、構成時に受け取った期限の値と所要時間を比較して超過を判定する。もう 1 つは、共有されるインスタンス(LlmClient)の呼び出しを、どのリクエストに属するものとして集約するかである。これは計測コンテキストによって解決する。</p>
+</section>
+
+<section id="viz">
+  <h2><span class="n">10</span>可視化手段</h2>
+  <p>可視化は、提供形態(どのような手段で表示するか)と、閲覧するロール(誰に何を表示するか)の 2 点から整理する。ロールごとに、関心事項だけでなく、参照を許可される観測経路が異なるためである。</p>
+
+  <h3 id="roles">想定するロールと関心事項</h3>
+  <p>ロールは、参照を許可される観測経路が異なる単位として定める。類似の製品(エンタープライズサーチ、社内向け AI アシスタント)の導入体制を参考に、導入企業側に 4、OSS 側に 2 のロールとした。小規模な導入では 1 人が複数のロールを兼ねるが、アクセス制御の単位として区別する。</p>
+  <p>経営層・予算責任者、法務・労務・プライバシーの担当者、各データソースの管理者、ヘルプデスクは、ロールとして定めない。これらの関係者は、観測経路を直接参照せず、いずれかのロールが生成したレポートの集計値を受け取る立場にあり、独自のアクセス制御を必要としないためである。レポートの配布先として、「ロール別レポートの構成」の表に記載する。利用者は、レポートではなく既存の画面(回答に付随する出典と確信度、接続ページ)によって情報を得るため、対象外とする。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>ロール</th><th>関心事項(答えを得たい問い)</th><th>主に参照する指標</th><th>参照できる観測経路と制約</th></tr></thead>
+        <tbody>
+          <tr><th colspan="4" class="grp">導入企業</th></tr>
+          <tr><th>活用推進担当<small>AI・ナレッジ活用の推進責任者</small></th><td>有効な回答を返せているか。どの程度、継続的に利用されているか。解決できていない質問は、どの領域とソースに多いか。投資に見合う効果が得られているか(経営層への報告を含む)。</td><td>解決率、フィードバック回答率、未解決原因の分布(ソース別を含む)、利用率、継続利用率、利用量、ターンアラウンドタイム、解決 1 件あたりのコスト</td><td>利用ログ。監査ログは参照しない。失敗クエリの原文は、指名された担当者が生クエリ表の保持期間内に限って参照する</td></tr>
+          <tr><th>導入・運用管理者<small>情報システム部門。導入時は導入支援エンジニアを含む</small></th><td>性能と信頼性は十分か。利用量はキャパシティとソースごとの API クォータの範囲内か。LLM コストはいくらか。障害の原因はどの依存先にあるか。利用者からの問い合わせの原因は何か。</td><td>スパン別の所要時間、タイムアウト使用率、タイムアウト超過率、ターンアラウンドタイムとその内訳、エラー率、可用性、再接続要求率、キャパシティ使用率、ストレージ使用量、利用量、コスト、LLM の使用量</td><td>構造化運用ログのみ。監査ログは参照しない</td></tr>
+          <tr><th>監査担当<small>監査閲覧担当(指名制)、内部監査</small></th><td>すべての呼び出しが記録されているか。保持と削除は方針(ADR-013)どおりに実行されているか。監査ログは誰が、どの目的で閲覧したか。目的外利用は発生していないか。</td><td>監査記録の欠落、監査書き込みの失敗、保持期間の遵守、監査ログの閲覧状況、呼び出し主体の内訳</td><td>監査ログ(閲覧自体が audit_access に記録される)。個別レコードの参照は、インシデント調査と正式な調査の目的に限る</td></tr>
+          <tr><th>セキュリティ担当</th><td>権限逸脱は発生していないか。資格情報は適切に失効されているか。構成は安全側に保たれているか。</td><td>権限逸脱、機密情報の漏えい、構成の安全性、リクエストの拒否(認証エラーの推移)、資格情報管理、依存パッケージの脆弱性</td><td>監査ログ(credential_event を含む)、構造化運用ログ、分離テレメトリ(高権限者のみ)</td></tr>
+          <tr><th colspan="4" class="grp">OSS</th></tr>
+          <tr><th>leisen 開発者<small>コアのメンテナー</small></th><td>コードと機能の品質は維持されているか。どの機能が利用され、どこで失敗しているか。利用者が必要としているものは何か。</td><td>内部品質の全指標、回答品質(評価ハーネス)、適合性テストの結果、導入構成、機能別の利用量とエラー分類の分布</td><td>CI と評価ハーネスの結果。導入先の利用状況は、共有用集計(Q5)によってのみ把握する。導入先の監査ログと構造化運用ログは参照できない</td></tr>
+          <tr><th>プラグイン実装者<small>コネクタ、IdP Adapter などの実装者</small></th><td>実装はインターフェース契約を満たしているか。インターフェースは安定しているか。他の実装と比べて性能に問題はないか。</td><td>適合性テストの結果、公開インターフェースの安定性、ツール別のレイテンシとエラー分類</td><td>適合性テストスイートの出力。運用時の値は、導入企業の運用管理者から提供を受ける</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 298" role="img" aria-label="ロールと指標の区分の対応。各ロールが主に参照する区分と、補助的に参照する区分を示す">
+        <g text-anchor="middle">
+          <text x="370" y="30" class="t">不変条件</text>
+          <text x="480" y="30" class="t">回答品質</text>
+          <text x="590" y="30" class="t">運用品質</text>
+          <text x="700" y="30" class="t">内部品質</text>
+          <text x="815" y="30" class="t">利用状況</text>
+        </g>
+        <path class="grid" d="M20,44 H880 M20,78 H880 M20,112 H880 M20,146 H880 M20,180 H880 M20,214 H880 M20,248 H880"/>
+        <path class="ln" d="M20,44 H880 M20,180 H880"/>
+        <text x="30" y="66">活用推進担当</text>
+        <circle class="dot" cx="480" cy="61" r="8"/>
+        <circle class="dot o" cx="590" cy="61" r="7"/>
+        <circle class="dot" cx="815" cy="61" r="8"/>
+        <text x="30" y="100">導入・運用管理者</text>
+        <circle class="dot o" cx="370" cy="95" r="7"/>
+        <circle class="dot" cx="590" cy="95" r="8"/>
+        <circle class="dot" cx="815" cy="95" r="8"/>
+        <text x="30" y="134">監査担当</text>
+        <circle class="dot" cx="370" cy="129" r="8"/>
+        <circle class="dot o" cx="815" cy="129" r="7"/>
+        <text x="30" y="168">セキュリティ担当</text>
+        <circle class="dot" cx="370" cy="163" r="8"/>
+        <circle class="dot o" cx="590" cy="163" r="7"/>
+        <circle class="dot o" cx="700" cy="163" r="7"/>
+        <text x="30" y="202">leisen 開発者</text>
+        <circle class="dot o" cx="370" cy="197" r="7"/>
+        <circle class="dot" cx="480" cy="197" r="8"/>
+        <circle class="dot o" cx="590" cy="197" r="7"/>
+        <circle class="dot" cx="700" cy="197" r="8"/>
+        <circle class="dot o" cx="815" cy="197" r="7"/>
+        <text x="30" y="236">プラグイン実装者</text>
+        <circle class="dot" cx="370" cy="231" r="8"/>
+        <circle class="dot o" cx="590" cy="231" r="7"/>
+        <circle class="dot" cx="700" cy="231" r="8"/>
+        <circle class="dot" cx="38" cy="276" r="8"/><text x="54" y="281" class="s">主に参照する</text>
+        <circle class="dot o" cx="168" cy="276" r="7"/><text x="184" y="281" class="s">補助的に参照する</text>
+      </svg>
+    </div>
+    <figcaption><b>図 4</b>ロールと指標の区分の対応。上の 4 行が導入企業、下の 2 行が OSS 側のロールである。利用状況の列は、活用推進担当と運用管理者が主に参照しており、品質カテゴリのみでは関心事項を満たせないことを示している。</figcaption>
+  </figure>
+
+  <h3>ロールの検討による指標の追加</h3>
+  <p>各ロールの関心事項を 5 章の指標と照合した結果、次の指標が不足していたため追加した(定義は 5 章の表に記載)。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>追加した指標</th><th>区分</th><th>必要とするロール</th><th>追加の理由</th></tr></thead>
+        <tbody>
+          <tr><th>利用率、継続利用率、利用量、呼び出し主体の内訳</th><td>利用状況</td><td>活用推進担当、運用管理者、監査担当</td><td>利用の実態を示す指標がなかった。解決率などの品質指標を解釈する際の母数としても必要である</td></tr>
+          <tr><th>コスト</th><td>利用状況</td><td>運用管理者、活用推進担当</td><td>LLM の使用量(トークン数)は運用品質に含めていたが、金額としての合計と、解決 1 件あたりの値がなかった</td></tr>
+          <tr><th>フィードバック回答率、未解決原因の分布</th><td>回答品質</td><td>活用推進担当</td><td>解決率は利用者フィードバックに依存するため、回答率が低いと信頼できない。未解決原因の分布は、設計書 4.6 節が Phase 移行の条件としている</td></tr>
+          <tr><th>可用性、キャパシティ使用率、ストレージ使用量</th><td>運用品質</td><td>運用管理者</td><td>レイテンシとエラー率のみでは、障害の有無と増強の要否を判断できない</td></tr>
+          <tr><th>再接続要求率</th><td>運用品質</td><td>運用管理者</td><td>資格情報の期限切れは、利用者からの問い合わせの主要な原因となる</td></tr>
+          <tr><th>保持期間の遵守、監査ログの閲覧状況</th><td>不変条件</td><td>監査担当</td><td>監査ログの記録内容に関する指標はあったが、監査ログ自体の運用状況に関する指標がなかった</td></tr>
+          <tr><th>構成の安全性</th><td>不変条件</td><td>セキュリティ担当</td><td>安全側の既定からの変更は起動時の警告にしか現れず、継続的に確認する手段がなかった</td></tr>
+          <tr><th>導入構成</th><td>利用状況</td><td>leisen 開発者</td><td>開発者は導入先のデータを参照できないため、どの構成が利用されているかを把握する手段がなかった</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>提供形態の選択肢</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp opt">
+        <thead><tr><th>案</th><th>内容</th><th>利点</th><th>欠点</th><th>評価</th></tr></thead>
+        <tbody>
+          <tr><th>A</th><td>CI のジョブサマリと PR コメント</td><td>変更した開発者がその場で確認できる。保存先を別途用意する必要がない</td><td>履歴を追跡しにくい</td><td><span class="ok">採用</span>(開発時)</td></tr>
+          <tr><th>B</th><td>リポジトリ内のスコアカード(JSON のスナップショットと、そこから生成する HTML)</td><td>推移が差分として残り、レビューの対象にできる。追加のインフラストラクチャが不要である</td><td>運用データは掲載できない(導入先のデータであるため)</td><td><span class="ok">採用</span>(開発時)</td></tr>
+          <tr><th>C</th><td>JSONL から静的 HTML を生成する CLI(昇格判定レポートと同じ方式)</td><td>1 デプロイ = 1 社の構成に適合する。監査ログを読み取る処理は、閲覧記録の対象にできる。追加のインフラストラクチャが不要である(R4)</td><td>リアルタイム監視はできない(日次または週次)</td><td><span class="ok">採用</span>(運用時の標準)</td></tr>
+          <tr><th>D</th><td>Grafana とログ・メトリクスの収集基盤を、compose の overlay として追加する</td><td>常時監視とアラートが可能になる</td><td>運用負荷が増える。取り込んでよいのは構造化運用ログのみであり、監査ログを取り込むと閲覧のアクセス制御を迂回することになる</td><td>contrib(任意)</td></tr>
+          <tr><th>E</th><td>クエリのサンプルを文書として整備し、必要に応じて集計する</td><td>柔軟性が高い。docs/audit-queries.md が既にある</td><td>定型化されず、実施者によって指標の定義が異なるおそれがある</td><td>調査用途として維持する</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <figure>
+    <div class="fig">
+      <svg viewBox="0 0 900 390" role="img" aria-label="データソースから格納先、可視化までのデータフロー">
+        <text x="20" y="22" class="t">データソース</text>
+        <text x="335" y="22" class="t">格納先</text>
+        <text x="635" y="22" class="t">可視化</text>
+        <rect class="box" x="20" y="36" width="240" height="48"/><text x="30" y="56">静的検査(CI)</text><text x="30" y="74" class="s">依存方向・lint・カバレッジ</text>
+        <rect class="box sub" x="635" y="36" width="250" height="48"/><text x="645" y="56">コンポーネント別スコアカード</text><text x="645" y="74" class="s">HTML と CI のジョブサマリ</text>
+        <rect class="box" x="20" y="94" width="240" height="48"/><text x="30" y="114">コンポーネント別のテスト</text><text x="30" y="132" class="s">適合性テスト・dev-eval・T-008</text>
+        <rect class="box sub" x="635" y="94" width="250" height="48"/><text x="645" y="114">評価レポート</text><text x="645" y="132" class="s">docs/eval。プロンプト変更の PR に添付</text>
+        <rect class="box hl" x="20" y="152" width="240" height="48"/><text x="30" y="172">利用ログ(新設)</text><text x="30" y="190" class="s">run の結果・利用者フィードバック</text>
+        <rect class="box sub" x="635" y="152" width="250" height="48"/><text x="645" y="172">活用状況レポート</text><text x="645" y="190" class="s">昇格判定レポートを拡張</text>
+        <rect class="box hl" x="20" y="210" width="240" height="48"/><text x="30" y="230">構造化運用ログ(新設)</text><text x="30" y="248" class="s">スパン・リクエストの要約・拒否</text>
+        <rect class="box sub" x="635" y="210" width="250" height="48"/><text x="645" y="230">運用レポート</text><text x="645" y="248" class="s">CLI で HTML を生成。日次または週次</text>
+        <rect class="box sub" x="20" y="268" width="240" height="48"/><text x="30" y="288">監査ログ(証跡に限定)</text><text x="30" y="306" class="s">アクセスの記録・閲覧の記録</text>
+        <rect class="box sub" x="635" y="268" width="250" height="48"/><text x="645" y="288">監査状況レポート</text><text x="645" y="306" class="s">監査の自己点検</text>
+        <rect class="box hl" x="20" y="326" width="240" height="48"/><text x="30" y="346">分離テレメトリ(未実装)</text><text x="30" y="364" class="s">日次集計・件数のバケット</text>
+        <rect class="box" x="635" y="326" width="250" height="48"/><text x="645" y="346">セキュリティレポート</text><text x="645" y="364" class="s">分離テレメトリは他と統合しない</text>
+        <rect class="box" x="335" y="36" width="220" height="106"/><text x="345" y="87">品質スナップショット</text><text x="345" y="105" class="s">JSON。CI の成果物とリポジトリ</text>
+        <path class="ln" d="M260,60 H335"/><polygon class="arr" points="335,60 326,56 326,64"/>
+        <path class="ln" d="M555,60 H635"/><polygon class="arr" points="635,60 626,56 626,64"/>
+        <path class="ln" d="M260,118 H335"/><polygon class="arr" points="335,118 326,114 326,122"/>
+        <path class="ln" d="M555,118 H635"/><polygon class="arr" points="635,118 626,114 626,122"/>
+        <rect class="box" x="335" y="152" width="220" height="48"/><text x="345" y="174">JSONL ファイル</text><text x="345" y="192" class="s">中期保持</text>
+        <path class="ln" d="M260,176 H335"/><polygon class="arr" points="335,176 326,172 326,180"/>
+        <path class="ln" d="M555,176 H635"/><polygon class="arr" points="635,176 626,172 626,180"/>
+        <rect class="box" x="335" y="210" width="220" height="48"/><text x="345" y="232">JSONL ファイル</text><text x="345" y="250" class="s">短期保持</text>
+        <path class="ln" d="M260,234 H335"/><polygon class="arr" points="335,234 326,230 326,238"/>
+        <path class="ln" d="M555,234 H635"/><polygon class="arr" points="635,234 626,230 626,238"/>
+        <rect class="box" x="335" y="268" width="220" height="48"/><text x="345" y="290">JSONL ファイル</text><text x="345" y="308" class="s">長期保持。閲覧を記録</text>
+        <path class="ln" d="M260,292 H335"/><polygon class="arr" points="335,292 326,288 326,296"/>
+        <path class="ln" d="M555,292 H635"/><polygon class="arr" points="635,292 626,288 626,296"/>
+        <rect class="box" x="335" y="326" width="220" height="48"/><text x="345" y="348">専用ファイル</text><text x="345" y="366" class="s">14 日保持・高権限者のみ</text>
+        <path class="ln" d="M260,350 H335"/><polygon class="arr" points="335,350 326,346 326,354"/>
+        <path class="ln" d="M555,350 H635"/><polygon class="arr" points="635,350 626,346 626,354"/>
+      </svg>
+    </div>
+    <figcaption><b>図 5</b>データフロー。赤枠は新たに実装する経路を示す。記録は、種類ごとに独立した経路で可視化まで到達し、途中で統合しない。セキュリティレポートは、分離テレメトリに加えて、監査ログの資格情報のイベントとカナリア検証の結果も入力とするが、図では省略した。監視基盤への連携(contrib)は、構造化運用ログのみを対象とする。</figcaption>
+  </figure>
+  <h3>ロール別レポートの構成</h3>
+  <p>ロールごとの表示を実現する方法には、(a) 全指標を 1 つのレポートに掲載し、各ロールが必要な箇所を参照する、(b) 入力とする観測経路ごとにレポートを分割する、(c) ダッシュボードにロールベースのアクセス制御を実装する、の 3 案がある。(a) は、監査ログを入力とする部分と分離テレメトリを入力とする部分が同一のファイルに混在し、ADR-011 と ADR-013 のアクセス制御を満たせない。(c) は認可の仕組みをコアに追加することになる。(b) であれば、アクセス制御を「どの CLI を、誰が、どのファイルに対して実行できるか」というファイルシステム上の権限に帰着できるため、(b) を推奨する。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>レポート</th><th>対象ロール</th><th>集計値の配布先</th><th>掲載する内容</th><th>入力</th><th>アクセス制御</th></tr></thead>
+        <tbody>
+          <tr><th>活用状況レポート<small>昇格判定レポートを拡張</small></th><td>活用推進担当</td><td>経営層・予算責任者(要約)、各データソースの管理者(当該ソースの未解決率と利用量)</td><td>回答品質、利用状況指標(コストを除く)、ソース別の未解決率</td><td>利用ログ、生クエリ表(保持期間内の失敗クエリのみ)</td><td>活用推進担当が生成できる。生クエリ表の参照は、指名された担当者に限る。配布するのは集計値のみ</td></tr>
+          <tr><th>運用レポート</th><td>導入・運用管理者</td><td>ヘルプデスク(エラー率、可用性、再接続要求率)、各データソースの管理者(当該ソースのエラー率と API クォータの使用率)</td><td>運用品質(スパン別の所要時間、タイムアウト使用率と超過率、ターンアラウンドタイムとその内訳を含む)、利用量、コスト</td><td>構造化運用ログのみ</td><td>運用担当者が生成できる</td></tr>
+          <tr><th>監査状況レポート</th><td>監査担当</td><td>法務・労務・プライバシーの担当者(保持と閲覧の状況)</td><td>監査記録の欠落、監査書き込みの失敗、保持期間の遵守、監査ログの閲覧状況、呼び出し主体の内訳</td><td>監査ログ(audit_access、retention_purge を含む)、構造化運用ログの呼び出し件数</td><td>監査閲覧担当が生成する</td></tr>
+          <tr><th>セキュリティレポート</th><td>セキュリティ担当</td><td>なし</td><td>権限逸脱(カナリア検証)、資格情報のイベント、構成の安全性、認証エラーの推移、プライベート領域の除外件数のバケット</td><td>カナリア検証の結果、監査ログ(credential_event)、構造化運用ログ、分離テレメトリ</td><td>セキュリティ担当の高権限者のみが生成できる。他のレポートに転記しない。検知の指標と、検証の実行状況の詳細は、「セキュリティの観測」に定める</td></tr>
+          <tr><th>開発レポート<small>スコアカード、評価レポート</small></th><td>leisen 開発者、プラグイン実装者</td><td>公開</td><td>内部品質、回答品質(評価ハーネス)、適合性テストの結果</td><td>品質スナップショット。導入先の状況は共有用集計(Q5)</td><td>リポジトリで公開する。導入先のデータは含まない</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>配布先に提供するのは集計値のみであり、利用者、クエリ、文書 ID は含めない。Slack を対象とするソース別の集計は行わない(不変条件 7)。配布先が観測経路を直接参照する必要が生じた場合は、その時点でロールとして定義し、アクセス制御を定める。</figcaption>
+  </figure>
+
+  <p>スコアカードは、行にコンポーネント、列に 4 つの品質カテゴリを配置し、カテゴリごとに代表指標 1 つと前回からの変化を表示する。不変条件の列は数値ではなく合否で表示し、1 件でも違反があれば当該行全体を警告表示とする。利用状況指標はコンポーネントの品質を表すものではないため、スコアカードには掲載しない。アラート(カナリアトークンの検出、監査ログへの書き込み不能)は可視化ではなく、threat-model §5.3 が定める通知経路の対象であるため、本計画の範囲外とする。</p>
+</section>
+
+<section id="baseline">
+  <h2><span class="n">11</span>ベースライン計測(2026-11-15)</h2>
+  <p>新規の計装なしで取得できる内部品質の値を、2026-11-15 に本リポジトリで計測した(<code>npm ci</code> と <code>npm run build</code> の後、パッケージごとに <code>npm test</code> を実行)。行数は、<code>src</code> 配下の <code>.ts</code> ファイルと <code>*.test.ts</code> ファイルの合計である。</p>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide num">
+        <thead><tr><th>パッケージ</th><th>実装(行)</th><th>テスト(行)</th><th>テスト / 実装</th><th>テスト件数</th><th>実行時間(秒)</th><th>最大のファイル(行)</th></tr></thead>
+        <tbody>
+          <tr><th>audit</th><td>1,091</td><td>1,173</td><td>1.08</td><td>70</td><td>0.9</td><td>—</td></tr>
+          <tr><th>connector-sdk</th><td>316</td><td>249</td><td>0.79</td><td>10</td><td>0.2</td><td>316</td></tr>
+          <tr><th>connector-github</th><td>2,621</td><td>2,146</td><td>0.82</td><td>243</td><td>0.9</td><td>1,055</td></tr>
+          <tr><th>gateway</th><td>13,345</td><td>12,415</td><td>0.93</td><td>764(ほかにスキップ 5 件)</td><td>5.5</td><td>1,323</td></tr>
+          <tr><th>orchestrator</th><td>10,583</td><td>10,260</td><td>0.97</td><td>594</td><td>15.6</td><td>1,261</td></tr>
+          <tr><th>promotion-report</th><td>1,548</td><td>1,513</td><td>0.98</td><td>66</td><td>2.7</td><td>679</td></tr>
+          <tr><th>合計</th><td>29,504</td><td>27,756</td><td>0.94</td><td>1,747</td><td>25.8</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>実行したテストはすべて成功した。スキップされた 5 件は Keycloak との E2E テスト(CI では別ジョブで実行)と推定しているが、個別には確認していない。既存の評価結果として、探索プロンプト v3 は 20 問 × 2 回で 37 / 40、所要時間の中央値は 52.2 秒、探索の上限に到達した run は 8 件である(docs/eval/2026-10-09)。</figcaption>
+  </figure>
+  <p>この結果から次のことが分かる。テストコードの比率は、パッケージ間でおおむね均一である。テストの実行時間は orchestrator が全体の約 6 割を占めており、テスト容易性の観点では最初に調査すべき対象となる。1,000 行を超えるファイルが 3 つあり、いずれも複数の責務を持ちやすいコンポーネント(認可サーバー、探索ループ、GitHub コネクタ)に属している。行数は品質の直接的な指標ではないため、閾値は設定せず、推移のみを記録する。</p>
+</section>
+
+<section id="plan">
+  <h2><span class="n">12</span>実施計画</h2>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>段階</th><th>実施内容</th><th>完了条件</th><th>前提条件</th></tr></thead>
+        <tbody>
+          <tr><th>0 指標定義の整備</th><td>指標の定義表を作成する(名称、定義、カテゴリ、対象コンポーネント、経路)。新規の計装を必要としない内部品質の値によって、スコアカード v0 を CI で生成する。入れ子関係にある期限設定の整合性検証を、設定の検証に追加する</td><td>11 章の表が、CI のジョブサマリに毎回出力される</td><td>なし</td></tr>
+          <tr><th>1 記録の分離と境界の計装</th><td>ADR を起票する(3 種類の記録の構成、利用ログと構造化運用ログのスキーマと書き込み主体、監査ログのスキーマの縮小、オブザーバビリティのモジュールの配置と import 境界、分離テレメトリの書き込み先、stderr との役割分担)。承認後に、利用ログの書き込み、レコーダー、ミドルウェア、計測デコレーターを実装し、構成処理で適用する。昇格判定レポートの入力を利用ログに変更する。期限の実装を共通の関数に置き換える</td><td>回答品質と利用状況の指標を利用ログのみから、運用品質の指標を構造化運用ログのみから算出できる。4 章の課題 1〜3 が解消される</td><td>Q1、Q3、Q7、Q8、Q9、Q10。ADR の人間によるレビューが完了するまで実装に進まない</td></tr>
+          <tr><th>2 内部品質の適応度関数</th><td>lint-imports を全パッケージに拡張する(共有定数の配置先を先に決定する)。型情報を用いる lint を少数のルールで導入する。認可・監査・境界に関わるディレクトリにカバレッジの下限を設定する</td><td>依存方向の違反が 0 件の状態で CI が成功する。<code>any</code> の理由コメントが検査される</td><td>Q4</td></tr>
+          <tr><th>3 適合性テストスイート</th><td>Connector 向けのスイートを作成し、connector-github と dev-fixture に適用する。続いて IdP Adapter と LLM クライアントに展開する</td><td>2 つの実装が同一のスイートに合格し、指標を同じ表で比較できる</td><td>Drive および Slack コネクタの実装前に実施すると、コストが小さい</td></tr>
+          <tr><th>4 回答品質の評価と不変条件の常時検証</th><td>dev-eval の判定処理と集計処理を基盤として、T-008 の評価ハーネスを実装する。カナリア文書の検証ジョブを同梱する。認可関連のコードに限定したミューテーションテストを週次で実行する</td><td>T-008 の受け入れ条件 3 項目を満たす。カナリアトークンの検出件数 0 が日次で記録される</td><td>実クエリのサンプルと、権限プロファイルを固定したテスト用アイデンティティ(人手の作業)</td></tr>
+          <tr><th>5 ロール別レポート</th><td>ロール別レポート(活用状況、運用、監査状況、セキュリティ)を生成する CLI を実装する。活用状況レポートは、昇格判定レポートの集計処理を拡張して実装する。監査記録の欠落(呼び出し件数と記録件数の差)を、監査状況レポートで算出する</td><td>リファレンスデプロイを 1 日稼働させて得た JSONL から、HTML を生成できる</td><td>段階 1。Q2、Q5、Q6</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  <p>記録の分離と構造化運用ログの実装を段階 1 に置くのは、指標を監査ログから暫定的にも算出しない方針(7 章)のためである。段階 1 は不変条件 3・6・7 に関わる新しい出力経路を設けるため、CLAUDE.md の手順に従い、ADR のドラフトを作成した時点で人間のレビューを待つ。段階 0、2、3 は、人手の前提条件なしに着手でき、段階 1 のレビューと並行して進められる。監視基盤向けのブリッジは、導入先からの要求に応じて追加する(7 章)。backlog のタスク ID は割り当てていない。</p>
+</section>
+
+<section id="stress">
+  <h2><span class="n">13</span>推奨案の妥当性検証</h2>
+  <h3>変更シナリオ</h3>
+  <figure class="tblfig">
+    <div class="tbl">
+      <table class="cmp wide">
+        <thead><tr><th>変更シナリオ</th><th>計測基盤側の修正箇所</th></tr></thead>
+        <tbody>
+          <tr><th>コネクタの内部実装を検索層に置き換える(Phase 2)</th><td>修正不要。同一の適合性テストスイートと、構造化運用ログ由来の同一の指標によって、置き換えの前後を比較する。空振り率のみ、分離テレメトリに項目を追加する</td></tr>
+          <tr><th>Slack コネクタを有効化する</th><td>修正不要。構造化運用ログのスキーマは sourceId 以外のソース由来のデータを持たない。評価ログには真偽値のみを記録する(T-008 に記載済み)</td></tr>
+          <tr><th>MCP SDK を v2 系に移行する</th><td>修正不要。プロキシのプロトコルテスト(sdk-protocol)とスモークテスト、およびレイテンシの分布によって、リグレッションを検出する</td></tr>
+          <tr><th>2 社目が導入する</th><td>目標値を deployment.yaml に設定する。指標の定義とレポートはコアのまま変更しない</td></tr>
+          <tr><th>収集基盤を運用している導入先が OpenTelemetry への対応を求める</th><td>contrib にエクスポーターを追加する。コアのスキーマは変更しない</td></tr>
+          <tr><th>新しいコネクタや LLM バックエンドを追加する</th><td>修正不要。構成処理が計測デコレーターを適用するため、追加された実装は自動的に計測の対象となる</td></tr>
+          <tr><th>計測項目を追加する(例: スパンに新しい属性を加える)</th><td>レコーダーのスキーマと計測デコレーター。コアロジックと各実装は変更しない</td></tr>
+          <tr><th>指標の定義を変更する(例: 解決率の分母)</th><td>定義表と集計処理の 1 か所。dev-eval と運用レポートが同じ集計処理を利用していることが前提となる(R3、R5)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3>前提に対する反例</h3>
+  <ul>
+    <li><strong>「運用品質は監査ログからすべて算出できる」は成立しない。</strong>認証エラーとなったリクエストは利用者を特定できないため、監査ログに記録されない。LLM の応答時間は Gateway を経由しない。起動に失敗したプロセスは監査ログを出力できない。この 3 点が、構造化運用ログを新設する根拠である。</li>
+    <li><strong>「構造化運用ログは利用者と関連付けられない」は、識別子のフィールドを持たないだけでは保証されない。</strong>利用者が 1 名しかいない時間帯や、特定の 1 名しか利用しないソースでは、タイムスタンプと sourceId から利用者を推定できる。保持期間を短く設定したうえで、タイムスタンプの粒度と sourceId の扱いを ADR で定める必要がある。</li>
+    <li><strong>「計測デコレーターによって、すべての期限設定を計測できる」は成立しない。</strong>run 全体の期限は探索ループの内部で適用されており、ポートの呼び出しに対応しない。リクエスト本文の受信の期限は Node のランタイムが適用する。runId の有効期間は処理の期限ではない。前者はミドルウェアが返却された結果から取得し、後二者は計測の対象外とする。</li>
+    <li><strong>「コンポーネント単体で同一の指標を取得できる」は、回答品質については成立しない。</strong>探索ループの回答品質は、LLM とコーパスの組み合わせに依存し、コンポーネント単体の値としては定まらない。回答品質は「プロンプトのバージョン × モデル × コーパス」の組み合わせに対して記録する。</li>
+  </ul>
+
+</section>
+
+<section id="open">
+  <h2><span class="n">14</span>前提と未検証事項</h2>
+  <ul>
+    <li><strong>確認済みの事項</strong>: パッケージ構成、行数、テストの件数と実行時間、CI のジョブ構成、<code>lint-imports.mjs</code> の検査対象、監査スキーマ、<code>proxy/gateway.ts</code> の TODO コメント、dev-eval の評価結果(docs/eval)、パッケージ間の import。</li>
+    <li><strong>コードの確認のみで、実行による検証を行っていない事項</strong>: 認証エラーとなったリクエストが監査ログに記録されないこと。レート制限による拒否が ToolInvocation に <code>rate_limited</code> として記録されること。コネクタ共通の適合性テストが存在しないこと(検索したが該当するものは見つからなかった)。</li>
+    <li><strong>時間に関する未確認の事項</strong>: 8 章の表で「未確認」とした、超過時のエラー分類。connector-github に実際に渡される期限の値(既定値どうしが等しいことのみ確認した)。回答のストリーミング送信の有無(ストリーミングを行う場合は、最初の応答までの時間を別の指標として定義する必要がある)。AsyncLocalStorage による計測コンテキストの実行時のオーバーヘッド(実測していない)。<code>diagnostics_channel</code> のうち TracingChannel の安定度(採用する場合は、対象の Node のバージョンで確認する)。</li>
+    <li><strong>OpenTelemetry へのブリッジに関する未確認の事項</strong>: OpenTelemetry Collector のファイル読み取り用レシーバーによって JSONL を取り込み、メトリクスへ変換する構成は、動作を確認していない。採用時に、対象とする Collector のバージョンで検証する。</li>
+    <li><strong>記録の分離に関する未確認の事項</strong>: 監査ログを第三者に示す証拠として扱う、という前提は、導入先の要件として確認したものではない。runId に含まれる内容(利用ログの鍵として、どのような変換が必要か)。昇格判定レポートが参照している監査ログの項目の一覧。既に記録された監査ログの、移行時の扱い。</li>
+    <li><strong>計測していない指標</strong>: カバレッジ、ミューテーションスコア、依存方向の違反件数、PR ごとの変更の局所性。対応するツールが導入されていないため、値がない。段階 0〜1 で、11 章の表に列を追加して記録する。</li>
+    <li><strong>前提</strong>: 運用は導入企業の情報システム部門が担い、常時監視の基盤を持たない導入先が存在する。実 SaaS、実 IdP、実 KMS、Claude API との疎通は人手の前提条件が満たされておらず、運用品質の実測値はリファレンスデプロイと開発用コネクタでしか取得できない。</li>
+    <li><strong>ロールに関する前提</strong>: 10 章のロールは、類似製品の一般的な導入体制から想定したものであり、導入先への聞き取りは行っていない。実際の導入先でロールの分担が異なる場合は、レポートの配布先のみを変更し、レポートの種類と入力は変更しない。監査閲覧担当とセキュリティ担当の権限は ADR-011 と ADR-013 の定めに従った。それ以外のロールの参照範囲は、本計画における提案である。</li>
+    <li><strong>本文書の位置付け</strong>: 分析および企画であり、決定事項ではない。3 章の論点が決定した時点で、構造化運用ログと分離テレメトリについては ADR に、合意した設計要件と用語については設計書に反映する。</li>
+  </ul>
+</section>
+</main>
+</body>
+</html>
