@@ -293,3 +293,13 @@ describe("redactIdentity", () => {
     });
   });
 });
+
+describe("MockCredentialProvider(api_key、ADR-024)", () => {
+  it("全利用者で共有される変数にフォールバックしない", async () => {
+    const env = { [mockTokenEnvVar("redmine")]: "test-key-shared" };
+    const provider = new MockCredentialProvider("redmine", { env, credentialKind: "api_key" });
+    await expect(
+      provider.getCredential({ userId: "alice", session: { subjectToken: "dev-session-alice" } }),
+    ).rejects.toMatchObject({ errorClass: "source_not_connected" });
+  });
+});

@@ -27,6 +27,15 @@ export interface RedmineConnectorOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+/**
+ * 結果の領域分類(ADR-016 追補2、ADR-024 決定 4)。Redmine には DM や個人スコープに当たる
+ * 領域がなく、非公開プロジェクト・非公開 Issue・非公開ノートはロールと担当者で閲覧範囲を
+ * 限る Redmine の ACL として扱う(GitHub の組織の private リポジトリと同じ整理)。
+ * 閲覧範囲の判定は本人の API キーで呼ぶ Redmine が担うため、全結果を shared とする
+ */
+const REDMINE_SCOPE: DocumentScope = "shared";
+/** パスの "." / ".." セグメント(wiki の project・title に許さない) */
+const DOT_SEGMENT = /^\.{1,2}$/;
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 50;
 const MAX_PAGE_SIZE = 100;
@@ -133,6 +142,8 @@ function decodeWikiDocumentId(documentId: string): { project: string; title: str
     const project = decodeURIComponent(match[1] ?? "");
     const title = decodeURIComponent(match[2] ?? "");
     if (!project || !title || project.includes("/") || title.includes("\0")) return undefined;
+    // "." / ".." はパスの区切りとして解釈され、別の端点を指しうる
+    if (DOT_SEGMENT.test(project) || title.split("/").some((part) => DOT_SEGMENT.test(part))) return undefined;
     return { project, title };
   } catch {
     return undefined;
@@ -176,7 +187,7 @@ export class RedmineConnector implements Connector {
         const id = finiteInt(project.id);
         const name = string(project.name);
         if (id === undefined || !name) return [];
-        return [this.projectEntry(id, name, project.is_public === true)];
+        return [this.projectEntry(id, name)];
       }),
       supportedFilters: [],
     };
@@ -210,7 +221,6 @@ export class RedmineConnector implements Connector {
       throw new ConnectorError("source_unavailable", "Redmine returned an invalid search response");
     }
     const hits: SearchHit[] = [];
-    const projectScopes = new Map<string, DocumentScope>();
     for (const raw of results) {
       const result = record(raw);
       if (!result) continue;
@@ -234,34 +244,17 @@ export class RedmineConnector implements Connector {
         if (note && !notes) continue;
         const desc = note ? notes : safeText(string(result.description) ?? issue.description);
         const updatedAt = string(result.datetime);
-        const projectId = finiteInt(record(issue.project)?.id);
-        let scope: DocumentScope = "private";
-        const canBeShared = note
-          ? issue.is_private === false && journal?.private_notes === false
-          : issue.is_private !== true;
-        if (canBeShared && projectId !== undefined) {
-          const projectKey = String(projectId);
-          let projectScope = projectScopes.get(projectKey);
-          if (projectScope === undefined) {
-            const project = await this.project(auth, projectKey);
-            projectScope = project?.is_public === true ? "shared" : "private";
-            projectScopes.set(projectKey, projectScope);
-          }
-          if (projectScope === "shared") scope = "shared";
-        }
         hits.push({
           documentId: note ? issueNoteDocumentId(issueId, note.noteId) : issueDocumentId(issueId),
           title,
           snippet: desc.slice(0, 500),
           url: this.webUrl(note ? `issues/${issueId}#change-${note.noteId}` : `issues/${issueId}`),
           ...(updatedAt !== undefined ? { updatedAt } : {}),
-          scope,
+          scope: REDMINE_SCOPE,
         });
       } else if (type?.includes("wiki")) {
         const parsed = this.wikiLocation(result.url);
         if (!parsed) continue;
-        const project = await this.project(auth, parsed.project);
-        if (!project) continue;
         const updatedAt = string(result.datetime);
         hits.push({
           documentId: wikiDocumentId(parsed.project, parsed.title),
@@ -269,7 +262,7 @@ export class RedmineConnector implements Connector {
           snippet: safeText(result.description).slice(0, 500),
           url: this.webUrl(`projects/${encodeURIComponent(parsed.project)}/wiki/${encodeURIComponent(parsed.title)}`),
           ...(updatedAt !== undefined ? { updatedAt } : {}),
-          scope: project.is_public === true ? "shared" : "private",
+          scope: REDMINE_SCOPE,
         });
       }
     }
@@ -291,19 +284,13 @@ export class RedmineConnector implements Connector {
       const journal = findJournal(issue, noteId);
       const content = safeText(journal?.notes);
       if (!content) throw new ConnectorError("not_found", "Redmine issue note is not available");
-      const projectId = finiteInt(record(issue.project)?.id);
-      let scope: DocumentScope = "private";
-      if (issue.is_private === false && journal?.private_notes === false && projectId !== undefined) {
-        const project = await this.project(auth, String(projectId));
-        if (project?.is_public === true) scope = "shared";
-      }
       const subject = string(issue.subject) ?? `Issue #${issueId}`;
       return {
         documentId,
         title: `${subject} (note #${noteId})`,
         content: content.slice(0, 100_000),
         url: this.webUrl(`issues/${issueId}#change-${noteId}`),
-        scope,
+        scope: REDMINE_SCOPE,
       };
     }
     const issueMatch = /^issue:(\d{1,12})$/.exec(documentId);
@@ -311,10 +298,7 @@ export class RedmineConnector implements Connector {
       const id = Number(issueMatch[1]);
       const offset = cursorOffset(pageCursor);
       const issue = await this.issue(auth, id, true);
-      if (!issue) throw new ConnectorError("not_found", "Redmine issue is not available");
       const title = string(issue.subject) ?? `Issue #${id}`;
-      const projectId = finiteInt(record(issue.project)?.id);
-      const project = projectId === undefined ? undefined : await this.project(auth, String(projectId));
       // Redmine standard search returns the parent issue when a journal matches.
       // Keep individual note IDs so the caller can fetch and cite a matching note.
       const journals = Array.isArray(issue.journals)
@@ -322,7 +306,7 @@ export class RedmineConnector implements Connector {
             const journal = record(entry);
             const noteId = finiteInt(journal?.id);
             const notes = safeText(journal?.notes);
-            return noteId !== undefined && notes ? [{ noteId, notes, privateNotes: journal?.private_notes }] : [];
+            return noteId !== undefined && notes ? [{ noteId, notes }] : [];
           })
         : [];
       const content = [
@@ -346,24 +330,23 @@ export class RedmineConnector implements Connector {
         content: content.slice(offset, offset + 100_000),
         ...(offset + 100_000 < content.length ? { nextPageCursor: encodedCursor(offset + 100_000) } : {}),
         url: this.webUrl(`issues/${id}`),
-        scope: issue.is_private === true || project?.is_public !== true ||
-          journals.some((journal) => journal.privateNotes !== false) ? "private" : "shared",
+        scope: REDMINE_SCOPE,
       };
     }
     const wiki = decodeWikiDocumentId(documentId);
     if (wiki) {
-      const [pageBody, project] = await Promise.all([
-        this.request(auth, `projects/${encodeURIComponent(wiki.project)}/wiki/${encodeURIComponent(wiki.title)}.json`),
-        this.project(auth, wiki.project),
-      ]);
+      const pageBody = await this.request(
+        auth,
+        `projects/${encodeURIComponent(wiki.project)}/wiki/${encodeURIComponent(wiki.title)}.json`,
+      );
       const page = record(record(pageBody)?.wiki_page);
-      if (!page || !project) throw new ConnectorError("not_found", "Redmine wiki page is not available");
+      if (!page) throw new ConnectorError("not_found", "Redmine wiki page is not available");
       return {
         documentId,
         title: string(page.title) ?? wiki.title,
         content: safeText(page.text).slice(0, 100_000),
         url: this.webUrl(`projects/${encodeURIComponent(wiki.project)}/wiki/${encodeURIComponent(wiki.title)}`),
-        scope: project.is_public === true ? "shared" : "private",
+        scope: REDMINE_SCOPE,
       };
     }
     throw new ConnectorError("invalid_request", "invalid Redmine documentId");
@@ -379,7 +362,7 @@ export class RedmineConnector implements Connector {
       const id = finiteInt(project.id);
       const name = string(project.name);
       if (id === undefined || !name) return [];
-      return [this.projectEntry(id, name, project.is_public === true)];
+      return [this.projectEntry(id, name)];
     });
     return {
       entries,
@@ -421,13 +404,8 @@ export class RedmineConnector implements Connector {
     };
   }
 
-  private projectEntry(id: number, name: string, isPublic: boolean): ContainerEntry {
-    return {
-      id: String(id),
-      name,
-      kind: "other",
-      scope: isPublic ? "shared" : "private",
-    };
+  private projectEntry(id: number, name: string): ContainerEntry {
+    return { id: String(id), name, kind: "other", scope: REDMINE_SCOPE };
   }
 
   private issueNoteLocation(value: unknown): { issueId: number; noteId: number } | undefined {
@@ -456,7 +434,10 @@ export class RedmineConnector implements Connector {
       if (!url.pathname.startsWith(prefix)) return undefined;
       const parts = url.pathname.slice(prefix.length).split("/");
       if (parts[0] !== "projects" || parts[2] !== "wiki" || !parts[1] || !parts[3]) return undefined;
-      return { project: decodeURIComponent(parts[1]), title: decodeURIComponent(parts.slice(3).join("/")) };
+      const project = decodeURIComponent(parts[1]);
+      const title = decodeURIComponent(parts.slice(3).join("/"));
+      if (DOT_SEGMENT.test(project) || title.split("/").some((part) => DOT_SEGMENT.test(part))) return undefined;
+      return { project, title };
     } catch {
       return undefined;
     }

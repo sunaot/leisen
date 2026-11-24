@@ -71,10 +71,11 @@ function setup({
 }
 
 it.each([
+  // 非公開プロジェクト・非公開 Issue・非公開ノートも Redmine の ACL として shared(ADR-024 決定 4)
   { publicProject: true, privateIssue: false, privateNote: false, scope: "shared" },
-  { publicProject: false, privateIssue: false, privateNote: false, scope: "private" },
-  { publicProject: true, privateIssue: true, privateNote: false, scope: "private" },
-  { publicProject: true, privateIssue: false, privateNote: true, scope: "private" },
+  { publicProject: false, privateIssue: false, privateNote: false, scope: "shared" },
+  { publicProject: true, privateIssue: true, privateNote: false, scope: "shared" },
+  { publicProject: true, privateIssue: false, privateNote: true, scope: "shared" },
 ])("searches and fetches an issue note with scope $scope (project public=$publicProject, issue private=$privateIssue, note private=$privateNote)", async ({ scope, ...options }) => {
   const { connector } = setup(options);
   const auth = apiKeyAuth("alice");
@@ -109,7 +110,7 @@ it("returns only journals visible to the user when fetching the parent issue", a
   const { connector } = setup({ standardSearch: true, privateNote: true });
   const alice = await connector.fetch(apiKeyAuth("alice"), "issue:42");
   expect(alice.content).toContain(noteText);
-  expect(alice.scope).toBe("private");
+  expect(alice.scope).toBe("shared");
   const bob = await connector.fetch(apiKeyAuth("bob"), "issue:42");
   expect(bob.content).not.toContain(noteText);
   expect(bob.content).not.toContain(documentId);

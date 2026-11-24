@@ -209,11 +209,15 @@ export class MockCredentialProvider implements CredentialProvider {
       this.env[
         `${base}__${identity.userId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
       ];
-    const token = perUser ?? this.env[base];
+    // api_key は期限のない全権限の個人キーなので、全利用者で共有される <BASE> への
+    // フォールバックを認めない(利用者別の <BASE>__<USERID> だけ。ADR-024)
+    const token = this.credentialKind === "api_key" ? perUser : (perUser ?? this.env[base]);
     if (!token) {
       throw new IdpError(
         "source_not_connected",
-        `no mock credential injected for source '${this.sourceId}' (set ${base})`,
+        this.credentialKind === "api_key"
+          ? `no mock credential injected for source '${this.sourceId}' (set ${base}__<USERID>; the shared ${base} is not used for api_key)`
+          : `no mock credential injected for source '${this.sourceId}' (set ${base})`,
       );
     }
     if (this.credentialKind === "api_key") {
