@@ -1,6 +1,6 @@
 # ADR-024: Redmine コネクタと個人 API キーの資格情報表現
 
-Status: Proposed(2026-11-16。決定 5 の「公式コネクタとして初期セットに含める」はオーナー決定。決定 1〜4 は人間レビュー待ち)/ Date: 2026-11-12 / 改訂: 2026-11-16
+Status: Proposed(2026-11-16。決定 5 の「公式コネクタとして初期セットに含める」はオーナー決定。決定 1〜4 は人間レビュー待ち)/ Date: 2026-11-12 / 改訂: 2026-11-16、2026-11-24
 
 元は外部からの PR(sunaot/leisen#74、作者 ashie)で ADR-022 として起案された。同じ日に ADR-022(本人資格情報の置き場所)と ADR-023(esa)が採番・Accepted になったため番号を 024 に改め、ADR-022 の決定と整合するように決定を組み替えた。
 
@@ -24,7 +24,7 @@ connector-sdk の `Credential` は `oauth_bearer` と `delegated_identity` だ�
 1. **`Credential` に `api_key` を加える(connector-sdk v0.5)。** `{ kind: "api_key", apiKey, expiresAt }`。`apiKey` はログ出力禁止で、`redactAuthContext()` は kind だけを残す。`expiresAt` は `oauth_bearer` と同じ取り決めにそろえて必須とし、0 以下を「失効時刻不明」とする(ADR-016 追補3)。期限のない固定キーは 0 を入れ、Gateway の資格情報キャッシュは設定 TTL だけで失効させる。起案時は省略可としていたが、同じ概念の表し方が 2 通りになるため改めた(2026-11-16)。コネクタ共通 IF の変更として本 ADR に記録する(不変条件 5)
 2. **`AuthMethod` に新しい分類は加えない。** `AuthMethod` は ADR-010 / ADR-022 の「資格情報をどう得るか」の分類で、今回の取得経路は開発用の `mock_env` だけである。`mock_env` に `credentialKind`(`oauth_bearer` / `api_key`、既定 `oauth_bearer`)を加え、モックが返す資格情報の形式だけを選べるようにする。起案時の `api_key_individual` は採らない
 3. **本番の経路はこの ADR の範囲外とし、別の ADR で決める。** 本 ADR で使えるのは開発用の `mock_env`(`NODE_ENV=production` では起動時に拒否)だけである。候補は「残る確認事項」に記す
-4. **Redmine コネクタは読み取り専用の `search` / `fetch` / `list` / `describe` に限る。** 本人の資格情報で Redmine API を呼び、アクセス可否の判断や ACL の複製は行わない。キーは `X-Redmine-API-Key` ヘッダーでだけ送り、URL のクエリ・ログ・エラー文・監査本文に含めない。リダイレクトは追従しない。`search` は `/search.json` の Issue・Issue のノート・Wiki ページを返し、ノートは親 Issue を本人のキーで取得して `journals` に含まれる場合に限って返す(直接の `fetch` も同じ検査を通す)。`list` は本人に見えるプロジェクトを列挙する。プロジェクトの公開状態と Issue・ノートの非公開フラグを `scope` に反映し、Gateway の既定 `privateScopes: excluded` で非公開のものを除く
+4. **Redmine コネクタは読み取り専用の `search` / `fetch` / `list` / `describe` に限る。** 本人の資格情報で Redmine API を呼び、アクセス可否の判断や ACL の複製は行わない。キーは `X-Redmine-API-Key` ヘッダーでだけ送り、URL のクエリ・ログ・エラー文・監査本文に含めない。リダイレクトは追従しない。`search` は `/search.json` の Issue・Issue のノート・Wiki ページを返し、ノートは親 Issue を本人のキーで取得して `journals` に含まれる場合に限って返す(直接の `fetch` も同じ検査を通す)。標準の検索(全文検索プラグインなし)はノートに一致しても親の Issue だけを返すため、Issue の `fetch` は本人のキーで取得した `journals` のノート本文・ノートの documentId・直リンクを含め、長い場合は `nextPageCursor` で続きを返す(2026-11-24 追記。プラグイン `redmine_full_text_search` がある環境では `issue-note` が直接返る)。`list` は本人に見えるプロジェクトを列挙する。プロジェクトの公開状態と Issue・ノートの非公開フラグを `scope` に反映し、Gateway の既定 `privateScopes: excluded` で非公開のものを除く。Issue の `fetch` は、非公開または公開状態が不明なノートを 1 件でも含めば全体を `private` とする(安全側。非公開ノートが見える利用者には、既定の構成で公開 Issue 全体が取得できなくなる)
 5. **公式コネクタ `@leisen/connector-redmine`(`kind: redmine`)として初期セットに含める(2026-11-16 オーナー決定)。** ADR-021 の許可表に載せ、リファレンスのイメージ(`deploy/Dockerfile`)にも esa と同様に含める。導入実績は 1 社だが、不変条件 9 の例外としてオーナーが判断した
 
 ### ページングと不変条件 3
@@ -50,4 +50,4 @@ connector-sdk の `Credential` は `oauth_bearer` と `delegated_identity` だ�
   - **Redmine の OAuth2 プロバイダ + `token_vault`(第一候補)**: Redmine は Doorkeeper による OAuth2 プロバイダを本体に取り込んだ(Feature #24808。6.1 で入ったとされる。版は要確認)。Redmine の権限をスコープに使う。管理者がアプリを登録すれば、`provider: token_vault` の `preset: custom`(端点を指定)で接続ページの OAuth に載り、資格情報は `oauth_bearer`(`Authorization: Bearer`)になる。新しい方式も、クライアントによる平文の提示も要らない。確かめること: 対応する版、更新トークンの発行、失効エンドポイント、本人照合(`/users/current.json` の自分のメールアドレス)、スコープの強制の不具合(Bug #44271)が直っているか
   - **接続ページでの API キーの登録(Redmine 6.1 未満向けの代替)**: 利用者が Gateway の接続ページに自分の API キーを入力し、Token Vault と同じ封筒暗号化で保管する。クライアントが毎回平文で提示するのではないので、ADR-022 決定 11 には当たらない。ただし、OAuth ではない接続を Token Vault に加える変更として新しい ADR が要る。論点は、期限のない全権限のキーを保管すること、Gateway からはソース側で失効させられないこと(利用者が Redmine でキーを再生成する。アカウントのロックでキーは無効になる)、接続時の本人照合
   - `esc` に API キーを封じる案、`token_exchange` は、Redmine が交換に対応しないこと、ローテーションの仕組み(ADR-022 決定 5)に乗らないことから候補にしない
-- `redmine_full_text_search` 等のプラグインがある環境とない環境の差の扱い
+- 本番の経路の実機確認: 作者の環境の Redmine は OAuth2 に対応しておらず、OAuth2 のアプリ登録・リフレッシュトークン・`/users/current.json` での本人照合は未確認(2026-11-24 時点)。Redmine 6.1 以降の環境で確かめる
