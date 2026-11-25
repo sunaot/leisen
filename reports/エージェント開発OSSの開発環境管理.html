@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>エージェント開発OSSの開発環境管理</title>
+<meta name="description" content="エージェント開発を積極的に行う OSS が、ハーネスと計画・決定の記録をどう管理しているかの調査と、leisen の今後の開発への提案">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/*
+  配色は OKLCH で設計し、HEX で記述した。
+  コントラスト比は WCAG 2.x の式で計算した値(対 背景 / 対 面 / 対 サブカラーの面)。
+*/
+:root {
+  color-scheme: light dark;
+  --bg:      #f9fafc; /* 中立色・背景  oklch(0.985 0.003 250) */
+  --surface: #f0f3f6; /* 中立色・面    oklch(0.962 0.005 250) */
+  --text:    #1a1e24; /* 本文          oklch(0.235 0.012 255)  16.02 / 15.02 / 13.93 */
+  --muted:   #565b62; /* 補助テキスト  oklch(0.47 0.012 255)    6.55 / 6.15 / 5.70 */
+  --rule:    #d6d9dd; /* 装飾の罫線    oklch(0.885 0.006 255)   1.36(装飾のため条件外) */
+  --line:    #7b8187; /* 意味を持つ線・図の灰色の系列  oklch(0.60 0.012 255)  3.77 / 3.54 / 3.28 */
+  --main:    #6d18ed; /* メインカラー  oklch(0.50 0.27 290)     6.69 / 6.28 / 5.82 */
+  --sub:     #eae8ff; /* サブカラー    oklch(0.94 0.03 290)  背景との明度差 4.5。図ではメインカラーの境界線(3:1 以上)を併用 */
+  --accent:  #f9052b; /* アクセント    oklch(0.62 0.25 25)      3.95 / 3.71 / 3.44  図の線と面にだけ使い、文字には使わない */
+  /* メイン(H290)とアクセント(H25)の色相差は 95°。
+     情報の色分けはメインカラーと補助テキストのグレーを流用し(明度差 3)、線種とラベルを併用する。 */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:      #111417; /* oklch(0.19 0.008 255) */
+    --surface: #1b1e23; /* oklch(0.235 0.01 255) */
+    --text:    #e8ebef; /* oklch(0.94 0.006 255)   15.45 / 13.98 / 11.59 */
+    --muted:   #adb1b7; /* oklch(0.76 0.01 255)     8.58 / 7.76 / 6.44 */
+    --rule:    #35383d; /* oklch(0.34 0.01 255)     装飾 */
+    --line:    #7b8187; /* oklch(0.60 0.012 255)    4.69 / 4.24 / 3.52 */
+    --main:    #a491fe; /* oklch(0.72 0.155 290)    7.09 / 6.41 / 5.32  彩度は sRGB の色域の上限 */
+    --sub:     #2d2945; /* oklch(0.30 0.05 290)     背景との明度差 11 */
+    --accent:  #f7383e; /* oklch(0.64 0.225 25)     4.92 / 4.45 / 3.69  彩度は sRGB の色域の上限 */
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111417; --surface: #1b1e23; --text: #e8ebef; --muted: #adb1b7;
+  --rule: #35383d; --line: #7b8187; --main: #a491fe; --sub: #2d2945; --accent: #f7383e;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Meiryo", sans-serif;
+  font-size: 1rem;
+  line-height: 1.8;
+  font-feature-settings: "palt" 0;
+  overflow-wrap: anywhere;
+}
+
+/* 本文は 40em、図と表は 60em まで広げる */
+.doc {
+  display: grid;
+  grid-template-columns:
+    [full-start] minmax(16px, 1fr)
+    [wide-start] minmax(0, 10em)
+    [content-start] min(40em, 100% - 32px) [content-end]
+    minmax(0, 10em) [wide-end]
+    minmax(16px, 1fr) [full-end];
+  padding: 4rem 0 6rem;
+}
+.doc > * { grid-column: content; }
+.doc > .wide { grid-column: wide; }
+
+h1, h2, h3 { font-weight: 700; color: var(--text); }
+h1 { font-size: 1.6rem; line-height: 1.55; margin: 0 0 1rem; letter-spacing: .01em; }
+h2 { font-size: 1.22rem; line-height: 1.6; margin: 5rem 0 1.25rem; }
+h2 .num { color: var(--main); margin-right: .6em; font-feature-settings: "tnum"; }
+h3 { font-size: 1.04rem; line-height: 1.65; margin: 2.75rem 0 .75rem; }
+p { margin: 0 0 1.1rem; }
+.subtitle { color: var(--muted); margin-bottom: 3rem; }
+.summary p, .summary li { font-size: 1.04rem; }
+ul, ol { margin: 0 0 1.25rem; padding-left: 1.5em; }
+li { margin: .35rem 0; }
+.proposals { padding-left: 1.6em; margin: 1.25rem 0 1.75rem; }
+.proposals li { margin: .9rem 0; }
+.proposals li::marker { color: var(--main); font-weight: 700; }
+strong { font-weight: 700; }
+code {
+  font-family: "SFMono-Regular", "Consolas", "Menlo", monospace;
+  font-size: .88em;
+  background: var(--surface);
+  padding: .08em .3em;
+  border-radius: 3px;
+}
+a { color: var(--main); text-decoration-thickness: 1px; text-underline-offset: .18em; }
+a:hover { text-decoration-thickness: 2px; }
+blockquote {
+  margin: 1.25rem 0;
+  padding: .25rem 0 .25rem 1.1rem;
+  border-left: 3px solid var(--line);
+  color: var(--text);
+}
+blockquote p { margin: 0; }
+blockquote cite { display: block; font-style: normal; font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+blockquote [lang="en"] { font-style: italic; }
+.note { font-size: .875rem; line-height: 1.75; color: var(--muted); }
+.src { font-size: .85em; color: var(--muted); }
+.src a { color: var(--main); }
+
+/* 目次 */
+.toc { margin: 3rem 0 1rem; }
+.toc h2 { font-size: .95rem; margin: 0 0 .5rem; color: var(--muted); }
+.toc ol { list-style: none; padding: 0; margin: 0; font-size: .92rem; line-height: 1.6; }
+.toc li { margin: 0; }
+.toc a { display: grid; grid-template-columns: 1.7em 1fr; padding: .3rem .6rem; color: var(--text); text-decoration: none; border-radius: 4px; }
+.toc a .n { color: var(--main); font-weight: 700; }
+.toc a:hover { background: var(--surface); }
+.toc a[aria-current="true"] { background: var(--sub); }
+@media (min-width: 1380px) {
+  .toc {
+    position: fixed; top: 4rem; left: 24px; width: 15rem; margin: 0;
+    max-height: calc(100vh - 8rem); overflow-y: auto;
+  }
+  .toc ol { font-size: .84rem; }
+}
+
+/* 用語 */
+.terms { margin: 2rem 0 0; font-size: .9rem; line-height: 1.75; }
+.terms h2 { font-size: .95rem; margin: 0 0 .5rem; color: var(--muted); }
+.terms dl { margin: 0; display: grid; grid-template-columns: 8em 1fr; gap: .4rem 1rem; }
+.terms dt { font-weight: 700; }
+.terms dd { margin: 0; color: var(--text); }
+@media (max-width: 560px) { .terms dl { grid-template-columns: 1fr; } .terms dd { margin-bottom: .5rem; } }
+
+/* 図 */
+figure { margin: 2.5rem 0 2.75rem; }
+figure .canvas { overflow-x: auto; }
+figure svg { display: block; width: 100%; height: auto; }
+figure svg.minw { min-width: 640px; }
+figcaption { font-size: .875rem; line-height: 1.7; color: var(--muted); margin-top: .8rem; }
+figcaption b { color: var(--text); margin-right: .6em; }
+svg text { font-family: inherit; fill: var(--text); }
+svg .t-muted { fill: var(--muted); }
+svg .t-main { fill: var(--main); }
+svg .t-b { font-weight: 700; }
+svg .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
+svg .f-surface { fill: var(--surface); stroke: var(--rule); stroke-width: 1; }
+svg .f-sub { fill: var(--sub); stroke: var(--main); stroke-width: 2; }
+svg .f-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+svg .f-dash { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 4; }
+svg .f-pub { fill: var(--main); }
+svg .f-accent { fill: var(--accent); }
+svg .s-accent { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+svg .s-main { fill: none; stroke: var(--main); stroke-width: 2; }
+svg .ln { fill: none; stroke: var(--line); stroke-width: 1.75; }
+svg .ln-dash { fill: none; stroke: var(--line); stroke-width: 1.75; stroke-dasharray: 6 5; }
+svg .rule { stroke: var(--rule); stroke-width: 1; }
+svg .bar { fill: var(--line); }
+svg .bar-main { fill: var(--main); }
+svg .arrowhead { fill: var(--line); }
+
+/* 手順(図7) */
+.steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+.steps li {
+  position: relative; margin: 0; padding: 0 0 1.4rem 2.6rem; counter-increment: step;
+}
+.steps li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: .1rem;
+  width: 1.75rem; height: 1.75rem; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: .85rem; font-weight: 700; line-height: 1;
+  border: 2px solid var(--main); color: var(--main); background: var(--bg);
+}
+.steps li.now::before { background: var(--main); color: var(--bg); }
+.steps li::after {
+  content: ""; position: absolute; left: calc(.875rem - 1px); top: 2.05rem; bottom: .2rem;
+  border-left: 2px solid var(--rule);
+}
+.steps li:last-child::after { display: none; }
+.steps .what { display: block; font-weight: 500; }
+.steps .meta { display: block; font-size: .85rem; color: var(--muted); line-height: 1.7; margin-top: .2rem; }
+.legend-inline { font-size: .85rem; color: var(--muted); margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: .4rem 1.5rem; }
+.legend-inline span { display: inline-flex; align-items: center; gap: .45rem; }
+.dot { width: .95rem; height: .95rem; border-radius: 50%; border: 2px solid var(--main); display: inline-block; }
+.dot.fill { background: var(--main); }
+
+/* 表 */
+.table-wrap { overflow-x: auto; margin: 2rem 0 2.5rem; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; line-height: 1.7; }
+.wide table { font-size: .875rem; }
+caption { caption-side: top; text-align: left; font-size: .875rem; color: var(--muted); padding-bottom: .6rem; }
+caption b { color: var(--text); margin-right: .6em; }
+th, td { text-align: left; vertical-align: top; padding: .6rem .75rem; }
+thead th { font-weight: 700; border-bottom: 1.5px solid var(--line); white-space: nowrap; }
+tbody td, tbody th { border-bottom: 1px solid var(--rule); }
+tbody th { font-weight: 700; }
+tbody.group th[colspan] {
+  background: var(--surface); font-size: .85rem; color: var(--text); padding: .45rem .75rem;
+}
+td .small, th .small { display: block; font-size: .82rem; color: var(--muted); font-weight: 400; margin-top: .2rem; }
+.col-type { min-width: 9.5em; }
+.mark { font-weight: 700; color: var(--main); }
+
+footer.about { margin-top: 5rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); }
+footer.about p { font-size: .85rem; color: var(--muted); margin: 0 0 .5rem; }
+
+@media (max-width: 560px) {
+  .doc { padding-top: 2.5rem; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.12rem; margin-top: 4rem; }
+}
+@media print {
+  .toc { position: static; }
+  a { color: inherit; }
+}
+</style>
+</head>
+<body>
+<main class="doc">
+
+<h1>公開リポジトリには AGENTS.md・スキル・ADR・設計書だけを残す</h1>
+<p class="subtitle">エージェントによる開発を積極的に行う OSS が、ハーネスと計画・決定の記録をどう管理しているかの調査と、leisen の今後の開発のあり方の提案</p>
+
+<section class="summary" aria-label="要約">
+<p>調査した約 50 の公開リポジトリに共通していたのは、<strong>いつ読んでも内容が正しい文書</strong>だけをリポジトリに置き、<strong>特定の時点では正しかった記録</strong>は Issues・PR・リリースに、個人の作業状態と実行時の情報は Git の外に置く、という使い分けである(図1)。タスクを 1 件 1 ファイルで管理するバックログをデフォルトブランチに常時置いている例は、1 つも見つからなかった。</p>
+</section>
+
+<figure class="wide" id="fig1">
+<div class="canvas">
+<svg class="minw" viewBox="0 0 880 430" role="img" aria-labelledby="fig1-t fig1-d">
+<title id="fig1-t">文書の性質と保管先</title>
+<desc id="fig1-d">いつ読んでも内容が正しい文書は公開リポジトリに、特定の時点では正しかった記録は Issues・PR・リリースに、個人の作業状態と実行時の情報は Git の外に置く。</desc>
+<defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+<g>
+<rect x="0" y="0" width="470" height="130" rx="6" class="f-surface"/>
+<text x="22" y="38" font-size="16" class="t-b">いつ読んでも内容が正しい文書</text>
+<text x="22" y="74" font-size="15">AGENTS.md のルール、スキル、ADR、</text>
+<text x="22" y="102" font-size="15">現行の設計書、脅威モデル、導入ガイド</text>
+<line x1="482" y1="65" x2="586" y2="65" class="ln" marker-end="url(#a1)"/>
+<rect x="600" y="0" width="280" height="130" rx="6" class="f-sub"/>
+<text x="622" y="44" font-size="17" class="t-b">公開リポジトリ</text>
+<text x="622" y="76" font-size="14" class="t-muted">コードと同じ履歴で管理する</text>
+<text x="622" y="100" font-size="14" class="t-muted">コントリビューターにも見える</text>
+</g>
+<g>
+<rect x="0" y="150" width="470" height="130" rx="6" class="f-surface"/>
+<text x="22" y="188" font-size="16" class="t-b">特定の時点では正しかった記録</text>
+<text x="22" y="224" font-size="15">タスクと進捗、計画、評価結果、</text>
+<text x="22" y="252" font-size="15">レビューでの指摘、未決事項</text>
+<line x1="482" y1="215" x2="586" y2="215" class="ln" marker-end="url(#a1)"/>
+<rect x="600" y="150" width="280" height="130" rx="6" class="f-box"/>
+<text x="622" y="194" font-size="17" class="t-b">Issues・PR・リリース</text>
+<text x="622" y="226" font-size="14" class="t-muted">日付と状態が自動で記録される</text>
+<text x="622" y="250" font-size="14" class="t-muted">完了したら変更しない</text>
+</g>
+<g>
+<rect x="0" y="300" width="470" height="130" rx="6" class="f-surface"/>
+<text x="22" y="338" font-size="16" class="t-b">個人の作業状態と実行時の情報</text>
+<text x="22" y="374" font-size="15">settings.local.json、CLAUDE.local.md、</text>
+<text x="22" y="402" font-size="15">会話履歴、実行ログ、資格情報</text>
+<line x1="482" y1="365" x2="586" y2="365" class="ln" marker-end="url(#a1)"/>
+<rect x="600" y="300" width="280" height="130" rx="6" class="f-dash"/>
+<text x="622" y="344" font-size="17" class="t-b">Git の外</text>
+<text x="622" y="376" font-size="14" class="t-muted">ローカルの設定、実行基盤</text>
+<text x="622" y="400" font-size="14" class="t-muted">公開しない</text>
+</g>
+</svg>
+</div>
+<figcaption><b>図1</b>文書の性質と保管先。調査したリポジトリに共通する使い分けを、本レポートで整理したもの。</figcaption>
+</figure>
+
+<section class="summary" aria-label="要約(続き)">
+<p>leisen は backlog・ADR・設計書・<code>.claude</code> をすべてリポジトリに置いている。問題は文書の量ではない。<strong>進捗や決定の状態を管理する場所が決まっておらず</strong>、同じ情報が複数の文書に手作業で転記され、記述の不一致がすでに生じていることである。毎セッション読み込まれる CLAUDE.md の本文は、69% が日付付きの進捗記録になっている(5 章)。</p>
+<p>提案は次の 3 点である。</p>
+<ol class="proposals">
+<li><strong>AGENTS.md を恒久的なルールだけにする。</strong>CLAUDE.md にある恒久的なルール(約 4,600 文字)を AGENTS.md に移し、CLAUDE.md は AGENTS.md をインポートする 1 行にする。</li>
+<li><strong>タスクと未決事項は GitHub Issues で管理する。</strong>完了済みの backlog はコードから参照されているので、削除せず、変更しない履歴として残す。</li>
+<li><strong>ADR は残し、追補を重ねる運用をやめる。</strong>決定後は書き換えない ADR と、現在の状態を記述する設計書に分ける。</li>
+</ol>
+<p>非公開の内部リポジトリで開発し、公開リポジトリをそのミラーにする二重管理は、数人以下のチームではコストに見合わないので採用しない。OpenAI の社内プロダクトは設計書や実行計画までリポジトリに置いているが、同社が公開している OSS では実行計画を gitignore し、タスクを Issue Tracker で管理する方式を公開している。OpenAI の事例が支持しているのも、長期間有効な設計知識をリポジトリに置くことであり、タスクの進捗を置くことではない(2 章)。</p>
+</section>
+
+<nav class="toc" aria-label="目次">
+<h2>目次</h2>
+<ol>
+<li><a href="#s1"><span class="n">1</span>現在のプラクティスの 6 類型</a></li>
+<li><a href="#s2"><span class="n">2</span>OpenAI の事例</a></li>
+<li><a href="#s3"><span class="n">3</span>成果物の種類ごとの扱い</a></li>
+<li><a href="#s4"><span class="n">4</span>複数のエージェントによる並行開発</a></li>
+<li><a href="#s5"><span class="n">5</span>leisen の課題</a></li>
+<li><a href="#s6"><span class="n">6</span>leisen への提案と移行手順</a></li>
+<li><a href="#s7"><span class="n">7</span>結論</a></li>
+<li><a href="#appx"><span class="n">付</span>調査の範囲と根拠の強さ</a></li>
+</ol>
+</nav>
+
+<section class="terms" aria-labelledby="terms-h">
+<h2 id="terms-h">用語</h2>
+<dl>
+<dt>ハーネス</dt><dd>エージェントを動作させるための設定一式。AGENTS.md / CLAUDE.md、スキル、サブエージェント定義、フック、<code>.claude/settings.json</code> などのツール設定を含む。</dd>
+<dt>現行の設計書</dt><dd>システムが現在どう動作するかを記述し、変更のたびに更新する文書。leisen では <code>docs/product-design*.md</code> が該当する。</dd>
+<dt>追補</dt><dd>leisen の ADR で、既存の ADR の末尾に日付付きで追記している変更・検証結果の記述。</dd>
+</dl>
+</section>
+
+<!-- ============================================================ 1 -->
+<h2 id="s1"><span class="num">1</span>現在のプラクティスは 6 つの類型に分かれ、主流は AGENTS.md とスキルをリポジトリに置く型である</h2>
+
+<p>調査対象は、コーディングエージェントを開発しているベンダー自身のリポジトリ 17 と、エージェントを多用して開発されているプロダクトのリポジトリ約 35 である。いずれも 2026-11-15 時点のデフォルトブランチを clone して確認した。A〜F は、何を公開リポジトリに置くかによって本レポートで定義した分類である(図2)。</p>
+<p>類型は互いに排他的ではない。最も多いのは、<strong>B に C を組み合わせ</strong>、個人の作業中の資料だけを E の方法で分ける構成である。leisen の現状は D にあたり、本レポートが提案する構成は B と C の組み合わせである。</p>
+
+<figure class="wide" id="fig2">
+<div class="canvas">
+<svg class="minw" viewBox="0 0 880 420" role="img" aria-labelledby="fig2-t fig2-d">
+<title id="fig2-t">6 つの類型が公開リポジトリに置くもの</title>
+<desc id="fig2-d">A はルートの AGENTS.md のみ。B は AGENTS.md とスキル・フック。C はさらに ADR・設計書。D はさらに変更ごとの計画・タスク。E は計画・タスクを非公開に置く。F はすべてを内部リポジトリに置く。leisen の現状は D、提案する構成は B と C の組み合わせ。</desc>
+<!-- 列ヘッダ -->
+<g font-size="13">
+<text x="256" y="26" font-size="20" class="t-b" text-anchor="middle">A</text>
+<text x="256" y="50" class="t-muted" text-anchor="middle">最小構成</text>
+<text x="369" y="26" font-size="20" class="t-b" text-anchor="middle">B</text>
+<text x="369" y="50" class="t-muted" text-anchor="middle">AGENTS.md と</text>
+<text x="369" y="68" class="t-muted" text-anchor="middle">スキル</text>
+<text x="482" y="26" font-size="20" class="t-b" text-anchor="middle">C</text>
+<text x="482" y="50" class="t-muted" text-anchor="middle">B に ADR・</text>
+<text x="482" y="68" class="t-muted" text-anchor="middle">設計書を追加</text>
+<text x="595" y="26" font-size="20" class="t-b" text-anchor="middle">D</text>
+<text x="595" y="50" class="t-muted" text-anchor="middle">C に計画・</text>
+<text x="595" y="68" class="t-muted" text-anchor="middle">タスクを追加</text>
+<text x="708" y="26" font-size="20" class="t-b" text-anchor="middle">E</text>
+<text x="708" y="50" class="t-muted" text-anchor="middle">計画を</text>
+<text x="708" y="68" class="t-muted" text-anchor="middle">非公開に分ける</text>
+<text x="821" y="26" font-size="20" class="t-b" text-anchor="middle">F</text>
+<text x="821" y="50" class="t-muted" text-anchor="middle">内部で開発し</text>
+<text x="821" y="68" class="t-muted" text-anchor="middle">公開はミラー</text>
+</g>
+<!-- 行 -->
+<g font-size="14">
+<line x1="0" y1="86" x2="880" y2="86" class="rule"/>
+<text x="0" y="119">ルートの AGENTS.md</text>
+<line x1="0" y1="142" x2="880" y2="142" class="rule"/>
+<text x="0" y="175">スキル・フック</text>
+<line x1="0" y1="198" x2="880" y2="198" class="rule"/>
+<text x="0" y="231">ADR・設計書</text>
+<line x1="0" y1="254" x2="880" y2="254" class="rule"/>
+<text x="0" y="287">変更ごとの計画・タスク</text>
+<line x1="0" y1="310" x2="880" y2="310" class="rule"/>
+</g>
+<!-- セル: 公開=塗り、非公開=破線、置かない=ダッシュ -->
+<g>
+<!-- A -->
+<rect x="221" y="99" width="70" height="30" rx="4" class="f-pub"/>
+<text x="256" y="181" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<text x="256" y="237" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<text x="256" y="293" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<!-- B -->
+<rect x="334" y="99" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="334" y="155" width="70" height="30" rx="4" class="f-pub"/>
+<text x="369" y="237" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<text x="369" y="293" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<!-- C -->
+<rect x="447" y="99" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="447" y="155" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="447" y="211" width="70" height="30" rx="4" class="f-pub"/>
+<text x="482" y="293" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<!-- D -->
+<rect x="560" y="99" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="560" y="155" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="560" y="211" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="560" y="267" width="70" height="30" rx="4" class="f-pub"/>
+<!-- E -->
+<rect x="673" y="99" width="70" height="30" rx="4" class="f-pub"/>
+<rect x="673" y="155" width="70" height="30" rx="4" class="f-pub"/>
+<text x="708" y="237" text-anchor="middle" class="t-muted" font-size="16">—</text>
+<rect x="673" y="267" width="70" height="30" rx="4" class="f-dash"/>
+<!-- F -->
+<rect x="786" y="99" width="70" height="30" rx="4" class="f-dash"/>
+<rect x="786" y="155" width="70" height="30" rx="4" class="f-dash"/>
+<rect x="786" y="211" width="70" height="30" rx="4" class="f-dash"/>
+<rect x="786" y="267" width="70" height="30" rx="4" class="f-dash"/>
+</g>
+<!-- leisen の現状(D)と提案(B + C) -->
+<rect x="545" y="4" width="100" height="312" rx="8" class="s-accent"/>
+<line x1="324" y1="326" x2="527" y2="326" class="s-main"/>
+<line x1="324" y1="320" x2="324" y2="332" class="s-main"/>
+<line x1="527" y1="320" x2="527" y2="332" class="s-main"/>
+<text x="425" y="352" text-anchor="middle" font-size="14" class="t-main t-b">提案する構成(B + C)</text>
+<text x="595" y="352" text-anchor="middle" font-size="14" class="t-b">leisen の現状</text>
+<!-- 凡例 -->
+<g font-size="13">
+<rect x="0" y="384" width="26" height="16" rx="3" class="f-pub"/>
+<text x="34" y="397" class="t-muted">公開リポジトリに置く</text>
+<rect x="250" y="384" width="26" height="16" rx="3" class="f-dash"/>
+<text x="284" y="397" class="t-muted">非公開のリポジトリかローカルに置く</text>
+<text x="562" y="398" class="t-muted" font-size="16">—</text>
+<text x="584" y="397" class="t-muted">リポジトリに置かない(Issues などで管理)</text>
+</g>
+</svg>
+</div>
+<figcaption><b>図2</b>6 つの類型が公開リポジトリに置くもの。赤い枠は leisen の現状、紫の括弧は提案する構成を示す。F では公開リポジトリは内部リポジトリから生成される。</figcaption>
+</figure>
+
+<div class="table-wrap wide">
+<table>
+<caption><b>表1</b>6 つの類型の採用例と評価</caption>
+<thead><tr><th class="col-type">類型</th><th>リポジトリに置くもの</th><th>主な採用例</th><th>利点</th><th>コスト</th><th>leisen にとっての評価</th></tr></thead>
+<tbody>
+<tr><th>A. 最小構成</th><td>数行〜数十行の AGENTS.md のみ、または何も置かない</td><td>simonw/llm(24 行)、datasette(5 行)、antirez の各リポジトリ(なし)、workers-oauth-provider(AGENTS.md のみ)</td><td>陳腐化する文書がない。公開される記録はコミット履歴とテスト</td><td>手順に関する知識が属人化する。ルールをテストや lint で表現できる成熟が要る</td><td>不変条件が 9 つある leisen には不足する</td></tr>
+<tr><th>B. AGENTS.md とスキルを置く型<span class="small">主流</span></th><td>短いルートの AGENTS.md、ディレクトリ別の AGENTS.md、スキル、少数のフック。タスクは Issues / Projects</td><td>opencode、gemini-cli、goose、next.js、sentry、PostHog、zed、OpenHands、modelcontextprotocol/servers、openai-agents-python / js</td><td>外部のコントリビューターのエージェントも同じルールで動作する。毎セッション読み込む分量が小さい</td><td>スキルの保守。複数のツールに対応するシンボリックリンクの管理</td><td>公開 OSS の事実上の標準。基本にすべき型</td></tr>
+<tr><th>C. ADR / RFC と設計書も置く型</th><td>B に加えて、ADR / RFC と現行の設計書</td><td>cloudflare/agents(design/ 58 ファイル)、vercel/ai(2026-03 に ADR を採用)、beads(engdocs/adr)、opencode(specs/v2)、MCP 仕様(seps/ 48 本)</td><td>決定の理由を再調査せずに済む。却下済みの案の再議論を防げる</td><td>索引と Status を維持しないと参照されなくなる</td><td>認可と監査が価値の中心である leisen には必須。書き方は改める</td></tr>
+<tr><th>D. 変更単位の計画・仕様も置く型</th><td>変更ごとの提案・計画・タスク、またはファイル形式のバックログ</td><td>sentry-mcp(OpenSpec)、spec-kit、OpenSpec、Backlog.md、OpenAI の社内プロダクト</td><td>エージェントがネットワークなしで参照できる。計画をレビューできる</td><td>保守対象が増えて陳腐化する。複数のエージェントの並行書き込みで競合する</td><td>完了後の扱いを決めた場合だけ成立する。常時置く運用は少数派</td></tr>
+<tr><th>E. 非公開の保管先に分ける型</th><td>AGENTS.md とスキルは公開し、調査・計画・タスクのメモは別リポジトリかローカルに置く</td><td>humanlayer(<code>/thoughts/</code> を gitignore して別リポジトリで管理)、Ronacher(個人用のハーネスを別リポジトリで管理)、sentry(スキルを外部リポジトリから取得)</td><td>率直な内容のメモを公開せずにバージョン管理できる</td><td>各マシンでシンボリックリンクとフックの設定が要る</td><td>公開に適さない少量の資料に限って使う</td></tr>
+<tr><th>F. 内部リポジトリで開発し、公開ミラーを持つ型</th><td>公開リポジトリは内部リポジトリから生成される</td><td>openai/codex、anthropics/claude-code(製品のソースコードなし)、E2B(仕様を Copybara で同期)</td><td>内部資料が公開されないことを最も確実に保証できる</td><td>外部の PR を取り込む際に差分や基準のコミットがずれる問題が報告されている。同期の仕組みの保守</td><td>数人のチームではコストに見合わない</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>進行中のタスクは Issues で管理し、計画のファイルは Git の外に置く</h3>
+<p>B と C の型をとるプロジェクトは、方針を明記していることが多い。opencode は次のように書いている。</p>
+<blockquote>
+<p lang="en">GitHub issues own active work; Git history preserves removed plans and scratchpads.</p>
+<cite><a href="https://github.com/anomalyco/opencode/blob/HEAD/specs/v2/README.md">opencode specs/v2/README.md</a></cite>
+</blockquote>
+<p>goose はタスクを issue で管理し、公開の Projects ボードでステータスが Ready になるまでエージェントに実装させない。gemini-cli、Roo-Code、pi-mono は計画用のディレクトリやファイル(<code>conductor/</code>、<code>plans/</code>、<code>todo.md</code>)を gitignore している。OpenHands は設計内容を PR の本文に書き、一時的な成果物を置く <code>.pr/</code> はリリース時に削除する。<span class="src">(<a href="https://github.com/aaif-goose/goose/blob/HEAD/AGENTS.md">goose</a>、<a href="https://github.com/google-gemini/gemini-cli/blob/HEAD/.gitignore">gemini-cli</a>、<a href="https://github.com/earendil-works/pi-mono/blob/HEAD/.gitignore">pi-mono</a>、<a href="https://github.com/OpenHands/software-agent-sdk/blob/HEAD/AGENTS.md">OpenHands</a>)</span></p>
+
+<h3>リポジトリ内でタスクを管理する方式を広めた beads は、自身のリポジトリではその方式をやめた</h3>
+<p>beads は issue をファイルとしてリポジトリに置く方式を広めたプロジェクトだが、現在は自身の <code>.beads/</code> を gitignore し、「GitHub Issues is the public tracker」と明記している。多数のエージェントが互いの書き込みを上書きし、復旧できなくなったことが理由だとされる<span class="src">(この経緯は Dolt の開発元の記事による。<a href="https://www.dolthub.com/blog/2026-03-13-multi-agent-persistence/">DoltHub</a>)</span>。beads 自身のドキュメントは、データベースに Dolt を採用した理由として、行単位ではなくセル単位で差分とマージを扱えることと、複数の書き込み元に対応できることを挙げている<span class="src">(<a href="https://github.com/steveyegge/beads/blob/main/docs/architecture/dolt.md">docs/architecture/dolt.md</a>)</span>。</p>
+
+<h3>内部リポジトリで開発する codex は、公開リポジトリからハーネスを削除した</h3>
+<p>openai/codex では、直近 500 コミットのすべてでコミッターが同期用のボットであり、2026-09-30 の PR でルートの AGENTS.md と <code>.codex/skills/</code> が削除された。理由は書かれていない<span class="src">(<a href="https://github.com/openai/codex/pull/49713">PR #49713</a>)</span>。一方で、「ハーネスは非公開にすべきである」と明文化した方針は、どのリポジトリにも見つからなかった。<strong>ハーネスはコミットするのが標準である。</strong></p>
+
+<!-- ============================================================ 2 -->
+<h2 id="s2"><span class="num">2</span>OpenAI は設計知識をリポジトリに、タスクを Issue Tracker に、実行環境を別の基盤に置いている</h2>
+
+<p>OpenAI の事例は 1 つの方式ではなく、対象の異なる 3 つの事例と、実行基盤の事例として扱う必要がある(表2)。社内プロダクトはリポジトリに置く範囲が最も広いが、非公開のリポジトリであり、公開 OSS での実績ではない。公開している OSS では、実行計画をリポジトリに置いていない。</p>
+
+<div class="table-wrap wide">
+<table>
+<caption><b>表2</b>OpenAI の事例ごとの保管先</caption>
+<thead><tr><th class="col-type">事例</th><th>リポジトリに置くもの</th><th>リポジトリの外に置くもの</th><th>本調査での確認方法</th></tr></thead>
+<tbody>
+<tr><th>社内プロダクト<span class="small">Harness engineering、2026-02-11</span></th><td>約 100 行の AGENTS.md(目次)、<code>ARCHITECTURE.md</code>、<code>docs/design-docs/</code>、<code>docs/exec-plans/active/</code>・<code>completed/</code>、技術的負債の一覧、<code>docs/product-specs/</code></td><td>(リポジトリ自体が非公開)</td><td>二次資料と、別途提供された調査結果</td></tr>
+<tr><th>Agents SDK<span class="small">openai-agents-python / js</span></th><td>AGENTS.md(106 行 / 186 行)、実行計画の書き方を定めた <code>PLANS.md</code>、<code>.agents/skills/</code>(14 個 / 15 個)</td><td>実行計画(<code>plans/</code> を gitignore)、タスク</td><td>clone して確認</td></tr>
+<tr><th>Symphony<span class="small">2026-04-27</span></th><td>エージェントの作業方針を書く <code>WORKFLOW.md</code>、仕様の <code>SPEC.md</code></td><td>タスクの状態と進捗(Issue Tracker。進捗は Issue のコメント 1 つに集約)</td><td>clone して確認</td></tr>
+<tr><th>OpenClaw の社内運用<span class="small">2026-11-12</span></th><td>—</td><td>実行環境(サンドボックス)、資格情報(credential broker)、エージェントの識別情報</td><td>developers.openai.com の記事</td></tr>
+</tbody>
+</table>
+</div>
+<p class="note">openai.com の記事 2 本(Harness engineering、Symphony)は、本調査では本文を取得できなかった(HTTP 403)。この 2 本の内容は、別途提供された調査結果(英語の原文を確認したとするもの)と二次資料(<a href="https://www.infoq.com/news/2026/02/openai-harness-engineering-codex/">InfoQ</a>、<a href="https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html">martinfowler.com</a>)に基づく。</p>
+
+<h3>社内プロダクトは、大きな AGENTS.md をやめ、約 100 行の目次と自動検査に切り替えた</h3>
+<p>当初は 1 つの大きな AGENTS.md にすべてを書いたが機能せず、約 100 行の AGENTS.md を目次として使い、詳細は <code>docs/</code> の各文書から必要に応じて読み込む構成に変えた。文書の鮮度と相互リンクは lint と CI で検査し、古くなった文書はエージェントが定期的に修正の PR を出す。約 5 か月で約 100 万行のコードと約 1,500 件の PR を、当初 3 人のエンジニアで作成したと報告している<span class="src">(<a href="https://openai.com/index/harness-engineering/">openai.com</a>)</span>。</p>
+<p class="note">提供された調査結果は、小規模な変更の計画は一時的なものとし、複雑な変更だけを実行計画(ExecPlan)としてリポジトリに残す、という区別も挙げている。この区別は、本調査で確認できた資料には見つからなかった。</p>
+
+<h3>公開 OSS の Agents SDK は、AGENTS.md とスキルをコミットし、実行計画はコミットしていない</h3>
+<p>AGENTS.md は、ブランチの切り替えとコミットに明示的な許可を求め、「Never push, open a PR, or otherwise mutate GitHub.」と定めている。<code>PLANS.md</code> は、複数の手順・複数のファイルにまたがる作業や約 1 時間を超える作業で ExecPlan を書くよう求め、Progress、Surprises &amp; Discoveries、Decision Log、Outcomes &amp; Retrospective の各節を定める。ただし <code>plans/</code> は gitignore されており、<strong>計画ファイルもバックログもコミットされていない</strong><span class="src">(<a href="https://github.com/openai/openai-agents-python/blob/64fbde5d02b42ae5f9db668eb0184cdb3fc9d775/PLANS.md">PLANS.md</a>、<a href="https://github.com/openai/openai-agents-python/blob/64fbde5d02b42ae5f9db668eb0184cdb3fc9d775/.gitignore">.gitignore</a>)</span>。2 つのリポジトリでマージされた PR は 3 か月間で 316 件から 457 件に増えたが、スキルの導入だけが原因であることを示す比較実験ではない<span class="src">(<a href="https://developers.openai.com/blog/skills-agents-sdk">developers.openai.com</a>)</span>。</p>
+
+<h3>Symphony は、タスクを Issue Tracker で管理し、オーケストレーターが Issue ごとの作業環境に割り当てる</h3>
+<p>Symphony は、Issue Tracker からタスクを取得し、Issue ごとに独立したワークスペースとエージェントを割り当てるオーケストレーターの仕様である。実装例の <code>WORKFLOW.md</code> は、進捗・チェックリスト・検証結果を Issue の 1 つのコメント(Codex Workpad)に集約して更新し続けるよう指示し、作業範囲外の改善点は「file a separate Linear issue instead of expanding scope」と定めている。Linear のほかに GitHub Issues、Jira Cloud、Asana、GitLab のアダプターがある。README は「a low-key engineering preview」と明記しており、本番運用を想定したものではない<span class="src">(<a href="https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md">SPEC.md</a>、<a href="https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/elixir/WORKFLOW.md">WORKFLOW.md</a>)</span>。</p>
+
+<h3>実行環境と資格情報は、リポジトリとは別の基盤で管理する</h3>
+<p>記事「Securing persistent agents like OpenClaw at OpenAI」は、信頼できるゲートウェイとサンドボックス内で動作する信頼しないエージェントを分離すること、資格情報をエージェントから見えないようにする credential broker を置くこと、エージェントの識別情報を利用者の識別情報と分けることを挙げている<span class="src">(<a href="https://developers.openai.com/blog/securing-persistent-agents-like-openclaw-at-openai">developers.openai.com</a>)</span>。会話の履歴、実行ログ、資格情報は、AGENTS.md やスキルとは性質が異なり、Git リポジトリの管理対象ではない。</p>
+
+<h3>ハーネスは、モデルの更新に合わせて削る対象でもある</h3>
+<p>記事「Rethinking skills and prompts for GPT-6 Astra」は、長すぎるスキルの説明文が切り詰められること、文書の読み込みを必須とする指示が誤字の修正には過剰であること、以前のモデル向けのテストの指示が不要なテストを招くことを挙げている。記事「Maintaining software with the GPT-6 family」は、AGENTS.md の指示を 1 つ選び、同じリポジトリの状態と同じモデルで同じタスクを再実行して変更前後を比較する方法を提案している。これは実験の報告ではなく、提案である<span class="src">(<a href="https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra">Rethinking skills</a>、<a href="https://developers.openai.com/blog/maintaining-software-with-the-gpt-6-family">Maintaining software</a>)</span>。</p>
+
+<p>これらを合わせると、OpenAI の事例が支持しているのは<strong>長期間有効な設計知識をコードと同じリポジトリに置くこと</strong>である。タスクの状態と進捗は Issue Tracker に、実行中の計画は(公開 OSS では)ローカルに、実行ログと資格情報は別の基盤に置いている。図2 の類型にあてはめると、社内プロダクトは C と D の組み合わせ、Agents SDK は B である。</p>
+
+<!-- ============================================================ 3 -->
+<h2 id="s3"><span class="num">3</span>AGENTS.md は短くし、手順はスキルに、決定は書き換えない ADR にする</h2>
+
+<p>成果物の種類ごとの扱いは、類型が違ってもほぼ共通している。</p>
+
+<h3>AGENTS.md には、コードからは読み取れないことだけを書く</h3>
+<p>調査したリポジトリのルートにある AGENTS.md は、5 行から 749 行まで幅があるが、半数以上は 100〜240 行に収まる(図3)。内容はコマンド、依存の方向、禁止事項である。Anthropic のドキュメントは CLAUDE.md を 1 ファイル 200 行未満にすることを目安とし、CLAUDE.md は「context, not enforced configuration」であるため、確実に禁止したい操作には PreToolUse フックを使うよう求めている<span class="src">(<a href="https://code.claude.com/docs/en/memory">Claude Code docs</a>)</span>。</p>
+
+<figure class="wide" id="fig3">
+<div class="canvas">
+<svg class="minw" viewBox="0 0 880 520" role="img" aria-labelledby="fig3-t fig3-d">
+<title id="fig3-t">ルートの AGENTS.md の行数</title>
+<desc id="fig3-d">datasette 5 行、simonw/llm 24 行、leisen の CLAUDE.md 58 行(15,592 文字)、gemini-cli 96 行、openai-agents-python 106 行、OpenHands 125 行、goose 131 行、pi-mono 150 行、openai-agents-js 186 行、zed 190 行、opencode 222 行、crush 238 行、workers-oauth-provider 295 行、software-agent-sdk 420 行、next.js 538 行、modelcontextprotocol/servers 749 行。Anthropic の目安は 200 行。</desc>
+<line x1="409.3" y1="30" x2="409.3" y2="500" class="ln-dash"/>
+<text x="415" y="22" font-size="13" class="t-muted halo">200 行(Anthropic が示す CLAUDE.md の目安)</text>
+<g font-size="13">
+<text x="244" y="62" text-anchor="end">datasette</text><rect x="260" y="49" width="3.7" height="16" class="bar"/><text x="270" y="62" class="t-muted halo">5</text>
+<text x="244" y="90" text-anchor="end">simonw/llm</text><rect x="260" y="77" width="17.9" height="16" class="bar"/><text x="284" y="90" class="t-muted halo">24</text>
+<text x="244" y="118" text-anchor="end" class="t-b">leisen(CLAUDE.md)</text><rect x="260" y="105" width="43.3" height="16" class="bar-main"/><text x="310" y="118" class="t-b halo">58 行(15,592 文字)</text>
+<text x="244" y="146" text-anchor="end">gemini-cli(GEMINI.md)</text><rect x="260" y="133" width="71.7" height="16" class="bar"/><text x="338" y="146" class="t-muted halo">96</text>
+<text x="244" y="174" text-anchor="end">openai-agents-python</text><rect x="260" y="161" width="79.2" height="16" class="bar"/><text x="346" y="174" class="t-muted halo">106</text>
+<text x="244" y="202" text-anchor="end">OpenHands</text><rect x="260" y="189" width="93.3" height="16" class="bar"/><text x="360" y="202" class="t-muted halo">125</text>
+<text x="244" y="230" text-anchor="end">goose</text><rect x="260" y="217" width="97.8" height="16" class="bar"/><text x="364" y="230" class="t-muted halo">131</text>
+<text x="244" y="258" text-anchor="end">pi-mono</text><rect x="260" y="245" width="112" height="16" class="bar"/><text x="378" y="258" class="t-muted halo">150</text>
+<text x="244" y="286" text-anchor="end">openai-agents-js</text><rect x="260" y="273" width="138.9" height="16" class="bar"/><text x="405" y="286" class="t-muted halo">186</text>
+<text x="244" y="314" text-anchor="end">zed(.rules)</text><rect x="260" y="301" width="141.9" height="16" class="bar"/><text x="418" y="314" class="t-muted halo">190</text>
+<text x="244" y="342" text-anchor="end">opencode</text><rect x="260" y="329" width="165.8" height="16" class="bar"/><text x="432" y="342" class="t-muted halo">222</text>
+<text x="244" y="370" text-anchor="end">crush</text><rect x="260" y="357" width="177.7" height="16" class="bar"/><text x="444" y="370" class="t-muted halo">238</text>
+<text x="244" y="398" text-anchor="end">workers-oauth-provider</text><rect x="260" y="385" width="220.3" height="16" class="bar"/><text x="487" y="398" class="t-muted halo">295</text>
+<text x="244" y="426" text-anchor="end">software-agent-sdk</text><rect x="260" y="413" width="313.6" height="16" class="bar"/><text x="580" y="426" class="t-muted halo">420</text>
+<text x="244" y="454" text-anchor="end">next.js</text><rect x="260" y="441" width="401.7" height="16" class="bar"/><text x="668" y="454" class="t-muted halo">538</text>
+<text x="244" y="482" text-anchor="end">modelcontextprotocol/servers</text><rect x="260" y="469" width="559.3" height="16" class="bar"/><text x="826" y="482" class="t-muted halo">749</text>
+</g>
+</svg>
+</div>
+<figcaption><b>図3</b>ルートの AGENTS.md の行数(2026-11-15 時点のデフォルトブランチ)。gemini-cli は GEMINI.md、zed は <code>.rules</code>、leisen は CLAUDE.md の行数。leisen は行数では短いが、1 行が長く、文字数は 15,592 文字ある。</figcaption>
+</figure>
+
+<p>分量を増やしても効果は上がらない。ETH Zurich などによる評価研究(第 3 版、2026-09-29)は、AGENTS.md などのコンテキストファイルは一般にタスクの成功率を向上させないと結論している。LLM が生成したファイルでは成功率が約 0.5〜2 ポイント下がり、開発者が書いたファイルでは約 2.4 ポイント上がったが、いずれも統計的に有意ではない。一方で、推論コストは <strong>LLM が生成したファイルで 20〜23%、開発者が書いたファイルで最大 19%</strong> 増加した。リポジトリの概要説明については「Context files do not provide effective overviews」としている<span class="src">(<a href="https://arxiv.org/html/2602.11988v3">arXiv:2602.11988v3</a>)</span>。</p>
+<p>各プロジェクトのルールも同じ方向である。modelcontextprotocol/servers は「ルールは AGENTS.md に、手順は必要なときに読み込むスキルに」と分け、このファイルのルールはすべて現在のリポジトリについて正しい、と定めている。workers-sdk は、バージョン・ルールの一覧・件数を転記すると古くなるので、元の設定ファイルやドキュメントを参照するよう指示している<span class="src">(<a href="https://github.com/modelcontextprotocol/servers/blob/HEAD/AGENTS.md">servers AGENTS.md</a>、<a href="https://github.com/cloudflare/workers-sdk/blob/HEAD/AGENTS.md">workers-sdk AGENTS.md</a>)</span>。</p>
+
+<h3>ルールは AGENTS.md に書き、CLAUDE.md はインポートの 1 行にする</h3>
+<p>sentry、supabase、tldraw、ruff、mastra、goose の CLAUDE.md は <code>@AGENTS.md</code> の 1 行だけである。Claude Code は、CLAUDE.md がなければ AGENTS.md を直接読み込み、両方ある場合は CLAUDE.md がインポートしたときにだけ AGENTS.md を読み込む<span class="src">(<a href="https://code.claude.com/docs/en/memory">Claude Code docs</a>)</span>。スキルは、特定のツールに依存しない <code>.agents/skills/</code> に実体を置き、<code>.claude/skills</code> をシンボリックリンクにする構成が広く使われている。スキルの対象は、リリース、PR の作成とレビュー、issue のトリアージ、テストの作成、動作検証に集中している。サブエージェント定義をまとまった数コミットしているのは、PostHog(11 個)と claude-code-action(レビュー用 5 個)程度である。</p>
+
+<h3>フックは用途を限定した検査にとどめ、エージェント設定は実行コードとしてレビューする</h3>
+<p>コミットされているフックは、編集後のフォーマット、対話型コマンドのブロック、セッション開始時のセットアップ程度で、leisen の 2 本のフックもこの水準に合っている。一方で、リポジトリにコミットされた <code>.claude/settings.json</code> や <code>.mcp.json</code> は攻撃対象にもなる。Check Point が報告した Claude Code の脆弱性は、Anthropic のアドバイザリでは表3 の 3 件で、いずれも修正済みである。Check Point は設定ファイルを実行コードと同じ水準でレビューするよう推奨している<span class="src">(<a href="https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/">Check Point Research</a>)</span>。</p>
+
+<div class="table-wrap">
+<table>
+<caption><b>表3</b>リポジトリのエージェント設定に起因する Claude Code の脆弱性</caption>
+<thead><tr><th>識別子</th><th>内容</th><th>修正バージョン</th></tr></thead>
+<tbody>
+<tr><td><a href="https://github.com/anthropics/claude-code/security/advisories/GHSA-ph6w-f82w-28w6">GHSA-ph6w-f82w-28w6</a></td><td>起動時の信頼確認の警告が不十分だった</td><td>1.0.87</td></tr>
+<tr><td><a href="https://github.com/anthropics/claude-code/security/advisories/GHSA-4fgq-fpq9-mr3g">CVE-2025-59536</a></td><td>信頼確認のダイアログより前にコマンドが実行される</td><td>1.0.111</td></tr>
+<tr><td><a href="https://github.com/anthropics/claude-code/security/advisories/GHSA-jh7p-qr78-84p7">CVE-2026-21852</a></td><td><code>ANTHROPIC_BASE_URL</code> の設定によって、信頼確認の前に API キーが外部に送信される</td><td>2.0.65</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>秘密情報の漏えいは <code>.claude/settings.local.json</code> で起きている。Apiiro の調査では、公開リポジトリにある <code>settings.local.json</code> 104,185 個のうち 1,122 個に、合計 1,379 件の秘密情報が含まれていた<span class="src">(Apiiro の記事は取得できず、二次資料で確認した。<a href="https://www.csoonline.com/article/4247336/claude-codes-dont-ask-again-button-has-a-secrets-spilling-problem.html">CSO Online</a>)</span>。このファイルの除外設定は利用者のマシンのグローバルな git 設定にしか書かれず、リポジトリの <code>.gitignore</code> には含まれないことが原因である。なお、ガードレール(フックや検査スクリプト)の定義を公開したこと自体が悪用につながった事例は見つかっていない。</p>
+
+<h3>設計書は現在の状態を、ADR は決定時点の内容を記述する</h3>
+<p>cloudflare/agents は、設計書を「現在どう動作するか」を記述して随時更新する文書と位置づけ、RFC は決定後に更新せず、却下されたものも削除しないと定めている。手順は、提案する、Status を accepted / rejected に更新する、関連する設計書を更新する、の順である<span class="src">(<a href="https://github.com/cloudflare/agents/blob/HEAD/design/AGENTS.md">design/AGENTS.md</a>)</span>。vercel/ai は、アーキテクチャに関わる変更の前に ADR を確認し、既存の ADR と矛盾する場合は作業を止めて人間に相談するよう AGENTS.md で指示し、ADR の起案手順をスキルとして定義している<span class="src">(<a href="https://github.com/vercel/ai/blob/HEAD/AGENTS.md">vercel/ai AGENTS.md</a>)</span>。</p>
+
+<h3>完了した計画は、継続的に更新する対象にしない</h3>
+<p>完了した計画の扱いには 3 つの考え方がある。いずれの考え方でも、完了した計画を継続的に更新する対象とはしていない。</p>
+<ul>
+<li><strong>完了済みのディレクトリに移して残す。</strong>OpenAI の社内プロダクトの <code>docs/exec-plans/completed/</code>。</li>
+<li><strong>内容を現行仕様に反映し、残りをアーカイブする。</strong>OpenSpec。</li>
+<li><strong>削除し、残すべき事実だけをコード・テスト・短い ADR に移す。</strong>「変更がリリースされたら、仕様の大半は削除すべきである」とする記事による<span class="src">(<a href="https://www.the-main-thread.com/p/spec-driven-development-exit-strategy">The Main Thread</a>)</span>。</li>
+</ul>
+<p>公開 OSS の Agents SDK は、実行計画を gitignore した <code>plans/</code> に書き、書き方を定めた <code>PLANS.md</code> だけをコミットしている(2 章)。</p>
+
+<h3>評価は定義をコミットし、実行結果はコミットしない</h3>
+<p>gemini-cli は <code>evals/logs/</code> を、humanlayer は評価結果の出力先を gitignore している<span class="src">(<a href="https://github.com/google-gemini/gemini-cli/blob/HEAD/.gitignore">gemini-cli</a>、<a href="https://github.com/humanlayer/humanlayer/blob/HEAD/.gitignore">humanlayer</a>)</span>。日付付きの評価レポートをデフォルトブランチに置いている例は、調査した範囲にはなかった。</p>
+
+<h3>外部からのコントリビューションは、内容を理解している人間が責任を負う</h3>
+<p>ghostty は、メンテナ自身が AI を多用していると明記したうえで、外部のコントリビューターにだけ AI 利用の開示と内容の理解を求めている<span class="src">(<a href="https://github.com/ghostty-org/ghostty/blob/HEAD/AI_POLICY.md">AI_POLICY.md</a>)</span>。goose と cline は issue の承認を PR の前提条件とし、codex は外部からの PR を受け付けていない。開示の方法はプロジェクトによって異なる。ASF は <code>Generated-by</code> または <code>Co-authored-by</code> トレーラーを推奨している<span class="src">(<a href="https://www.apache.org/legal/generative-tooling.html">ASF</a>)</span>。Linux カーネルは AI ツールの利用を <code>Assisted-by</code> タグで示すよう求めていたが、2026 年 10 月の Maintainers Summit でこの要件を削除すると決め、2026-11-15 時点の mainline の文書にはこのタグの記述がない<span class="src">(<a href="https://lwn.net/Articles/1099594/">LWN</a>、<a href="https://github.com/torvalds/linux/blob/fa2933aac170dd19c6a7f0d7b81a8f537e40915c/Documentation/process/coding-assistants.rst">coding-assistants.rst</a>)</span>。</p>
+
+<!-- ============================================================ 4 -->
+<h2 id="s4"><span class="num">4</span>並行開発では、タスクの割り当てを 1 か所に集約し、作業は worktree で隔離する</h2>
+
+<p>タスクを Issues で管理する場合の、複数のエージェントによる並行開発での割り当て・排他制御・依存関係の扱いを整理する。全体の流れは図4 のとおりである。以下の内容は、公式ドキュメントと clone したリポジトリのファイルで確認した。</p>
+
+<figure class="wide" id="fig4">
+<div class="canvas">
+<svg class="minw" viewBox="0 0 880 470" role="img" aria-labelledby="fig4-t fig4-d">
+<title id="fig4-t">Issues を使った並行開発の流れ</title>
+<desc id="fig4-d">Issue Tracker で Ready の issue だけを、人間または単一のオーケストレーターが worktree ごとのエージェントに割り当てる。各エージェントの PR は CI とマージキューを経て main にマージされる。依存先がマージされると後続の issue が Ready になる。作業中に見つかった作業は新しい issue として登録する。</desc>
+<defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+<!-- 作業中に見つかった作業 -->
+<path d="M505,62 V34 H85 V86" class="ln-dash" marker-end="url(#a4)"/>
+<text x="300" y="24" font-size="13" class="t-muted" text-anchor="middle">作業中に見つかった作業は、新しい issue として登録する</text>
+<!-- Issue Tracker -->
+<rect x="0" y="90" width="170" height="268" rx="6" class="f-box"/>
+<text x="85" y="118" font-size="15" class="t-b" text-anchor="middle">Issue Tracker</text>
+<rect x="20" y="136" width="130" height="30" rx="4" class="f-sub"/><text x="85" y="156" font-size="13" text-anchor="middle">#12 Ready</text>
+<rect x="20" y="174" width="130" height="30" rx="4" class="f-sub"/><text x="85" y="194" font-size="13" text-anchor="middle">#13 Ready</text>
+<rect x="20" y="212" width="130" height="30" rx="4" class="f-sub"/><text x="85" y="232" font-size="13" text-anchor="middle">#14 Ready</text>
+<rect x="20" y="262" width="130" height="30" rx="4" class="f-dash"/><text x="85" y="282" font-size="13" text-anchor="middle">#15 blocked</text>
+<text x="85" y="314" font-size="12" class="t-muted" text-anchor="middle">依存先が未完了、</text>
+<text x="85" y="332" font-size="12" class="t-muted" text-anchor="middle">人手の前提待ち</text>
+<line x1="170" y1="214" x2="213" y2="214" class="ln" marker-end="url(#a4)"/>
+<!-- 割り当て -->
+<rect x="215" y="144" width="150" height="140" rx="6" class="f-sub"/>
+<text x="290" y="182" font-size="15" class="t-b" text-anchor="middle">割り当て</text>
+<text x="290" y="212" font-size="13" text-anchor="middle">人間 または</text>
+<text x="290" y="234" font-size="13" text-anchor="middle">単一の</text>
+<text x="290" y="256" font-size="13" text-anchor="middle">オーケストレーター</text>
+<line x1="365" y1="200" x2="408" y2="102" class="ln" marker-end="url(#a4)"/>
+<line x1="365" y1="214" x2="408" y2="236" class="ln" marker-end="url(#a4)"/>
+<line x1="365" y1="228" x2="408" y2="370" class="ln" marker-end="url(#a4)"/>
+<!-- worktree -->
+<rect x="410" y="62" width="190" height="80" rx="6" class="f-box"/>
+<text x="505" y="94" font-size="14" class="t-b" text-anchor="middle">worktree(#12)</text>
+<text x="505" y="120" font-size="13" class="t-muted" text-anchor="middle">実装、テスト、PR</text>
+<rect x="410" y="196" width="190" height="80" rx="6" class="f-box"/>
+<text x="505" y="228" font-size="14" class="t-b" text-anchor="middle">worktree(#13)</text>
+<text x="505" y="254" font-size="13" class="t-muted" text-anchor="middle">実装、テスト、PR</text>
+<rect x="410" y="330" width="190" height="80" rx="6" class="f-box"/>
+<text x="505" y="362" font-size="14" class="t-b" text-anchor="middle">worktree(#14)</text>
+<text x="505" y="388" font-size="13" class="t-muted" text-anchor="middle">実装、テスト、PR</text>
+<line x1="600" y1="102" x2="643" y2="190" class="ln" marker-end="url(#a4)"/>
+<line x1="600" y1="236" x2="643" y2="214" class="ln" marker-end="url(#a4)"/>
+<line x1="600" y1="370" x2="643" y2="238" class="ln" marker-end="url(#a4)"/>
+<!-- CI -->
+<rect x="645" y="144" width="122" height="140" rx="6" class="f-box"/>
+<text x="706" y="190" font-size="14" class="t-b" text-anchor="middle">CI と</text>
+<text x="706" y="212" font-size="14" class="t-b" text-anchor="middle">マージキュー</text>
+<text x="706" y="242" font-size="12" class="t-muted" text-anchor="middle">マージを直列化し、</text>
+<text x="706" y="260" font-size="12" class="t-muted" text-anchor="middle">結合後を検査する</text>
+<line x1="767" y1="214" x2="798" y2="214" class="ln" marker-end="url(#a4)"/>
+<!-- main -->
+<rect x="800" y="174" width="80" height="80" rx="6" class="f-sub"/>
+<text x="840" y="220" font-size="15" class="t-b" text-anchor="middle">main</text>
+<!-- 依存の解消 -->
+<path d="M840,254 V440 H85 V360" class="ln-dash" marker-end="url(#a4)"/>
+<text x="462" y="462" font-size="13" class="t-muted" text-anchor="middle">依存先がマージされると、後続の issue が Ready になる</text>
+</svg>
+</div>
+<figcaption><b>図4</b>Issues を使った並行開発の流れ。割り当ては 1 か所に集約し、排他制御はロックではなく作業環境の隔離とマージ時の検査で行う。破線は、状態を Issue Tracker に戻す経路。</figcaption>
+</figure>
+
+<h3>割り当ては人間か単一のオーケストレーターが行い、エージェント同士にタスクの取得を競わせない</h3>
+<p>goose は、公開の Projects ボードでステータスが Ready になった issue だけをエージェントに実装させ、Ready でない issue を実装した PR は閉じる。OpenHands の <code>ready-for-dev</code> ラベルは「明確な受け入れ条件がある」ことを意味し、CI のワークフローがこのラベルを付けたのが書き込み権限以上を持つ人であることを検査する<span class="src">(<a href="https://github.com/OpenHands/OpenHands/blob/main/.github/workflows/issue-readiness-check.yml">issue-readiness-check.yml</a>)</span>。Symphony の仕様は「The orchestrator is the only component that mutates scheduling state.」と定め、同時に実行するエージェントの数に上限(既定値 10)を設けている。gastown では、Mayor と呼ぶ調整役のエージェントが作業担当のエージェントにタスクを渡す<span class="src">(<a href="https://github.com/openai/symphony/blob/main/SPEC.md">SPEC.md</a>、<a href="https://github.com/steveyegge/gastown/blob/main/README.md">gastown README</a>)</span>。</p>
+
+<h3>GitHub の assignee は、タスクをアトミックに取得する手段にはならない</h3>
+<p>assignee を追加する API は、1 つの issue に最大 10 人まで追加でき、すでに設定されている担当者を置き換えない。更新系のリクエストでは条件付きリクエストが原則として使えない。したがって、複数のエージェントが同じ issue に自分を担当者として設定しても、どちらのリクエストも成功する<span class="src">(<a href="https://docs.github.com/en/rest/issues/assignees?apiVersion=2022-11-28">REST API: assignees</a>、<a href="https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api">REST API のベストプラクティス</a>)</span>。エージェントの起動は、人間が 1 件ずつ指示する形が基本である。GitHub Copilot のクラウドエージェントは 1 つのタスクにつき 1 つの PR を作成し、Claude は issue や PR での <code>@claude</code> メンションで起動し、Linear では issue の delegate としてエージェントを設定する。</p>
+
+<h3>排他制御はロックではなく、作業環境の隔離とマージ時の検査で行う</h3>
+<p>タスクごとに git worktree かクラウド上のサンドボックスを用意し、エージェントは互いの作業ツリーに触れない。next.js は worktree を扱うツールの設定(<code>conductor.json</code>、<code>.cursor/worktrees.json</code>、<code>.codex/environments/next.toml</code>)をコミットし、humanlayer はタスク名ごとに worktree とブランチを作成するテンプレートを定義している。マージの直列化には GitHub のマージキューが使える。マージキュー用の <code>merge_group</code> トリガーは、zed、PostHog、goose、pydantic-ai、beads のワークフローにある<span class="src">(実際に有効になっているかは未確認)</span>。</p>
+<p>ロックが機能しなかった実例を Cursor が報告している。多数のエージェントを並行して動かす実験で、ファイルのロックを使うと「Twenty agents would slow down to the effective throughput of two or three」となり、楽観的並行制御に変えるとエージェントがリスクを避けて難しい作業に着手しなくなった。最終的に、計画を担当するエージェントと実装を担当するエージェントに役割を分けた<span class="src">(<a href="https://cursor.com/blog/scaling-agents">Cursor</a>)</span>。</p>
+
+<h3>エージェントが自律的に次のタスクを選ぶ構成では、専用のタスク管理の仕組みを使う</h3>
+<p>beads の <code>bd update &lt;id&gt; --claim</code> はタスクをアトミックに取得し、別のエージェントが先に取得していた場合は専用の終了コードを返す。Claude Code の agent teams(実験的な機能)は、共有のタスクリストを <code>~/.claude/tasks/{team-name}/</code> に保存し、「Task claiming uses file locking to prevent race conditions」としている<span class="src">(<a href="https://github.com/steveyegge/beads/blob/main/docs/CLI_REFERENCE.md">beads CLI_REFERENCE.md</a>、<a href="https://code.claude.com/docs/en/agent-teams">Claude Code docs</a>)</span>。いずれも状態は Git リポジトリの外にある。Issues に置くのは「何を実装するか」「誰に割り当てたか」という粒度の情報にとどまる。</p>
+
+<h3>依存関係はタスクのデータとして保持し、依存が解消されたタスクだけを割り当てる</h3>
+
+<div class="table-wrap wide">
+<table>
+<caption><b>表4</b>タスク間の依存関係の持ち方と、着手可能なタスクの求め方</caption>
+<thead><tr><th class="col-type">仕組み</th><th>依存関係の持ち方</th><th>着手可能なタスクの求め方</th></tr></thead>
+<tbody>
+<tr><th>beads</th><td><code>bd dep add</code> で登録する。blocks、parent-child、related、discovered-from などの種類を区別する</td><td><code>bd ready</code> が、ブロックされていないタスクだけを返す <span class="src">(<a href="https://github.com/steveyegge/beads/blob/main/docs/core-concepts/dependencies.md">dependencies.md</a>)</span></td></tr>
+<tr><th>Symphony</th><td>Issue Tracker のブロック関係を使う</td><td>Linear のアダプターは、未着手の issue を、終了状態でないブロック元がない場合にだけ割り当てる</td></tr>
+<tr><th>Claude Code の agent teams</th><td>タスクリストの各タスクに依存関係を持たせる</td><td>依存先が完了するまで、エージェントはそのタスクを自分では取得しない。リーダーか利用者は割り当てられる</td></tr>
+<tr><th>claude-task-master</th><td><code>tasks.json</code> の <code>dependencies</code></td><td><code>next</code> コマンドが、依存先がすべて完了したタスクを返す。取得の排他制御はない</td></tr>
+<tr><th>spec-kit</th><td><code>tasks.md</code> で、並行して実行できるタスクに <code>[P]</code> を付け、タスクを Phase に分ける</td><td>基盤となる Phase が完了するまで、後続の Phase に着手しない</td></tr>
+<tr><th>GitHub Issues</th><td>issue の依存関係(blocked by / blocking)と sub-issue。どちらも REST API がある</td><td>GitHub 自体は着手を止めない。オーケストレーターか人間が API で確認する <span class="src">(<a href="https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-issue-dependencies">GitHub Docs</a>)</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>依存関係は、実行時に解決するよりも、計画の段階で減らす。公開されている指針は 2 つある。1 つは<strong>変更範囲で分割する</strong>ことで、Claude Code のドキュメントは「Break the work so each teammate owns a different set of files.」と書き、spec-kit の <code>[P]</code> は「different files, no dependencies」を条件としている。もう 1 つは<strong>段階に分ける</strong>ことで、spec-kit は基盤となる Phase が後続のすべての作業をブロックすると定めている。インターフェースを先に決めてから実装を並行させる方法は、spec-kit が <code>contracts/</code> を実装の前提としている例があるだけで、ベンダーが明示的に推奨している記述は見つからなかった。</p>
+
+<h3>依存先の完了の判定方法は、仕組みによって異なる</h3>
+<p>「マージをもって完了とする」と定めた指針は見つからなかった。実装では、gastown の Refinery がマージ後に元のタスクを閉じ、Symphony ではブロック元の issue が終了状態になった時点で後続の issue が割り当て可能になる。一方、Claude Code の agent teams では、完了はエージェント自身の報告による。マージを待たずに進める方法として、依存先のブランチから後続のブランチを作成する stacked PR があり、pydantic-ai の <code>PLAN.md</code> は実装を stacked PR として順に提出する計画を記載している<span class="src">(<a href="https://github.com/pydantic/pydantic-ai/blob/main/PLAN.md">PLAN.md</a>)</span>。</p>
+
+<h3>作業中に見つかった作業は、元のタスクに含めず、新しいタスクとして登録する</h3>
+<p>Symphony の <code>WORKFLOW.md</code> は「file a separate Linear issue instead of expanding scope」と指示し、新しい issue を元の issue に関連づける。beads には、作業中に見つかったタスクを元のタスクに関連づける <code>discovered-from</code> という依存関係の種類がある。gastown のドキュメントも、見つけた作業は自分で修正せずに登録するよう指示している<span class="src">(<a href="https://github.com/steveyegge/gastown/blob/main/docs/concepts/molecules.md">molecules.md</a>)</span>。</p>
+
+<h3>leisen は、assignee とラベルによる割り当てで足りる</h3>
+<p>leisen ではオーナーが唯一の割り当て担当であり、「1 タスク = 1 ブランチ = 1 PR」のルールもすでにある。割り当てる人が 1 人であれば、assignee がアトミックでないことは問題にならない。GitHub App の承認待ちや API キーの入手待ちといった人手による前提条件は、タスク間の依存関係と同じく「ブロックされている」状態として扱い、issue の依存関係か <code>blocked</code> ラベルで表す。コネクタのツール IF は connector-sdk と ADR で先に固定されているので、コネクタの実装は互いに並行して進められる。認可と監査に関わる変更にはレビューが必要なので、依存先の完了はエージェントの報告ではなくマージで判定するのが適している。</p>
+<p>並行開発で実際に衝突しているのは、タスクの割り当てではなく、<strong>どの PR も書き換える CLAUDE.md の「現在のフェーズ」と backlog README</strong> である。タスクと進捗を Issues に移せば、この衝突の原因がなくなる。</p>
+
+<!-- ============================================================ 5 -->
+<h2 id="s5"><span class="num">5</span>leisen の課題は文書の量ではなく、状態を管理する場所が決まっていないことにある</h2>
+
+<p>leisen の文書は 9,602 行で、ソースコード(31,380 行)とテストコード(31,510 行)の合計の約 15% にあたる。量だけを見れば、PostHog の 273 個のスキルや cloudflare/agents の 58 本の設計文書と比べて特に多いわけではない。違いは内容にあり、文書の約 6 割(約 5,800 行)が開発の経過と判断の記録である<span class="src">(<a href="../research_notes/エージェント開発OSSの開発環境管理/leisen_inventory.md">棚卸し</a>)</span>。</p>
+
+<h3>毎セッション読み込まれる CLAUDE.md の本文の 69% が、進捗記録になっている</h3>
+<p>CLAUDE.md は 58 行で、行数だけなら 200 行の目安に収まる(図3)。しかし本文の大半は「現在のフェーズ」の節で、恒久的なルールは約 4,600 文字しかない(図5)。この節には、ADR-018 を Proposed とする誤りがある(実際は Accepted)。AGENTS.md や CLAUDE.md に書かれた指示はエージェントによく守られるので、誤った状況の記述はそのままエージェントの判断に影響する。</p>
+
+<figure class="wide" id="fig5">
+<div class="canvas">
+<svg viewBox="0 0 880 160" role="img" aria-labelledby="fig5-t fig5-d">
+<title id="fig5-t">CLAUDE.md の本文の内訳</title>
+<desc id="fig5-d">本文 14,823 文字のうち、「現在のフェーズ」の節が 10,223 文字(69%)、恒久的なルールが約 4,600 文字(31%)。</desc>
+<text x="0" y="24" font-size="14">「現在のフェーズ」の節(日付付きの進捗記録と未決事項)10,223 文字</text>
+<text x="880" y="24" font-size="14" text-anchor="end">恒久的なルール 約 4,600 文字</text>
+<rect x="0" y="38" width="607" height="44" class="f-accent"/>
+<rect x="609" y="38" width="271" height="44" class="f-pub"/>
+<text x="0" y="118" font-size="24" class="t-b">69%</text>
+<text x="880" y="118" font-size="24" class="t-b" text-anchor="end">31%</text>
+<text x="0" y="148" font-size="13" class="t-muted">見出しなどを除いた本文 14,823 文字に対する割合。CLAUDE.md 全体は 58 行、15,592 文字。</text>
+</svg>
+</div>
+<figcaption><b>図5</b>CLAUDE.md の本文の内訳。恒久的なルールだけにすると、毎セッション読み込まれる分量は約 3 分の 1 になる。</figcaption>
+</figure>
+
+<h3>同じ事実を手作業で複数の文書に転記し、記述が食い違っている</h3>
+<p>MCP SDK のバージョンは 3 か所に 3 通りの値で書かれ、ADR-018 の Status は ADR 本体と CLAUDE.md で異なる(図6)。このほか、PR #14 がマージされたという記述は 8 ファイルにあり、サブエージェント定義には connector-sdk が v0.3(実際は v0.4)、ADR の次の番号が 017 と書かれている。backlog README が完了としている T-001 / T-002 / T-010 / T-014 は、各タスクのチェックボックスが未チェックのままである。workers-sdk が避けるよう指示している問題が、そのまま発生している。</p>
+
+<figure class="wide" id="fig6">
+<div class="canvas">
+<svg class="minw" viewBox="0 0 880 250" role="img" aria-labelledby="fig6-t fig6-d">
+<title id="fig6-t">転記による記述の不一致</title>
+<desc id="fig6-d">MCP SDK のバージョンは package.json では 1.32.2、CLAUDE.md では 1.32.1、backlog README では 1.30.1。ADR-018 の Status は ADR 本体では Accepted、CLAUDE.md では Proposed。</desc>
+<defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+<text x="0" y="20" font-size="15" class="t-b">MCP SDK のバージョン</text>
+<rect x="0" y="62" width="170" height="76" rx="6" class="f-sub"/>
+<text x="85" y="92" font-size="14" text-anchor="middle">package.json</text>
+<text x="85" y="120" font-size="17" class="t-b" text-anchor="middle">1.32.2</text>
+<line x1="170" y1="88" x2="236" y2="68" class="ln" marker-end="url(#a6)"/>
+<line x1="170" y1="112" x2="236" y2="140" class="ln" marker-end="url(#a6)"/>
+<rect x="240" y="36" width="180" height="64" rx="6" class="f-dash"/>
+<text x="330" y="62" font-size="14" text-anchor="middle">CLAUDE.md</text>
+<text x="330" y="88" font-size="16" class="t-b" text-anchor="middle">1.32.1 ✕</text>
+<rect x="240" y="112" width="180" height="64" rx="6" class="f-dash"/>
+<text x="330" y="138" font-size="14" text-anchor="middle">backlog README</text>
+<text x="330" y="164" font-size="16" class="t-b" text-anchor="middle">1.30.1 ✕</text>
+
+<text x="480" y="20" font-size="15" class="t-b">ADR-018 の Status</text>
+<rect x="480" y="62" width="170" height="76" rx="6" class="f-sub"/>
+<text x="565" y="92" font-size="14" text-anchor="middle">ADR-018 本体</text>
+<text x="565" y="120" font-size="17" class="t-b" text-anchor="middle">Accepted</text>
+<line x1="650" y1="100" x2="696" y2="100" class="ln" marker-end="url(#a6)"/>
+<rect x="700" y="68" width="180" height="64" rx="6" class="f-dash"/>
+<text x="790" y="94" font-size="14" text-anchor="middle">CLAUDE.md</text>
+<text x="790" y="120" font-size="16" class="t-b" text-anchor="middle">Proposed ✕</text>
+
+<g font-size="13">
+<rect x="0" y="214" width="26" height="18" rx="3" class="f-sub"/>
+<text x="34" y="228" class="t-muted">実際の値がある場所</text>
+<rect x="220" y="214" width="26" height="18" rx="3" class="f-dash"/>
+<text x="254" y="228" class="t-muted">手作業で転記した記述(✕ は実際の値と異なる)</text>
+</g>
+</svg>
+</div>
+<figcaption><b>図6</b>転記による記述の不一致の例。矢印は転記の向きを示す。</figcaption>
+</figure>
+
+<h3>ADR が、決定の記録と経過の記録を兼ねている</h3>
+<p>22 本のうち 12 本に追補があり、ADR-001 には追補が 9 回、日付が 15 種類ある。現在有効な決定内容を知るには、全文(合計 233,787 文字)を読む必要がある。cloudflare/agents の「RFC は決定後に更新しない」とは逆の運用である。</p>
+
+<h3>内部向けの率直な記述が、公開される文書に含まれている</h3>
+<p>実際の秘密情報は見つかっていない。懸念されるのは、次の記述が CLAUDE.md と利用者向け文書(<code>docs/install.md</code> など)に分散していることである。</p>
+<ul>
+<li>T-003 レビューなどで未修正のまま残っている指摘を、<code>minor-6</code> や <code>H1</code> といった識別子で列挙した記述(<code>minor-N</code> が 17 ファイル 59 か所、<code>H1</code> が 27 ファイル 63 か所)</li>
+<li>商用配布と有償支援に関する論点</li>
+<li>承認待ちの項目の一覧、オーナー個人の開発環境に関する記述</li>
+</ul>
+<p>公開された ADR やバックログが攻撃に利用された事例は見つからなかった。これらの扱いはリスク評価の問題であり、実害が確認されているわけではない。</p>
+
+<h3>外部のコントリビューターを受け入れるための文書がない</h3>
+<p>CONTRIBUTING / SECURITY / issue テンプレート / CODEOWNERS がなく、フックによる検査は Claude Code を使わないコントリビューターには適用されない。コミットの 64% はエージェントが作者として記録され、71% に Co-Authored-By トレーラーが付いている。開発体制はオーナー 1 人とエージェントであり、ASF の推奨の範囲には収まっている。</p>
+
+<h3>OpenAI の社内プロダクトとの違いは、目次としての AGENTS.md、自動検査、進行中と完了済みの分離である</h3>
+<p>設計書・実行計画・技術的負債の一覧をリポジトリに置く点は、OpenAI の社内プロダクトと leisen で同じである。違いは、AGENTS.md を約 100 行の目次にとどめていること、文書の鮮度・相互リンク・構造を lint と CI で検査していること、進行中の計画と完了した計画をディレクトリで分けていることの 3 つである。また、OpenAI 自身もタスクの状態は Issue Tracker で管理する方式を公開しており、エージェントが GitHub の issue を読める構成であれば、タスクをリポジトリ内のファイルで管理する必要はない。</p>
+
+<!-- ============================================================ 6 -->
+<h2 id="s6"><span class="num">6</span>成果物ごとに残すか移すかを決め、オーナーの判断が要らないものから移行する</h2>
+
+<p>判断基準は 1 つである。<strong>コントリビューターのエージェントが正しく作業するために必要なものはリポジトリに置き、コアチームの進捗と内部の事情はリポジトリの外で管理する。</strong>文書の配置は、README がすでに示している 3 種類の読者(導入する人、設計を理解したい人、開発する人)に合わせる。成果物ごとの判断を表5 にまとめる。</p>
+
+<div class="table-wrap wide">
+<table>
+<caption><b>表5</b>成果物ごとの判断と保管先</caption>
+<thead><tr><th class="col-type">成果物</th><th>保管先と書き方</th></tr></thead>
+<tbody class="group">
+<tr><th colspan="2">残して、書き方を変える</th></tr>
+<tr><th>CLAUDE.md の恒久的なルール<span class="small">不変条件・構成・開発ルール・タスクの進め方、約 4,600 文字</span></th><td>ルールは <code>AGENTS.md</code> に書き、<code>CLAUDE.md</code> は <code>@AGENTS.md</code> の 1 行にする。バージョン番号・ADR の追補番号・PR 番号は書かない</td></tr>
+<tr><th>ADR 22 本</th><td>決定後は Status 以外を書き換えない。変更は新しい ADR で行い、元の ADR に Superseded / Amended by を記載する。<code>docs/adr/README.md</code> に「主題、現在有効な ADR、現在の決定の 1 行要約」の索引を置く。実装の記録と検証結果は PR の説明に書く</td></tr>
+<tr><th>設計書 v1 / v2 / v3<span class="small">538 行</span></th><td>現在の状態を記述する 1 本の設計書に統合する。差分形式の v2 / v3 の経緯は Git の履歴で参照する</td></tr>
+<tr><th>サブエージェント 3 本</th><td>security-reviewer は残して更新する。adr-keeper と connector-implementer は内容が手順なのでスキルにする(実体は <code>.agents/skills/</code>、<code>.claude/skills</code> はシンボリックリンク)</td></tr>
+<tr><th>フック 2 本と scripts/guard</th><td>同じ検査を <code>npm run</code> のスクリプトにして CI でも実行する。<code>.claude/</code>、<code>scripts/guard/</code>、<code>.github/workflows/</code> は CODEOWNERS で人間のレビューを必須にする</td></tr>
+<tr><th>未修正のレビュー指摘の識別子<span class="small"><code>minor-N</code>、<code>H1</code></span></th><td>利用者向け文書では、識別子ではなく事象と緩和策を文章で書く(例: リクエストに期限がないため、リバースプロキシで制限する)</td></tr>
+<tr><th>PR テンプレートの不変条件チェック</th><td>文言を転記せず、AGENTS.md の不変条件を番号で参照する</td></tr>
+<tr><th>評価(docs/eval 2 本)</th><td>質問セットと実行手順は orchestrator パッケージに置く。日付付きの結果は該当する PR か issue に記載する</td></tr>
+</tbody>
+<tbody class="group">
+<tr><th colspan="2">移す</th></tr>
+<tr><th>CLAUDE.md の「現在のフェーズ」<span class="small">10,223 文字</span></th><td>着手の順序と人手の前提待ちのタスクは GitHub Issues とラベルまたは Projects に、「人間の未決事項」は issue に移す(例: ラベル <code>decision-needed</code>)。AGENTS.md には「現在の作業は Issues を参照する」の 1 行だけを残す</td></tr>
+<tr><th>パッケージ固有の制約<span class="small">audit の import 境界、gateway/run、コネクタの IF</span></th><td><code>packages/*/AGENTS.md</code> に数行〜数十行で書き、ルートの AGENTS.md から一覧で参照する</td></tr>
+<tr><th>backlog 29 タスク</th><td>未着手・進行中のタスクは issue にする(issue テンプレートに「前提(人手)/ 内容 / 受け入れ条件」)。完了したタスクは履歴用のディレクトリに移し、読み取り専用と明記する。コードに T 番号の参照が 216 か所あるので削除しない</td></tr>
+<tr><th>検討メモ HTML 4 本<span class="small">2,396 行</span></th><td>決定ではなく分析の資料なので公開リポジトリから外す。外す前に固有名詞が含まれていないかを確認する</td></tr>
+<tr><th>公開チェックリスト</th><td>コミットの作者のメールアドレスに関する記述があるので、非公開の保管先に移す</td></tr>
+<tr><th>商用配布・有償支援に関する論点</th><td>技術的な決定だけを ADR に残し、事業上の論点は issue #59 か非公開の保管先にまとめる</td></tr>
+<tr><th>未修正の指摘の一覧</th><td><code>minor-N</code>・<code>H1</code> で識別している指摘の一覧は、非公開の保管先で管理する</td></tr>
+</tbody>
+<tbody class="group">
+<tr><th colspan="2">そのまま残す</th></tr>
+<tr><th>脅威モデル、auth-matrix、導入・運用ガイド</th><td>利用者向けと設計を理解したい人向けにディレクトリを分ける。「受容した残余リスク」は導入する側に必要なので残す</td></tr>
+<tr><th>スパイク<span class="small">文書 307 行、コード 1,027 行</span></th><td>SDK v2 への移行時期が未決の間は残し、決定したら結論を ADR に記載して削除する</td></tr>
+</tbody>
+<tbody class="group">
+<tr><th colspan="2">削除する・Git で管理しない</th></tr>
+<tr><th>README と backlog README の進捗の段落</th><td>削除する。タグと GitHub Releases(または CHANGELOG)を進捗の公開記録にする</td></tr>
+<tr><th><code>.claude/settings.local.json</code>、<code>CLAUDE.local.md</code></th><td>リポジトリの <code>.gitignore</code> に明記する</td></tr>
+</tbody>
+<tbody class="group">
+<tr><th colspan="2">新しく作成する</th></tr>
+<tr><th>コミュニティヘルスファイル</th><td>SECURITY.md、CONTRIBUTING.md、AI_POLICY.md(AI 利用に関する方針)、issue テンプレート、CODEOWNERS</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>移行は 8 つの手順に分け、1 つの手順を 1 つの PR にする</h3>
+<p>オーナーの判断を必要としないものから順に進める(図7)。手順 1 と 7 は前提となる決定がなく、すぐに着手できる。効果が最も大きいのは手順 3 で、毎セッション読み込まれる分量が約 3 分の 1 になる。</p>
+
+<figure id="fig7">
+<p class="legend-inline" aria-hidden="true"><span><i class="dot fill"></i>前提となる決定なし</span><span><i class="dot"></i>オーナーの決定が前提</span></p>
+<ol class="steps">
+<li class="now"><span class="what">CLAUDE.md の事実の誤り、サブエージェント定義の古い番号、PR テンプレートの不変条件 7 を修正し、<code>.gitignore</code> にローカルの設定ファイルを追加する</span><span class="meta">前提: なし。誤ったルールがエージェントの判断に影響し、秘密情報の漏えい経路にもなるため</span></li>
+<li><span class="what">SECURITY.md と CODEOWNERS を置く</span><span class="meta">前提: 論点 3(脆弱性の報告窓口)。<code>.claude/</code> 配下の設定とフックは実行コードと同じ扱いにする</span></li>
+<li><span class="what">未決事項と未着手のタスクを issue にし、CLAUDE.md から「現在のフェーズ」を削除して、ルールを AGENTS.md に移す</span><span class="meta">前提: 論点 1(タスクと未決事項の管理場所)。最も効果が大きい</span></li>
+<li><span class="what">完了済みの backlog を読み取り専用の履歴にし、README などの進捗の段落を削除し、最初のタグを付ける</span><span class="meta">前提: 論点 1。重複した記載が生じる原因をなくす</span></li>
+<li><span class="what">ADR の索引を作成し、追補をやめる運用を ADR として記録する。設計書 3 本を 1 本に統合する</span><span class="meta">前提: 論点 4(ADR の運用)。現在有効な決定を、全文を読まずに確認できるようにする</span></li>
+<li><span class="what">検討メモ、公開チェックリスト、評価結果、未修正の指摘の一覧を公開リポジトリから外す</span><span class="meta">前提: 論点 2(非公開の保管先)。履歴の書き換えは行わない</span></li>
+<li class="now"><span class="what">文書の検査を CI に追加する(AGENTS.md の文字数の上限と日付・PR 番号の禁止、ADR の索引の網羅性、リンク切れ、guard の検査)</span><span class="meta">前提: なし。再発を防ぐ。OpenAI の社内プロダクトが前提としている条件である</span></li>
+<li><span class="what">CONTRIBUTING.md と AI_POLICY.md を置き、手順をスキルにし、パッケージ別の AGENTS.md を追加する</span><span class="meta">前提: 論点 5(外部からのコントリビューションの受け入れ方針)</span></li>
+</ol>
+<figcaption><b>図7</b>移行の手順と、それぞれの前提となる論点。論点の番号は表6 に対応する。</figcaption>
+</figure>
+
+<p class="note">手順 6 で履歴を書き換えないのは、公開後に履歴を書き換えても、既存の clone や fork からは何も削除されないためである(<a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository">GitHub Docs</a>)。リポジトリが現在公開されているかどうかは確認できていない。まだ非公開であれば、履歴に含まれる作者のメールアドレスの扱いを、公開前に 1 度だけ決められる。CI からエージェントを起動する issue のトリアージや重複検出は、外部からの issue が増えるまで導入を見送る。公開された issue の本文を読むエージェントに対するプロンプトインジェクションが報告されているためである(<a href="https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents">Aikido</a>)。手順 7 では、AGENTS.md の指示を変更するときに、同じコミット・同じモデル・同じタスクで変更前後を比較する方法も使える(<a href="https://developers.openai.com/blog/maintaining-software-with-the-gpt-6-family">OpenAI</a>)。</p>
+
+<h3>オーナーが決定すべき論点は 8 つある</h3>
+
+<div class="table-wrap wide">
+<table>
+<caption><b>表6</b>オーナーが決定すべき論点と推奨</caption>
+<thead><tr><th>#</th><th class="col-type">論点と選択肢</th><th>推奨</th></tr></thead>
+<tbody>
+<tr><td class="mark">1</td><th>タスクと未決事項の管理場所<span class="small">GitHub Issues / リポジトリ内の 1 ファイルに集約する / 現状を維持する</span></th><td><strong>Issues。</strong>エージェントが issue を読める構成であることが条件。満たせない場合は 1 ファイルに集約し、他の文書からは参照だけにする</td></tr>
+<tr><td class="mark">2</td><th>非公開の保管先を持つか<span class="small">持たない / 非公開の別リポジトリ / ローカルのみ</span></th><td><strong>未修正のセキュリティ指摘の一覧と事業上の論点に限定して、小規模な非公開リポジトリを持つ。</strong>クラウドセッションでは 2 つ目のリポジトリとして追加する必要がある(推論)</td></tr>
+<tr><td class="mark">3</td><th>脆弱性の報告窓口と、未修正の指摘を公開する範囲<span class="small">GitHub の Private Vulnerability Reporting / メール / 保留を続ける</span></th><td><strong>Private Vulnerability Reporting。</strong>追加の契約なしで始められる。curl は 2026-01-31 にこの方式へ移行したが、約 1 か月後に HackerOne に戻している(<a href="https://daniel.haxx.se/blog/2026/02/25/curl-security-moves-again/">curl</a>)。報告件数が増えたら見直す</td></tr>
+<tr><td class="mark">4</td><th>ADR の運用<span class="small">追補を続ける / 新しい ADR で置き換える / 既存の ADR も書き直す</span></th><td><strong>新しい ADR で置き換える。</strong>既存の 22 本は書き直さず、索引と 1 行要約で現在有効な決定を示す</td></tr>
+<tr><td class="mark">5</td><th>外部からのコントリビューションの受け入れ方針<span class="small">受け付けない(codex)/ issue の承認を前提条件にする(goose、cline)/ 制限しない</span></th><td><strong>issue の承認を前提条件にする。</strong>ADR の起案は誰でもでき、Accepted にできるのはオーナーだけであることを明記する</td></tr>
+<tr><td class="mark">6</td><th>AI 利用の開示<span class="small">Co-Authored-By を続ける / やめる / 外部のコントリビューターにだけ求める</span></th><td><strong>続ける。</strong>ghostty と同じ形式で、メンテナが AI を利用していることを明記し、外部のコントリビューターには内容の理解と開示を求める。コミットに付くセッション URL の行は第三者が開けないので、残すかどうかを別途決める</td></tr>
+<tr><td class="mark">7</td><th>AGENTS.md と文書の言語<span class="small">日本語のみ / AGENTS.md と README だけ英語を併記する</span></th><td>調査では判断の根拠となる資料が得られなかった。想定する導入先に合わせて決める</td></tr>
+<tr><td class="mark">8</td><th>完了した計画と評価結果の残し方<span class="small">変更せずにリポジトリに残す / PR と issue にだけ残す / 削除する</span></th><td><strong>backlog は変更せずに残し、新しい計画と評価結果は PR と issue にだけ残す。</strong>複数の PR にまたがる変更で実行計画を書く場合は、Agents SDK と同様に gitignore したローカルの作業ファイルとし、決定事項だけを ADR に記録する</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ 7 -->
+<h2 id="s7"><span class="num">7</span>削除すべきなのは ADR ではなく、ADR と CLAUDE.md に混在している作業の記録である</h2>
+
+<p>エージェントによる開発が進んでいるプロジェクトほど、リポジトリに置く文書を、いつ読んでも内容が正しい文書に絞っている。AGENTS.md のルール、スキル、ADR、現行の設計書がこれにあたる。特定の時点では正しかった記録(進捗、計画、評価結果、レビューでの指摘)は、日付と状態が自動的に記録される issue、PR、コミット、リリースで管理している。</p>
+<p>すべてをリポジトリに置く leisen の構成は、エージェントにコンテキストを渡すという目的に対しては妥当だった。ただし、この構成が成立するのは、オーナー 1 人とエージェントという閉じた体制で、PR のたびにすべての文書を更新できる間だけである。記述の不一致がすでに生じていることから、その限界は超えている。leisen は認可と監査を強みとするプロダクトなので、ADR と脅威モデルを公開していること自体は、導入を検討する側にとって価値がある。</p>
+<p class="note">今回の調査で確認できなかった点が 2 つある。完了済みの計画を残すことがエージェントの作業の成功率を上げるのか下げるのかを測定したデータと、エージェントで開発されたプロジェクトが公開時に開発プロセスの文書をどう再編成したかの事例である。leisen の移行は、その最初の記録の 1 つになりうる。</p>
+
+<!-- ============================================================ 付録 -->
+<h2 id="appx"><span class="num">付</span>調査の範囲と根拠の強さ</h2>
+
+<div class="table-wrap wide">
+<table>
+<caption><b>表7</b>主張ごとの根拠の強さ</caption>
+<thead><tr><th class="col-type">根拠</th><th>該当する主張</th></tr></thead>
+<tbody>
+<tr><th>リポジトリを clone して直接確認<span class="small">2026-11-15 時点のデフォルトブランチ</span></th><td>約 50 リポジトリのファイル構成と AGENTS.md の行数、gitignore の内容、Agents SDK、Symphony、beads、gastown、next.js、OpenHands のワークフロー</td></tr>
+<tr><th>公式ドキュメントと一次資料を直接確認</th><td>GitHub Docs(assignee、issue の依存関係、マージキュー、機密データの削除)、Claude Code のドキュメント、Anthropic のセキュリティアドバイザリ、developers.openai.com の記事、arXiv の第 3 版、LWN、Aikido、curl のブログ、Cursor のブログ</td></tr>
+<tr><th>二次資料と提供された調査結果</th><td>openai.com の記事 2 本(Harness engineering、Symphony。HTTP 403 で本文を取得できず)、Apiiro の件数、beads が Git での管理をやめた経緯(DoltHub の記事)</td></tr>
+<tr><th>確認できなかったもの</th><td>実行計画を変更の規模で分ける区別、各リポジトリでマージキューが有効かどうか、完了済みの計画を残す効果を測ったデータ、公開時に文書を再編成した事例、leisen の現在の公開状態</td></tr>
+</tbody>
+</table>
+</div>
+
+<footer class="about">
+<p>調査基準日: 2026-11-15(裏付け調査を 2026-11-16 以降に追加)。調査の記録は <a href="../research_notes/エージェント開発OSSの開発環境管理/">research_notes/エージェント開発OSSの開発環境管理/</a> にある。</p>
+<p>同じ内容の Markdown 版: <a href="エージェント開発OSSの開発環境管理.md">reports/エージェント開発OSSの開発環境管理.md</a></p>
+</footer>
+
+</main>
+
+<script>
+// 目次: 表示中の章を示す
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  if (!('IntersectionObserver' in window) || links.length === 0) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var heads = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+  var current = null;
+  function setCurrent(id) {
+    if (current === id) return;
+    current = id;
+    links.forEach(function (a) { a.removeAttribute('aria-current'); });
+    if (id && byId[id]) byId[id].setAttribute('aria-current', 'true');
+  }
+  function update() {
+    var y = window.innerHeight * 0.3, id = null;
+    heads.forEach(function (h) { if (h.getBoundingClientRect().top < y) id = h.id; });
+    setCurrent(id);
+  }
+  var io = new IntersectionObserver(update, { rootMargin: '0px 0px -60% 0px' });
+  heads.forEach(function (h) { io.observe(h); });
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>
