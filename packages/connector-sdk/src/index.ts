@@ -1,8 +1,9 @@
 /**
- * connector-sdk v0.4: 全データソースコネクタが実装する共通インターフェース。
+ * connector-sdk v0.5: 全データソースコネクタが実装する共通インターフェース。
  * v0.2からの変更はADR-016(SearchOptions、listページング、snippet規約、redaction)。
  * v0.3からの変更はADR-016 追補2(プライベート領域の方針 SourcePolicy、結果ごとの
  * 領域分類 DocumentScope、能力 privateScopeHandling、エラー分類 private_scope_excluded)。
+ * v0.4からの変更はADR-024(利用者ごとの API キー Credential `api_key`)。
  *
  * 不変条件(CLAUDE.md参照):
  * - すべての操作は AuthContext(利用者本人の資格情報)を受け取る。
@@ -13,9 +14,9 @@
  */
 
 /**
- * 資格情報。認可方式はソースにより異なる(ADR-007/010)。
- * OAuthベアラー以外の kind の追加にはADRが必要。
+ * 資格情報。認可方式はソースにより異なる(ADR-007/010)。新しい kind の追加にはADRが必要。
  * - oauth_bearer: OAuth系API(Drive, Slack等)
+ * - api_key: 個人 API キーをヘッダー等で受け付けるソース(Redmine 等)
  * - delegated_identity: 本人としてのアクセス試行で認可されるソース
  *   (ファイル共有等)。semanticsはT-017のスパイクで確定するexperimental(ADR-007参照)。
  */
@@ -27,6 +28,16 @@ export type Credential =
       /**
        * トークン失効時刻(epoch ms)。0 以下は「失効時刻不明」で、コネクタはこの値で失効を
        * 判定せずソースの 401 等に委ねる(ADR-016 追補3)
+       */
+      readonly expiresAt: number;
+    }
+  | {
+      readonly kind: "api_key";
+      /** ソース固有の個人 API キー(ADR-024)。ログ出力禁止(不変条件6) */
+      readonly apiKey: string;
+      /**
+       * キーの失効時刻(epoch ms)。oauth_bearer と同じく 0 以下は「失効時刻不明」で、
+       * 期限のない固定キーは 0 を入れる(ADR-016 追補3、ADR-024)
        */
       readonly expiresAt: number;
     }

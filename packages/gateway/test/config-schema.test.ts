@@ -217,6 +217,13 @@ describe("起動コード向けの項目(connectors[].kind / module / settings /
     });
   });
 
+  it("mock_env の credentialKind(api_key)を受ける(ADR-024)", () => {
+    const config = parseDeploymentConfig(
+      connectorYaml("    kind: redmine\n    auth:\n      provider: mock_env\n      credentialKind: api_key\n"),
+    );
+    expect(config.connectors[0]?.auth).toEqual({ provider: "mock_env", credentialKind: "api_key" });
+  });
+
   it.each([
     ["大文字を含む kind", "    kind: GDrive\n", "connectors.0.kind"],
     ["空白を含む kind", "    kind: my connector\n", "connectors.0.kind"],
@@ -224,6 +231,8 @@ describe("起動コード向けの項目(connectors[].kind / module / settings /
     ["URLスキームの module(https:)", "    module: https://example.test/plugin.js\n", "connectors.0.module"],
     ["未知の auth.provider", "    auth:\n      provider: oauth_individual\n", "connectors.0.auth.provider"],
     ["auth の未知キー", "    auth:\n      provider: mock_env\n      token: x\n", "connectors.0.auth"],
+    ["未知の credentialKind", "    auth:\n      provider: mock_env\n      credentialKind: password\n", "connectors.0.auth.credentialKind"],
+    ["token_vault に credentialKind", "    auth:\n      provider: token_vault\n      credentialKind: api_key\n", "connectors.0.auth"],
     ["settings が mapping でない", "    settings: [1, 2]\n", "connectors.0.settings"],
   ])("不正な値を拒否する: %s", (_label, body, path) => {
     const error = schemaError(connectorYaml(body));

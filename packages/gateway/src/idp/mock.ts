@@ -169,6 +169,8 @@ export interface MockCredentialProviderOptions {
    * 起動コードが注入された環境(assembleGateway の env)を渡す。
    */
   env?: Readonly<Record<string, string | undefined>>;
+  /** 開発用に注入する資格情報の形式。既定は OAuth bearer。 */
+  credentialKind?: "oauth_bearer" | "api_key";
 }
 
 /**
@@ -188,6 +190,7 @@ export class MockCredentialProvider implements CredentialProvider {
   private readonly tokenLifetimeMs: number;
   private readonly now: () => number;
   private readonly env: Readonly<Record<string, string | undefined>>;
+  private readonly credentialKind: "oauth_bearer" | "api_key";
 
   constructor(
     public readonly sourceId: string,
@@ -197,6 +200,7 @@ export class MockCredentialProvider implements CredentialProvider {
     this.tokenLifetimeMs = options.tokenLifetimeMs ?? 60 * 60 * 1000;
     this.now = options.now ?? Date.now;
     this.env = options.env ?? process.env;
+    this.credentialKind = options.credentialKind ?? "oauth_bearer";
   }
 
   async getCredential(identity: Identity): Promise<Credential> {
@@ -205,17 +209,20 @@ export class MockCredentialProvider implements CredentialProvider {
       this.env[
         `${base}__${identity.userId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
       ];
-    const token = perUser ?? this.env[base];
+    // api_key は期限のない全権限の個人キーなので、全利用者で共有される <BASE> への
+    // フォールバックを認めない(利用者別の <BASE>__<USERID> だけ。ADR-024)
+    const token = this.credentialKind === "api_key" ? perUser : (perUser ?? this.env[base]);
     if (!token) {
       throw new IdpError(
         "source_not_connected",
-        `no mock credential injected for source '${this.sourceId}' (set ${base})`,
+        this.credentialKind === "api_key"
+          ? `no mock credential injected for source '${this.sourceId}' (set ${base}__<USERID>; the shared ${base} is not used for api_key)`
+          : `no mock credential injected for source '${this.sourceId}' (set ${base})`,
       );
     }
-    return {
-      kind: "oauth_bearer",
-      accessToken: token,
-      expiresAt: this.now() + this.tokenLifetimeMs,
-    };
+    if (this.credentialKind === "api_key") {
+      return { kind: "api_key", apiKey: token, expiresAt: 0 };
+    }
+    return { kind: "oauth_bearer", accessToken: token, expiresAt: this.now() + this.tokenLifetimeMs };
   }
 }

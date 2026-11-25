@@ -166,7 +166,8 @@ const connectorSettingsSchema = z
 /**
  * コネクタの本人資格情報の取得方式(ADR-010 のソース別 Auth Adapter、ADR-022 決定 1)。
  * - mock_env: 開発用。MockCredentialProvider が環境変数 LEISEN_MOCK_TOKEN_<SOURCEID> の固定
- *   トークンを渡す(NODE_ENV=production では起動時に拒否)
+ *   値を渡す(NODE_ENV=production では起動時に拒否)。渡す形式は credentialKind
+ *   (oauth_bearer / api_key。ADR-024)で選ぶ
  * - token_vault: Gateway の接続ページで OAuth を行い、更新トークンを Token Vault に保管する
  * - esc: 同じく OAuth で得たトークンを、Gateway の認可サーバーが発行するトークン(ESC)に
  *   封じてクライアントに持たせる(gateway.authorizationServer.enabled が要る)
@@ -215,7 +216,11 @@ const sourceOAuthSchema = z.strictObject({
 });
 
 const connectorAuthSchema = z.discriminatedUnion("provider", [
-  z.strictObject({ provider: z.literal("mock_env") }),
+  z.strictObject({
+    provider: z.literal("mock_env"),
+    /** mock_env で渡す資格情報の形式(ADR-024)。開発専用。既定は oauth_bearer */
+    credentialKind: z.enum(["oauth_bearer", "api_key"]).optional(),
+  }),
   z.strictObject({ provider: z.literal("token_vault"), oauth: sourceOAuthSchema }),
   z.strictObject({ provider: z.literal("esc"), oauth: sourceOAuthSchema }),
   z.strictObject({

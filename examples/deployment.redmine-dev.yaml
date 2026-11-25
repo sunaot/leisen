@@ -1,0 +1,32 @@
+# Redmine コネクターをローカル評価する開発用構成。
+# API キーは設定ファイルへ書かず LEISEN_MOCK_TOKEN_REDMINE__<USERID> で渡す。
+# mock_env / stdout audit は開発専用で、本番では起動できない。
+schemaVersion: 1
+
+deployment:
+  name: redmine-dev
+
+idp:
+  adapter:
+    kind: mock
+
+gateway:
+  http:
+    host: 127.0.0.1
+    port: 8787
+    path: /mcp
+
+connectors:
+  - id: redmine
+    kind: redmine
+    privateScopes: excluded
+    auth:
+      provider: mock_env
+      credentialKind: api_key
+    settings:
+      baseUrl: https://redmine.example.invalid
+      timeoutMs: 10000
+      defaultSearchLimit: 10
+
+audit:
+  sink: stdout
