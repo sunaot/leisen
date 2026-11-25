@@ -13,6 +13,7 @@
  */
 import { z } from "zod";
 import { LLM_PROVIDERS, type LlmProvider } from "./llm/types.js";
+import { EXPLORE_PROMPT_VERSION, EXPLORE_PROMPT_VERSIONS } from "./prompt.js";
 
 export const llmProviderSchema = z.enum(LLM_PROVIDERS);
 
@@ -190,6 +191,19 @@ export const orchestratorSettingsSchema = z.strictObject({
   pricing: pricingSchema.prefault({}),
   /** 未接続ソースを回答で案内するときの接続導線の文言(プレースホルダ、T-009で確定) */
   connectGuidance: z.string().min(1).default(DEFAULT_CONNECT_GUIDANCE),
+  /**
+   * 探索プロンプトの版(prompts/<版>.md と、版に合わせた USAGE_HINTS・ソース一覧の前置き・
+   * 上限の制御メッセージ)。既定は評価済みの v3。v4 は評価(T-024)が済むまで既定にしない
+   * (prompt.ts の運用規則)
+   */
+  explorePrompt: z.enum(EXPLORE_PROMPT_VERSIONS).default(EXPLORE_PROMPT_VERSION),
+  /**
+   * 検索の状況を返す制御メッセージ(0 件・重複・既出のみ・試した検索の一覧と残りのターン数、
+   * 1件も fetch せずに提出したときの差し戻し。search-feedback.ts)。省略時は explorePrompt が
+   * explore.v4 のときだけ有効(v4 の文面がこの制御メッセージを前提にする)。プロンプトの一部と
+   * して扱い、v3 との組み合わせも評価なしでは既定にしない
+   */
+  searchFeedback: z.boolean().optional(),
 });
 export type OrchestratorSettings = z.infer<typeof orchestratorSettingsSchema>;
 export type OrchestratorSettingsInput = z.input<typeof orchestratorSettingsSchema>;

@@ -13,6 +13,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { submitAnswerTool } from "./answer.js";
 import type { GatewayToolSchema } from "./gateway/types.js";
+import { EXPLORE_PROMPT_VERSION, type ExplorePromptVersion } from "./prompt.js";
 
 export const GATEWAY_TOOL_NAMES = ["search", "fetch", "list", "describe"] as const;
 export type GatewayToolName = (typeof GATEWAY_TOOL_NAMES)[number];
@@ -21,8 +22,11 @@ export function isGatewayToolName(name: string): name is GatewayToolName {
   return (GATEWAY_TOOL_NAMES as readonly string[]).includes(name);
 }
 
-/** いつ呼ぶかの指針(Gateway の説明文に足す。探索方針の本体は system prompt)。 */
-const USAGE_HINTS: Readonly<Record<GatewayToolName, string>> = {
+/**
+ * いつ呼ぶかの指針(Gateway の説明文に足す。探索方針の本体は system prompt)。
+ * 文言はプロンプトの一部(prompt.ts の運用規則)なので、探索プロンプトの版ごとに持つ。
+ */
+const USAGE_HINTS_V3: Readonly<Record<GatewayToolName, string>> = {
   search:
     "質問に関係しそうな文書を探すときに使う。query には文書に出てきそうな名詞を 1〜2 語だけ入れる(多くのソースは語をすべて含む文書だけを返す)。0 件なら語を減らし、類義語・言い換え・英日変換は別の search で試す。区画内を探すときは filters.container を使う。",
   fetch:
@@ -31,6 +35,27 @@ const USAGE_HINTS: Readonly<Record<GatewayToolName, string>> = {
   describe:
     "ソースの説明を得る。各ソースの説明は最初のメッセージのソース一覧に載っているので通常は呼ばなくてよい。",
 };
+
+/**
+ * v4: 全ソース共通の指針(多くのソースは AND・名詞 1〜2 語)をやめ、各ソースの summary に
+ * 書かれた検索の仕様に合わせさせる。
+ */
+const USAGE_HINTS_V4: Readonly<Record<GatewayToolName, string>> = {
+  search:
+    "質問に関係しそうな文書を探すときに使う。query の書き方(空白で区切った語の扱い・使える記法)と使えるフィルタはソースごとに違うので、ソース一覧のそのソースの summary と supportedFilters に書かれた検索の仕様に合わせる。仕様が書かれていないソースでは、文ではなく文書に出てきそうな語を空白で区切って入れる。言い換えは別の search に分け、互いに独立した search は 1 回の応答に並べて呼んでよい。filters はそのソースの supportedFilters にあるものだけを使う。",
+  fetch:
+    "有望なヒットの本文を読むときに使う。採否はスニペットだけで決めず、有望な 2〜3 件を読んでから判断する。documentId と source は search の結果の値をそのまま使う。",
+  list: "区画(フォルダ・リポジトリ等)の一覧を得るときに使う。文書は返さない(空の結果は文書がないことを意味しない)。区画内の文書は、そのソースの supportedFilters に container があれば search の filters.container で探す。",
+  describe:
+    "ソースの説明を得る。各ソースの説明は最初のメッセージのソース一覧に載っているので通常は呼ばなくてよい。",
+};
+
+/** 探索プロンプトの版ごとのツールの指針。 */
+export function usageHints(
+  version: ExplorePromptVersion = EXPLORE_PROMPT_VERSION,
+): Readonly<Record<GatewayToolName, string>> {
+  return version === "explore.v4" ? USAGE_HINTS_V4 : USAGE_HINTS_V3;
+}
 
 /** strict のツール定義で使えないキーワード(スキル「JSON Schema Limitations」)。 */
 const UNSUPPORTED_KEYWORDS: ReadonlySet<string> = new Set([
@@ -132,7 +157,9 @@ function toInputSchema(
 export function buildClaudeTools(
   gatewayTools: readonly GatewayToolSchema[],
   activeSources: readonly string[],
+  promptVersion: ExplorePromptVersion = EXPLORE_PROMPT_VERSION,
 ): Anthropic.Tool[] {
+  const hints = usageHints(promptVersion);
   const tools: Anthropic.Tool[] = [];
   for (const tool of gatewayTools) {
     if (!isGatewayToolName(tool.name)) {
@@ -144,7 +171,7 @@ export function buildClaudeTools(
     }
     tools.push({
       name: tool.name,
-      description: [tool.description, USAGE_HINTS[tool.name]]
+      description: [tool.description, hints[tool.name]]
         .filter((part): part is string => typeof part === "string" && part !== "")
         .join(" "),
       strict: true,
