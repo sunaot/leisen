@@ -1,6 +1,6 @@
 # T-030: 検索プロファイルと `SearchResult.notices` の実装(connector-sdk v0.6、ADR-025)
 
-**ADR-025 が Accepted になるまで着手しない。** ADR-025 は 2026-11-25 時点で Proposed(人間のレビュー待ち)。本タスクの内容は ADR の決定に合わせて直す。
+**ADR-025 は 2026-11-25 に Accepted(オーナー決定)。着手可能。**本タスクの内容は ADR の決定に合わせて直す。
 
 ## 依存
 ADR-025(Accepted が前提)、T-028(`summary` への検索の仕様の記載。構造化への移行元)、T-029(実機での確認。`basis` を `tested` にする根拠)、T-027(効きの判定)

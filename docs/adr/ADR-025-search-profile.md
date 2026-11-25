@@ -1,6 +1,6 @@
 # ADR-025: 検索プロファイル — ソースごとの検索の仕様を探索 LLM に伝えるコネクタ IF(connector-sdk v0.6 案)
 
-Status: Proposed(人間のレビュー待ち)/ Date: 2026-11-25
+Status: Accepted(2026-11-25 オーナー決定。確認事項は本文の既定の案で受理し、未決のまま残す)/ Date: 2026-11-25
 
 本 ADR はコネクタのツール IF(`describe` の戻り値 `SourceDescription` と `search` の戻り値 `SearchResult`)を変える提案であり、不変条件 5 が求める ADR を兼ねる。`ask` の IF(ADR-018 決定 1)の変更は ADR-026 に分けた。CLAUDE.md「タスクの進め方」2 に従い、実装(T-030)は本 ADR の承認後に行う。
 
