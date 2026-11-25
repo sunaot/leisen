@@ -39,6 +39,8 @@ export interface CaseMetrics {
   readonly outcome?: string;
   /** unanswerable で resolved 以外に終わった(条件 3・4 のみ) */
   readonly abstained?: boolean;
+  /** 探索 LLM のターン数(条件 3・4 で回答まで進んだ試行のみ) */
+  readonly llmTurns?: number;
   /** 試行を完了できなかった(UI 側 LLM が ask を呼ばない等)の分類 */
   readonly errorClass?: string;
 }
@@ -125,6 +127,7 @@ export function caseMetrics(
     ...(orchestrated && question.category === "unanswerable"
       ? { abstained: answer !== undefined && answer.outcome !== "resolved" }
       : {}),
+    ...(orchestrated && answer?.llmTurns !== undefined ? { llmTurns: answer.llmTurns } : {}),
     ...(errorClass !== undefined ? { errorClass } : {}),
   };
 }
@@ -144,6 +147,8 @@ export interface MetricsSummaryRow {
   /** unanswerable の棄権の数(条件 3・4) */
   readonly abstained: number | undefined;
   readonly meanSearches: number;
+  /** 探索 LLM のターン数の平均(条件 3・4) */
+  readonly meanLlmTurns: number | undefined;
   readonly zeroHitSearchRate: number | undefined;
   readonly errors: number;
 }
@@ -186,6 +191,7 @@ function summarizeGroup(
     meanCitedRate: mean(citedRates),
     abstained: abstentions.length === 0 ? undefined : abstentions.filter((a) => a).length,
     meanSearches: rows.length === 0 ? 0 : searches / rows.length,
+    meanLlmTurns: mean(rows.flatMap((r) => (r.llmTurns === undefined ? [] : [r.llmTurns]))),
     zeroHitSearchRate: searches === 0 ? undefined : zero / searches,
     errors: rows.filter((r) => r.errorClass !== undefined).length,
   };
@@ -246,7 +252,13 @@ function cell(value: string): string {
  */
 export function formatMetricsReport(
   rows: readonly CaseMetrics[],
-  context: { readonly label?: string; readonly corpusSize: number; readonly ks?: readonly number[] },
+  context: {
+    readonly label?: string;
+    readonly corpusSize: number;
+    readonly ks?: readonly number[];
+    /** 見出しの下に足す注記(1 要素 = 1 行の箇条書き) */
+    readonly notes?: readonly string[];
+  },
 ): string {
   const ks = context.ks ?? DEFAULT_RECALL_KS;
   const lines: string[] = [];
@@ -257,6 +269,9 @@ export function formatMetricsReport(
     "- recall@k は正解の文書のうち試行中のいずれかの search で k 位以内に返った割合の平均、" +
       "順位は最初の正解の順位の中央値(返った試行のみ)、fetch / 引用は正解の文書のうち fetch / 引用した割合の平均",
   );
+  for (const note of context.notes ?? []) {
+    lines.push(`- ${cell(note)}`);
+  }
   lines.push("");
   const header = [
     "方式",
@@ -270,6 +285,7 @@ export function formatMetricsReport(
     "引用",
     "棄権",
     "search/試行",
+    "LLMターン/試行",
     "0件の search",
     "エラー",
   ];
@@ -289,6 +305,7 @@ export function formatMetricsReport(
         pct(row.meanCitedRate),
         row.abstained === undefined ? "—" : `${row.abstained} / ${row.cases}`,
         row.meanSearches.toFixed(1),
+        row.meanLlmTurns === undefined ? "—" : row.meanLlmTurns.toFixed(1),
         pct(row.zeroHitSearchRate),
         String(row.errors),
       ].join(" | ")} |`,

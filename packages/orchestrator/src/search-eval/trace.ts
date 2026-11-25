@@ -86,6 +86,17 @@ export type TraceEvent =
       readonly toolCalls?: number;
     })
   | (TraceCaseContext & {
+      readonly type: "llm_usage";
+      /** この試行での LLM の呼び出し回数(UI 側 LLM と探索 LLM の合計) */
+      readonly calls: number;
+      /** 費用(USD。claude -p の total_cost_usd の合計。読めない分は含まない) */
+      readonly costUsd: number;
+      /** LLM の呼び出しの所要時間の合計(ms) */
+      readonly llmDurationMs: number;
+      /** 試行全体の実時間(ms) */
+      readonly elapsedMs: number;
+    })
+  | (TraceCaseContext & {
       readonly type: "case_error";
       /** 固定の分類(例外の文言は書かない) */
       readonly errorClass: string;

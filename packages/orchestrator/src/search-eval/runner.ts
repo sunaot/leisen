@@ -162,6 +162,19 @@ export interface SearchEvalRunOptions {
   /** 条件 4 の UI 側 LLM */
   readonly uiLlm?: LlmClient;
   readonly onProgress?: (message: string) => void;
+  /**
+   * LLM の使用量の累計を返す関数(claude -p のクライアントなど、費用と時間を数えられる場合)。
+   * 指定すると、条件 3・4 の試行ごとに差分を llm_usage としてトレースに書く
+   */
+  readonly llmUsage?: () => LlmUsageSnapshot;
+  readonly now?: () => number;
+}
+
+/** LLM の使用量の累計(llmUsage が返す)。 */
+export interface LlmUsageSnapshot {
+  readonly calls: number;
+  readonly costUsd: number;
+  readonly durationMs: number;
 }
 
 function errorClassOf(error: unknown): string {
@@ -215,6 +228,9 @@ async function runOrchestrated(
   }
 }
 
+const isOrchestrated = (condition: SearchEvalCondition) =>
+  condition === "orchestrator-utterance" || condition === "orchestrator-ui";
+
 /** 1 つの検索方式について、質問 × 条件を実行し、試行ごとの指標を返す。 */
 export async function runSearchEval(options: SearchEvalRunOptions): Promise<CaseMetrics[]> {
   const ks = options.ks ?? DEFAULT_RECALL_KS;
@@ -241,6 +257,9 @@ export async function runSearchEval(options: SearchEvalRunOptions): Promise<Case
         const memory = new MemoryTraceSink();
         const sink = new TeeTraceSink([memory, options.sink]);
         options.onProgress?.(`${options.mode} / ${condition} / ${question.id}(${attempt} 回目)`);
+        const now = options.now ?? Date.now;
+        const startedAt = now();
+        const usageBefore = isOrchestrated(condition) ? options.llmUsage?.() : undefined;
         try {
           switch (condition) {
             case "keywords":
@@ -265,6 +284,17 @@ export async function runSearchEval(options: SearchEvalRunOptions): Promise<Case
           }
         } catch (error) {
           sink.write({ ...context, type: "case_error", errorClass: errorClassOf(error) });
+        }
+        if (usageBefore !== undefined && options.llmUsage !== undefined) {
+          const after = options.llmUsage();
+          sink.write({
+            ...context,
+            type: "llm_usage",
+            calls: after.calls - usageBefore.calls,
+            costUsd: after.costUsd - usageBefore.costUsd,
+            llmDurationMs: after.durationMs - usageBefore.durationMs,
+            elapsedMs: now() - startedAt,
+          });
         }
         results.push(caseMetrics(question, context, memory.events, ks));
       }
