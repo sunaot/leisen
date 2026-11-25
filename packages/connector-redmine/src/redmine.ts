@@ -13,6 +13,8 @@ import {
   type SearchResult,
   type SourceDescription,
 } from "@leisen/connector-sdk";
+import { normalizeQuery, snippetTerms } from "./query.js";
+import { matchWindowStart, windowSnippet } from "./snippet.js";
 
 type FetchLike = typeof fetch;
 type JsonObject = Record<string, unknown>;
@@ -37,6 +39,8 @@ const REDMINE_SCOPE: DocumentScope = "shared";
 /** パスの "." / ".." セグメント(wiki の project・title に許さない) */
 const DOT_SEGMENT = /^\.{1,2}$/;
 const DEFAULT_SEARCH_LIMIT = 10;
+/** スニペットの最大文字数(従来の値。MAX_SNIPPET_CHARS と同じ) */
+const SNIPPET_CHARS = 500;
 const MAX_SEARCH_LIMIT = 50;
 const MAX_PAGE_SIZE = 100;
 const CAPABILITIES: ConnectorCapabilities = {
@@ -73,6 +77,16 @@ function safeText(value: unknown): string {
     .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * スニペット(ADR-016: SNIPPET_CHARS 以内、本文全体を入れない)。検索語(Redmine の語の
+ * 分け方で取り出したもの)が先頭の範囲より後ろに現れるときはその周辺(前後に省略記号)、
+ * それ以外は従来どおり先頭。入力は本人の API キーで得た検索結果・Issue の本文だけ
+ */
+function snippetOf(text: string, terms: readonly string[]): string {
+  const start = matchWindowStart(text, terms, SNIPPET_CHARS);
+  return start > 0 ? windowSnippet(text, start, SNIPPET_CHARS) : text.slice(0, SNIPPET_CHARS);
 }
 
 function encodedCursor(value: number): string {
@@ -150,6 +164,24 @@ function decodeWikiDocumentId(documentId: string): { project: string; title: str
   }
 }
 
+/**
+ * describe の summary: 対象と検索の仕様(事実の記述。2026-11-25)。出典は Redmine 本体の
+ * ソース(app/controllers/search_controller.rb、lib/redmine/search.rb、acts_as_searchable)と
+ * 本コネクタの実装。実機では確認していない。Orchestrator が 1,000 字で切るため、その長さに収める
+ */
+export const REDMINE_SUMMARY =
+  "本人の Redmine API キーで、アクセスできるプロジェクトの Issue、Issue のノート、Wiki ページを /search.json で探す。" +
+  "検索の仕様(Redmine 本体のソースによる。実機では未確認で、導入先の版や全文検索プラグインで変わりうる): " +
+  "1 回の search で返る種別は Issue と Wiki ページ。標準の検索ではノートに一致しても親の Issue が返り、全文検索プラグインがある導入先ではノートが直接返る。" +
+  "query は空白で語に分け、\"…\" で囲んだ語句は 1 語になる。使われるのは重複を除いた先頭の 5 語までで、残りは無視される。漢字以外の 1 文字の語は無視される。" +
+  "各語は部分一致(SQL の LIKE)で、空白のない日本語の文は全体が 1 語になる。" +
+  "語の結合はコネクタが all_words=0 を送っており、AND か OR かは不明(Redmine 本体のソースでは値があれば AND と読める)。" +
+  "OR・-・修飾子などの演算子はなく、書いた記号も語として照合される。" +
+  "並び順は関連度ではなく日付の新しい順。" +
+  "スニペットは Issue の説明・ノート本文・Wiki の検索結果の説明のうち、query の語が現れる箇所の周辺(なければ先頭)。" +
+  "filters には対応しておらず、指定すると invalid_request になる。" +
+  "ノートの検索可否を含め、検索対象は Redmine の設定やプラグインに依存する。";
+
 export class RedmineConnector implements Connector {
   readonly sourceId: string;
   readonly capabilities = CAPABILITIES;
@@ -181,8 +213,7 @@ export class RedmineConnector implements Connector {
     return {
       sourceId: this.sourceId,
       displayName: this.displayName,
-      summary:
-        "本人の Redmine API キーで、アクセスできるプロジェクトの Issue、Issue のノート、Wiki ページを探す。ノートの検索可否を含め、検索対象は Redmine の設定やプラグインに依存する。",
+      summary: REDMINE_SUMMARY,
       topContainers: projects.items.slice(0, 10).flatMap((project) => {
         const id = finiteInt(project.id);
         const name = string(project.name);
@@ -199,12 +230,14 @@ export class RedmineConnector implements Connector {
     _filters: SearchFilters = {},
     options: SearchOptions = {},
   ): Promise<SearchResult> {
-    const q = query.trim();
+    // 引用符の外の空白だけを正規化する(引用符の中は変えない)
+    const q = normalizeQuery(query);
     if (!q) throw new ConnectorError("invalid_request", "search query must not be empty");
     if (Object.values(_filters).some((value) => value !== undefined)) {
       throw new ConnectorError("invalid_request", "Redmine connector does not support search filters yet");
     }
     const limit = this.integerOption("limit", options.limit, this.defaultSearchLimit, 1, MAX_SEARCH_LIMIT);
+    const terms = snippetTerms(q);
     const offset = cursorOffset(options.cursor);
     const params = new URLSearchParams({
       q,
@@ -247,7 +280,7 @@ export class RedmineConnector implements Connector {
         hits.push({
           documentId: note ? issueNoteDocumentId(issueId, note.noteId) : issueDocumentId(issueId),
           title,
-          snippet: desc.slice(0, 500),
+          snippet: snippetOf(desc, terms),
           url: this.webUrl(note ? `issues/${issueId}#change-${note.noteId}` : `issues/${issueId}`),
           ...(updatedAt !== undefined ? { updatedAt } : {}),
           scope: REDMINE_SCOPE,
@@ -259,7 +292,7 @@ export class RedmineConnector implements Connector {
         hits.push({
           documentId: wikiDocumentId(parsed.project, parsed.title),
           title,
-          snippet: safeText(result.description).slice(0, 500),
+          snippet: snippetOf(safeText(result.description), terms),
           url: this.webUrl(`projects/${encodeURIComponent(parsed.project)}/wiki/${encodeURIComponent(parsed.title)}`),
           ...(updatedAt !== undefined ? { updatedAt } : {}),
           scope: REDMINE_SCOPE,
