@@ -225,6 +225,12 @@ export interface SearchResult {
    * 結果からだけ作る。認可前の候補の有無・件数から作らない。「権限がないため 0 件」と
    * 「本当に 0 件」を区別する情報を含めない(ADR-012)。Gateway は値域の外の値を落とす
    * (sanitizeSearchNotices)。監査(ToolInvocation)には記録しない(ADR-025 確認事項5)
+   *
+   * join_relaxed を出すかどうか(緩めた再検索をするかどうか)は、SourcePolicy をかけた後の
+   * shared のヒットだけで判断すること。private を分類するコネクタは、方針(privateScopes)が
+   * included でない限り、コネクタの中で緩めた再検索をしないこと。Gateway は方針が included で
+   * ないコネクタの join_relaxed を落とすが、通知を落とすだけでは、再検索の有無が結果の中身に
+   * 出るため防げない(セキュリティレビュー m1)
    */
   notices?: SearchNotice[];
 }

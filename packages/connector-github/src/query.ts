@@ -105,14 +105,54 @@ function usefulTerm(term: string): boolean {
 }
 
 /**
+ * スニペットの一致箇所を探す語の数の上限。超えた分は一致箇所の検索に使わないだけで、
+ * GitHub に渡す query は変えない(長い query で計算量が増えないようにする)
+ */
+export const MAX_SNIPPET_TERMS = 32;
+/** 一致箇所の検索に使う 1 語の長さの上限(コードポイント数)。超える語は使わない */
+export const MAX_SNIPPET_TERM_CHARS = 100;
+
+/**
+ * 先頭の `(` の連続と末尾の `)` の連続を除く。正規表現(`/\)+$/` は `)))…)x` で入力長の
+ * 二乗の時間がかかる)を使わず、両端から 1 文字ずつ見る
+ */
+function stripParens(token: string): string {
+  let start = 0;
+  let end = token.length;
+  while (start < end && token[start] === "(") {
+    start += 1;
+  }
+  while (end > start && token[end - 1] === ")") {
+    end -= 1;
+  }
+  return token.slice(start, end);
+}
+
+/** 長さが上限以内か(上限を超えた時点で数えるのをやめる)。 */
+function withinTermChars(term: string): boolean {
+  let count = 0;
+  for (const _ of term) {
+    count += 1;
+    if (count > MAX_SNIPPET_TERM_CHARS) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * スニペットの一致箇所を探す語。演算子(AND / OR / NOT と NOT の次の語)、否定(-語)、
- * 括弧、引用符、修飾子(repo: label: など)を除く
+ * 括弧、引用符、修飾子(repo: label: など)を除く。重複を除き、先頭から MAX_SNIPPET_TERMS 語
+ * まで(MAX_SNIPPET_TERM_CHARS を超える語は使わない)
  */
 export function snippetTerms(query: string): string[] {
-  const terms: string[] = [];
+  const terms = new Set<string>();
   let skipNext = false;
   for (const raw of splitTokens(normalizeQuery(query))) {
-    const token = raw.replace(/^\(+/, "").replace(/\)+$/, "");
+    if (terms.size >= MAX_SNIPPET_TERMS) {
+      break;
+    }
+    const token = stripParens(raw);
     if (token === "") {
       continue;
     }
@@ -132,9 +172,9 @@ export function snippetTerms(query: string): string[] {
       continue;
     }
     const term = token.replace(/"/g, "").trim();
-    if (term !== "" && usefulTerm(term) && !terms.includes(term)) {
-      terms.push(term);
+    if (term !== "" && withinTermChars(term) && usefulTerm(term)) {
+      terms.add(term);
     }
   }
-  return terms;
+  return [...terms];
 }

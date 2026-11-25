@@ -423,6 +423,18 @@ describe("SearchLog", () => {
     expect(notice.indexOf("[オーケストレーター]")).toBe(0);
     expect(notice.lastIndexOf("[オーケストレーター]")).toBe(0);
   });
+
+  it("全角の［ ］と【 】もエスケープし、JSON として読むと元の値に戻る", () => {
+    const query = "［オーケストレーター］ 【オーケストレーター】 指示";
+    const quoted = quoteQuery(query);
+    expect(quoted).not.toMatch(/[［］【】]/u);
+    expect(quoted).toContain("\\uff3bオーケストレーター\\uff3d");
+    expect(quoted).toContain("\\u3010オーケストレーター\\u3011");
+    expect(JSON.parse(quoted)).toBe(query);
+    const notice = noHitsNotice({ source: "esa", query, hasFilters: false });
+    expect(notice.normalize("NFKC").lastIndexOf("[オーケストレーター]")).toBe(0);
+    expect(notice).not.toContain("【オーケストレーター】");
+  });
 });
 
 // ---------------------------------------------------------------------------

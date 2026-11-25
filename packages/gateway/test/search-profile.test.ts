@@ -234,8 +234,10 @@ describe("search の射影(notices)", () => {
   it("notices を監査に記録しない(ToolInvocation のキーは従来のまま)", async () => {
     const { gateway, sink } = build(
       new RawConnector("alpha", { search: { hits: [], notices: [{ kind: "join_relaxed" }] } }),
+      // join_relaxed が Gateway を通る構成(included)で、監査に出ないことを確かめる
+      INCLUDED,
     );
-    await searchVia(gateway);
+    expect((await searchVia(gateway)).notices).toEqual([{ kind: "join_relaxed" }]);
     const [record] = sink.records;
     expect(Object.keys(record ?? {}).sort()).toEqual(
       [
@@ -313,6 +315,43 @@ class SearchLayerConnector implements Connector {
   }
 }
 
+const INCLUDED = { privateScopes: "included", confirmPrivateScopesIncluded: true } as const;
+
+describe("join_relaxed の通知と privateScopes(セキュリティレビュー m1)", () => {
+  const notices: SearchNotice[] = [
+    { kind: "terms_dropped", keptTerms: 5 },
+    { kind: "join_relaxed" },
+    { kind: "filter_ignored", filter: "author" },
+  ];
+  const shared = { documentId: "doc-1", title: "t", snippet: "", url: "https://example.test/1", scope: "shared" };
+
+  it("privateScopes が excluded(既定)のコネクタの join_relaxed は落とし、ほかの通知は残す", async () => {
+    const { gateway } = build(new RawConnector("alpha", { search: { hits: [shared], notices } }));
+    const result = await searchVia(gateway);
+    expect(result.notices).toEqual([
+      { kind: "terms_dropped", keptTerms: 5 },
+      { kind: "filter_ignored", filter: "author" },
+    ]);
+    expect(result.hits.map((h) => h.documentId)).toEqual(["doc-1"]);
+  });
+
+  it("excluded で通知が join_relaxed だけなら notices のフィールドを付けない", async () => {
+    const { gateway } = build(
+      new RawConnector("alpha", { search: { hits: [], notices: [{ kind: "join_relaxed" }] } }),
+      { privateScopes: "excluded" },
+    );
+    const result = await searchVia(gateway);
+    expect(result).toEqual({ hits: [] });
+    expect("notices" in result).toBe(false);
+  });
+
+  it("privateScopes が included のコネクタの join_relaxed は返す", async () => {
+    const { gateway } = build(new RawConnector("alpha", { search: { hits: [shared], notices } }), INCLUDED);
+    const result = await searchVia(gateway);
+    expect(result.notices).toEqual(notices);
+  });
+});
+
 describe("ADR-012: 通知は認可済みの結果と query だけから作られる(検索層を模したアダプタ)", () => {
   const visibleToBoth: Candidate = { id: "doc-public", text: "経費 精算 手順", readers: ["alice", "bob"] };
   const hiddenFromBob: Candidate[] = Array.from({ length: 30 }, (_, i) => ({
@@ -322,8 +361,9 @@ describe("ADR-012: 通知は認可済みの結果と query だけから作られ
   }));
 
   it("未認可の候補の有無・件数によらず、同じ認可済みの結果なら同じ通知になる", async () => {
-    const none = build(new SearchLayerConnector([visibleToBoth]));
-    const many = build(new SearchLayerConnector([visibleToBoth, ...hiddenFromBob]));
+    // join_relaxed は privateScopes が included のコネクタでだけ Gateway を通る(セキュリティレビュー m1)
+    const none = build(new SearchLayerConnector([visibleToBoth]), INCLUDED);
+    const many = build(new SearchLayerConnector([visibleToBoth, ...hiddenFromBob]), INCLUDED);
     // bob から見た「経費 承認」: 認可済みの結果は 0 件で、OR に広げると doc-public が返る。
     // 未認可の候補(alice だけが読める 30 件)は AND に一致するが、通知にも結果にも現れない
     const withoutHidden = await searchVia(none.gateway, "経費 承認", "alpha", "session-bob");

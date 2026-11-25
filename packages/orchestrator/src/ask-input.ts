@@ -22,6 +22,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { StartRunQuestion } from "./gateway/types.js";
+import { escapePromptBrackets, neutralizeControlLines } from "./prompt.js";
 
 /** `context` の上限(文字数。ADR-026 決定1)。 */
 export const MAX_CONTEXT_CHARS = 1_000;
@@ -185,20 +186,20 @@ export const ASK_SOURCES_HEADING = "対象のソース(利用者の指定。こ�
 export const ASK_PERIOD_HEADING =
   "期間(利用者の指定。search の filters.updatedAfter / updatedBefore に入れる。そのソースの supportedFilters にない場合は入れない):";
 
-/** 引用の JSON 文字列(改行・制御文字をエスケープし、`<` `>` `[` `]` も \u エスケープする)。 */
+/**
+ * 引用の JSON 文字列(改行・制御文字をエスケープし、`<` `>` `[` `]` と全角の `［` `］` `【` `】`
+ * も \u エスケープする)。
+ */
 function quoted(text: string): string {
-  return JSON.stringify(text)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/\[/g, "\\u005b")
-    .replace(/\]/g, "\\u005d");
+  return escapePromptBrackets(JSON.stringify(text));
 }
 
 /**
  * 追加の引数の区分(最初の user ターンで質問の後ろに置く)。区分がなければ空の配列
  * (従来の最初の user ターンと同じになる)。userMessage / context は question と同じく
- * 利用者ターンの文として置き、keepTerms は1語ずつ JSON 文字列で引用する(語の境界を
- * 明確にする)。sources は Gateway の有効ソースの値(呼び出し側で検証済み)。
+ * 利用者ターンの文として置き、行頭の `[オーケストレーター]`(全角の `［ ］`、`【 】` を含む)の
+ * 体裁だけを無害化する(neutralizeControlLines。制御メッセージに見せない)。keepTerms は1語ずつ
+ * JSON 文字列で引用する(語の境界を明確にする)。sources は Gateway の有効ソースの値(呼び出し側で検証済み)。
  */
 export function buildAskInputSections(extras: AskInputExtras): Anthropic.TextBlockParam[] {
   if (!hasPromptSections(extras)) {
@@ -206,10 +207,10 @@ export function buildAskInputSections(extras: AskInputExtras): Anthropic.TextBlo
   }
   const parts: string[] = [];
   if (extras.userMessage !== undefined) {
-    parts.push(`${ASK_USER_MESSAGE_HEADING}\n${extras.userMessage}`);
+    parts.push(`${ASK_USER_MESSAGE_HEADING}\n${neutralizeControlLines(extras.userMessage)}`);
   }
   if (extras.context !== undefined) {
-    parts.push(`${ASK_CONTEXT_HEADING}\n${extras.context}`);
+    parts.push(`${ASK_CONTEXT_HEADING}\n${neutralizeControlLines(extras.context)}`);
   }
   if (extras.keepTerms !== undefined) {
     parts.push(

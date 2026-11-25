@@ -10,6 +10,11 @@
 const ELLIPSIS = "…";
 /** 1 語あたりに数える出現の上限(長い本文での計算量を抑える) */
 const MAX_OCCURRENCES_PER_TERM = 50;
+/**
+ * 一致箇所の検索に使う語の数の上限(呼び出し側の snippetTerms も同じ上限で切る。ここでも切り、
+ * 語数 × 出現数の組み合わせの計算量を抑える)
+ */
+const MAX_TERMS = 32;
 /** この長さ未満のスニペットでは位置を動かさない(前後の省略記号で中身がなくなる) */
 const MIN_WINDOW_CHARS = 20;
 
@@ -61,7 +66,7 @@ export function matchWindowStart(text: string, terms: readonly string[], maxChar
   if (terms.length === 0 || maxChars < MIN_WINDOW_CHARS || text.length <= maxChars) {
     return 0;
   }
-  const list = occurrences(text, terms);
+  const list = occurrences(text, terms.slice(0, MAX_TERMS));
   if (list.length === 0) {
     return 0;
   }

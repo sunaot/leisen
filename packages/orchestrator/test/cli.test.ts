@@ -404,6 +404,27 @@ describe("leisen-ask: 利用者の束縛(H1)と --config", () => {
     expect(out.join("\n")).not.toContain("\"query\"");
   });
 
+  it("--config がなければ(Slack の有無を確かめられない)、--json の searchesTried に query と filters を載せない(安全側。不変条件7)", async () => {
+    const harness = await setup();
+    const { out, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--json", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    const answer = answerSchema.parse(JSON.parse(out.join("\n")));
+    expect(answer.searchesTried).toEqual([{ sourceId: "alpha", outcome: "hits", newDocuments: 1 }]);
+    expect(out.join("\n")).not.toContain("\"query\"");
+    expect(out.join("\n")).not.toContain("\"filters\"");
+  });
+
+  it("USAGE に --json の searchesTried の query の扱いを書く", () => {
+    expect(USAGE).toContain("--config で永続化できないソース(Slack 系)がないと確かめられたときだけ");
+  });
+
   it("--config で Slack が無効なら、--json の searchesTried に query を載せる(ADR-026 決定3)", async () => {
     const harness = await setup();
     const config = await writeDeployment(DEPLOYMENT_YAML);

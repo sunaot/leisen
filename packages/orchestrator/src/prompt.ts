@@ -310,9 +310,52 @@ export function renderRunLimits(
   return lines.join("\n");
 }
 
-/** 質問(日付など要求ごとに変わる値を含む)。 */
+/** 行の区切り(LLM が改行とみなしうる文字。\r\n は 1 つの区切りとして扱う)。 */
+const LINE_BREAK = /(\r\n|[\n\r\v\f\u0085\u2028\u2029])/u;
+
+/** 制御メッセージの体裁の行の前に付ける語(行頭を制御メッセージの体裁でなくする)。 */
+export const SPOOFED_CONTROL_LINE_PREFIX = "利用者の入力: ";
+
+/**
+ * 行頭(前の空白を除く)が `[オーケストレーター]` の体裁か。全角の `［ ］`・半角カナなどの
+ * 互換文字は NFKC で寄せて判定し、`【オーケストレーター】` も対象にする。括弧の中の空白と
+ * 閉じ括弧の有無は問わない
+ */
+function looksLikeControlLine(line: string): boolean {
+  const text = line.normalize("NFKC").trimStart();
+  const open = text[0];
+  if (open !== "[" && open !== "【") {
+    return false;
+  }
+  return text.slice(1).trimStart().startsWith("オーケストレーター");
+}
+
+/**
+ * 利用者の入力(question / userMessage / context)を最初の user ターンに置く前に、行頭の
+ * `[オーケストレーター]`(全角の `［ ］`、`【 】` を含む)の体裁だけを無害化する: その行の
+ * 先頭に SPOOFED_CONTROL_LINE_PREFIX を付ける。体裁のない入力は 1 文字も変えない
+ * (既定の v3 の探索 LLM への入力を変えない)。行の区切りは元のまま残す
+ */
+export function neutralizeControlLines(text: string): string {
+  const parts = text.split(LINE_BREAK);
+  let changed = false;
+  // split に捕獲グループを使うため、偶数番目が行、奇数番目が区切り
+  for (let i = 0; i < parts.length; i += 2) {
+    const line = parts[i] as string;
+    if (looksLikeControlLine(line)) {
+      parts[i] = `${SPOOFED_CONTROL_LINE_PREFIX}${line}`;
+      changed = true;
+    }
+  }
+  return changed ? parts.join("") : text;
+}
+
+/**
+ * 質問(日付など要求ごとに変わる値を含む)。質問は利用者の入力のまま置く(既定の v3 の入力を
+ * 変えないため引用しない)。行頭の制御メッセージの体裁だけを無害化する
+ */
 export function renderQuestion(question: string, today: string): string {
-  return `今日の日付: ${today}\n\n質問:\n${question}`;
+  return `今日の日付: ${today}\n\n質問:\n${neutralizeControlLines(question)}`;
 }
 
 /**
@@ -385,15 +428,21 @@ const MAX_ECHOED_QUERY_CHARS = 100;
 
 /**
  * query の再掲。探索 LLM が送った値だが、文書由来の文字列が混じりうるため JSON 文字列として
- * 引用し(改行・制御文字はエスケープ)、`<` `>` `[` `]` も \u エスケープして、タグや
- * 「[オーケストレーター]」の偽装に使わせない。長さを切り詰める。
+ * 引用し(改行・制御文字はエスケープ)、`<` `>` `[` `]` と全角の `［` `］` `【` `】` も \u
+ * エスケープして、タグや「[オーケストレーター]」の偽装に使わせない。長さを切り詰める。
  */
 export function quoteQuery(query: string): string {
-  return JSON.stringify(clip(query, MAX_ECHOED_QUERY_CHARS))
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/\[/g, "\\u005b")
-    .replace(/\]/g, "\\u005d");
+  return escapePromptBrackets(JSON.stringify(clip(query, MAX_ECHOED_QUERY_CHARS)));
+}
+
+/**
+ * JSON 文字列にした値の `<` `>` `[` `]` `［` `］` `【` `】` を \u エスケープする(JSON として
+ * 読んだ値は変わらない)。
+ */
+export function escapePromptBrackets(json: string): string {
+  return json.replace(/[<>[\]［］【】]/g, (ch) =>
+    `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 }
 
 /** 1回の search の要点(制御メッセージの材料。返却済みのヒットから数えた値だけ)。 */

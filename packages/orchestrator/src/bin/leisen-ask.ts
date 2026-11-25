@@ -26,7 +26,9 @@
  *   照合用の申告で、一致しなければ run は error(user_mismatch)。省略時は照合しない
  * - --config は deployment.yaml(orchestrator セクションの maxIterations / costLimitPerQuery を
  *   探索の設定にする。--max-iterations が優先)。省略すると既定の設定で動く。citedDocIds の
- *   記録方針は Gateway がかける(ADR-019 決定5)ため、ここでは読まない
+ *   記録方針は Gateway がかける(ADR-019 決定5)ため、ここでは読まない。--json の searchesTried に
+ *   query と filters を載せるのは、--config で永続化できないソース(Slack 系)がないと確かめられた
+ *   ときだけ(--config がなければ除く。不変条件7、ADR-026 決定5)
  * - --explore-prompt explore.v3|explore.v4 と --search-feedback on|off は開発・評価用(T-024 の
  *   v3 / v4 の比較。dev-eval の `--` 以降に渡す)。評価前の版を本番で選ばせないため、
  *   NODE_ENV=production では引数の不備として拒否する(leisen-ask serve には出さない)
@@ -119,6 +121,7 @@ export const USAGE = [
   "  --search-feedback on|off は検索の状況を返す制御メッセージ(開発・評価用。既定は explore.v4 のときだけ on)。",
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
+  "  --json の searchesTried に query と filters を載せるのは、--config で永続化できないソース(Slack 系)がないと確かめられたときだけです(--config がなければ除きます)。",
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
   "  MCP サーバーとして起動する: leisen-ask serve --gateway <URL> --config <deployment.yaml>(詳細は leisen-ask serve --help)",
@@ -507,9 +510,10 @@ export async function runCli(
 
   // --config の orchestrator セクションを探索の設定にする(--max-iterations が優先)
   let settings: OrchestratorSettingsInput = {};
-  // 永続化できないソース(Slack)が有効な --config なら、--json の searchesTried から query を除く
-  // (ADR-026 決定5、不変条件7)
-  let omitSearchQueries = false;
+  // --json の searchesTried に query と filters を載せるのは、--config で永続化できないソース
+  // (Slack 系)がないと確かめられたときだけ。--config がない(Gateway の構成を確かめられない)
+  // ときと、永続化できないソースが有効なときは除く(安全側。ADR-026 決定5、不変条件7)
+  let omitSearchQueries = true;
   if (args.config !== undefined) {
     try {
       const deployment = loadDeploymentConfig(resolve(args.config));

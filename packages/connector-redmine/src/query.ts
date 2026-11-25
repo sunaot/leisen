@@ -37,22 +37,56 @@ export function normalizeQuery(query: string): string {
   return out.trim();
 }
 
+/** 一致箇所の検索に使う 1 語の長さの上限(コードポイント数)。超える語は使わない */
+export const MAX_SNIPPET_TERM_CHARS = 100;
+
+const ZS = /\p{Zs}/u;
+
+/**
+ * 先頭の `"` とその直後の空白(\p{Zs})、末尾の空白と `"` を除く(旧実装の
+ * `replace(/^"\p{Zs}*|\p{Zs}*"$/gu, "")` と同じ結果)。正規表現は
+ * 引用符の中の長い空白の連続で入力長の二乗の時間がかかるため、両端から 1 文字ずつ見る
+ * (\p{Zs} の文字はすべて BMP にあり、1 コード単位で判定できる)
+ */
+function stripQuote(token: string): string {
+  let start = 0;
+  let end = token.length;
+  if (token.startsWith('"')) {
+    start = 1;
+    while (start < end && ZS.test(token[start] as string)) {
+      start += 1;
+    }
+  }
+  if (end > start && token[end - 1] === '"') {
+    end -= 1;
+    while (end > start && ZS.test(token[end - 1] as string)) {
+      end -= 1;
+    }
+  }
+  return token.slice(start, end);
+}
+
 /**
  * Redmine の Tokenizer と同じ規則で語を取り出す(重複を除き、漢字以外の 1 文字の語を除く)。
  * 先頭の REDMINE_MAX_TOKENS 語に切る前の全体
  */
 export function searchTokens(query: string): string[] {
-  const tokens = [...query.matchAll(/"[^"]+"|[^\p{Zs}]+/gu)].map((match) =>
-    match[0].replace(/^"\p{Zs}*|\p{Zs}*"$/gu, ""),
-  );
-  return [...new Set(tokens)].filter(
-    (token) => [...token].length > 1 || /\p{Script=Han}/u.test(token),
-  );
+  const tokens = new Set<string>();
+  for (const match of query.matchAll(/"[^"]+"|[^\p{Zs}]+/gu)) {
+    tokens.add(stripQuote(match[0]));
+  }
+  return [...tokens].filter((token) => [...token].length > 1 || /\p{Script=Han}/u.test(token));
 }
 
-/** Redmine の Tokenizer と同じ規則で、スニペットの一致箇所を探す語を取り出す。 */
+/**
+ * Redmine の Tokenizer と同じ規則で、スニペットの一致箇所を探す語を取り出す。Redmine が使う
+ * 先頭の REDMINE_MAX_TOKENS 語のうち、MAX_SNIPPET_TERM_CHARS を超える語は一致箇所の検索に
+ * 使わない(Redmine に渡す query は変えない)
+ */
 export function snippetTerms(query: string): string[] {
-  return searchTokens(query).slice(0, REDMINE_MAX_TOKENS);
+  return searchTokens(query)
+    .slice(0, REDMINE_MAX_TOKENS)
+    .filter((token) => token.length <= MAX_SNIPPET_TERM_CHARS || [...token].length <= MAX_SNIPPET_TERM_CHARS);
 }
 
 /**

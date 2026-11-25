@@ -724,14 +724,27 @@ function enforcePrivateScopes(
     return result;
   }
   switch (result.tool) {
-    case "search":
+    case "search": {
+      // join_relaxed(AND で結果がなく、コネクタの中で OR に緩めて再検索した)の通知は、
+      // 方針が included でないコネクタでは落とす(防御。セキュリティレビュー m1)。コネクタが
+      // private を含めた AND の結果の有無で緩めるかを決めると、通知の有無から「private の文書
+      // だけが AND に一致した」ことが分かりうるため。
+      // ただし、ここで通知を落とすだけでは防げない: 緩めた再検索をしたかどうかは結果の中身
+      // (いずれかの語だけを含むヒット)に出る。join_relaxed を出すかどうか(緩めた再検索を
+      // するかどうか)は、SourcePolicy をかけた後の shared のヒットだけで判断すること。private を
+      // 分類するコネクタは、方針が included でない限りコネクタの中で緩めた再検索をしないこと
+      // (connector-sdk の SearchResult.notices の説明)
+      const { notices, ...rest } = result.result;
+      const kept = notices?.filter((notice) => notice.kind !== "join_relaxed");
       return {
         tool: "search",
         result: {
-          ...result.result,
+          ...rest,
           hits: result.result.hits.filter((hit) => hit.scope === "shared"),
+          ...(kept !== undefined && kept.length > 0 ? { notices: kept } : {}),
         },
       };
+    }
     case "fetch":
       if (result.result.scope !== "shared") {
         // 本文は返さない(このスコープを抜けた時点で参照を失う)
