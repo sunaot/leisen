@@ -478,6 +478,70 @@ node packages/orchestrator/dist/bin/dev-eval.js --label after -- \
 - leisen-ask の stderr(失敗時の案内)は、回答を返せなかった run のときだけ流す。run の記録(AnswerRun)は Gateway の監査ログに残る(ADR-019。dev-eval 側に残す手段はない)
 - 合成データ専用。表には引用した文書 ID(`sourceId:documentId`)をそのまま出し、Gateway が AnswerRun の citedDocIds にかける規則(Slack・有効でないソースは記録しない)を通らないため、Slack を含むデプロイや実データには向けない(不変条件7)。実データの質問セットの扱い(機密クエリの保管・アイデンティティごとの期待値・文書 ID の分類)は T-008 で決める
 
+## dev-search-eval(検索方式の比較実験)
+
+dev-eval の検索方式モード。同じ質問と正解文書に対して、検索に入るクエリの作り手だけを入れ替え、検索方式ごとに recall@k・最初の正解の順位・正解を fetch / 引用したかを集計する(`src/search-eval/`、起動は `src/bin/dev-search-eval.ts`)。合成コーパス専用の開発用の道具で、外部の Gateway・実ソースには接続しない(接続先を指定する引数がない)。
+
+| 条件 | 検索に入るクエリの作り手 | LLM |
+|---|---|---|
+| 1 `keywords` | 人が書いたキーワード(質問セットの `keywords`。1 要素 = 1 回の search)を `search` に直接入力 | 不要 |
+| 2 `utterance` | 利用者の発言(`utterance`)をそのまま `search` に入力 | 不要 |
+| 3 `orchestrator-utterance` | 利用者の発言を Orchestrator(探索 LLM)に渡す。クエリは探索 LLM が書く | 探索 LLM |
+| 4 `orchestrator-ui` | UI 側 LLM が作った `question` を Orchestrator に渡す | UI 側 LLM + 探索 LLM |
+
+1 と 3 の差が探索 LLM のクエリ生成による損失、3 と 4 の差が UI 側 LLM を通すことによる損失の目安になる。
+
+- **検索方式**(`--modes`): 検索方式ごとに、プロセス内に Gateway(127.0.0.1 の空きポート、モック IdP、監査はメモリに書いて捨てる)を起動し、開発用コネクタ(`dev-fixture`)を 1 つ載せる。条件 1・2 も Gateway の `tools/call` を通す。方式は `default`(現行の AND 部分一致・タイトル一致優先・一致箇所のスニペット)/ `esa`(空白は AND、`OR`・引用符・`title:` を解釈、タイトル一致を優遇、スニペットは本文の先頭 300 字)/ `redmine-or`・`redmine-and`(部分一致、先頭 5 語だけを使う、関連度なしの更新日降順、スニペットは本文の先頭、フィルタ非対応)/ `github`(空白は AND、issue・PR・コードを種別ごとに等分して交互に並べる)。各方式の仕様は describe の `summary` に日本語で載る(探索 LLM に届く)。実装は `packages/gateway/src/dev/search-modes.ts`。実ソースの挙動を実機で確かめたものではなく、調査の読解に基づく模擬である
+- **コーパス**: 質問セットの `corpus` が指すファイル(`examples/fixtures/dev-corpus.yaml` の 7 件 + `examples/fixtures/search-eval-corpus.yaml` の正解文書 18 件)に、乱数の種を固定して生成した無関係な文書(`packages/gateway/src/dev/synthetic-corpus.ts`。同じ語を含む議事録・週報・問い合わせ・PR・コード・お知らせ。既定 400 件)を足す。起動時に、正解の文書がコーパスにあること、答えられない質問の `mustNotAppear` の語の組を含む文書がないことを確かめる
+- **質問セット**: `examples/eval/search-questions.json`(既知項目検索 10・複数文書 7・答えられない 6)。各質問に `utterance`・`keywords`・`relevant` を持たせる。検索方式の切り替えより前のコミットで固定した(T-024 の規則)
+- **トレース**(`--trace <file.jsonl>`): 試行(方式 × 条件 × 質問 × 回)ごとに、`case_start`(入力)、`ui_question`(条件 4 の UI 側 LLM の question)、`search`(ソース・query・filters・limit・順位付きのヒットの documentId と title)、`fetch`(documentId)、`answer`(outcome・出典)、`case_error` を 1 行 1 イベントで書く。監査ログ(`@leisen/audit`)とは別物で、Gateway の本番経路は変えない。記録は Orchestrator に渡す `GatewayClient` を包んで行う(`TracingGatewayClient`)
+- **指標**: recall@k は正解の文書のうち、試行中のいずれかの search で k 位以内に返った割合(search を複数回呼んだら文書ごとに最もよい順位)。最初の正解の順位、fetch 率・引用率(条件 3・4)、答えられない質問の棄権(条件 3・4 で resolved 以外)、0 件の search の割合。表には方式・条件・質問 ID・指標だけを出し、発言・クエリ・回答本文はトレースにだけ残す
+
+```sh
+npm run build
+# 条件 1・2(LLM なし)。表は stdout、進捗は stderr
+node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.jsonl > var/search-eval.md
+```
+
+| オプション | 内容 |
+|---|---|
+| `--questions <file>` | 質問セット(既定 `examples/eval/search-questions.json`) |
+| `--modes <a,b>` | 検索方式(既定 `default,esa,redmine-or,redmine-and,github`) |
+| `--conditions <a,b>` | 条件(既定 `keywords,utterance`) |
+| `--k <1,5,10>` | recall@k の k(既定 1,5,10)。条件 1・2 の search の `limit` は最大の k |
+| `--repeat <N>` | 条件 3・4 の試行回数(1〜20、既定 1。条件 1・2 は決定的なので 1 回) |
+| `--only <id,...>` | 質問を ID で絞る |
+| `--trace <file>` | トレースの JSONL(開始時に空にする) |
+| `--label <見出し>` | 表の見出し |
+| `--max-iterations <N>` / `--run-timeout-sec <N>` | 探索の上限(Orchestrator の `maxIterations` / `runTimeoutMs`) |
+| `--ui-model <モデル>` | 条件 4 の UI 側 LLM のモデル(省略時は探索 LLM と同じ。プロバイダ・接続先は探索 LLM と同じ) |
+| LLM の指定 | `--llm` / `--model` / `--llm-base-url` / `--llm-api-key-env` / `--reasoning-effort` / `--effort`(leisen-ask と同じ。環境変数 `LEISEN_LLM_*` も同じ) |
+
+### 実 LLM での条件 3・4 の実行手順
+
+この環境(評価の仕組みを実装したセッション)には LLM がないため、条件 3・4 は脚本の LLM でのテスト(`test/search-eval.test.ts`)までしか確かめていない。実 LLM では次のように流す。
+
+1. `npm run build`
+2. LLM を用意する。LM Studio(OpenAI 互換)なら、探索 LLM と UI 側 LLM のモデルを読み込んでおく(UI 側は LibreChat の既定と同じ小型モデルにすると現行の経路に近い。`deploy/compose/librechat/librechat.yaml`)。Claude API なら `ANTHROPIC_API_KEY` を設定する
+3. 手元の LLM は 1 手に数十秒かかるので、`--run-timeout-sec 300` 程度にする。ばらつきを見るため `--repeat 2` 以上にする
+4. 実行する(例: LM Studio)
+
+   ```sh
+   node packages/orchestrator/dist/bin/dev-search-eval.js \
+     --conditions keywords,utterance,orchestrator-utterance,orchestrator-ui \
+     --modes default,esa,redmine-or,github --repeat 2 --run-timeout-sec 300 \
+     --llm openai-compatible --llm-base-url http://localhost:1234/v1 --model <探索 LLM のモデル> \
+     --ui-model <UI 側 LLM のモデル> --trace var/search-trace.jsonl --label <見出し> > var/search-eval.md
+   ```
+
+   Claude API なら `--llm anthropic --model <モデル>`(`--ui-model` も Claude のモデル)
+5. 表の条件 1 と 3、3 と 4 の行を比べる。原因の切り分けはトレースで行う(探索 LLM がどの query を投げ、何位に正解が返り、fetch・引用したか。条件 4 は `ui_question` に利用者の語が残ったか)。評価レポートは `docs/eval/` に置く
+6. 条件 4 は UI 側 LLM の簡易な再現である(`src/search-eval/ui-question.ts`: `ask` のツール定義と initialize の instructions だけを与え、発言 1 つで `ask` を呼ばせる)。LibreChat が UI 側の LLM に渡すシステムプロンプト全体は再現していないので、LibreChat の実走で採った `ask` の引数と突き合わせて妥当性を確かめる
+
+### 開発用コネクタの設定(deployment.yaml の `kind: dev-fixture`)
+
+比較実験と同じ検索方式・コーパスを、手元の Gateway(既存の dev-eval・leisen-ask・LibreChat 経由の確認)でも使える。`settings.searchMode`(`default` / `esa` / `redmine` / `github`、既定 `default`)、`settings.redmineAllWords`(Redmine 型の AND / OR、既定 `false` = OR)、`settings.synthetic: { seed, count }`(生成した無関係な文書を `corpusFile` / `documents` に足す。`count` は 5,000 まで)。文書の `kind`(`issue` / `pull_request` / `code`、省略時 `issue`)は GitHub 型の種別に使う。既定の方式・既存のコーパスの結果は変わらない。
+
 ## プロンプトの変更
 
 固定部は `prompts/explore.v3.md`、制御メッセージ(催促・最終ターンの指示・ソース一覧とツール結果・ツールエラーの前置き)は `src/prompt.ts`。変更する PR には評価レポート(T-008)を添付する。挙動が変わる改訂はファイルを `explore.v3.md` として追加し、`EXPLORE_PROMPT_VERSION` を上げる。v2 はセキュリティレビュー(2026-09-27)でソース一覧を user ターンへ移し、回答本文に URL を書かない方針にした版(v1 は評価結果がないまま置き換えた。T-008 の評価レポートは未添付)。v3(2026-10-08)は実モデルでの初回実走で見えた空振りへの対処で、検索語を名詞 1〜2 語にして言い換えを 1 つの query に並べない(多くのソースは語の AND)、0 件なら語を減らす、list は区画だけを返し文書は返さない(区画内は `filters.container` で探す)、見つからないことを「存在しない」と断定しない、を足した。同じ趣旨をツールの説明文(`src/tools.ts` の USAGE_HINTS と Gateway の list の説明)にも入れた。評価は `docs/eval/2026-10-08-explore-v3.md`(dev-eval)。

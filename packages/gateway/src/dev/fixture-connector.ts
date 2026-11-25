@@ -13,9 +13,13 @@
  * - 認可: 利用者ごとの権限分岐を持たない(全文書が全利用者に見える開発用データ)。
  *   ただし実ソースと同様に本人のベアラー資格情報を要求する(Gateway が IdP Adapter
  *   経由で取得した AuthContext が渡ることの確認。トークンの値は照合も記録もしない)
- * - search: title / content の部分一致(大文字小文字無視、空白区切りの全語AND)。
- *   総件数は返さない(ADR-012/016: SearchResult に totalCount を持たない)。
- *   snippet は一致箇所の周辺を MAX_SNIPPET_CHARS 以内で切り出す
+ * - search: 既定(searchMode: default)は title / content の部分一致(大文字小文字無視、
+ *   空白区切りの全語AND)。総件数は返さない(ADR-012/016: SearchResult に totalCount を持たない)。
+ *   snippet は一致箇所の周辺を MAX_SNIPPET_CHARS 以内で切り出す。評価用に、実ソースの検索の
+ *   仕様を模した方式(esa / redmine / github)を settings.searchMode で選べる(search-modes.ts。
+ *   方式の仕様は describe の summary に載せる)
+ * - コーパスに、乱数の種を固定して生成した無関係な文書を足せる(settings.synthetic、
+ *   synthetic-corpus.ts。検索の適合率を測るための規模の確保)
  * - fetch: 本文を pageChars 文字(コードポイント)ごとにページングする
  * - list: 区画(文書の container)の一覧。区画は入れ子を持たない
  * - プライベート領域(ADR-016 追補2): 文書に任意の scope(private / shared、既定 shared)を
@@ -28,7 +32,6 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   ConnectorError,
-  MAX_SNIPPET_CHARS,
   type AuthContext,
   type Connector,
   type ConnectorCapabilities,
@@ -50,19 +53,29 @@ import {
   type ConfigIssue,
 } from "../config/validate.js";
 import { assertNotProduction } from "../idp/mock.js";
+import {
+  DEV_FIXTURE_DOCUMENT_KINDS,
+  DEV_FIXTURE_SEARCH_MODES,
+  defaultSearchLimit,
+  planQuery,
+  searchModeSpec,
+  type DevFixtureDocumentKind,
+  type DevFixtureSearchMode,
+  type QueryPlan,
+} from "./search-modes.js";
+import {
+  MAX_SYNTHETIC_DOCUMENTS,
+  generateSyntheticCorpus,
+} from "./synthetic-corpus.js";
 
 /** 組み込み開発用コネクタの kind。 */
 export const DEV_FIXTURE_CONNECTOR_KIND = "dev-fixture";
 
 /** fetch の1ページの既定文字数(コードポイント)。 */
 export const DEFAULT_DEV_FIXTURE_PAGE_CHARS = 4000;
-const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 50;
 const LIST_PAGE_SIZE = 50;
 const TOP_CONTAINERS = 10;
-/** snippet の本体の長さと、一致箇所より前に含める文字数 */
-const SNIPPET_LENGTH = 160;
-const SNIPPET_LEADING_CONTEXT = 40;
 
 const documentSchema = z.strictObject({
   /** コネクタスコープで一意な文書ID(fetch の documentId) */
@@ -81,6 +94,8 @@ const documentSchema = z.strictObject({
    * 省略時は shared
    */
   scope: z.enum(["private", "shared"]).optional(),
+  /** 種別(GitHub 型の検索方式で使う。省略時 issue。ほかの方式では使わない) */
+  kind: z.enum(DEV_FIXTURE_DOCUMENT_KINDS).optional(),
 });
 
 export type DevFixtureDocument = z.infer<typeof documentSchema>;
@@ -120,6 +135,17 @@ const settingsSchema = z
     displayName: z.string().min(1).optional(),
     /** describe の内容説明 */
     summary: z.string().min(1).optional(),
+    /** 検索方式(既定 default = 現行の AND 部分一致)。search-modes.ts */
+    searchMode: z.enum(DEV_FIXTURE_SEARCH_MODES).default("default"),
+    /** Redmine 型の語の結合(true: AND / false: OR。既定 false = connector-redmine の all_words=0 の意図) */
+    redmineAllWords: z.boolean().default(false),
+    /** 乱数の種を固定して生成した無関係な文書をコーパスに足す(synthetic-corpus.ts) */
+    synthetic: z
+      .strictObject({
+        seed: z.number().int().min(0).max(0xffff_ffff),
+        count: z.number().int().min(1).max(MAX_SYNTHETIC_DOCUMENTS),
+      })
+      .optional(),
   })
   .refine((s) => s.corpusFile === undefined || s.documents === undefined, {
     error: "specify either corpusFile or documents, not both",
@@ -175,6 +201,10 @@ export interface DevFixtureConnectorOptions {
   now?: () => number;
   /** 導入単位の方針(ADR-016 追補2 決定1)。既定 excluded */
   policy?: SourcePolicy;
+  /** 検索方式(既定 default)。search-modes.ts */
+  searchMode?: DevFixtureSearchMode;
+  /** Redmine 型の語の結合(true: AND / false: OR。既定 false) */
+  redmineAllWords?: boolean;
 }
 
 interface IndexedDocument {
@@ -213,63 +243,6 @@ function decodeCursor(cursor: string | undefined, kind: CursorKind): number {
   throw new ConnectorError("invalid_request", `invalid ${kind} cursor`);
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** クエリを空白(全角空白を含む)で分割し、語ごとの大文字小文字無視パターンにする。 */
-function termPatterns(query: string): RegExp[] {
-  return query
-    .split(/\s+/u)
-    .filter((term) => term.length > 0)
-    .map((term) => new RegExp(escapeRegExp(term), "iu"));
-}
-
-/** サロゲートペアを分断しない [start, end) に調整する。 */
-function surrogateSafeRange(
-  text: string,
-  start: number,
-  end: number,
-): [number, number] {
-  const isLow = (i: number) => {
-    const c = text.charCodeAt(i);
-    return c >= 0xdc00 && c <= 0xdfff;
-  };
-  const isHigh = (i: number) => {
-    const c = text.charCodeAt(i);
-    return c >= 0xd800 && c <= 0xdbff;
-  };
-  const safeStart = start > 0 && isLow(start) ? start - 1 : start;
-  const safeEnd = end < text.length && end > 0 && isHigh(end - 1) ? end - 1 : end;
-  return [safeStart, safeEnd];
-}
-
-/**
- * 一致箇所(最初に現れる語)の周辺を切り出す。本文に一致がない(タイトルのみの
- * 一致)場合は本文の先頭。本文全体は返さない(ADR-016)。
- */
-function makeSnippet(content: string, patterns: readonly RegExp[]): string {
-  const text = content.replace(/\s+/gu, " ").trim();
-  let first = -1;
-  for (const pattern of patterns) {
-    const match = pattern.exec(text);
-    if (match && (first === -1 || match.index < first)) {
-      first = match.index;
-    }
-  }
-  const from = first <= SNIPPET_LEADING_CONTEXT ? 0 : first - SNIPPET_LEADING_CONTEXT;
-  const [start, end] = surrogateSafeRange(
-    text,
-    from,
-    Math.min(text.length, from + SNIPPET_LENGTH),
-  );
-  const snippet =
-    (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
-  return snippet.length > MAX_SNIPPET_CHARS
-    ? snippet.slice(0, MAX_SNIPPET_CHARS)
-    : snippet;
-}
-
 /** 文書の領域(省略時は shared)。 */
 function scopeOf(document: DevFixtureDocument): "private" | "shared" {
   return document.scope ?? "shared";
@@ -287,6 +260,39 @@ function parseFilterTime(value: string | undefined, name: string): number | unde
     );
   }
   return ms;
+}
+
+/** GitHub 型の種別(省略時 issue)。 */
+function kindOf(document: DevFixtureDocument): DevFixtureDocumentKind {
+  return document.kind ?? "issue";
+}
+
+function hasAnyFilter(filters: SearchFilters | undefined): boolean {
+  return (
+    filters !== undefined &&
+    (filters.updatedAfter !== undefined ||
+      filters.updatedBefore !== undefined ||
+      filters.container !== undefined ||
+      filters.author !== undefined)
+  );
+}
+
+/**
+ * 並べ替え。relevance: タイトル一致の多い順 → 更新の新しい順 → コーパス順 /
+ * updated: 更新の新しい順 → コーパス順(関連度を使わない)。
+ */
+function rank(matches: readonly IndexedDocument[], plan: QueryPlan): IndexedDocument[] {
+  const scored = matches.map((entry) => ({
+    entry,
+    titleScore: plan.order === "relevance" ? plan.titleScore(entry.document.title) : 0,
+  }));
+  scored.sort(
+    (a, b) =>
+      b.titleScore - a.titleScore ||
+      (b.entry.updatedAtMs ?? -Infinity) - (a.entry.updatedAtMs ?? -Infinity) ||
+      a.entry.order - b.entry.order,
+  );
+  return scored.map(({ entry }) => entry);
 }
 
 export class DevFixtureConnector implements Connector {
@@ -308,6 +314,8 @@ export class DevFixtureConnector implements Connector {
   private readonly pageChars: number;
   private readonly displayName: string;
   private readonly summary: string;
+  private readonly searchMode: DevFixtureSearchMode;
+  private readonly redmineAllWords: boolean;
   private readonly now: () => number;
 
   constructor(
@@ -347,9 +355,14 @@ export class DevFixtureConnector implements Connector {
     this.containers = containers;
     this.pageChars = options.pageChars ?? DEFAULT_DEV_FIXTURE_PAGE_CHARS;
     this.displayName = options.displayName ?? `開発用フィクスチャ(${sourceId})`;
-    this.summary =
+    this.searchMode = options.searchMode ?? "default";
+    this.redmineAllWords = options.redmineAllWords ?? false;
+    const contentSummary =
       options.summary ??
       `開発用の合成文書コーパス(${validated.length}件)。実在の組織・人物・秘密情報は含まない。`;
+    // 既定の方式は summary を変えない。ほかの方式は検索の仕様を日本語で足す
+    const spec = searchModeSpec(this.searchMode, { redmineAllWords: this.redmineAllWords });
+    this.summary = spec === "" ? contentSummary : `${contentSummary}\n${spec}`;
     this.now = options.now ?? Date.now;
   }
 
@@ -360,68 +373,109 @@ export class DevFixtureConnector implements Connector {
     options?: SearchOptions,
   ): Promise<SearchResult> {
     this.assertCredential(auth);
-    const patterns = termPatterns(query);
-    if (patterns.length === 0) {
+    const plan = planQuery(this.searchMode, query, { redmineAllWords: this.redmineAllWords });
+    if (this.searchMode === "redmine" && hasAnyFilter(filters)) {
+      // connector-redmine と同じく、フィルタは未対応(invalid_request)
       throw new ConnectorError(
         "invalid_request",
-        "query must contain at least one search term",
+        "this source (redmine-style search) does not support search filters",
       );
     }
     const after = parseFilterTime(filters?.updatedAfter, "updatedAfter");
     const before = parseFilterTime(filters?.updatedBefore, "updatedBefore");
+    if (plan === "no_terms") {
+      return { hits: [] };
+    }
 
-    const matches = this.documents
-      .filter(({ document, updatedAtMs }) => {
-        if (filters?.container !== undefined && document.container !== filters.container) {
-          return false;
-        }
-        if (filters?.author !== undefined && document.author !== filters.author) {
-          return false;
-        }
-        // 期間の両端を含む。更新日時のない文書は期間指定時に対象外
-        if (after !== undefined && (updatedAtMs === undefined || updatedAtMs < after)) {
-          return false;
-        }
-        if (before !== undefined && (updatedAtMs === undefined || updatedAtMs > before)) {
-          return false;
-        }
-        return patterns.every((p) => p.test(document.title) || p.test(document.content));
-      })
-      .map((entry) => ({
-        entry,
-        titleScore: patterns.filter((p) => p.test(entry.document.title)).length,
-      }))
-      // タイトル一致の多い順 → 更新の新しい順 → コーパス順
-      .sort(
-        (a, b) =>
-          b.titleScore - a.titleScore ||
-          (b.entry.updatedAtMs ?? -Infinity) - (a.entry.updatedAtMs ?? -Infinity) ||
-          a.entry.order - b.entry.order,
-      );
+    const matches = this.documents.filter(({ document, updatedAtMs }) => {
+      if (filters?.container !== undefined && document.container !== filters.container) {
+        return false;
+      }
+      if (filters?.author !== undefined && document.author !== filters.author) {
+        return false;
+      }
+      // 期間の両端を含む。更新日時のない文書は期間指定時に対象外
+      if (after !== undefined && (updatedAtMs === undefined || updatedAtMs < after)) {
+        return false;
+      }
+      if (before !== undefined && (updatedAtMs === undefined || updatedAtMs > before)) {
+        return false;
+      }
+      return plan.matches(document.title, document.content);
+    });
+    const ranked = rank(matches, plan);
+    const limit = Math.min(options?.limit ?? defaultSearchLimit(this.searchMode), MAX_SEARCH_LIMIT);
+    if (this.searchMode === "github") {
+      const codeEligible =
+        filters?.author === undefined &&
+        filters?.updatedAfter === undefined &&
+        filters?.updatedBefore === undefined;
+      return this.githubPage(ranked, plan, limit, codeEligible, options?.cursor);
+    }
 
     const offset = decodeCursor(options?.cursor, "search");
-    const limit = Math.min(options?.limit ?? DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT);
-    const hits: SearchHit[] = matches
-      .slice(offset, offset + limit)
-      .map(({ entry: { document } }) => {
-        const meta: Record<string, string> = {
-          ...(document.container !== undefined ? { container: document.container } : {}),
-          ...(document.author !== undefined ? { author: document.author } : {}),
-        };
-        return {
-          documentId: document.id,
-          title: document.title,
-          snippet: makeSnippet(document.content, patterns),
-          url: document.url,
-          ...(document.updatedAt !== undefined ? { updatedAt: document.updatedAt } : {}),
-          ...(Object.keys(meta).length > 0 ? { meta } : {}),
-          scope: scopeOf(document),
-        };
-      });
+    const hits = ranked.slice(offset, offset + limit).map((entry) => this.toHit(entry, plan));
     // 総件数は返さない(ADR-012/016)。続きの有無だけをカーソルで示す
-    return offset + limit < matches.length
+    return offset + limit < ranked.length
       ? { hits, nextCursor: encodeCursor("search", offset + limit) }
       : { hits };
+  }
+
+  /**
+   * GitHub 型: 種別(issue → pull_request → code)ごとに件数の枠を等分し(connector-github の
+   * initialStreams と同じ配分)、1 ページ内で種別を交互に並べる。カーソルはページ番号
+   * (継続時も同じ limit を前提にする。開発用の簡略化)。
+   */
+  private githubPage(
+    ranked: readonly IndexedDocument[],
+    plan: QueryPlan,
+    limit: number,
+    codeEligible: boolean,
+    cursor: string | undefined,
+  ): SearchResult {
+    const kinds: DevFixtureDocumentKind[] = codeEligible
+      ? ["issue", "pull_request", "code"]
+      : ["issue", "pull_request"];
+    const page = decodeCursor(cursor, "search");
+    const base = Math.floor(limit / kinds.length);
+    const remainder = limit % kinds.length;
+    const windows = kinds.map((kind, index) => {
+      const share = base + (index < remainder ? 1 : 0);
+      const stream = ranked.filter((entry) => kindOf(entry.document) === kind);
+      return {
+        items: stream.slice(page * share, (page + 1) * share),
+        more: stream.length > (page + 1) * share,
+      };
+    });
+    const hits: SearchHit[] = [];
+    for (let i = 0; windows.some((w) => i < w.items.length); i += 1) {
+      for (const window of windows) {
+        const entry = window.items[i];
+        if (entry !== undefined) {
+          hits.push(this.toHit(entry, plan));
+        }
+      }
+    }
+    return windows.some((w) => w.more)
+      ? { hits, nextCursor: encodeCursor("search", page + 1) }
+      : { hits };
+  }
+
+  private toHit({ document }: IndexedDocument, plan: QueryPlan): SearchHit {
+    const meta: Record<string, string> = {
+      ...(document.container !== undefined ? { container: document.container } : {}),
+      ...(document.author !== undefined ? { author: document.author } : {}),
+      ...(this.searchMode === "github" ? { type: kindOf(document) } : {}),
+    };
+    return {
+      documentId: document.id,
+      title: document.title,
+      snippet: plan.snippet(document.content, kindOf(document)),
+      url: document.url,
+      ...(document.updatedAt !== undefined ? { updatedAt: document.updatedAt } : {}),
+      ...(Object.keys(meta).length > 0 ? { meta } : {}),
+      scope: scopeOf(document),
+    };
   }
 
   async fetch(
@@ -487,7 +541,10 @@ export class DevFixtureConnector implements Connector {
       displayName: this.displayName,
       summary: this.summary,
       topContainers: this.containerEntries().slice(0, TOP_CONTAINERS),
-      supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
+      supportedFilters:
+        this.searchMode === "redmine"
+          ? []
+          : ["updatedAfter", "updatedBefore", "container", "author"],
     };
   }
 
@@ -568,6 +625,18 @@ async function loadCorpusFile(
 }
 
 /**
+ * コーパスファイル(YAML/JSON。`documents:` 配下に文書)を読む。評価の道具が、デプロイ設定と同じ形式の
+ * コーパスを読むために使う(相対パスは baseDir 基準)。不備は DeploymentConfigError。
+ */
+export async function loadDevFixtureCorpusFile(
+  path: string,
+  baseDir: string,
+): Promise<DevFixtureDocument[]> {
+  assertNotProduction("loadDevFixtureCorpusFile");
+  return loadCorpusFile(path, baseDir);
+}
+
+/**
  * 組み込み kind: dev-fixture の factory(bootstrap/plugins.ts の ConnectorFactory)。
  * settings の不備は DeploymentConfigError(connector_settings_invalid、パスは
  * コネクタ宣言からの相対 "settings.*")で報告する。
@@ -581,14 +650,20 @@ export async function createDevFixtureConnector(
     throw new DeploymentConfigError(settingsIssues(parsed.error.issues, "settings"));
   }
   const settings = parsed.data;
-  const documents =
+  const base =
     settings.corpusFile !== undefined
       ? await loadCorpusFile(settings.corpusFile, init.configDir)
       : (settings.documents ?? DEV_FIXTURE_SAMPLE_DOCUMENTS);
+  const documents =
+    settings.synthetic !== undefined
+      ? [...base, ...generateSyntheticCorpus(settings.synthetic)]
+      : base;
   return new DevFixtureConnector(init.sourceId, documents, {
     pageChars: settings.pageChars,
     ...(settings.displayName !== undefined ? { displayName: settings.displayName } : {}),
     ...(settings.summary !== undefined ? { summary: settings.summary } : {}),
     policy: init.policy,
+    searchMode: settings.searchMode,
+    redmineAllWords: settings.redmineAllWords,
   });
 }

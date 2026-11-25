@@ -1,0 +1,275 @@
+/**
+ * 比較実験の実行(dev-search-eval)。合成コーパス専用の開発用機能。
+ *
+ * - 検索方式ごとに、プロセス内に Gateway(@leisen/gateway)を 127.0.0.1 の空きポートで起動し、
+ *   合成コーパスを持つ開発用コネクタ(dev-fixture)を 1 つだけ載せる。IdP・資格情報はモック、
+ *   監査はメモリ(捨てる)。実ソース・外部の Gateway には接続しない(トレースに実データが入る経路を
+ *   作らない)。ソースへのアクセスは条件 1・2 も含めて Gateway の tools/call を通す(不変条件2)
+ * - 条件 1・2 は LLM なしで search を直接呼ぶ。条件 3・4 は Orchestrator(探索 LLM)を回す
+ * - 本番(NODE_ENV=production)では開発用コネクタ・モック IdP が構築を拒否する
+ */
+import { randomBytes } from "node:crypto";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
+import { dirname } from "node:path";
+import { AuditLogger, BufferedAuditSink, InMemoryAuditStore } from "@leisen/audit";
+import {
+  DEV_ORCHESTRATOR_CREDENTIAL,
+  DevFixtureConnector,
+  Gateway,
+  MockCredentialProvider,
+  MockIdpAdapter,
+  createGatewayHttpServer,
+  createRunIdKeyRing,
+  deploymentConfigSchema,
+  generateSyntheticCorpus,
+  loadDevFixtureCorpusFile,
+  mockTokenEnvVar,
+  type DevFixtureDocument,
+  type DevFixtureSearchMode,
+} from "@leisen/gateway";
+import { McpGatewayClient } from "../gateway/mcp-client.js";
+import type { GatewayClient } from "../gateway/types.js";
+import type { LlmClient } from "../llm/types.js";
+import type { Orchestrator } from "../orchestrator.js";
+import { DEFAULT_RECALL_KS, caseMetrics, type CaseMetrics } from "./metrics.js";
+import type { SearchEvalQuestion, SearchEvalQuestionSet } from "./questions.js";
+import {
+  MemoryTraceSink,
+  TeeTraceSink,
+  TracingGatewayClient,
+  type SearchEvalCondition,
+  type TraceCaseContext,
+  type TraceSink,
+} from "./trace.js";
+import { reproduceUiQuestion } from "./ui-question.js";
+
+/** 比較する検索方式(Redmine 型は AND / OR を別の方式として扱う)。 */
+export const SEARCH_EVAL_MODES = ["default", "esa", "redmine-or", "redmine-and", "github"] as const;
+export type SearchEvalMode = (typeof SEARCH_EVAL_MODES)[number];
+
+export function connectorModeOf(mode: SearchEvalMode): {
+  readonly searchMode: DevFixtureSearchMode;
+  readonly redmineAllWords: boolean;
+} {
+  switch (mode) {
+    case "redmine-or":
+      return { searchMode: "redmine", redmineAllWords: false };
+    case "redmine-and":
+      return { searchMode: "redmine", redmineAllWords: true };
+    default:
+      return { searchMode: mode, redmineAllWords: false };
+  }
+}
+
+/** 質問セットが指すコーパス(ファイル + 生成した文書)を読む。相対パスは質問セットのファイル基準。 */
+export async function loadSearchEvalCorpus(
+  questionSetPath: string,
+  set: SearchEvalQuestionSet,
+): Promise<DevFixtureDocument[]> {
+  const baseDir = dirname(questionSetPath);
+  const documents: DevFixtureDocument[] = [];
+  for (const file of set.corpus.files) {
+    documents.push(...(await loadDevFixtureCorpusFile(file, baseDir)));
+  }
+  if (set.corpus.synthetic !== undefined) {
+    documents.push(...generateSyntheticCorpus(set.corpus.synthetic));
+  }
+  return documents;
+}
+
+/** プロセス内の評価用 Gateway。 */
+export interface EvalGateway {
+  /** 利用者のセッションと Orchestrator の資格情報(開発用の既定値)を持つクライアント */
+  readonly client: GatewayClient;
+  close(): Promise<void>;
+}
+
+/** 評価用の利用者(モック IdP のセッション)。値は開発用のダミーで秘密ではない */
+const EVAL_SESSION_TOKEN = "dev-only-search-eval-session";
+const EVAL_USER_ID = "search-eval-user";
+
+export async function startEvalGateway(options: {
+  readonly sourceId: string;
+  readonly documents: readonly DevFixtureDocument[];
+  readonly mode: SearchEvalMode;
+}): Promise<EvalGateway> {
+  const { sourceId } = options;
+  const connector = new DevFixtureConnector(sourceId, options.documents, {
+    ...connectorModeOf(options.mode),
+    displayName: "社内文書(開発用の合成コーパス)",
+  });
+  const provider = new MockCredentialProvider(sourceId, {
+    env: { [mockTokenEnvVar(sourceId)]: "dev-only-search-eval-token" },
+  });
+  const idp = new MockIdpAdapter([provider], {
+    sessions: { [EVAL_SESSION_TOKEN]: { userId: EVAL_USER_ID } },
+  });
+  const config = deploymentConfigSchema.parse({
+    schemaVersion: 1,
+    deployment: { name: "dev-search-eval" },
+    idp: { adapter: { kind: "mock" } },
+    connectors: [{ id: sourceId }],
+  });
+  const gateway = new Gateway({
+    config,
+    idpAdapter: idp,
+    connectors: [connector],
+    // 監査はメモリに書いて捨てる(本番の監査ストアは使わない)
+    auditLogger: new AuditLogger(new BufferedAuditSink(new InMemoryAuditStore(), { retryBaseDelayMs: 1 })),
+    runs: {
+      keys: createRunIdKeyRing({ current: { kid: "eval1", key: randomBytes(32) } }),
+      orchestratorCredential: Buffer.from(DEV_ORCHESTRATOR_CREDENTIAL, "utf8"),
+      ttlSeconds: 3_600,
+      feedbackWindowSeconds: 3_600,
+      limits: { maxQuestionChars: 10_000, maxCitations: 50, maxSearchedSources: 50, maxIdChars: 512 },
+      maxBodyBytes: 64 * 1024,
+      maxRequestsPerUserPerMinute: 1_000_000,
+    },
+    docIdHmacKey: randomBytes(32).toString("hex"),
+  });
+  const server = createGatewayHttpServer(gateway);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  const client = new McpGatewayClient({
+    url: `http://127.0.0.1:${port}/mcp`,
+    sessionToken: EVAL_SESSION_TOKEN,
+    orchestratorCredential: DEV_ORCHESTRATOR_CREDENTIAL,
+  });
+  return {
+    client,
+    async close() {
+      await client.close();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+export interface SearchEvalRunOptions {
+  readonly mode: string;
+  readonly source: string;
+  readonly questions: readonly SearchEvalQuestion[];
+  readonly conditions: readonly SearchEvalCondition[];
+  readonly gateway: GatewayClient;
+  readonly sink: TraceSink;
+  /** 条件 3・4 の試行回数(条件 1・2 は決定的なので 1 回) */
+  readonly repeat?: number;
+  readonly ks?: readonly number[];
+  /** 条件 3・4 の探索 LLM */
+  readonly orchestrator?: Orchestrator;
+  /** 条件 4 の UI 側 LLM */
+  readonly uiLlm?: LlmClient;
+  readonly onProgress?: (message: string) => void;
+}
+
+function errorClassOf(error: unknown): string {
+  if (typeof error === "object" && error !== null && "errorClass" in error) {
+    const value = (error as { errorClass: unknown }).errorClass;
+    if (typeof value === "string" && /^[a-z][a-z0-9_]*$/u.test(value)) {
+      return value;
+    }
+  }
+  return "unexpected_error";
+}
+
+/** 条件 1・2: query を 1 つずつ search に直接入力する(LLM なし)。 */
+async function runDirect(
+  options: SearchEvalRunOptions,
+  context: TraceCaseContext,
+  sink: TraceSink,
+  queries: readonly string[],
+  limit: number,
+): Promise<void> {
+  const traced = new TracingGatewayClient(options.gateway, sink, context);
+  for (const query of queries) {
+    sink.write({ ...context, type: "case_start", input: query });
+    // runId を申告しない呼び出し(Gateway は未申告として扱う)
+    await traced.callTool("search", { source: options.source, query, limit }, {});
+  }
+}
+
+/** 条件 3・4: Orchestrator に質問を渡す。 */
+async function runOrchestrated(
+  orchestrator: Orchestrator,
+  options: SearchEvalRunOptions,
+  context: TraceCaseContext,
+  sink: TraceSink,
+  question: string,
+): Promise<void> {
+  sink.write({ ...context, type: "case_start", input: question });
+  const traced = new TracingGatewayClient(options.gateway, sink, context);
+  try {
+    const { answer } = await orchestrator.runDetailed({ question, gateway: traced });
+    sink.write({
+      ...context,
+      type: "answer",
+      outcome: answer.outcome,
+      citations: answer.citations.map((c) => ({ sourceId: c.sourceId, documentId: c.documentId })),
+      llmTurns: answer.usage.llmTurns,
+      toolCalls: answer.usage.toolCalls,
+    });
+  } catch (error) {
+    sink.write({ ...context, type: "case_error", errorClass: errorClassOf(error) });
+  }
+}
+
+/** 1 つの検索方式について、質問 × 条件を実行し、試行ごとの指標を返す。 */
+export async function runSearchEval(options: SearchEvalRunOptions): Promise<CaseMetrics[]> {
+  const ks = options.ks ?? DEFAULT_RECALL_KS;
+  const limit = Math.max(...ks);
+  const repeat = options.repeat ?? 1;
+  const results: CaseMetrics[] = [];
+  for (const condition of options.conditions) {
+    const attempts =
+      condition === "keywords" || condition === "utterance" ? 1 : repeat;
+    if ((condition === "orchestrator-utterance" || condition === "orchestrator-ui") && options.orchestrator === undefined) {
+      throw new Error(`condition ${condition} needs an orchestrator (LLM)`);
+    }
+    if (condition === "orchestrator-ui" && options.uiLlm === undefined) {
+      throw new Error("condition orchestrator-ui needs a UI-side LLM");
+    }
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      for (const question of options.questions) {
+        const context: TraceCaseContext = {
+          mode: options.mode,
+          condition,
+          questionId: question.id,
+          attempt,
+        };
+        const memory = new MemoryTraceSink();
+        const sink = new TeeTraceSink([memory, options.sink]);
+        options.onProgress?.(`${options.mode} / ${condition} / ${question.id}(${attempt} 回目)`);
+        try {
+          switch (condition) {
+            case "keywords":
+              await runDirect(options, context, sink, question.keywords, limit);
+              break;
+            case "utterance":
+              await runDirect(options, context, sink, [question.utterance], limit);
+              break;
+            case "orchestrator-utterance":
+              await runOrchestrated(options.orchestrator as Orchestrator, options, context, sink, question.utterance);
+              break;
+            case "orchestrator-ui": {
+              const ui = await reproduceUiQuestion(options.uiLlm as LlmClient, question.utterance);
+              sink.write({ ...context, type: "ui_question", question: ui.ok ? ui.question : null });
+              if (ui.ok) {
+                await runOrchestrated(options.orchestrator as Orchestrator, options, context, sink, ui.question);
+              } else {
+                sink.write({ ...context, type: "case_error", errorClass: ui.errorClass });
+              }
+              break;
+            }
+          }
+        } catch (error) {
+          sink.write({ ...context, type: "case_error", errorClass: errorClassOf(error) });
+        }
+        results.push(caseMetrics(question, context, memory.events, ks));
+      }
+    }
+  }
+  return results;
+}
+

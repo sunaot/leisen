@@ -1,0 +1,219 @@
+# 検索方式の比較実験(dev-search-eval)の正解文書を含む合成コーパス。
+#
+# examples/eval/search-questions.json の正解文書のうち、dev-corpus.yaml にないものを置く。
+# 比較実験では dev-corpus.yaml(7 件)+ このファイル + 乱数の種を固定して生成した無関係な文書
+# (packages/gateway/src/dev/synthetic-corpus.ts)を 1 つのソース dev-docs にまとめて検索する。
+# すべて架空の社内文書であり、実在の組織・人物・機密情報・秘密情報を含まない(URL は予約ドメイン
+# example.test)。形式は packages/gateway/src/dev/fixture-connector.ts の documentSchema。
+# kind(issue / pull_request / code)は GitHub 型の検索方式で種別として使う(省略時 issue)。
+documents:
+  - id: incident-report-0412
+    title: 障害報告書 INC-2026-0412 勤怠システムのログイン障害
+    container: 情報システム
+    author: 情報システム部
+    updatedAt: "2026-04-14T18:00:00+09:00"
+    url: https://intranet.example.test/docs/incident-report-0412
+    content: |
+      発生日時: 2026年4月12日 8時50分〜10時20分。影響: 勤怠システムにログインできず、出勤の打刻ができなかった。
+      原因: 認証基盤の証明書の更新漏れ。証明書の期限切れにより、勤怠システムからのサインインが拒否された。
+      対応: 証明書を更新し、10時20分に復旧した。打刻できなかった時間帯は、各自が勤怠システムで修正申請を行う。
+      再発防止: 証明書の期限を監視する仕組みを導入し、期限の30日前に担当者へ通知する。
+
+  - id: incident-report-template
+    title: 障害報告書のテンプレートと記入例
+    container: 情報システム
+    author: 情報システム部
+    updatedAt: "2026-02-20T09:00:00+09:00"
+    url: https://intranet.example.test/docs/incident-report-template
+    content: |
+      障害報告書は次の項目で書く。1. 発生日時と復旧日時 2. 影響を受けた業務とシステム 3. 原因
+      4. 対応の経過 5. 再発防止策と期限 6. 報告者。
+      記入例: 「発生日時: 9時10分 / 影響: 社内ポータルが表示できない / 原因: ディスクの容量不足」。
+      テンプレートは情報システム部の共有フォルダの「報告書様式」にある。復旧から1週間以内に提出する。
+
+  - id: sec-device-carryout
+    title: 情報セキュリティ規程 第7条(機器の社外持ち出し)
+    container: 総務
+    author: 情報セキュリティ委員会
+    updatedAt: "2025-11-01T09:00:00+09:00"
+    url: https://intranet.example.test/docs/sec-device-carryout
+    content: |
+      第7条 貸与PC・スマートフォン・記録媒体を社外に持ち出すときは、事前に上長の許可を得る。
+      持ち出した機器は、公共の場所で画面を第三者に見られないようにし、紛失・盗難の際は直ちに
+      情報システム部と上長に報告する。私物の記録媒体に業務データを保存してはならない。
+      長期の持ち出し(出張・在宅勤務)は、持ち出し申請書を提出して許可を得る。
+
+  - id: cache-design-note
+    title: "設計メモ: 検索キャッシュの方針"
+    container: 開発
+    author: 基盤チーム
+    updatedAt: "2026-08-03T11:00:00+09:00"
+    url: https://intranet.example.test/docs/cache-design-note
+    content: |
+      検索結果のキャッシュは、利用者ごとに分けて持つ。キャッシュキーには必ず利用者IDを含め、
+      ほかの利用者の検索結果を返さない。有効期間は5分とし、権限の変更はキャッシュの期限切れで反映する。
+      文書の本文のキャッシュは持たない。キャッシュの容量の上限に達したら、古いものから削除する。
+
+  - id: pr-1287
+    kind: pull_request
+    title: "#1287 勤怠 CSV 出力で月末の残業時間がずれる問題を修正"
+    container: 開発
+    author: 勤怠チーム
+    updatedAt: "2026-09-18T15:30:00+09:00"
+    url: https://intranet.example.test/code/pulls/1287
+    content: |
+      月末が週の途中にあるとき、勤怠 CSV 出力の残業時間が翌月分に計上されていた。
+      集計の締めを暦日の月末で切るように修正し、月末をまたぐ週のテストを追加した。
+      影響: 2026年6月〜8月の CSV を再出力する必要がある。再出力の手順はリリースノートに記載した。
+
+  - id: minutes-bucho-20260909
+    title: 部長会 議事録 2026-09-09
+    container: 経営企画
+    author: 経営企画室
+    updatedAt: "2026-09-10T10:00:00+09:00"
+    url: https://intranet.example.test/docs/minutes-bucho-20260909
+    content: |
+      日時: 2026年9月9日(水)15時〜16時。出席: 各部の部長。
+      議題1: 下期の採用計画。エンジニアの中途採用を前倒しする。
+      議題2: 社内ポータルの刷新。10月に試験公開し、意見を集める。
+      決定事項: 採用計画の詳細は人事部が次回までにまとめる。
+
+  - id: eng-onboarding-checklist
+    title: エンジニア向け入社チェックリスト
+    container: 人事
+    author: 人事部
+    updatedAt: "2026-05-01T09:00:00+09:00"
+    url: https://intranet.example.test/docs/eng-onboarding-checklist
+    content: |
+      入社前: 貸与PCの手配、業務システムのアカウント発行申請、座席の用意。
+      入社初日: 貸与PCの受け取り、開発環境の構築、ソースコード管理のアカウント設定。
+      最初の1週間: メンターとの面談、開発の進め方の説明、情報セキュリティ研修の受講登録。
+      アカウント発行は入社の5営業日前までに申請する(業務システムのアカウント発行申請を参照)。
+
+  - id: mfp-3f-manual
+    title: 3階 複合機の使い方(印刷・スキャン)
+    container: 総務
+    author: 総務部
+    updatedAt: "2025-12-05T09:00:00+09:00"
+    url: https://intranet.example.test/docs/mfp-3f-manual
+    content: |
+      3階の複合機は社員証をかざしてから操作する。印刷は貸与PCのプリンタ一覧から選ぶ。
+      スキャンは「スキャン」ボタンを押し、送信先に自分のメールアドレスを選ぶ。
+      用紙切れ・紙詰まりは総務部の内線に連絡する。カラー印刷は必要な場合に限る。
+
+  - id: retry-policy-config
+    kind: code
+    title: config/batch/retry-policy.yaml
+    container: 開発
+    author: 基盤チーム
+    updatedAt: "2026-07-22T13:00:00+09:00"
+    url: https://intranet.example.test/code/blob/main/config/batch/retry-policy.yaml
+    content: |
+      # バッチ処理の再試行の設定
+      retry:
+        maxAttempts: 5 # 最大リトライ回数
+        initialDelaySec: 30
+        backoff: exponential
+        maxDelaySec: 600
+      # 夜間バッチは再試行を使い切ったら当番に通知する
+      notifyOnExhausted: true
+
+  - id: travel-booking
+    title: 出張の交通・宿泊の手配方法
+    container: 総務
+    author: 総務部
+    updatedAt: "2026-03-03T09:00:00+09:00"
+    url: https://intranet.example.test/docs/travel-booking
+    content: |
+      出張の新幹線・航空券・宿泊は、出張手配システムから予約する。出発の5営業日前までに、
+      出張申請の承認を得てから手配する。急ぎの出張は総務部の窓口に相談する。
+      個人で立て替えた場合は、出張旅費規程に従って精算する。
+
+  - id: travel-expense
+    title: 出張旅費規程と精算の手順
+    container: 総務
+    author: 総務部
+    updatedAt: "2026-03-03T09:00:00+09:00"
+    url: https://intranet.example.test/docs/travel-expense
+    content: |
+      出張の旅費は、交通費・宿泊費・日当からなる。宿泊費は1泊1万2千円を上限とし、日当は
+      日帰り出張には支給しない。出張から戻ったら2週間以内に経費精算システムで出張精算を申請する。
+      出張手配システムで予約した交通費・宿泊費は会社が直接支払うため、精算に含めない。
+
+  - id: pc-repair-request
+    title: PC 故障時の修理依頼の方法
+    container: 情報システム
+    author: 情報システム部
+    updatedAt: "2026-06-02T09:00:00+09:00"
+    url: https://intranet.example.test/docs/pc-repair-request
+    content: |
+      貸与PCが起動しない・画面が割れたなどの故障は、情報システム部のヘルプデスクに修理依頼を出す。
+      依頼票には、資産番号、症状、発生した日時を書く。修理は通常1〜2週間かかる。
+      データの退避が必要な場合は、依頼票にその旨を書く。修理の間は代替機を借りられる。
+
+  - id: loaner-pc
+    title: 代替機(貸出用PC)の貸出手続き
+    container: 情報システム
+    author: 情報システム部
+    updatedAt: "2026-06-02T09:00:00+09:00"
+    url: https://intranet.example.test/docs/loaner-pc
+    content: |
+      修理中や紛失時は、情報システム部の窓口で貸出用PCを借りられる。貸出期間は最長1か月で、
+      社員証を提示して貸出簿に記入する。返却時は個人のデータを削除してから返す。
+      在庫がない場合は予約票を出し、空きが出たら連絡を受ける。
+
+  - id: telework-rule
+    title: 在宅勤務制度と申請方法
+    container: 人事
+    author: 人事部
+    updatedAt: "2026-01-15T09:00:00+09:00"
+    url: https://intranet.example.test/docs/telework-rule
+    content: |
+      在宅勤務は週3日まで認める。前週の金曜日までに勤怠システムで在宅勤務の予定を申請し、
+      上長の承認を得る。在宅勤務中は、業務システムへのアクセスに必ずVPNを使う。
+      始業と終業の連絡はチャットで行う。機器の持ち出しは情報セキュリティ規程に従う。
+
+  - id: handover-guide
+    title: 休暇前の業務引き継ぎガイド
+    container: 人事
+    author: 人事部
+    updatedAt: "2026-05-20T09:00:00+09:00"
+    url: https://intranet.example.test/docs/handover-guide
+    content: |
+      3日以上休むときは、休暇の前日までに担当業務の引き継ぎメモを作り、代わりの担当者に渡す。
+      メモには、進行中の案件、期限、連絡先、判断に迷ったときの相談先を書く。
+      不在中の自動応答メッセージを設定し、予定表に不在を登録する。
+
+  - id: account-request
+    title: 業務システムのアカウント発行申請
+    container: 情報システム
+    author: 情報システム部
+    updatedAt: "2026-04-10T09:00:00+09:00"
+    url: https://intranet.example.test/docs/account-request
+    content: |
+      新しく入るメンバーの業務システムのアカウントは、受け入れ部署の担当者が申請する。
+      入社の5営業日前までに、氏名・所属・入社日・必要なシステムを申請フォームに記入する。
+      発行されたアカウントの初期パスワードは入社初日に本人へ直接渡す。
+
+  - id: expense-system-manual
+    title: 経費精算システムの操作マニュアル
+    container: 総務
+    author: 総務部
+    updatedAt: "2026-04-01T09:00:00+09:00"
+    url: https://intranet.example.test/docs/expense-system-manual
+    content: |
+      経費精算システムにサインインし、「新規申請」から精算の種類(交通費・会食費・出張精算など)を選ぶ。
+      明細に日付・金額・目的を入力し、領収書の画像を添付して「申請」を押す。
+      差し戻された申請は「下書き」に戻るので、修正してから再申請する。
+
+  - id: inquiry-vpn-timeout
+    kind: issue
+    title: "[問い合わせ] VPN 接続が30分で切れる"
+    container: 情報システム
+    author: 情報システム部
+    updatedAt: "2026-10-02T14:00:00+09:00"
+    url: https://intranet.example.test/issues/inquiry-vpn-timeout
+    content: |
+      問い合わせ: 自宅から VPN に接続すると、操作をしていなくても30分で切断される。
+      回答: VPN は無操作の状態が30分続くと自動で切断する設定になっている(情報セキュリティ上の設定)。
+      再接続すれば利用を続けられる。長時間のファイル転送は分割して行う。
