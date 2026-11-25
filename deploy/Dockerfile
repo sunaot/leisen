@@ -69,7 +69,7 @@
 #     宣言により、orchestrator の /var/lib/leisen/audit 等には空の匿名ボリュームが付くが、名前付き
 #     ボリュームとは別物で、何も書かれない
 
-ARG NODE_IMAGE=node:22-bookworm-slim
+ARG NODE_IMAGE=node:26-bookworm-slim
 
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS build

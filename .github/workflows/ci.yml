@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version: 22 }
+        with: { node-version: 26 }
       - run: npm audit --omit=dev --audit-level=high
   # T-013 / issue #32: git 履歴全体の秘密情報スキャン(gitleaks、版とチェックサムを固定)。
   # 開発用のダミー値だけを .gitleaks.toml で許可する。.claude/guard の軽い検査の代替ではなく本番の網。
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 26, cache: npm }
       - run: npm ci
       - run: npm run build
       # ADR-019 決定10: @leisen/audit と Gateway の run モジュールの import 境界(scripts/lint-imports.mjs)
@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 26, cache: npm }
       - run: npm ci
       - run: npm run build
       - run: docker compose -f e2e/keycloak/docker-compose.yml up -d
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # スモーク用スクリプト(curl + node)を動かすため。npm の依存は入れない(ビルドはイメージ内)
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version: 22 }
+        with: { node-version: 26 }
       # LibreChat overlay の env_file(雛形のダミー値)。overlay を含む compose の各コマンドは
       # このファイルがないと解釈できないため、最初に用意する(手順は docs/ui-librechat.md と同じ)
       - name: Prepare the LibreChat env file (dummy values)

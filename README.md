@@ -49,7 +49,7 @@ npm test
 
 ## 手元で動かす(5分)
 
-モックIdPと開発用コネクタ(合成の社内文書 `examples/fixtures/dev-corpus.yaml`)で Gateway を起動し、MCPクライアントから検索する。実SaaS・実資格情報は不要。Node 22 を前提とする。
+モックIdPと開発用コネクタ(合成の社内文書 `examples/fixtures/dev-corpus.yaml`)で Gateway を起動し、MCPクライアントから検索する。実SaaS・実資格情報は不要。Node 26 以上を前提とする(ADR-025)。
 
 ```bash
 npm ci && npm run build
