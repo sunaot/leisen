@@ -16,7 +16,7 @@
 
 ## リポジトリ構成
 
-- `packages/connector-sdk` — コネクタ共通IF・型定義(v0.5、ADR-016 追補2・ADR-024 の `api_key`)。全コネクタはここに依存する
+- `packages/connector-sdk` — コネクタ共通IF・型定義(v0.6、ADR-016 追補2・ADR-024 の `api_key`・ADR-025 の検索プロファイル `searchProfile` と検索の通知 `notices`)。全コネクタはここに依存する
 - `packages/audit` — 監査ログの共通モジュール(2層モデルのスキーマ、docId 不可逆化、生クエリ表、保持期間、sink、JSONL ストア。ADR-019 決定10 で Gateway から切り出し)。依存は zod と Node 標準のみで、`proxy/`・`idp/`・`config/`・MCP SDK・connector-sdk を import しない(`npm run lint:imports` で検査)
 - `packages/gateway` — MCP Gateway(認証、IdP Adapter、監査ログの書き手、ルーティング)
 - `packages/connector-*` — 各データソースのMCPサーバー(今後追加)
