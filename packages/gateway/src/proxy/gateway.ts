@@ -53,7 +53,8 @@ import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
 import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";
 import { SourceRateLimiter } from "./ratelimit.js";
-import { RunApi, type RunRuntime } from "./runs.js";
+import { recordsRawQuestion } from "../run/index.js";
+import { RunApi, runSourcePolicyFromConfig, type RunRuntime } from "./runs.js";
 import { isValidIteration, resolveCallContext, validateDeclaration } from "./session.js";
 import {
   EXECUTION_CLASS_CONFIG_KEY,
@@ -121,6 +122,11 @@ export class Gateway {
   private readonly idpAdapter: IdpAdapter;
   private readonly auditLogger: AuditLogger;
   private readonly rawQueryStore: RawQueryStore | undefined;
+  /**
+   * search のクエリ原文を生クエリ表に書いてよい構成か。永続化できないソース(Slack)が有効な
+   * 構成では、どのソースへの検索でも書かない(digest だけ残す。ADR-026 決定5、不変条件7)
+   */
+  private readonly recordsRawSearchQuery: boolean;
   private readonly registry = new Map<string, RegistryEntry>();
   private readonly rateLimiter: SourceRateLimiter;
   private readonly now: () => number;
@@ -133,6 +139,7 @@ export class Gateway {
     this.idpAdapter = options.idpAdapter;
     this.auditLogger = options.auditLogger;
     this.rawQueryStore = options.rawQueryStore;
+    this.recordsRawSearchQuery = recordsRawQuestion(runSourcePolicyFromConfig(options.config));
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
     this.runs =
@@ -325,7 +332,9 @@ export class Gateway {
     // 生クエリ原文は監査本体と別の短期保持テーブル(ADR-011 §3)。監査レコード
     // は上で永続化済みのため、原文の保存失敗はfailureModeの対象にしない
     // (queryDigestは監査側に残り、失われるのはT-014の原文参照のみ)
-    if (call.tool === "search" && this.rawQueryStore) {
+    // 永続化できないソースが有効な構成では書かない(検索語に Slack の結果に出た語が入りうる。
+    // Gateway は run の状態を持たないため構成単位で判定する。ADR-026 決定5)
+    if (call.tool === "search" && this.rawQueryStore && this.recordsRawSearchQuery) {
       try {
         await this.rawQueryStore.append({
           queryDigest: digestQuery(call.query),

@@ -7,7 +7,11 @@
  * 正規化。SDK との接合(Server 生成・ハンドラ登録・結果の形への写像)は mcp.ts、
  * トランスポートと認証の前段(preflight)は http.ts にある(Gateway の proxy/ と同じ分け方)。
  *
- * - ツールは ask と feedback の2つだけ(決定1)
+ * - ツールは ask と feedback の2つだけ(決定1)。ask は question が必須で、userMessage / context /
+ *   keepTerms / sources / period / depth は省略可能(ADR-026 決定1)。上限超過・有効でない sourceId・
+ *   未知の引数は固定文言で拒否する(値をエコーしない)
+ * - retentionClass が non_persistable なら、structuredContent と text の searchesTried から query と
+ *   filters を除く(ADR-026 決定5、不変条件7)
  * - 利用者に返す文言は固定文言(入力値・URL・トークン・例外メッセージをエコーしない)。
  *   正規化コード(errorClass)は structuredContent に載せる
  * - ask: 質問長 → 同時実行 → run(利用者のトークンで Gateway に接続するクライアント)→
@@ -33,7 +37,18 @@
  *   ときは不一致を許し、そのリクエストの retentionClass を non_persistable にする
  */
 import { z } from "zod";
-import { answerSchema, type Answer } from "../answer.js";
+import { answerSchema, withoutSearchQueries, type Answer } from "../answer.js";
+import {
+  ASK_DEPTHS,
+  MAX_CONTEXT_CHARS,
+  MAX_KEEP_TERM_CHARS,
+  MAX_KEEP_TERMS,
+  MAX_REQUESTED_SOURCES,
+  MAX_SOURCE_ID_CHARS,
+  askPeriodSchema,
+  normalizeAskExtras,
+  type AskInputExtras,
+} from "../ask-input.js";
 import {
   GatewayClientError,
   LlmError,
@@ -124,6 +139,11 @@ export interface ToolContext {
   readonly configMismatch?: boolean;
   /** feedback の申告の期限(ms、既定 FEEDBACK_TIMEOUT_MS) */
   readonly feedbackTimeoutMs?: number;
+  /**
+   * ask の sources に指定できるソース(--config で有効なコネクタの sourceId。ADR-026 決定1)。
+   * 省略時は形だけを検証し、有効なソースかは Orchestrator が Gateway の公開するソースで確かめる
+   */
+  readonly knownSourceIds?: readonly string[];
 }
 
 /** ツール実行の結果(SDK 非依存。mcp.ts が CallToolResult に写す)。 */
@@ -161,7 +181,24 @@ export const toolErrorStructuredContentSchema = z.strictObject({
   errorClass: errorClassSchema,
 });
 
-const askArgsSchema = z.strictObject({ question: z.string() });
+/**
+ * ask の引数(ADR-026 決定1)。question 以外は省略可能。長さ・件数の上限と有効なソースは
+ * runAsk(checkAskExtras)で検証する(上限ごとに固定文言で拒否するため)。
+ */
+const askArgsSchema = z.strictObject({
+  question: z.string(),
+  userMessage: z.string().optional(),
+  context: z.string().optional(),
+  keepTerms: z.array(z.string()).optional(),
+  sources: z.array(z.string()).optional(),
+  period: z
+    .strictObject({
+      updatedAfter: z.string().optional(),
+      updatedBefore: z.string().optional(),
+    })
+    .optional(),
+  depth: z.enum(ASK_DEPTHS).optional(),
+});
 const feedbackArgsSchema = z.strictObject({
   runId: z.string().min(1).max(128),
   outcome: z.enum(["resolved", "unresolved"]),
@@ -206,18 +243,21 @@ export interface OrchestratorToolDefinition {
 export const SERVER_INSTRUCTIONS = [
   "このサーバーは社内ナレッジを利用者本人の権限で検索し、出典付きで回答します。",
   "- 利用者の質問は ask ツールに渡してください。",
-  "- ask の question には、利用者の直近の発言を、言い換え・要約・翻訳をせずにそのまま入れてください。固有名詞・ID・エラーメッセージ・引用符で囲まれた語句・英数字の表記は一字も変えないでください。検索はこの文字列の語をもとに行われます。",
-  "- 直近の発言だけでは意味が通らないとき(「それ」「さっきの件」など)に限り、指している対象を会話から補い、発言の後ろに「補足: …」として足してください。利用者が言っていない条件(用途・期間・範囲・対象のソース)は足さないでください。利用者が検索語・対象のソース・期間を指定していれば、その指定をそのまま含めてください。",
+  "- ask の userMessage には、利用者の直近の発言を、言い換え・要約・翻訳をせずにそのまま入れてください。question にも、直近の発言だけで意味が通るなら同じ発言をそのまま入れてください。固有名詞・ID・エラーメッセージ・引用符で囲まれた語句・英数字の表記は一字も変えないでください。検索はこれらの文字列の語をもとに行われます。",
+  "- ask の keepTerms には、利用者の発言に含まれる変えてはならない語(固有名詞・ID・エラーメッセージ・引用符で囲まれた語句など)を、発言から一字も変えずに写してください。",
+  "- 直近の発言だけでは意味が通らないとき(「それ」「さっきの件」など)に限り、指している対象を会話から補って context に書いてください(question は、補った対象を含めて 1 回で完結する質問にしてかまいません)。",
+  "- sources(対象のソース)と period(期間)は、利用者が指定したときだけ書いてください。利用者が言っていない条件(用途・期間・範囲・対象のソース)は足さないでください。",
   "- ask は過去の会話を覚えていません。1 回の呼び出しで質問が完結するようにしてください。応答には 1〜2 分かかることがあります。",
   "- ask の結果の本文と「出典」節は、改変・要約・言い換えをせず、そのまま利用者に提示してください。",
   "- リンクは「出典」節に載っている URL だけを使ってください。本文には URL がありません。それ以外のリンク・URL を作ったり推測したりしないでください。",
-  "- 回答できなかった場合(structuredContent の outcome が resolved 以外)は、先頭の注意書きを省かずに提示してください。",
+  "- 回答できなかった場合(structuredContent の outcome が resolved 以外)は、先頭の注意書きを省かずに提示してください。「探した範囲」(試した検索の一覧)も省かずに示し、別の語で探し直すかを利用者に尋ねる材料にしてください。",
   "- feedback ツールは、利用者が「解決した」「解決しなかった」と明示したときだけ、その回答の runId(結果の末尾と structuredContent にあります)を指定して呼んでください。推測で呼ばないでください。",
 ].join("\n");
 
 /** ツール定義(ask の質問長の上限は設定値を説明と JSON Schema に出す)。 */
 export function orchestratorToolDefinitions(
   limits: Pick<ServerLimits, "maxQuestionChars">,
+  knownSourceIds?: readonly string[],
 ): OrchestratorToolDefinition[] {
   return [
     {
@@ -225,13 +265,16 @@ export function orchestratorToolDefinitions(
       title: "社内ナレッジに質問する",
       description:
         "社内ナレッジ(接続済みのデータソース)を利用者本人の権限で検索し、出典付きで回答する。\n\n" +
-        "question の書き方:\n" +
-        "- 利用者の直近の発言を、言い換え・要約・翻訳をせずにそのまま入れる。固有名詞、ID、エラーメッセージ、引用符で囲まれた語句、英数字の表記は一字も変えない。\n" +
-        "- 直近の発言だけでは意味が通らないとき(「それ」「さっきの件」など)に限り、指している対象を会話から補い、末尾に「補足: …」として足す。\n" +
-        "- 利用者が言っていない条件(用途・期間・範囲)を足さない。利用者が検索語・対象のソース・期間を指定していれば、その指定をそのまま含める。\n" +
+        "引数の書き方:\n" +
+        "- userMessage: 利用者の直近の発言を、言い換え・要約・翻訳をせずにそのまま入れる。固有名詞、ID、エラーメッセージ、引用符で囲まれた語句、英数字の表記は一字も変えない。\n" +
+        "- question(必須): 1 回の呼び出しで完結する質問。直近の発言だけで意味が通るなら、その発言をそのまま入れる。\n" +
+        "- keepTerms: 利用者の発言に含まれる変えてはならない語を、発言から一字も変えずに写す。\n" +
+        "- context: 直近の発言だけでは意味が通らないとき(「それ」「さっきの件」など)に限り、指している対象を会話から補って書く。利用者の発言ではない補足はここに書く。\n" +
+        "- sources / period: 利用者が対象のソース・期間を指定したときだけ書く。利用者が言っていない条件(用途・期間・範囲・対象のソース)を足さない。\n" +
+        "- depth: 利用者が手早い回答・徹底した調査を求めたときだけ書く(省略時は standard)。\n" +
         "- このツールは過去の会話を覚えていない。1 回の呼び出しで質問が完結するように書く。\n\n" +
         "結果の本文と「出典」節は改変せず、そのまま利用者に提示する。リンクは「出典」節の URL だけを使う。" +
-        "outcome が resolved 以外(未解決・エラー)のときは、先頭の注意書きを省かない。応答には 1〜2 分かかることがある。",
+        "outcome が resolved 以外(未解決・エラー)のときは、先頭の注意書きを省かない。「探した範囲」も省かない。応答には 1〜2 分かかることがある。",
       inputSchema: {
         type: "object",
         properties: {
@@ -239,7 +282,53 @@ export function orchestratorToolDefinitions(
             type: "string",
             minLength: 1,
             maxLength: limits.maxQuestionChars,
-            description: `利用者の直近の発言をそのまま(言い換え・要約・翻訳をしない。固有名詞・ID・エラーメッセージ・引用符の語句は変えない。意味が通らないときだけ末尾に「補足: …」で対象を補う。${limits.maxQuestionChars} 文字まで)`,
+            description: `1 回の呼び出しで完結する質問(必須。直近の発言だけで意味が通るなら、その発言をそのまま入れる。固有名詞・ID・エラーメッセージ・引用符の語句は変えない。${limits.maxQuestionChars} 文字まで)`,
+          },
+          userMessage: {
+            type: "string",
+            maxLength: limits.maxQuestionChars,
+            description: `利用者の直近の発言そのもの(一字も変えずに写す。言い換え・要約・翻訳をしない。${limits.maxQuestionChars} 文字まで)`,
+          },
+          context: {
+            type: "string",
+            maxLength: MAX_CONTEXT_CHARS,
+            description: `会話から分かっている前提(「それ」が指す対象など)。直近の発言だけでは意味が通らないときに限り書く。利用者の発言ではない(${MAX_CONTEXT_CHARS} 文字まで)`,
+          },
+          keepTerms: {
+            type: "array",
+            maxItems: MAX_KEEP_TERMS,
+            items: { type: "string", maxLength: MAX_KEEP_TERM_CHARS },
+            description: `変えてはならない語(固有名詞・ID・エラーメッセージ・引用符で囲まれた語句など)。利用者の発言から一字も変えずに写す(${MAX_KEEP_TERMS} 個まで、各 ${MAX_KEEP_TERM_CHARS} 文字まで)`,
+          },
+          sources: {
+            type: "array",
+            maxItems: knownSourceIds !== undefined ? knownSourceIds.length : MAX_REQUESTED_SOURCES,
+            items:
+              knownSourceIds !== undefined
+                ? { type: "string", enum: [...knownSourceIds] }
+                : { type: "string", minLength: 1, maxLength: MAX_SOURCE_ID_CHARS },
+            description: "対象のソースの sourceId。利用者が対象のソースを指定したときだけ書く",
+          },
+          period: {
+            type: "object",
+            properties: {
+              updatedAfter: {
+                type: "string",
+                description: "この日時以降に更新された文書(ISO 8601。例: 2026-01-01)",
+              },
+              updatedBefore: {
+                type: "string",
+                description: "この日時以前に更新された文書(ISO 8601)",
+              },
+            },
+            additionalProperties: false,
+            description: "利用者が期間を指定したときだけ書く",
+          },
+          depth: {
+            type: "string",
+            enum: [...ASK_DEPTHS],
+            description:
+              "探索の深さ(quick: 手早く / standard: 通常 / thorough: 徹底して)。利用者が求めたときだけ書く",
           },
         },
         required: ["question"],
@@ -292,6 +381,14 @@ export const FEEDBACK_NOT_ACCEPTED_TEXT =
 /** Gateway が公開するソースと --config の食い違い(S6)。ソース名はエコーしない。 */
 export const CONFIG_MISMATCH_TEXT =
   "このサーバーの設定と Gateway が公開しているデータソースが一致しないため、処理を中止しました。管理者に連絡してください。";
+
+/** ask の追加の引数が上限を超えた(値はエコーしない。ADR-026 決定1・6)。 */
+export function argumentsTooLongText(maxQuestionChars: number): string {
+  return `ツールの引数が上限を超えています(userMessage は ${maxQuestionChars} 文字まで、context は ${MAX_CONTEXT_CHARS} 文字まで、keepTerms は ${MAX_KEEP_TERMS} 個・各 ${MAX_KEEP_TERM_CHARS} 文字まで)。`;
+}
+/** sources に有効でないソースがある(ソース名はエコーしない)。 */
+export const UNKNOWN_SOURCE_TEXT =
+  "指定されたソースに、検索対象ではないものが含まれています。sources を省くか、検索対象のソースを指定してください。";
 
 export function questionTooLongText(maxQuestionChars: number): string {
   return `質問が長すぎます(${maxQuestionChars} 文字まで)。短くして再度お試しください。`;
@@ -388,10 +485,13 @@ export function runOrchestratorTool(
 
 /** Answer を ask の結果にする(ADR-018 決定6)。 */
 export function askOutcomeFromAnswer(
-  answer: Answer,
+  original: Answer,
   failureReason: string | null,
   retentionClass: RetentionClass,
 ): ToolOutcome {
+  // 永続化できないソース(Slack)が有効な構成では、試した検索から query と filters を除く
+  // (UI の履歴に残るため。ADR-026 決定5、不変条件7)。text の「探した範囲」も同じ値から作る
+  const answer = retentionClass === "non_persistable" ? withoutSearchQueries(original) : original;
   const structuredContent: AskStructuredContent = {
     ...answer,
     // 出典欄と同じ規則で無害化する(m3)
@@ -424,6 +524,10 @@ async function runAsk(context: ToolContext, args: unknown): Promise<ToolOutcome>
   if (question.length > limits.maxQuestionChars) {
     return toolError("question_too_long", questionTooLongText(limits.maxQuestionChars));
   }
+  const extras = checkAskExtras(parsed.data, context);
+  if (!extras.ok) {
+    return extras.outcome;
+  }
   const release = limits.runs.tryAcquire();
   if (release === undefined) {
     return toolError("busy", BUSY_TEXT);
@@ -433,6 +537,7 @@ async function runAsk(context: ToolContext, args: unknown): Promise<ToolOutcome>
     gateway = context.createGatewayClient();
     const { answer, failureReason } = await context.orchestrator.runDetailed({
       question,
+      ...extras.value,
       gateway,
     });
     return askOutcomeFromAnswer(answer, failureReason, context.retentionClass);
@@ -443,6 +548,62 @@ async function runAsk(context: ToolContext, args: unknown): Promise<ToolOutcome>
     release();
     await gateway?.close().catch(() => undefined);
   }
+}
+
+type CheckedExtras =
+  | { readonly ok: true; readonly value: AskInputExtras }
+  | { readonly ok: false; readonly outcome: ToolOutcome };
+
+/**
+ * ask の追加の引数の上限と有効なソースを検証する(ADR-026 決定1)。拒否は固定文言で、値を
+ * エコーしない(決定6)。前後の空白を除き、空の文字列・空の配列は省略と同じに扱う。
+ */
+function checkAskExtras(args: z.infer<typeof askArgsSchema>, context: ToolContext): CheckedExtras {
+  const { limits } = context;
+  const { period } = args;
+  const extras = normalizeAskExtras({
+    ...(args.userMessage !== undefined ? { userMessage: args.userMessage } : {}),
+    ...(args.context !== undefined ? { context: args.context } : {}),
+    ...(args.keepTerms !== undefined ? { keepTerms: args.keepTerms } : {}),
+    ...(args.sources !== undefined ? { sources: args.sources } : {}),
+    ...(period !== undefined
+      ? {
+          period: {
+            ...(period.updatedAfter !== undefined ? { updatedAfter: period.updatedAfter } : {}),
+            ...(period.updatedBefore !== undefined ? { updatedBefore: period.updatedBefore } : {}),
+          },
+        }
+      : {}),
+    ...(args.depth !== undefined ? { depth: args.depth } : {}),
+  });
+  // keepTerms の件数は空の要素・重複を除く前の数にも上限をかける(大きな配列を受けない)
+  if (
+    (extras.userMessage?.length ?? 0) > limits.maxQuestionChars ||
+    (extras.context?.length ?? 0) > MAX_CONTEXT_CHARS ||
+    (args.keepTerms?.length ?? 0) > MAX_KEEP_TERMS ||
+    (extras.keepTerms ?? []).some((term) => term.length > MAX_KEEP_TERM_CHARS)
+  ) {
+    return {
+      ok: false,
+      outcome: toolError("arguments_too_long", argumentsTooLongText(limits.maxQuestionChars)),
+    };
+  }
+  const known = context.knownSourceIds;
+  if (
+    (args.sources?.length ?? 0) > MAX_REQUESTED_SOURCES ||
+    (args.sources ?? []).some(
+      (sourceId) =>
+        sourceId === "" ||
+        sourceId.length > MAX_SOURCE_ID_CHARS ||
+        (known !== undefined && !known.includes(sourceId)),
+    )
+  ) {
+    return { ok: false, outcome: toolError("unknown_source", UNKNOWN_SOURCE_TEXT) };
+  }
+  if (extras.period !== undefined && !askPeriodSchema.safeParse(extras.period).success) {
+    return { ok: false, outcome: toolError("invalid_request", INVALID_ARGUMENTS_TEXT) };
+  }
+  return { ok: true, value: extras };
 }
 
 async function runFeedback(context: ToolContext, args: unknown): Promise<ToolOutcome> {

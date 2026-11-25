@@ -13,8 +13,24 @@ Status: v0(T-021)/ Date: 2026-09-28
 ## 0. 位置づけ
 
 - **Orchestrator を MCP サーバーとして公開する**(ADR-018 決定1)。`leisen-ask serve` が Streamable HTTP
-  (ステートレス)で待ち受け、ツールは `ask({ question })` と `feedback({ runId, outcome })` の 2 つだけ。
-  `ask` の結果は Markdown(本文 + 末尾の「出典」節 + `runId`)と `structuredContent`(Answer)
+  (ステートレス)で待ち受け、ツールは `ask({ question, userMessage?, context?, keepTerms?, sources?, period?,
+  depth? })` と `feedback({ runId, outcome })` の 2 つだけ。`question` 以外の引数は省略可能で(ADR-026 決定1)、
+  省略した呼び出しは従来どおり動く。`ask` の結果は Markdown(本文 + resolved 以外のときの「探した範囲」+ 末尾の
+  「出典」節 + `runId`)と `structuredContent`(Answer。試した検索 `searchesTried` を含む)
+- **ask の引数(ADR-026)**: `userMessage` は利用者の直近の発言そのもの(言い換え・要約・翻訳をしない)、
+  `context` は UI 側の LLM が会話から補った前提(利用者の発言ではない。1,000 字まで)、`keepTerms` は変えては
+  ならない語(10 個 × 100 字まで)、`sources` / `period` は利用者が指定したときだけ、`depth` は探索の深さ
+  (`quick` は 2 ターン、`standard` / `thorough` は設定の `maxIterations`。上限は変えない)。UI 側の LLM への
+  指示は `instructions` とツール定義の description にある。どの程度埋めるかはモデルによる(未計測、T-027)。
+  上限を超えた値・有効でない sourceId・未知の引数は固定文言のエラーで拒否する(値はエコーしない)
+- **試した検索(`structuredContent.searchesTried`)**: run の中で探索 LLM が呼んだ search を順に、ソース・
+  query・filters・結果(`hits` / `no_hits` / `error`)・その run で初めて返った文書の数で返す。結果は認可済みで
+  返ったヒットから数え、権限外と不在を区別しない(ADR-012)。text には outcome が resolved 以外のときだけ
+  「探した範囲」として載せる。永続化できないソース(Slack)が有効な構成(`retentionClass: non_persistable`)では
+  query と filters を載せない(ADR-026 決定5、不変条件7)
+- **生クエリ表(ADR-026 決定4)**: Gateway は run API で申告された `ask` の入力のうち文字列を含む引数
+  (`question` / `userMessage` / `context` / `keepTerms`)を、キーを辞書順に並べた JSON にして生クエリ表に書く
+  (保持期間は従来どおり)。Slack が有効な構成では質問も search のクエリも生クエリ表に書かず digest だけを残す
 - **認証は Gateway に委譲する**(決定2)。Orchestrator は IdP を持たず、独自の資格情報も持たない。
   リクエストごとに受け取った Bearer トークンで Gateway の `tools/list` を呼んで有効性を確かめ、Gateway が
   拒否すれば HTTP 401、Gateway・IdP に届かなければ 503 を返す(LLM もソースも呼ばない)。トークンは
@@ -365,8 +381,10 @@ leisen_mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"feed
 ```
 
 - `initialize` の結果の `instructions`(出典の扱いなど)を、クライアント側の LLM にも渡す
-- `ask` の結果の text は Markdown(本文 + 「出典」節 + `runId`)。`structuredContent` に Answer(`runId`・
-  `outcome`・`citations`・`warnings` など)が入る。出典はそのまま提示する
+- `ask` の結果の text は Markdown(本文 + resolved 以外のときの「探した範囲」+ 「出典」節 + `runId`)。
+  `structuredContent` に Answer(`runId`・`outcome`・`citations`・`warnings`・`searchesTried` など)が入る。
+  出典はそのまま提示する
+- 追加の引数の例: `{"question":"ERR-4012 の対処は?","userMessage":"ERR-4012 が出たらどうする?","keepTerms":["ERR-4012"]}`
 - MCP Inspector(CLI、**未検証**): `npx @modelcontextprotocol/inspector --cli http://127.0.0.1:8790/mcp
   --transport http --header "Authorization: Bearer $LEISEN_SESSION_TOKEN" --method tools/list`
 - Claude Code(**未検証**): `claude mcp add --transport http leisen http://127.0.0.1:8790/mcp

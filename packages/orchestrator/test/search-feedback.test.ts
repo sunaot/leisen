@@ -37,19 +37,29 @@ import {
   type OrchestratorSettingsInput,
   type ScriptContext,
   type ScriptStep,
+  withoutSearchQueries,
 } from "../src/index.js";
 import { FakeGatewayClient, describeOk } from "./helpers/fake-gateway.js";
 
 // ---------------------------------------------------------------------------
-// ask の description と instructions(UI 側 LLM への入力側の指示。引数は question のまま)
+// ask の description と instructions(UI 側 LLM への入力側の指示。T-024 で入れ、T-031 で
+// ADR-026 の引数に合わせて改訂した。引数の検証は ask-input.test.ts)
 // ---------------------------------------------------------------------------
 
-describe("ask の question の書き方(ADR-018 決定1 の引数は変えない)", () => {
+describe("ask の引数の書き方(ADR-026 決定1: question は必須のまま、追加の引数は省略可能)", () => {
   const [ask] = orchestratorToolDefinitions({ maxQuestionChars: 4000 });
 
-  it("引数は question だけのまま", () => {
+  it("必須の引数は question だけのまま(追加の引数は省略可能)", () => {
     expect(ask?.name).toBe("ask");
-    expect(Object.keys(ask?.inputSchema["properties"] as object)).toEqual(["question"]);
+    expect(Object.keys(ask?.inputSchema["properties"] as object)).toEqual([
+      "question",
+      "userMessage",
+      "context",
+      "keepTerms",
+      "sources",
+      "period",
+      "depth",
+    ]);
     expect(ask?.inputSchema["required"]).toEqual(["question"]);
     expect(ask?.inputSchema["additionalProperties"]).toBe(false);
   });
@@ -62,8 +72,10 @@ describe("ask の question の書き方(ADR-018 決定1 の引数は変えない
         "ID",
         "エラーメッセージ",
         "引用符で囲まれた語句",
-        "一字も変えない",
-        "補足: …",
+        "一字も変え",
+        "userMessage",
+        "keepTerms",
+        "context",
         "利用者が言っていない条件",
         "過去の会話を覚えてい",
       ]) {
@@ -73,8 +85,12 @@ describe("ask の question の書き方(ADR-018 決定1 の引数は変えない
     const question = (ask?.inputSchema["properties"] as Record<string, { description: string }>)[
       "question"
     ];
-    expect(question?.description).toContain("言い換え・要約・翻訳をしない");
+    expect(question?.description).toContain("そのまま入れる");
     expect(question?.description).toContain("4000 文字まで");
+    const userMessage = (ask?.inputSchema["properties"] as Record<string, { description: string }>)[
+      "userMessage"
+    ];
+    expect(userMessage?.description).toContain("言い換え・要約・翻訳をしない");
     // 出力側の既存の指示は残す
     expect(ask?.description).toContain("先頭の注意書きを省かない");
     expect(SERVER_INSTRUCTIONS).toContain("改変・要約・言い換えをせず、そのまま利用者に提示");
@@ -699,7 +715,7 @@ describe("探索ループ: 1件も fetch せずに提出したときの差し戻
 });
 
 describe("不変条件7: 試した query の一覧は制御メッセージ(揮発)だけに置く", () => {
-  it("回答・warnings・run API の申告(開始・終了)に、探索 LLM が送った query が載らない", async () => {
+  it("本文・warnings・run API の申告(開始・終了)に、探索 LLM が送った query が載らない(searchesTried を除く)", async () => {
     const marker = "slack由来の語ZQX";
     const { answer, gateway, llm } = await runWith(
       [
@@ -714,7 +730,12 @@ describe("不変条件7: 試した query の一覧は制御メッセージ(揮�
     );
     // 制御メッセージには載る(揮発。LLM への入力だけ)
     expect(JSON.stringify(llm.requests.at(-1)?.messages)).toContain(marker);
-    expect(JSON.stringify(answer)).not.toContain(marker);
+    // 返り値の searchesTried には載る(ADR-026 決定3)。それ以外(本文・warnings)には載らず、
+    // 永続化できないソースが有効な構成では withoutSearchQueries で除く(決定5。server-ask-input.test.ts)
+    const { searchesTried, ...rest } = answer;
+    expect(JSON.stringify(searchesTried)).toContain(marker);
+    expect(JSON.stringify(rest)).not.toContain(marker);
+    expect(JSON.stringify(withoutSearchQueries(answer))).not.toContain(marker);
     expect(JSON.stringify(gateway.started)).not.toContain(marker);
     expect(JSON.stringify(gateway.finished)).not.toContain(marker);
   });

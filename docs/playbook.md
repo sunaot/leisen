@@ -58,7 +58,11 @@ trueにしない。唯一の例外は nativeSearch "none"(index-required)のソ�
      あれば件数だけを警告に出す。放棄・孤立・不一致が多ければ判定の前に原因を調べる
    - 失敗クエリの原文がない理由は 2 つに分けて表示する: 保持期間切れ(run の開始が
      `--raw-query-retention-days`、既定 30 日より前。定期実行が遅れた)と未記録(期間内なのに原文がない。
-     永続化不可のソースが有効な構成では質問原文を書かない — ADR-019 決定7。それ以外なら書き込み失敗)
+     永続化不可のソースが有効な構成では質問原文も search のクエリ原文も書かない — ADR-019 決定7、ADR-026
+     決定5。それ以外なら書き込み失敗)
+   - 失敗クエリの原文は `ask` の入力のうち文字列を含む引数(`question` / `userMessage` / `context` /
+     `keepTerms`)を、キーを辞書順に並べた JSON で表示する(ADR-026 決定4)。`userMessage` が利用者の発言、
+     `context` が UI 側の LLM の補足。T-031 より前の run の原文は質問の文字列そのまま
    - `--run-ttl-sec`(既定 900)は署名のない旧形式の runId の pending を放棄と判定する有効期間。署名付きの
      runId は payload の有効期間で判定する。Gateway の `gateway.runs.ttlSec` と `audit.rawQueryRetentionDays`
      を変えているなら、同じ値を渡す

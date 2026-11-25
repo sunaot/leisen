@@ -3,7 +3,7 @@
  *
  * | 呼び出し | すること | 監査ストアに追記するもの |
  * |---|---|---|
- * | `POST /runs` `{ question, executionClass?, actor? }` | 本人を認証し、申告を ADR-015 の規則で検証し、署名付き runId を発行する | 生クエリ表に質問原文(決定7)→ pending の AnswerRun |
+ * | `POST /runs` `{ question, userMessage?, context?, keepTerms?, executionClass?, actor? }` | 本人を認証し、申告を ADR-015 の規則で検証し、署名付き runId を発行する | 生クエリ表に質問(ask の入力を正規化した JSON。ADR-026 決定4)の原文(決定7)→ pending の AnswerRun |
  * | `POST /runs/{runId}/finish` `{ outcome, confidence?, citations?, searchedSources?, failureReason?, actor? }` | runId を検証し、searchedSources を有効なソースに限り、引用 docId に決定5 の規則をかける | `answer_run_finish` |
  * | `POST /runs/{runId}/feedback` `{ outcome, actor? }` | runId の本人とフィードバックの期間を検証する | `answer_run_feedback` |
  *
@@ -34,6 +34,7 @@ import type { Identity } from "../idp/types.js";
 import {
   answerRunFeedbackRecord,
   answerRunFinishRecord,
+  canonicalRunQuestion,
   feedbackRunRequestSchema,
   finishRunRequestSchema,
   issueRunId,
@@ -257,12 +258,14 @@ export class RunApi {
       nowMs,
     });
     const startedAt = new Date(nowMs).toISOString();
+    // 申告された質問は ask の入力を正規化した JSON にして記録する(ADR-026 決定4)
+    const question = canonicalRunQuestion(parsed.value);
     const pending = pendingAnswerRunRecord({
       runId: issued.runId,
       userId: identity.userId,
       actor: declared.actor,
       startedAt,
-      question: parsed.value.question,
+      question,
     });
 
     // 生クエリ表 → pending の順(決定6)。永続化不可のソースが有効な構成では原文を書かない(決定7)
@@ -272,7 +275,7 @@ export class RunApi {
       const wrote = await this.write(() =>
         store.append({
           queryDigest: digest ?? "",
-          rawQuery: parsed.value.question,
+          rawQuery: question,
           userId: identity.userId,
           timestamp: startedAt,
         }),

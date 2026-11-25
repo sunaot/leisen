@@ -9,6 +9,7 @@ import type {
   GatewayCallOutcome,
   GatewayClient,
   GatewayToolSchema,
+  StartRunQuestion,
   StartRunResult,
 } from "../../src/index.js";
 
@@ -26,7 +27,7 @@ export type FakeHandler = (
 export class FakeGatewayClient implements GatewayClient {
   readonly calls: FakeCall[] = [];
   /** run API への申告(開始・終了・フィードバック)の記録 */
-  readonly started: { readonly question: string }[] = [];
+  readonly started: StartRunQuestion[] = [];
   readonly finished: { readonly runId: string; readonly input: FinishRunInput }[] = [];
   readonly feedbacks: { readonly runId: string; readonly outcome: "resolved" | "unresolved" }[] = [];
   /** startRun / finishRun を失敗させる(テスト用の注入) */
@@ -40,11 +41,11 @@ export class FakeGatewayClient implements GatewayClient {
     private readonly handler: FakeHandler,
   ) {}
 
-  async startRun(input: { readonly question: string }): Promise<StartRunResult> {
+  async startRun(input: StartRunQuestion): Promise<StartRunResult> {
     if (this.startError !== undefined) {
       throw this.startError;
     }
-    this.started.push({ question: input.question });
+    this.started.push({ ...input });
     const issuedAt = Date.now();
     return {
       runId: `fake-run-${this.started.length}`,

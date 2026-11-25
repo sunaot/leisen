@@ -8,6 +8,17 @@
  * McpGatewayClient(MCP Streamable HTTP)。
  */
 
+/**
+ * run API(POST /runs)で申告する質問。ask の入力のうち文字列を含む引数だけ(ADR-026 決定4)。
+ * Gateway がキーを辞書順に並べた JSON にして生クエリ表に書き、最終質問の digest もそこから作る。
+ */
+export interface StartRunQuestion {
+  readonly question: string;
+  readonly userMessage?: string;
+  readonly context?: string;
+  readonly keepTerms?: readonly string[];
+}
+
 /** Gateway が tools/list で返すツール定義(MCP の Tool のうち使う部分)。 */
 export interface GatewayToolSchema {
   readonly name: string;
@@ -86,9 +97,10 @@ export interface GatewayClient {
    * run の開始を Gateway に申告し、署名付き runId を受け取る(run API、ADR-019 決定3)。
    * Gateway は生クエリ表と pending の AnswerRun を書く。失敗は GatewayClientError
    * (unauthenticated / orchestrator_credential_rejected / rate_limited / audit_write_failed /
-   * gateway_unavailable 等)。失敗したら LLM を呼ばない(呼び出し側)
+   * gateway_unavailable 等)。失敗したら LLM を呼ばない(呼び出し側)。input は ask の入力のうち
+   * 文字列を含む引数(question / userMessage / context / keepTerms。ADR-026 決定4)
    */
-  startRun(input: { readonly question: string }, options?: GatewayCallOptions): Promise<StartRunResult>;
+  startRun(input: StartRunQuestion, options?: GatewayCallOptions): Promise<StartRunResult>;
   /**
    * run の終了を申告する(answer_run_finish)。失敗は GatewayClientError(run_not_accepted /
    * audit_write_failed 等)。失敗したら回答を返さない(呼び出し側、fail-closed)

@@ -112,7 +112,8 @@ describe("AnswerRun の書き方(Gateway の run API)", () => {
       userId: "alice",
       actor: { kind: "human" },
       finalOutcome: "pending",
-      finalQueryDigest: digestQuery("経費精算の締め日は?"),
+      // 最終質問の digest は ask の入力を正規化した JSON から作る(ADR-026 決定4)
+      finalQueryDigest: digestQuery(JSON.stringify({ question: "経費精算の締め日は?" })),
       endedAt: null,
       confidence: null,
       searchedSources: [],
