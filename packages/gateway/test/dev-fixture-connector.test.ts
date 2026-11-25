@@ -19,6 +19,7 @@ import {
 } from "@leisen/connector-sdk";
 import {
   DEV_FIXTURE_SAMPLE_DOCUMENTS,
+  DEV_FIXTURE_SEARCH_PROFILE,
   DeploymentConfigError,
   DevFixtureConnector,
   IdpError,
@@ -383,7 +384,23 @@ describe("list / describe", () => {
         { id: "hr", name: "hr", kind: "folder", childCount: 1, scope: "shared" },
       ],
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
+      searchProfile: DEV_FIXTURE_SEARCH_PROFILE,
     });
+  });
+
+  it("検索プロファイル(ADR-025)は利用者によらず、search の実装(AND の部分一致)と合う", async () => {
+    const c = connector(DOCS);
+    const bob: AuthContext = { ...bearer(), userId: "bob" };
+    expect((await c.describe(AUTH)).searchProfile).toEqual((await c.describe(bob)).searchProfile);
+    expect(DEV_FIXTURE_SEARCH_PROFILE.termJoin).toEqual({ value: "and", basis: "tested" });
+    expect(DEV_FIXTURE_SEARCH_PROFILE.matchUnit).toEqual({ value: "substring", basis: "tested" });
+    // AND: 両方の語を含む文書だけ / 部分一致: 語の一部でも一致する
+    expect((await c.search(AUTH, "VPN ヘルプデスク")).hits.map((h) => h.documentId)).toEqual(["vpn"]);
+    expect((await c.search(AUTH, "ヘルプ")).hits.map((h) => h.documentId)).toEqual(["vpn"]);
+    // 演算子は解釈しない(OR も語として照合する)
+    expect((await c.search(AUTH, "VPN OR Expense")).hits).toEqual([]);
+    // 通知は返さない
+    expect((await c.search(AUTH, "VPN")).notices).toBeUndefined();
   });
 
   it("静的能力はネイティブ検索あり・ingestなし・プライベート領域は enforced", () => {

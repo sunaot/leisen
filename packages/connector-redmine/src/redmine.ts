@@ -10,10 +10,11 @@ import {
   type SearchFilters,
   type SearchHit,
   type SearchOptions,
+  type SearchProfile,
   type SearchResult,
   type SourceDescription,
 } from "@leisen/connector-sdk";
-import { normalizeQuery, snippetTerms } from "./query.js";
+import { REDMINE_MAX_TOKENS, normalizeQuery, searchNoticesFor, snippetTerms } from "./query.js";
 import { matchWindowStart, windowSnippet } from "./snippet.js";
 
 type FetchLike = typeof fetch;
@@ -182,6 +183,30 @@ export const REDMINE_SUMMARY =
   "filters には対応しておらず、指定すると invalid_request になる。" +
   "ノートの検索可否を含め、検索対象は Redmine の設定やプラグインに依存する。";
 
+/**
+ * 検索プロファイル(connector-sdk v0.6、ADR-025)。Redmine 本体のソース(lib/redmine/search.rb、
+ * acts_as_searchable)と本コネクタの実装による値で、実機では確かめていないため根拠はすべて
+ * documented(T-029 の結果で tested に変える)。導入先の版や全文検索プラグイン
+ * (redmine_full_text_search)で変わる項目は deployment.yaml の connectors[].searchProfile で
+ * 上書きする。利用者によらない定数
+ * - termJoin は unknown: コネクタは all_words=0 を送る(検索の挙動は変えていない)。Redmine 本体の
+ *   ソースでは値があれば AND と読めるが、意図は OR とも読め、実機で確かめていない
+ * - phraseQuote: "…" で囲んだ語句は 1 語として部分一致で照合される
+ * - operators / qualifiers は空: OR・-・修飾子はなく、書いた記号も語として照合される
+ * - snippet: 本コネクタが検索結果の説明から一致箇所の周辺を切り出す(なければ先頭)
+ */
+export const REDMINE_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "unknown", basis: "documented" },
+  matchUnit: { value: "substring", basis: "documented" },
+  naturalLanguage: { value: "unsupported", basis: "documented" },
+  phraseQuote: { value: "supported", basis: "documented" },
+  operators: { value: [], basis: "documented" },
+  qualifiers: { value: [], basis: "documented" },
+  maxTerms: { value: { limit: REDMINE_MAX_TOKENS, overflow: "dropped" }, basis: "documented" },
+  ranking: { value: "recency", basis: "documented" },
+  snippet: { value: "match_context", basis: "documented" },
+};
+
 export class RedmineConnector implements Connector {
   readonly sourceId: string;
   readonly capabilities = CAPABILITIES;
@@ -221,6 +246,7 @@ export class RedmineConnector implements Connector {
         return [this.projectEntry(id, name)];
       }),
       supportedFilters: [],
+      searchProfile: REDMINE_SEARCH_PROFILE,
     };
   }
 
@@ -300,11 +326,14 @@ export class RedmineConnector implements Connector {
       }
     }
     const totalCount = finiteInt(root?.total_count);
+    // 通知は query だけから作る(結果の件数によらない。ADR-012)
+    const notices = searchNoticesFor(q);
     return {
       hits,
       ...(totalCount !== undefined && offset + results.length < totalCount
         ? { nextCursor: encodedCursor(offset + results.length) }
         : {}),
+      ...(notices.length > 0 ? { notices } : {}),
     };
   }
 

@@ -30,7 +30,10 @@ import { randomUUID } from "node:crypto";
 import {
   ConnectorError,
   MAX_SNIPPET_CHARS,
+  mergeSearchProfile,
   normalizeDocumentScope,
+  sanitizeSearchNotices,
+  sanitizeSearchProfile,
   type AuthContext,
   type Connector,
   type ConnectorCapabilities,
@@ -421,7 +424,10 @@ export class Gateway {
       entry.config.limits.timeoutMs,
       call.sourceId,
     );
-    return enforcePrivateScopes(projectResult(raw), entry.config.privateScopes);
+    return enforcePrivateScopes(
+      projectResult(raw, entry.config),
+      entry.config.privateScopes,
+    );
   }
 
   private async invokeConnector(
@@ -466,6 +472,10 @@ export class Gateway {
 // - 任意フィールドは型が合う場合だけ残す。meta は string → string の組だけ残す
 // - snippet は MAX_SNIPPET_CHARS で強制 truncate(ADR-016)
 // - scope は "shared" 以外(欠落・未知の値)を "private" に正規化する(ADR-016 追補2 決定4)
+// - describe の searchProfile と search の notices(v0.6、ADR-025)は SDK の値域で検証し、
+//   値域の外の項目・通知を落とす(sanitizeSearchProfile / sanitizeSearchNotices)。
+//   searchProfile には deployment.yaml の connectors[].searchProfile(起動時に検証済み)を
+//   項目単位で重ねる(決定3)。notices は監査(ToolInvocation)に記録しない(確認事項5)
 // 射影後の値は文字列・数値・配列・プレーンオブジェクトだけで構成される。
 
 const ANCHOR_KINDS: Readonly<Record<HitAnchor["kind"], true>> = {
@@ -593,9 +603,11 @@ function projectHit(value: unknown): SearchHit {
 function projectSearchResult(value: unknown): SearchResult {
   const result = requireRecord(value);
   const nextCursor = optionalString(result["nextCursor"]);
+  const notices = sanitizeSearchNotices(result["notices"]);
   return {
     hits: requireArray(result["hits"]).map(projectHit),
     ...(nextCursor !== undefined ? { nextCursor } : {}),
+    ...(notices !== undefined ? { notices } : {}),
   };
 }
 
@@ -641,8 +653,17 @@ function projectListResult(value: unknown): ListResult {
   };
 }
 
-function projectDescription(value: unknown): SourceDescription {
+function projectDescription(
+  value: unknown,
+  config: Pick<ConnectorConfig, "searchProfile">,
+): SourceDescription {
   const description = requireRecord(value);
+  // コネクタの値を検証してから導入先の上書きを重ねる。上書きは設定の読み込み時に同じ値域で
+  // 検証済み(違反は起動時に拒否)で、ここでは型を SDK の形にそろえるために同じ関数を通す
+  const searchProfile = mergeSearchProfile(
+    sanitizeSearchProfile(description["searchProfile"]),
+    sanitizeSearchProfile(config.searchProfile),
+  );
   return {
     sourceId: requireString(description["sourceId"]),
     displayName: requireString(description["displayName"]),
@@ -652,11 +673,15 @@ function projectDescription(value: unknown): SourceDescription {
       (filter): filter is keyof SearchFilters =>
         isKnownKey(SEARCH_FILTER_KEYS, filter),
     ),
+    ...(searchProfile !== undefined ? { searchProfile } : {}),
   };
 }
 
 /** コネクタの返答を既知フィールドだけに射影する(上記の規則)。 */
-function projectResult(result: GatewayToolResult): GatewayToolResult {
+function projectResult(
+  result: GatewayToolResult,
+  config: Pick<ConnectorConfig, "searchProfile">,
+): GatewayToolResult {
   switch (result.tool) {
     case "search":
       return { tool: "search", result: projectSearchResult(result.result) };
@@ -665,7 +690,7 @@ function projectResult(result: GatewayToolResult): GatewayToolResult {
     case "list":
       return { tool: "list", result: projectListResult(result.result) };
     case "describe":
-      return { tool: "describe", result: projectDescription(result.result) };
+      return { tool: "describe", result: projectDescription(result.result, config) };
   }
 }
 

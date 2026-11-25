@@ -36,6 +36,7 @@ import {
   type SearchFilters,
   type SearchHit,
   type SearchOptions,
+  type SearchProfile,
   type SearchResult,
   type SourceDescription,
 } from "@leisen/connector-sdk";
@@ -759,6 +760,7 @@ export class GitHubConnector implements Connector {
       summary: this.summary(),
       topContainers,
       supportedFilters: [...SUPPORTED_FILTERS],
+      searchProfile: GITHUB_SEARCH_PROFILE,
     };
   }
 
@@ -1084,3 +1086,33 @@ function webBaseUrlOf(apiBaseUrl: string): string {
   }
   return url.origin;
 }
+
+/**
+ * 検索プロファイル(connector-sdk v0.6、ADR-025)。GitHub の REST 検索のドキュメントと本コネクタの
+ * 実装による値で、実機では確かめていないため根拠はすべて documented(T-029 の結果で tested に
+ * 変える)。日本語の語の分割(照合の単位)は一次情報がなく、項目を書かない(不明)。演算子と
+ * 文字数の上限を超えたときの挙動はドキュメントで確かめていないため overflow は unknown。
+ * is: はコネクタが is:issue / is:pull-request を付けるため修飾子に含めない。スニペットは
+ * issue・PR では本文の一致箇所の周辺、コードでは GitHub が返す一致箇所の断片で、どちらも
+ * match_context。利用者によらない定数
+ */
+export const GITHUB_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "and", basis: "documented" },
+  naturalLanguage: { value: "unsupported", basis: "documented" },
+  phraseQuote: { value: "supported", basis: "documented" },
+  operators: { value: ["or", "not"], basis: "documented" },
+  qualifiers: {
+    value: [
+      { name: "label", target: "tag" },
+      { name: "state", target: "state" },
+      { name: "author", target: "author" },
+      { name: "created", target: "date" },
+      { name: "updated", target: "date" },
+    ],
+    basis: "documented",
+  },
+  maxQueryChars: { value: { limit: 256, overflow: "unknown" }, basis: "documented" },
+  maxOperators: { value: { limit: 5, overflow: "unknown" }, basis: "documented" },
+  ranking: { value: "relevance", basis: "documented" },
+  snippet: { value: "match_context", basis: "documented" },
+};

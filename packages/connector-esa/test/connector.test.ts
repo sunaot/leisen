@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ConnectorError, type AuthContext } from "@leisen/connector-sdk";
-import { EsaConnector, createEsaConnector } from "../src/connector.js";
+import { ConnectorError, sanitizeSearchProfile, type AuthContext } from "@leisen/connector-sdk";
+import { ESA_SEARCH_PROFILE, EsaConnector, createEsaConnector } from "../src/connector.js";
 import { createConnector } from "../src/index.js";
 import type { EsaMcpCaller, EsaReadTool } from "../src/mcp.js";
 import { splitFullName, toPlainSnippet } from "../src/parse.js";
@@ -246,6 +246,35 @@ describe("list / describe", () => {
     expect(description.topContainers.map((e) => e.id)).toEqual(["設計", "Users"]);
     expect(description.supportedFilters).toEqual(["updatedAfter", "updatedBefore", "container", "author"]);
     expect(JSON.stringify(description)).not.toContain("120");
+  });
+});
+
+describe("検索プロファイル(connector-sdk v0.6、ADR-025)", () => {
+  const top = { categories: [{ full_name: "設計", has_child: true }] };
+
+  it("利用者によらず同じで、SDK の値域を満たし、MCP 経由で確かめていない項目は documented", async () => {
+    const { c } = connector({ esa_get_top_categories: () => top });
+    const bob: AuthContext = { ...auth(), userId: "bob" };
+    const alice = await c.describe(auth());
+    expect(alice.searchProfile).toEqual((await c.describe(bob)).searchProfile);
+    expect(alice.searchProfile).toBe(ESA_SEARCH_PROFILE);
+    expect(sanitizeSearchProfile(ESA_SEARCH_PROFILE)).toEqual(ESA_SEARCH_PROFILE);
+    for (const item of Object.values(ESA_SEARCH_PROFILE)) {
+      expect(item.basis).toBe("documented");
+    }
+    expect(ESA_SEARCH_PROFILE.termJoin?.value).toBe("and");
+    expect(ESA_SEARCH_PROFILE.qualifiers?.value.map((q) => q.name)).toEqual(
+      expect.arrayContaining(["title", "in", "user", "updated"]),
+    );
+    // 公式の記述がない項目は書かない(不明)
+    expect(ESA_SEARCH_PROFILE.matchUnit).toBeUndefined();
+    expect(ESA_SEARCH_PROFILE.maxTerms).toBeUndefined();
+  });
+
+  it("導入の設定(summary・includeWip)で変わらない", async () => {
+    const a = connector({ esa_get_top_categories: () => top });
+    const b = connector({ esa_get_top_categories: () => top }, { summary: "別の説明", includeWip: false });
+    expect((await a.c.describe(auth())).searchProfile).toEqual((await b.c.describe(auth())).searchProfile);
   });
 });
 
