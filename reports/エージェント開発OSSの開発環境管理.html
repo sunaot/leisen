@@ -309,13 +309,13 @@ footer.about p { font-size: .85rem; color: var(--muted); margin: 0 0 .5rem; }
 <h2 id="s1"><span class="num">1</span>現在のプラクティスは 6 つの類型に分かれ、主流は AGENTS.md とスキルをリポジトリに置く型である</h2>
 
 <p>調査対象は、コーディングエージェントを開発しているベンダー自身のリポジトリ 17 と、エージェントを多用して開発されているプロダクトのリポジトリ約 35 である。いずれも 2026-11-15 時点のデフォルトブランチを clone して確認した。A〜F は、何を公開リポジトリに置くかによって本レポートで定義した分類である(図2)。</p>
-<p>類型は互いに排他的ではない。最も多いのは、<strong>B に C を組み合わせ</strong>、個人の作業中の資料だけを E の方法で分ける構成である。leisen の現状は D にあたり、本レポートが提案する構成は B と C の組み合わせである。</p>
+<p>B、C、D は、前の類型にリポジトリに置くものを 1 段ずつ足した関係にある。E と F は、置くものではなく置き場所の分け方の類型で、B や C と併用される。採用例が最も多いのは B である。leisen の現状は D にあたり、<strong>本レポートが提案する構成は C</strong>(AGENTS.md・スキルに加えて ADR と設計書を置き、計画とタスクは置かない)である。</p>
 
 <figure class="wide" id="fig2">
 <div class="canvas">
 <svg class="minw" viewBox="0 0 880 420" role="img" aria-labelledby="fig2-t fig2-d">
 <title id="fig2-t">6 つの類型が公開リポジトリに置くもの</title>
-<desc id="fig2-d">A はルートの AGENTS.md のみ。B は AGENTS.md とスキル・フック。C はさらに ADR・設計書。D はさらに変更ごとの計画・タスク。E は計画・タスクを非公開に置く。F はすべてを内部リポジトリに置く。leisen の現状は D、提案する構成は B と C の組み合わせ。</desc>
+<desc id="fig2-d">A はルートの AGENTS.md のみ。B は AGENTS.md とスキル・フック。C はさらに ADR・設計書。D はさらに変更ごとの計画・タスク。E は計画・タスクを非公開に置く。F はすべてを内部リポジトリに置く。leisen の現状は D、提案する構成は C。</desc>
 <!-- 列ヘッダ -->
 <g font-size="13">
 <text x="256" y="26" font-size="20" class="t-b" text-anchor="middle">A</text>
@@ -381,13 +381,11 @@ footer.about p { font-size: .85rem; color: var(--muted); margin: 0 0 .5rem; }
 <rect x="786" y="211" width="70" height="30" rx="4" class="f-dash"/>
 <rect x="786" y="267" width="70" height="30" rx="4" class="f-dash"/>
 </g>
-<!-- leisen の現状(D)と提案(B + C) -->
+<!-- leisen の現状(D)と提案(C) -->
 <rect x="545" y="4" width="100" height="312" rx="8" class="s-accent"/>
-<line x1="324" y1="326" x2="527" y2="326" class="s-main"/>
-<line x1="324" y1="320" x2="324" y2="332" class="s-main"/>
-<line x1="527" y1="320" x2="527" y2="332" class="s-main"/>
-<text x="425" y="352" text-anchor="middle" font-size="14" class="t-main t-b">提案する構成(B + C)</text>
-<text x="595" y="352" text-anchor="middle" font-size="14" class="t-b">leisen の現状</text>
+<rect x="432" y="4" width="100" height="312" rx="8" class="s-main"/>
+<text x="482" y="342" text-anchor="middle" font-size="14" class="t-main t-b">提案する構成</text>
+<text x="595" y="342" text-anchor="middle" font-size="14" class="t-b">leisen の現状</text>
 <!-- 凡例 -->
 <g font-size="13">
 <rect x="0" y="384" width="26" height="16" rx="3" class="f-pub"/>
@@ -399,7 +397,7 @@ footer.about p { font-size: .85rem; color: var(--muted); margin: 0 0 .5rem; }
 </g>
 </svg>
 </div>
-<figcaption><b>図2</b>6 つの類型が公開リポジトリに置くもの。赤い枠は leisen の現状、紫の括弧は提案する構成を示す。F では公開リポジトリは内部リポジトリから生成される。</figcaption>
+<figcaption><b>図2</b>6 つの類型が公開リポジトリに置くもの。赤い枠は leisen の現状、紫の枠は提案する構成を示す。F では公開リポジトリは内部リポジトリから生成される。</figcaption>
 </figure>
 
 <div class="table-wrap wide">
@@ -408,8 +406,8 @@ footer.about p { font-size: .85rem; color: var(--muted); margin: 0 0 .5rem; }
 <thead><tr><th class="col-type">類型</th><th>リポジトリに置くもの</th><th>主な採用例</th><th>利点</th><th>コスト</th><th>leisen にとっての評価</th></tr></thead>
 <tbody>
 <tr><th>A. 最小構成</th><td>数行〜数十行の AGENTS.md のみ、または何も置かない</td><td>simonw/llm(24 行)、datasette(5 行)、antirez の各リポジトリ(なし)、workers-oauth-provider(AGENTS.md のみ)</td><td>陳腐化する文書がない。公開される記録はコミット履歴とテスト</td><td>手順に関する知識が属人化する。ルールをテストや lint で表現できる成熟が要る</td><td>不変条件が 9 つある leisen には不足する</td></tr>
-<tr><th>B. AGENTS.md とスキルを置く型<span class="small">主流</span></th><td>短いルートの AGENTS.md、ディレクトリ別の AGENTS.md、スキル、少数のフック。タスクは Issues / Projects</td><td>opencode、gemini-cli、goose、next.js、sentry、PostHog、zed、OpenHands、modelcontextprotocol/servers、openai-agents-python / js</td><td>外部のコントリビューターのエージェントも同じルールで動作する。毎セッション読み込む分量が小さい</td><td>スキルの保守。複数のツールに対応するシンボリックリンクの管理</td><td>公開 OSS の事実上の標準。基本にすべき型</td></tr>
-<tr><th>C. ADR / RFC と設計書も置く型</th><td>B に加えて、ADR / RFC と現行の設計書</td><td>cloudflare/agents(design/ 58 ファイル)、vercel/ai(2026-03 に ADR を採用)、beads(engdocs/adr)、opencode(specs/v2)、MCP 仕様(seps/ 48 本)</td><td>決定の理由を再調査せずに済む。却下済みの案の再議論を防げる</td><td>索引と Status を維持しないと参照されなくなる</td><td>認可と監査が価値の中心である leisen には必須。書き方は改める</td></tr>
+<tr><th>B. AGENTS.md とスキルを置く型<span class="small">主流</span></th><td>短いルートの AGENTS.md、ディレクトリ別の AGENTS.md、スキル、少数のフック。タスクは Issues / Projects</td><td>opencode、gemini-cli、goose、next.js、sentry、PostHog、zed、OpenHands、modelcontextprotocol/servers、openai-agents-python / js</td><td>外部のコントリビューターのエージェントも同じルールで動作する。毎セッション読み込む分量が小さい</td><td>スキルの保守。複数のツールに対応するシンボリックリンクの管理</td><td>公開 OSS の事実上の標準。提案する C の土台になる</td></tr>
+<tr><th>C. ADR / RFC と設計書も置く型</th><td>B に加えて、ADR / RFC と現行の設計書</td><td>cloudflare/agents(design/ 58 ファイル)、vercel/ai(2026-03 に ADR を採用)、beads(engdocs/adr)、opencode(specs/v2)、MCP 仕様(seps/ 48 本)</td><td>決定の理由を再調査せずに済む。却下済みの案の再議論を防げる</td><td>索引と Status を維持しないと参照されなくなる</td><td>認可と監査が価値の中心である leisen には必須。提案する構成。書き方は改める</td></tr>
 <tr><th>D. 変更単位の計画・仕様も置く型</th><td>変更ごとの提案・計画・タスク、またはファイル形式のバックログ</td><td>sentry-mcp(OpenSpec)、spec-kit、OpenSpec、Backlog.md、OpenAI の社内プロダクト</td><td>エージェントがネットワークなしで参照できる。計画をレビューできる</td><td>保守対象が増えて陳腐化する。複数のエージェントの並行書き込みで競合する</td><td>完了後の扱いを決めた場合だけ成立する。常時置く運用は少数派</td></tr>
 <tr><th>E. 非公開の保管先に分ける型</th><td>AGENTS.md とスキルは公開し、調査・計画・タスクのメモは別リポジトリかローカルに置く</td><td>humanlayer(<code>/thoughts/</code> を gitignore して別リポジトリで管理)、Ronacher(個人用のハーネスを別リポジトリで管理)、sentry(スキルを外部リポジトリから取得)</td><td>率直な内容のメモを公開せずにバージョン管理できる</td><td>各マシンでシンボリックリンクとフックの設定が要る</td><td>公開に適さない少量の資料に限って使う</td></tr>
 <tr><th>F. 内部リポジトリで開発し、公開ミラーを持つ型</th><td>公開リポジトリは内部リポジトリから生成される</td><td>openai/codex、anthropics/claude-code(製品のソースコードなし)、E2B(仕様を Copybara で同期)</td><td>内部資料が公開されないことを最も確実に保証できる</td><td>外部の PR を取り込む際に差分や基準のコミットがずれる問題が報告されている。同期の仕組みの保守</td><td>数人のチームではコストに見合わない</td></tr>
@@ -466,7 +464,7 @@ footer.about p { font-size: .85rem; color: var(--muted); margin: 0 0 .5rem; }
 <h3>ハーネスは、モデルの更新に合わせて削る対象でもある</h3>
 <p>記事「Rethinking skills and prompts for GPT-6 Astra」は、長すぎるスキルの説明文が切り詰められること、文書の読み込みを必須とする指示が誤字の修正には過剰であること、以前のモデル向けのテストの指示が不要なテストを招くことを挙げている。記事「Maintaining software with the GPT-6 family」は、AGENTS.md の指示を 1 つ選び、同じリポジトリの状態と同じモデルで同じタスクを再実行して変更前後を比較する方法を提案している。これは実験の報告ではなく、提案である<span class="src">(<a href="https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra">Rethinking skills</a>、<a href="https://developers.openai.com/blog/maintaining-software-with-the-gpt-6-family">Maintaining software</a>)</span>。</p>
 
-<p>これらを合わせると、OpenAI の事例が支持しているのは<strong>長期間有効な設計知識をコードと同じリポジトリに置くこと</strong>である。タスクの状態と進捗は Issue Tracker に、実行中の計画は(公開 OSS では)ローカルに、実行ログと資格情報は別の基盤に置いている。図2 の類型にあてはめると、社内プロダクトは C と D の組み合わせ、Agents SDK は B である。</p>
+<p>これらを合わせると、OpenAI の事例が支持しているのは<strong>長期間有効な設計知識をコードと同じリポジトリに置くこと</strong>である。タスクの状態と進捗は Issue Tracker に、実行中の計画は(公開 OSS では)ローカルに、実行ログと資格情報は別の基盤に置いている。図2 の類型にあてはめると、社内プロダクトは D、Agents SDK は B である。</p>
 
 <!-- ============================================================ 3 -->
 <h2 id="s3"><span class="num">3</span>AGENTS.md は短くし、手順はスキルに、決定は書き換えない ADR にする</h2>
