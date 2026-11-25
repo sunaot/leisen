@@ -30,7 +30,7 @@ gateway:
     keys: { kind: local }                     # local / aws_kms / gcp_kms
 ```
 
-- **状態 DB**(`credentials.store`): SQLite の 1 ファイル。Token Vault の暗号文と、ESC・認可サーバーの拒否リスト・使用済みの印(資格情報を含まない)を置く。ボリュームに置いてバックアップの対象にする。ファイルは 0600 で作られる。Node 22.13 以上が要る(`node:sqlite`。起動時に実験的機能の警告が 1 行出る)
+- **状態 DB**(`credentials.store`): SQLite の 1 ファイル。Token Vault の暗号文と、ESC・認可サーバーの拒否リスト・使用済みの印(資格情報を含まない)を置く。ボリュームに置いてバックアップの対象にする。ファイルは 0600 で作られる。Node 26 以上が要る(`node:sqlite`。ADR-025)
 - **鍵**(`credentials.keys`): Token Vault のデータ鍵(資格情報 1 件ごとに生成)を包む鍵
   - `local`: 環境変数 `LEISEN_VAULT_KEY`(32 バイト。`openssl rand -base64 32`)。入れ替え中の旧鍵は `LEISEN_VAULT_KEY_PREVIOUS`(カンマ区切り)
   - `aws_kms`: `keyId`(ARN またはエイリアス)と `region`。KMS を呼ぶ IAM は環境変数(`AWS_ACCESS_KEY_ID` 等)かコンテナの資格情報(ECS / EKS Pod Identity)から得る。キーポリシーで Gateway のロールに `kms:Encrypt` / `kms:Decrypt` だけを許す

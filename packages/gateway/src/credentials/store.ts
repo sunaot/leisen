@@ -15,8 +15,8 @@ import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { createRequire } from "node:module";
 import type { CredentialStore, DenialKind, SealedCredential } from "./types.js";
 
-// node:sqlite は Node 22.13 以降で利用できる(engines)。ESM の静的 import だと読み込み時に
-// 実験的機能の警告が出るため、使う時点で読み込む
+// node:sqlite は engines の下限(Node 26。ADR-025)で使える。Node 26 では実験的機能の警告は
+// 出ない。sqlite を使わない構成で読み込まないよう、使う時点で読み込む
 const require = createRequire(import.meta.url);
 
 function loadSqlite(): typeof import("node:sqlite") {

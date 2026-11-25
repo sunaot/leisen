@@ -21,6 +21,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps(npm)"
+    # ADR-025 決定4: @types/node のメジャー版は Node の下限(engines)に揃える。
+    # メジャー版は下限を上げるときに ADR-025 の追補とあわせて上げる
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-and-patch:
         update-types:
