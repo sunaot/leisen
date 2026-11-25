@@ -516,10 +516,39 @@ node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.
 | `--max-iterations <N>` / `--run-timeout-sec <N>` | 探索の上限(Orchestrator の `maxIterations` / `runTimeoutMs`) |
 | `--ui-model <モデル>` | 条件 4 の UI 側 LLM のモデル(省略時は探索 LLM と同じ。プロバイダ・接続先は探索 LLM と同じ) |
 | LLM の指定 | `--llm` / `--model` / `--llm-base-url` / `--llm-api-key-env` / `--reasoning-effort` / `--effort`(leisen-ask と同じ。環境変数 `LEISEN_LLM_*` も同じ) |
+| `--limit <N>` | 質問を先頭の N 問に絞る(`--only` の後にかける) |
+| `--explore-prompt <版>` / `--search-feedback on\|off` | 探索プロンプトの版(`explore.v3` / `explore.v4`)と検索の状況の制御メッセージ(leisen-ask と同じ。既定は v3、制御メッセージは v4 のときだけ有効。NODE_ENV=production では使えない) |
+| `--llm claude-cli --model <モデル>` | 条件 3・4 の LLM に `claude -p` を使う(下の節。`--model` は必須で既定値はない) |
+| `--claude-cli-command <コマンド>` / `--claude-cli-timeout-sec <N>` / `--claude-cli-max-total-usd <X>` | `claude` のコマンド(既定 `claude`)、1 回の呼び出しのタイムアウト(既定 300 秒)、費用の合計の上限(USD。超えたら以後の呼び出しを失敗させる) |
+
+### `claude -p` での条件 3・4 の実行(開発・評価専用)
+
+`--llm claude-cli` を指定すると、条件 3・4 の探索 LLM と UI 側 LLM に Claude Code の CLI の非対話モード(`claude -p`)を使う(`src/search-eval/claude-cli-llm.ts`)。Claude の API キーがなくても、Claude Code にログインしている環境で Claude のモデルで条件 3・4 を流すための道具である。
+
+- **ネイティブのツール呼び出しではない**: 1 ターンごとに `claude -p` を 1 回起動し、system prompt(Orchestrator のもの + 応答の形式の説明)を `--system-prompt-file` で、ツール定義と会話履歴をテキストにして標準入力で渡す。応答は `--json-schema` の構造化出力で「ツール呼び出しの配列(名前と引数。1 ターンに複数可)」か「最終のテキスト」を受け取り、Orchestrator の LLM クライアントの IF(`LlmTurn`)に戻す。strict のツール定義・思考・キャッシュのブレークポイント・`max_tokens` は効かず、CLI 自身の内部の指示と構造化出力の仕組みが間に入るため、**Anthropic API のバックエンド(`--llm anthropic`)とは挙動が違いうる**。結果の表の注記にもその旨を出す
+- Claude Code 自身のツールと MCP は使わせない(`--tools ""`、`--strict-mcp-config` と空の `--mcp-config`)。設定ファイル(`--setting-sources ""`)・スラッシュコマンド・セッションの保存も無効にする。作業ディレクトリは OS の一時ディレクトリの下に作る空のディレクトリ(リポジトリの中なら拒否)で、CLAUDE.md を読み込ませない。親の Claude Code のセッションの追加ディレクトリの CLAUDE.md の指定(環境変数)は子プロセスに渡さない。ただし CLI がログイン中の利用者の情報など少量の文脈を自分で足すことはある
+- **本番の経路に入れない**: deployment.yaml・Orchestrator の設定の LLM バックエンドの選択肢(ADR-017)には足していない。`dev-search-eval` の中だけで選べ、`NODE_ENV=production` では拒否する
+- 呼び出しごとに CLI の `total_cost_usd` と子プロセスの実時間を記録し、実行の最後に合計を表の注記と stderr に出す。トレースには試行ごとの `llm_usage`(呼び出し回数・費用・LLM の時間・試行の実時間)を書く。表には試行あたりの LLM ターン数の列もある
+- **模擬の外れ**: `claude -p` は内部で自分のエージェントのループを回すため、モデルが `<tools>` のツール(`submit_answer` など)を関数として直接呼ぼうとし、CLI が「No such tool available」を返すことがある。最初の版の応答の形式の説明ではこれが多く、正解の文書を fetch した後に回答を JSON の `text` に書いて終える(Orchestrator は提出として扱わず unresolved になる)試行が多かった。応答の形式の説明に「直接呼ばない・提出も tool_calls で行う」を足して減らしたが、なくなってはいない。CLI の内部で 3 ターン以上かかった呼び出しの数を合計の行に出す(目安)
+- 失敗の扱い: タイムアウトは `llm_timeout`、起動できない・非ゼロ終了は `llm_unavailable`(API の 429 などが出力にあればその分類)、出力が JSON として読めない・構造化出力がない・形が違うときは `llm_unexpected_response`。いずれも試行の失敗として表の「エラー」に数える
+
+```sh
+npm run build
+# 例: esa 型、全質問、条件 3・4、探索プロンプト v4(制御メッセージ有効)、haiku
+node packages/orchestrator/dist/bin/dev-search-eval.js \
+  --modes esa --conditions orchestrator-utterance,orchestrator-ui \
+  --llm claude-cli --model haiku --ui-model haiku \
+  --explore-prompt explore.v4 --search-feedback on \
+  --run-timeout-sec 600 --claude-cli-max-total-usd 5 \
+  --trace /tmp/search-trace.jsonl --label "esa / haiku / v4" > /tmp/search-eval.md
+```
+
+- **費用と時間の目安**(2026-11-25 の実測、haiku、esa 型、全 23 問 × 条件 3・4): 1 試行あたり平均 4 回強の呼び出しで約 $0.0065〜0.0093、平均 19〜23 秒(最大 44 秒)。23 問 × 条件 3・4 で 1 回の実行が約 $0.30〜0.40、約 16〜17 分。試行は順に実行する(別のプロセスで v3 と v4 を同時に流すことはできた)。`--run-timeout-sec` は既定の 120 秒では足りないことがあるので 600 程度にする。モデルを sonnet などに変えると費用は数倍になる(未計測)。結果は `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md`
+- 注意: `claude` にログインしていること(`claude -p "hi"` が動くこと)。費用はログイン中のアカウントに付く。トレース・表はリポジトリの外に置く(合成コーパスだけが対象だが、量が多い)
 
 ### 実 LLM での条件 3・4 の実行手順
 
-この環境(評価の仕組みを実装したセッション)には LLM がないため、条件 3・4 は脚本の LLM でのテスト(`test/search-eval.test.ts`)までしか確かめていない。実 LLM では次のように流す。
+評価の仕組みを実装したセッションには LLM がなかったため、条件 3・4 は脚本の LLM でのテスト(`test/search-eval.test.ts`)と `claude -p` での実行(上の節。`docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md`)までしか確かめていない。Anthropic API・OpenAI 互換のバックエンドでは次のように流す。
 
 1. `npm run build`
 2. LLM を用意する。LM Studio(OpenAI 互換)なら、探索 LLM と UI 側 LLM のモデルを読み込んでおく(UI 側は LibreChat の既定と同じ小型モデルにすると現行の経路に近い。`deploy/compose/librechat/librechat.yaml`)。Claude API なら `ANTHROPIC_API_KEY` を設定する
