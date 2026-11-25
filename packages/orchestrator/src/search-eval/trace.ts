@@ -95,6 +95,8 @@ export type TraceEvent =
       readonly llmDurationMs: number;
       /** 試行全体の実時間(ms) */
       readonly elapsedMs: number;
+      /** 失敗した LLM の呼び出しの分類 → 回数(失敗がなければ省略) */
+      readonly failures?: Readonly<Record<string, number>>;
     })
   | (TraceCaseContext & {
       readonly type: "case_error";

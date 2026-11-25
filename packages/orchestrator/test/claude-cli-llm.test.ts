@@ -195,7 +195,24 @@ describe("claude -p の LLM クライアント: 出力の戻し方", () => {
     expect(new Set(uses.map((u) => u.id)).size).toBe(2);
     expect(turn.message.model).toBe("claude-haiku-5");
     expect(turn.attempts?.[0]).toMatchObject({ inputTokens: 10, outputTokens: 20, cacheReadInputTokens: 5 });
-    expect(c.usageTotals()).toMatchObject({ calls: 1, failedCalls: 0, costUsd: 0.0125, durationMs: 2_500 });
+    expect(c.usageTotals()).toMatchObject({
+      calls: 1,
+      failedCalls: 0,
+      costUsd: 0.0125,
+      durationMs: 2_500,
+      extraTurnCalls: 0,
+    });
+  });
+
+  it("CLI の内部で 3 ターン以上かかった呼び出しを数える", async () => {
+    const { runner } = fakeRunner([
+      ok(cliJson({ kind: "final", text: "a" }, { num_turns: 2 })),
+      ok(cliJson({ kind: "final", text: "b" }, { num_turns: 4 })),
+    ]);
+    const c = client({ runner });
+    await c.complete(request([{ role: "user", content: "x" }]));
+    await c.complete(request([{ role: "user", content: "x" }]));
+    expect(c.usageTotals().extraTurnCalls).toBe(1);
   });
 
   it("final はテキストの end_turn。引数がオブジェクトでない呼び出しは input を null にして invalidToolUseIds に入れる", () => {
@@ -262,6 +279,10 @@ describe("claude -p の LLM クライアント: 失敗の扱い", () => {
       // 失敗の文言に標準エラーの内容を含めない
       expect((error as LlmError).message).not.toContain("boom");
       expect(c.usageTotals()).toMatchObject({ calls: 1, failedCalls: 1 });
+      expect(Object.keys(c.usageTotals().failures)[0]?.startsWith(testCase.errorClass)).toBe(true);
+      if (testCase.name === "構造化出力の失敗") {
+        expect(c.usageTotals().failures).toEqual({ "llm_unexpected_response(error_max_structured_output_retries)": 1 });
+      }
     });
   }
 

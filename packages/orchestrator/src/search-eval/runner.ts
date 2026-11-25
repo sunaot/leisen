@@ -175,6 +175,22 @@ export interface LlmUsageSnapshot {
   readonly calls: number;
   readonly costUsd: number;
   readonly durationMs: number;
+  /** 失敗した呼び出しの分類 → 回数(累計) */
+  readonly failures?: Readonly<Record<string, number>>;
+}
+
+function failureDiff(
+  before: Readonly<Record<string, number>> | undefined,
+  after: Readonly<Record<string, number>> | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, count] of Object.entries(after ?? {})) {
+    const diff = count - (before?.[key] ?? 0);
+    if (diff > 0) {
+      out[key] = diff;
+    }
+  }
+  return out;
 }
 
 function errorClassOf(error: unknown): string {
@@ -287,6 +303,7 @@ export async function runSearchEval(options: SearchEvalRunOptions): Promise<Case
         }
         if (usageBefore !== undefined && options.llmUsage !== undefined) {
           const after = options.llmUsage();
+          const failures = failureDiff(usageBefore.failures, after.failures);
           sink.write({
             ...context,
             type: "llm_usage",
@@ -294,6 +311,7 @@ export async function runSearchEval(options: SearchEvalRunOptions): Promise<Case
             costUsd: after.costUsd - usageBefore.costUsd,
             llmDurationMs: after.durationMs - usageBefore.durationMs,
             elapsedMs: now() - startedAt,
+            ...(Object.keys(failures).length > 0 ? { failures } : {}),
           });
         }
         results.push(caseMetrics(question, context, memory.events, ks));

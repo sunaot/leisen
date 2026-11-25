@@ -449,10 +449,17 @@ function closeAll(clients: readonly ClaudeCliLlmClient[]): void {
 
 function cliUsageSnapshot(clients: readonly ClaudeCliLlmClient[]) {
   const totals = clients.map((c) => c.usageTotals());
+  const failures: Record<string, number> = {};
+  for (const t of totals) {
+    for (const [k, v] of Object.entries(t.failures)) {
+      failures[k] = (failures[k] ?? 0) + v;
+    }
+  }
   return {
     calls: totals.reduce((a, t) => a + t.calls, 0),
     costUsd: totals.reduce((a, t) => a + t.costUsd, 0),
     durationMs: totals.reduce((a, t) => a + t.durationMs, 0),
+    failures,
   };
 }
 
@@ -475,7 +482,8 @@ function cliUsageSummary(clients: readonly ClaudeCliLlmClient[]): string {
   return (
     `claude -p の呼び出し ${String(calls)} 回(失敗 ${String(failed)}${failureText === "" ? "" : `: ${failureText}`})、` +
     `費用の合計 $${cost.toFixed(4)}(total_cost_usd の合計${unknown > 0 ? `。読めなかった呼び出し ${String(unknown)} 回は含まない` : ""})、` +
-    `所要時間の合計 ${seconds.toFixed(1)} 秒(子プロセスの実時間の合計)`
+    `所要時間の合計 ${seconds.toFixed(1)} 秒(子プロセスの実時間の合計)、` +
+    `CLI の内部で 3 ターン以上かかった呼び出し ${String(totals.reduce((a, t) => a + t.extraTurnCalls, 0))} 回`
   );
 }
 

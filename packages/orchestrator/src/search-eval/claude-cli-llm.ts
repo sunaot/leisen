@@ -132,12 +132,16 @@ export const spawnClaudeCli: ClaudeCliRunner = (invocation) =>
 export interface ClaudeCliCallRecord {
   readonly ok: boolean;
   readonly errorClass?: LlmErrorClass;
+  /** CLI の結果の subtype(失敗の切り分け用。英小文字と _ だけの値のときだけ残す) */
+  readonly cliSubtype?: string;
   /** CLI の total_cost_usd(読めなければ undefined) */
   readonly costUsd: number | undefined;
   /** 子プロセスの実時間(ms) */
   readonly durationMs: number;
   /** 応答の modelUsage に出たモデル */
   readonly model?: string;
+  /** CLI の num_turns(CLI の内部の API 呼び出しのターン数。通常は 2 以下) */
+  readonly numTurns?: number;
 }
 
 export interface ClaudeCliUsageTotals {
@@ -151,6 +155,11 @@ export interface ClaudeCliUsageTotals {
   readonly durationMs: number;
   /** 失敗の分類 → 回数 */
   readonly failures: Readonly<Record<string, number>>;
+  /**
+   * CLI の内部で 3 ターン以上かかった呼び出しの数(モデルが <tools> のツールを関数として直接
+   * 呼ぼうとして「No such tool available」が返ったなど、模擬の外れの目安)
+   */
+  readonly extraTurnCalls: number;
 }
 
 export interface ClaudeCliLlmClientOptions {
@@ -195,11 +204,14 @@ const STRIPPED_ENV = ["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD", "CLAUDE_AD
 export const CLAUDE_CLI_RESPONSE_PROTOCOL = [
   "# 応答の形式(この実行環境の決まり)",
   "",
-  "この実行環境では、ツールを直接呼び出す仕組みがない。ツールの定義は入力の <tools> に、ここまでの会話は <conversation> にある。",
-  "会話の続きとして、次の assistant の応答を 1 つだけ決め、指定の JSON の形で返す。",
+  "この実行環境では、ツールの呼び出しを JSON で書く。ツールの定義は入力の <tools> に、ここまでの会話は <conversation> にある。",
+  "<tools> のツールはすべて使える。JSON の tool_calls に書いた呼び出しは実際に実行され、結果は次の入力の <conversation> に tool_result として届く。",
+  "<tools> のツール(submit_answer を含む)を関数として直接呼び出さない。直接呼び出すと「No such tool available」になり、実行されない。呼び出しは必ず、返す JSON の tool_calls に書く。",
+  "会話の続きとして、次の assistant の応答を 1 つだけ決め、指定の JSON の形で返す。この JSON を返すことは会話の終わりを意味しない。",
   '- ツールを呼ぶとき: {"kind":"tool_calls","tool_calls":[{"name":"<ツール名>","arguments":{...}}, ...]}。同じ応答で複数のツールを呼んでよい(配列に並べる)。arguments はそのツールの input_schema に従うオブジェクト。必要なら "text" に短い説明を書いてよい',
-  '- ツールを呼ばずに終えるとき: {"kind":"final","text":"<本文>"}',
-  "- ツールの結果は、次の入力の <conversation> の中に tool_result として届く。結果を推測して書かない",
+  "- 最終回答の提出も、上の指示どおりツールの呼び出し(tool_calls)で行う。回答の本文を text に書いて終えない",
+  '- {"kind":"final","text":"<本文>"} は、ツールを呼ばずにテキストだけを返す場合に使う(回答の提出には使わない)',
+  "- ツールの結果を推測して書かない",
 ].join("\n");
 
 /** 構造化出力の JSON スキーマ(ツール名は列挙で縛り、引数はオブジェクトとだけ指定する)。 */
@@ -317,6 +329,7 @@ interface CliResultJson {
   readonly structuredOutput: unknown;
   readonly attempts: LlmAttemptUsage[] | undefined;
   readonly model: string | undefined;
+  readonly numTurns: number | undefined;
 }
 
 function num(value: unknown): number {
@@ -360,6 +373,7 @@ function parseCliResult(stdout: string): CliResultJson | undefined {
     structuredOutput: parsed["structured_output"],
     attempts,
     model: attempts?.[0]?.model,
+    numTurns: typeof parsed["num_turns"] === "number" ? parsed["num_turns"] : undefined,
   };
 }
 
@@ -526,7 +540,8 @@ export class ClaudeCliLlmClient implements LlmClient {
     const failures: Record<string, number> = {};
     for (const record of this.records) {
       if (!record.ok) {
-        const key = record.errorClass ?? "unknown";
+        const base = record.errorClass ?? "unknown";
+        const key = record.cliSubtype !== undefined ? `${base}(${record.cliSubtype})` : base;
         failures[key] = (failures[key] ?? 0) + 1;
       }
     }
@@ -537,6 +552,7 @@ export class ClaudeCliLlmClient implements LlmClient {
       costUnknownCalls: this.records.filter((r) => r.costUsd === undefined).length,
       durationMs: this.records.reduce((total, r) => total + r.durationMs, 0),
       failures,
+      extraTurnCalls: this.records.filter((r) => (r.numTurns ?? 0) > 2).length,
     };
   }
 
@@ -595,7 +611,14 @@ export class ClaudeCliLlmClient implements LlmClient {
     const durationMs = this.#now() - started;
     const parsed = parseCliResult(result.stdout);
     const fail = (errorClass: LlmErrorClass, message: string): never => {
-      this.records.push({ ok: false, errorClass, costUsd: parsed?.costUsd, durationMs });
+      const subtype = parsed?.subtype;
+      this.records.push({
+        ok: false,
+        errorClass,
+        costUsd: parsed?.costUsd,
+        durationMs,
+        ...(subtype !== undefined && /^[a-z_]{1,64}$/u.test(subtype) ? { cliSubtype: subtype } : {}),
+      });
       throw new LlmError(errorClass, message);
     };
     if (result.spawnError !== undefined) {
@@ -639,6 +662,7 @@ export class ClaudeCliLlmClient implements LlmClient {
       costUsd: parsed.costUsd,
       durationMs,
       ...(parsed.model !== undefined ? { model: parsed.model } : {}),
+      ...(parsed.numTurns !== undefined ? { numTurns: parsed.numTurns } : {}),
     });
     return turn;
   }

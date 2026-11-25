@@ -529,6 +529,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.
 - Claude Code 自身のツールと MCP は使わせない(`--tools ""`、`--strict-mcp-config` と空の `--mcp-config`)。設定ファイル(`--setting-sources ""`)・スラッシュコマンド・セッションの保存も無効にする。作業ディレクトリは OS の一時ディレクトリの下に作る空のディレクトリ(リポジトリの中なら拒否)で、CLAUDE.md を読み込ませない。親の Claude Code のセッションの追加ディレクトリの CLAUDE.md の指定(環境変数)は子プロセスに渡さない。ただし CLI がログイン中の利用者の情報など少量の文脈を自分で足すことはある
 - **本番の経路に入れない**: deployment.yaml・Orchestrator の設定の LLM バックエンドの選択肢(ADR-017)には足していない。`dev-search-eval` の中だけで選べ、`NODE_ENV=production` では拒否する
 - 呼び出しごとに CLI の `total_cost_usd` と子プロセスの実時間を記録し、実行の最後に合計を表の注記と stderr に出す。トレースには試行ごとの `llm_usage`(呼び出し回数・費用・LLM の時間・試行の実時間)を書く。表には試行あたりの LLM ターン数の列もある
+- **模擬の外れ**: `claude -p` は内部で自分のエージェントのループを回すため、モデルが `<tools>` のツール(`submit_answer` など)を関数として直接呼ぼうとし、CLI が「No such tool available」を返すことがある。最初の版の応答の形式の説明ではこれが多く、正解の文書を fetch した後に回答を JSON の `text` に書いて終える(Orchestrator は提出として扱わず unresolved になる)試行が多かった。応答の形式の説明に「直接呼ばない・提出も tool_calls で行う」を足して減らしたが、なくなってはいない。CLI の内部で 3 ターン以上かかった呼び出しの数を合計の行に出す(目安)
 - 失敗の扱い: タイムアウトは `llm_timeout`、起動できない・非ゼロ終了は `llm_unavailable`(API の 429 などが出力にあればその分類)、出力が JSON として読めない・構造化出力がない・形が違うときは `llm_unexpected_response`。いずれも試行の失敗として表の「エラー」に数える
 
 ```sh
@@ -542,7 +543,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js \
   --trace /tmp/search-trace.jsonl --label "esa / haiku / v4" > /tmp/search-eval.md
 ```
 
-- **費用と時間の目安**(2026-11-25 の実測、haiku、esa 型、条件 3): 1 試行あたり 3〜4 回の呼び出しで約 $0.006〜0.009、13〜31 秒(1 回の呼び出しは 4〜10 秒程度)。試行は順に実行する。`--run-timeout-sec` は既定の 120 秒では足りないことがあるので 600 程度にする。モデルを sonnet などに変えると費用は数倍になる
+- **費用と時間の目安**(2026-11-25 の実測、haiku、esa 型、全 23 問 × 条件 3・4): 1 試行あたり平均 4 回強の呼び出しで約 $0.0065〜0.0093、平均 19〜23 秒(最大 44 秒)。23 問 × 条件 3・4 で 1 回の実行が約 $0.30〜0.40、約 16〜17 分。試行は順に実行する(別のプロセスで v3 と v4 を同時に流すことはできた)。`--run-timeout-sec` は既定の 120 秒では足りないことがあるので 600 程度にする。モデルを sonnet などに変えると費用は数倍になる(未計測)。結果は `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md`
 - 注意: `claude` にログインしていること(`claude -p "hi"` が動くこと)。費用はログイン中のアカウントに付く。トレース・表はリポジトリの外に置く(合成コーパスだけが対象だが、量が多い)
 
 ### 実 LLM での条件 3・4 の実行手順
