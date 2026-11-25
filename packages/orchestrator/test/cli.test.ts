@@ -202,6 +202,42 @@ describe("leisen-ask: 実行", () => {
     expect(received).toEqual([{ provider: "anthropic", model: "claude-opus-5-5", effort: "low" }]);
   });
 
+  it("--explore-prompt explore.v4 で探索プロンプト v4 を使う(既定は v3。開発・評価用)", async () => {
+    const harness = await setup();
+    const systems: string[] = [];
+    const run = async (extra: string[]) => {
+      const llm = resolvingScript();
+      await runCli(
+        ["--gateway", harness.url, "--token", ALICE_TOKEN, ...extra, "締め日は?"],
+        capture().io,
+        deps(() => llm),
+      );
+      systems.push(llm.requests[0]?.system.map((block) => block.text).join("") ?? "");
+    };
+    await run([]);
+    await run(["--explore-prompt", "explore.v4", "--search-feedback", "off"]);
+    expect(systems[0]).toContain("名詞を 1〜2 語だけ");
+    expect(systems[1]).toContain("# 止める基準と続ける基準");
+  });
+
+  it("--explore-prompt / --search-feedback は不正な値と NODE_ENV=production で終了コード 2", async () => {
+    for (const [extra, env] of [
+      [["--explore-prompt", "explore.v9"], {}],
+      [["--search-feedback", "yes"], {}],
+      [["--explore-prompt", "explore.v4"], { NODE_ENV: "production" }],
+      [["--search-feedback", "on"], { NODE_ENV: "production" }],
+    ] as const) {
+      const { err, io } = capture();
+      const code = await runCli(
+        ["--gateway", "http://127.0.0.1:1/mcp", "--token", "dev-only-t", ...extra, "q"],
+        io,
+        deps(() => resolvingScript(), env),
+      );
+      expect(code).toBe(2);
+      expect(err[0]).toMatch(/--explore-prompt|--search-feedback/);
+    }
+  });
+
   it("Claude API の資格情報が無ければ「資格情報が必要」と表示して終了コード 2(実 SDK、外部に出ない)", async () => {
     await stubNoAnthropicCredentials();
     const harness = await setup();

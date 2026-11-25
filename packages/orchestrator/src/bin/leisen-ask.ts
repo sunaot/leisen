@@ -27,6 +27,9 @@
  * - --config は deployment.yaml(orchestrator セクションの maxIterations / costLimitPerQuery を
  *   探索の設定にする。--max-iterations が優先)。省略すると既定の設定で動く。citedDocIds の
  *   記録方針は Gateway がかける(ADR-019 決定5)ため、ここでは読まない
+ * - --explore-prompt explore.v3|explore.v4 と --search-feedback on|off は開発・評価用(T-024 の
+ *   v3 / v4 の比較。dev-eval の `--` 以降に渡す)。評価前の版を本番で選ばせないため、
+ *   NODE_ENV=production では引数の不備として拒否する(leisen-ask serve には出さない)
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
@@ -70,6 +73,12 @@ import type {
 } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
 import {
+  EXPLORE_PROMPT_VERSION,
+  EXPLORE_PROMPT_VERSIONS,
+  isExplorePromptVersion,
+  type ExplorePromptVersion,
+} from "../prompt.js";
+import {
   ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING,
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   resolveOrchestratorCredential,
@@ -93,12 +102,15 @@ import {
 export const USAGE = [
   "usage: leisen-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
   "              [--model <モデルID>] [--max-iterations <N>] [--effort low|medium|high|xhigh|max]",
+  "              [--explore-prompt <版>] [--search-feedback on|off]",
   "              [--user-id <userId>] [--config <deployment.yaml>]",
   "              [--json] <質問文>",
   "  セッショントークンは環境変数 LEISEN_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(Gateway が認証した利用者と食い違えば run は error になります)。",
   "  --config の orchestrator セクション(maxIterations / costLimitPerQuery / runTimeoutSec)を探索の設定にします(--max-iterations が優先)。",
+  `  --explore-prompt ${EXPLORE_PROMPT_VERSIONS.join("|")} は探索プロンプトの版(開発・評価用。既定 ${EXPLORE_PROMPT_VERSION}。NODE_ENV=production では使えません)。`,
+  "  --search-feedback on|off は検索の状況を返す制御メッセージ(開発・評価用。既定は explore.v4 のときだけ on)。",
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
   ...LLM_USAGE_LINES,
@@ -192,6 +204,10 @@ interface CliArgs {
   readonly json: boolean;
   /** --max-iterations(--config の値より優先) */
   readonly maxIterations: number | undefined;
+  /** --explore-prompt(開発・評価用。T-024 の v3 / v4 の比較) */
+  readonly explorePrompt: ExplorePromptVersion | undefined;
+  /** --search-feedback on|off(開発・評価用) */
+  readonly searchFeedback: boolean | undefined;
   /** Gateway と共有する Orchestrator の資格情報(秘密。表示しない) */
   readonly orchestratorCredential: string;
   readonly credentialSource: "env" | "dev-default";
@@ -243,6 +259,35 @@ function parseCliArgs(
     }
   }
 
+  // 探索プロンプトの版と検索の状況の制御メッセージは開発・評価用(評価前の版を本番で選ばせない。
+  // prompt.ts の運用規則、T-024)
+  const promptOption = values["explore-prompt"];
+  const feedbackOption = values["search-feedback"];
+  if (
+    (promptOption !== undefined || feedbackOption !== undefined) &&
+    env["NODE_ENV"] === "production"
+  ) {
+    throw new UsageError(
+      "--explore-prompt / --search-feedback は開発・評価用のため、NODE_ENV=production では使えません。",
+    );
+  }
+  let explorePrompt: ExplorePromptVersion | undefined;
+  if (promptOption !== undefined) {
+    if (!isExplorePromptVersion(promptOption)) {
+      throw new UsageError(
+        `--explore-prompt は ${EXPLORE_PROMPT_VERSIONS.join(" / ")} のいずれかで指定してください。`,
+      );
+    }
+    explorePrompt = promptOption;
+  }
+  let searchFeedback: boolean | undefined;
+  if (feedbackOption !== undefined) {
+    if (feedbackOption !== "on" && feedbackOption !== "off") {
+      throw new UsageError("--search-feedback は on / off で指定してください。");
+    }
+    searchFeedback = feedbackOption === "on";
+  }
+
   const llm = parseLlmCliOptions(values, env, { allowInsecureHttp: insecure.enabled });
   if (!llm.ok) {
     throw new UsageError(llm.message);
@@ -262,6 +307,8 @@ function parseCliArgs(
     config: values.config,
     json: values.json === true,
     maxIterations,
+    explorePrompt,
+    searchFeedback,
     orchestratorCredential: credential.credential,
     credentialSource: credential.source,
     llm: llm.config,
@@ -277,6 +324,8 @@ function parseArgsStrict(argv: readonly string[]) {
       token: { type: "string" },
       model: { type: "string" },
       "max-iterations": { type: "string" },
+      "explore-prompt": { type: "string" },
+      "search-feedback": { type: "string" },
       effort: { type: "string" },
       llm: { type: "string" },
       "llm-base-url": { type: "string" },
@@ -470,6 +519,12 @@ export async function runCli(
 
   if (args.maxIterations !== undefined) {
     settings = { ...settings, maxIterations: args.maxIterations };
+  }
+  if (args.explorePrompt !== undefined) {
+    settings = { ...settings, explorePrompt: args.explorePrompt };
+  }
+  if (args.searchFeedback !== undefined) {
+    settings = { ...settings, searchFeedback: args.searchFeedback };
   }
 
   let orchestrator: Orchestrator;
