@@ -180,7 +180,7 @@ pre {
 
 <ol class="moves">
   <li><span class="k">A</span><div><b>各ソースの検索の仕様を、探索 LLM に伝える</b>空白区切りが AND か OR か、使える構文、語数の上限、並び順はソースごとに違います。この情報をコネクタに持たせ、Orchestrator が文章にして探索 LLM に渡します。この情報を「検索プロファイル」と呼ぶことにします。</div></li>
-  <li><span class="k">B</span><div><b>利用者が入力したキーワードを、最初の検索クエリに必ず使う</b>LibreChat 側の LLM が言い換えてもキーワードが失われないように、Orchestrator が利用者の発言から固有名詞などの語句をコードで抜き出し、最初の検索に必ず使います。</div></li>
+  <li><span class="k">B</span><div><b>利用者が入力したキーワードを、<code>ask</code> と最初の検索クエリに残すよう指示する</b><code>ask</code> の description で、利用者の発言を言い換えずに渡すよう LibreChat 側の LLM に指示します。探索プロンプトで、そのキーワードを最初の検索に使うよう探索 LLM に指示します。</div></li>
   <li><span class="k">C</span><div><b>検索結果から、次に何をすべきかが分かるようにする</b>スニペットには一致箇所を含めます。0 件や重複のときは、Orchestrator が状況に応じた指示を探索 LLM に返します。</div></li>
 </ol>
 
@@ -436,50 +436,44 @@ pre {
 
 <!-- 4 -->
 <section id="design">
-<h2><span class="no">4</span>検索プロファイルを伝え、利用者が入力したキーワードを最初の検索に必ず使う<span class="nb">構成にする</span></h2>
+<h2><span class="no">4</span>検索プロファイルを伝え、利用者が入力したキーワードを最初の検索に使うよう<span class="nb">指示する</span></h2>
 
-<p>推奨する構成は、<code>ask</code> の中で探索 LLM が検索する現行の構成を保ち、最初の検索だけをコードで決まった手順として実行するものです(図 3)。出典の検証と run の記録という leisen の中核はそのまま残ります。</p>
+<p>推奨する構成は、<code>ask</code> の中で探索 LLM がクエリを書いて検索する現行の構成です(図 3、表 6 の案 3)。出典の検証と run の記録という leisen の中核はそのまま残ります。今回の範囲では、探索 LLM はモデルによらず検索に十分な性能を持つものとして扱います。クエリは探索 LLM が書き、ハーネスは次の 4 つを受け持ちます。</p>
+<ol>
+  <li>各ソースの検索の仕様(検索プロファイル)を、探索 LLM に伝える。</li>
+  <li>利用者が入力したキーワードを <code>ask</code> と最初の検索に残すよう、<code>ask</code> の description と探索プロンプトで指示する。</li>
+  <li>0 件や重複のときに、制御メッセージで状況を返す。</li>
+  <li>止める基準と続ける基準を示す。</li>
+</ol>
 
 <figure class="wide">
   <div class="scroll">
-  <svg viewBox="0 0 760 326" role="img" aria-labelledby="f3t f3d">
+  <svg viewBox="0 0 760 300" role="img" aria-labelledby="f3t f3d">
     <title id="f3t">推奨する構成</title>
-    <desc id="f3d">ask が受け取った利用者の発言から、コードが語を抜き出し、検索プロファイルに従ってソース別にクエリを整形し、並列に検索して結果を統合する。その結果を最初の検索結果として探索 LLM に渡す。探索 LLM は続行、fetch、回答を決め、Orchestrator は制御メッセージと差し戻しで支える。</desc>
-    <rect x="186" y="8" width="566" height="106" rx="6" class="group"/>
-    <text x="200" y="30" class="lane">コードで実行する最初の検索</text>
-    <rect x="10" y="46" width="146" height="52" rx="4" class="node"/><text x="83" y="68" text-anchor="middle">ask</text><text x="83" y="86" text-anchor="middle" class="small">利用者の発言</text>
-    <rect x="200" y="46" width="122" height="52" rx="4" class="node"/><text x="261" y="68" text-anchor="middle">入力された</text><text x="261" y="86" text-anchor="middle">キーワードを抽出</text>
-    <rect x="338" y="46" width="122" height="52" rx="4" class="node"/><text x="399" y="68" text-anchor="middle">ソース別に</text><text x="399" y="86" text-anchor="middle">クエリを整形</text>
-    <rect x="476" y="46" width="122" height="52" rx="4" class="node"/><text x="537" y="68" text-anchor="middle">有効なソースへ</text><text x="537" y="86" text-anchor="middle">並列に検索</text>
-    <rect x="614" y="46" width="122" height="52" rx="4" class="node"/><text x="675" y="68" text-anchor="middle">重複を除き</text><text x="675" y="86" text-anchor="middle">順位で統合</text>
-    <line x1="156" y1="72" x2="198" y2="72" class="ln" marker-end="url(#am)"/>
-    <line x1="322" y1="72" x2="336" y2="72" class="ln" marker-end="url(#am)"/>
-    <line x1="460" y1="72" x2="474" y2="72" class="ln" marker-end="url(#am)"/>
-    <line x1="598" y1="72" x2="612" y2="72" class="ln" marker-end="url(#am)"/>
+    <desc id="f3d">ask が受け取った利用者の発言を探索 LLM に渡す。探索 LLM はクエリを書いて検索し、fetch で本文を読み、回答を作って submit_answer で提出する。submit_answer は出典を検証する。探索 LLM には、コネクタが持ち Orchestrator が伝える検索プロファイルと、Orchestrator が送る制御メッセージ(0 件、重複、試した検索、残りの回数、差し戻し)が入る。</desc>
+    <rect x="250" y="10" width="260" height="56" rx="4" class="node"/><text x="380" y="33" text-anchor="middle">検索プロファイル</text><text x="380" y="52" text-anchor="middle" class="small">コネクタが持ち、Orchestrator が伝える</text>
+    <line x1="380" y1="66" x2="380" y2="108" class="ln-main dash" stroke-width="1.5" marker-end="url(#amm)"/>
 
-    <rect x="290" y="160" width="218" height="56" rx="4" class="node-main"/><text x="399" y="183" text-anchor="middle">検索プロファイル</text><text x="399" y="202" text-anchor="middle" class="small">コネクタが持ち、導入先が上書きする</text>
-    <line x1="399" y1="160" x2="399" y2="101" class="ln-main dash" stroke-width="1.5" marker-end="url(#amm)"/>
+    <rect x="10" y="118" width="150" height="60" rx="4" class="node"/><text x="85" y="143" text-anchor="middle">ask</text><text x="85" y="163" text-anchor="middle" class="small">利用者の発言</text>
+    <line x1="160" y1="148" x2="258" y2="148" class="ln" marker-end="url(#am)"/>
 
-    <rect x="560" y="160" width="192" height="56" rx="4" class="node"/><text x="656" y="183" text-anchor="middle">探索 LLM</text><text x="656" y="202" text-anchor="middle" class="small">言い換え、続行、fetch、回答</text>
-    <line x1="675" y1="98" x2="675" y2="157" class="ln" marker-end="url(#am)"/>
+    <rect x="260" y="110" width="240" height="76" rx="4" class="node-main"/><text x="380" y="140" text-anchor="middle">探索 LLM</text><text x="380" y="162" text-anchor="middle" class="small">クエリを書く、fetch、回答</text>
+    <line x1="500" y1="148" x2="598" y2="148" class="ln" marker-end="url(#am)"/>
 
-    <rect x="290" y="258" width="250" height="56" rx="4" class="node"/><text x="415" y="281" text-anchor="middle">制御メッセージと差し戻し</text><text x="415" y="300" text-anchor="middle" class="small">0 件、重複、語数超過、試したクエリ、残り</text>
-    <path d="M540 286 H600 V219" class="ln" marker-end="url(#am)" marker-start="url(#am)"/>
+    <rect x="600" y="118" width="150" height="60" rx="4" class="node"/><text x="675" y="143" text-anchor="middle">submit_answer</text><text x="675" y="163" text-anchor="middle" class="small">出典の検証</text>
 
-    <rect x="636" y="258" width="116" height="56" rx="4" class="node"/><text x="694" y="281" text-anchor="middle">submit_answer</text><text x="694" y="300" text-anchor="middle" class="small">出典の検証</text>
-    <line x1="694" y1="216" x2="694" y2="255" class="ln" marker-end="url(#am)"/>
-
-    <text x="10" y="183" class="small">LLM に任せるのは</text><text x="10" y="201" class="small">結果を見てからの判断と、</text><text x="10" y="219" class="small">言い換え候補の生成</text>
+    <rect x="220" y="232" width="320" height="56" rx="4" class="node"/><text x="380" y="255" text-anchor="middle">制御メッセージ</text><text x="380" y="274" text-anchor="middle" class="small">0 件、重複、試した検索、残りの回数、差し戻し</text>
+    <line x1="380" y1="232" x2="380" y2="190" class="ln-main dash" stroke-width="1.5" marker-end="url(#amm)"/>
   </svg>
   </div>
-  <figcaption><b>図3</b>推奨する構成。最初の検索はコードが組み立てて実行し、その結果を探索 LLM に渡す。破線は、プロファイルがクエリの整形に使われることを表す。</figcaption>
+  <figcaption><b>図3</b>推奨する構成。クエリは探索 LLM が書く。破線は探索 LLM に入る情報を表す。検索プロファイルはコネクタが持ち、Orchestrator が探索 LLM に伝える。制御メッセージは、Orchestrator が検索の状況に応じて送る。</figcaption>
 </figure>
 
 <h3><code>ask</code> には利用者の発言をそのまま渡させ、言い換えを UI 側 LLM に<span class="nb">任せない</span></h3>
 <p>まず引数を変えずに、<code>ask</code> の description に入力側の指示を足します。利用者の直近の発言を言い換え、要約、翻訳せずに入れること。固有名詞、ID、エラー文、引用符で囲まれた語句を一字も変えないこと。意味が通らないときだけ、指している対象を補うこと。Anthropic は、モデルが検索クエリに不要な年を付け足す癖をツール説明の修正で直した例を挙げています。</p>
-<p>UI 側 LLM が指示に従わない場合への備えも用意します。Orchestrator が受け取った <code>question</code> から、引用符で囲まれた語句、英数字と記号の連なり(ID、エラーコード、ファイル名)、カタカナや漢字の連なりを機械的に抜き出し、最初の検索の 1 本に必ず使います。</p>
+<p>探索プロンプトでも、<code>question</code> に含まれる利用者が入力したキーワードを最初の検索に使うよう探索 LLM に指示します(5 章の「探索の進め方」)。Orchestrator がコードで語を抜き出して最初の検索に使わせる仕組みは、今回は範囲外です。</p>
 <p>次の段階として、利用者の発言をそのまま入れる引数(<code>userMessage</code>)、会話の前提(<code>context</code>)、変えてはならない語(<code>keepTerms</code>)を足す案があります。これは ADR-018 の変更になります。返り値には、試したクエリと、有用な結果がなかったソースを構造化して入れます。委譲の実験が示した「委譲先の失敗が委譲元に伝わらない」問題への対処です。</p>
-<p class="note">20B 級の UI 側モデルが description の指示に従うかは未検証です。辞書なしでの日本語の語の抽出の精度も、実装して確かめる必要があります。</p>
+<p class="note">20B 級の UI 側モデルが description の指示に従うかは未検証です。</p>
 
 <h3>検索プロファイルはコネクタが持ち、Orchestrator が<span class="nb">文章にして渡す</span></h3>
 <p>ソースごとの検索の仕様は、コネクタというプラグイン境界が持つのが ADR-005 と整合します。Orchestrator のコアに esa や Redmine の構文を直書きすると、個社差分をコアに入れることになります。プロファイルの項目は、各社がツール説明に書いているものと同じです。空白区切りの既定、照合の単位、引用符の可否、演算子と修飾子、語数の上限と超過時の挙動、並び順、スニペットの種類、そして各項目が実機で確認済みかどうかです。</p>
@@ -517,8 +511,9 @@ pre {
   <li>期間や区画はクエリ語ではなく <code>filters</code> に入れる。</li>
 </ul>
 
-<h3>0 件、重複、切り捨ては、Orchestrator が制御メッセージで<span class="nb">知らせる</span></h3>
-<p>Orchestrator は自分が出したクエリの形とソースのプロファイルを知っているので、コネクタの IF を変えずに次の判定ができます。語数がソースの上限を超えていた。クエリが文のままで空白がない。フィルタを指定していた。同じソースに同じクエリを既に実行していた。今回のヒットがすべて既出だった。試したクエリの一覧(ソース、クエリ、新しく得た文書の数)も毎ターン示します。</p>
+<h3>0 件と重複は、Orchestrator が制御メッセージで<span class="nb">知らせる</span></h3>
+<p>Orchestrator は自分が出したクエリと返ってきた結果を知っているので、コネクタの IF を変えずに次の状況を判定できます。検索が 0 件だった。同じソースに同じクエリを既に実行していた。今回のヒットがすべて既出の文書だった。試した検索の一覧(ソース、クエリ、新しく得た文書の数)も毎ターン示します。fetch せずに提出しようとしたときの差し戻しは、次の項で述べます。</p>
+<p>語数がソースの上限を超えていた、といったソースの検索の仕様に照らした判定は、Orchestrator が構造化された検索プロファイルを読めることが前提です。<code>searchProfile</code> の追加(ADR が要る)の後に行います(表 7 の 6)。</p>
 <p>守る線は ADR-012 です。メッセージに書けるのは、クエリの形と、認可を通って返ってきた結果から計算できることだけです。「権限がないため 0 件」と「本当に 0 件」を区別する情報は出しません。</p>
 
 <h3>回数の目安はツール呼び出し数で示し、止める基準と続ける<span class="nb">基準を書く</span></h3>
@@ -531,17 +526,16 @@ pre {
 
 <h3>結果は一致箇所が見える少量にし、判断の前に<span class="nb">本文を読ませる</span></h3>
 <p>スニペットが本文の先頭だと、目的の文書が検索結果に含まれていても、探索 LLM にはそれが分かりません。esa の検索結果には本文が含まれているので、コネクタの中でクエリの語の周辺を切り出せます。IF は変わりません。GitHub の issue と PR も一致断片を取れます。esa のヒットにはカテゴリをタイトルと並べて見せます。</p>
-<p>fetch は、有望な上位 2〜3 件を同じターンで並行に読んでから採否を決めるよう書きます。弱いモデルは全文を読むツールをほとんど使わないという結果があるので、プロンプトだけでなく前項の差し戻しで担保します。</p>
+<p>fetch は、有望な上位 2〜3 件を同じターンで並行に読んでから採否を決めるよう書きます。1 件も fetch せずに提出しようとしたときは、前項の差し戻しで知らせます。</p>
 <p class="note">一致箇所のスニペットが ADR-016 の規約の範囲に収まるかは、同 ADR の本文を今回読んでいないので確認が必要です。</p>
 
-<h3>結果の統合と再順位付けは Orchestrator の中で、順位だけを<span class="nb">使って行う</span></h3>
-<p>複数のクエリの結果は (sourceId, documentId) で重複を除き、順位だけを使って統合します(rank fusion)。ソースごとにスコアの尺度が違い、そもそも返らないからです。利用者が入力したキーワードによるクエリの結果を 2 倍の重みにすると、言い換えで意味がずれた場合の影響を抑えられます。選別は、探索 LLM 自身に題名とスニペットの一覧から選ばせるのが第一候補です。Redmine のように日付順でしか返らないソースで特に価値があります。対象は認可済みのヒットだけなので、ADR-012 の境界は変わりません。</p>
+<h3>結果の統合と選別は範囲外とし、探索 LLM が結果を自分で読んで<span class="nb">判断する</span></h3>
+<p>順位による結果の統合(rank fusion)、選別のための別の LLM 呼び出し、古い結果の圧縮は、今回は範囲外です。探索 LLM が結果を自分で読んで判断します。</p>
 
-<h3>小型ローカルモデルには、手順をプロンプトではなくコードで<span class="nb">固定する</span></h3>
-<p>27B 級のモデルを前提にするなら、プロンプトに手順を書き足すより、決まった手順をコードで実行する方が確実だと考えます。小型モデルの実力を測ったプレプリントでは、短い構造化されたツール利用は小型モデルで足り、長い計画は足りませんでした。計画、実行、提出に分解するプロンプトは、試したすべてのモデルで悪化しました。図 3 の「コードで実行する最初の検索」は、この解釈に基づきます。</p>
-<p class="note">この論文はコード側の固定を比較しておらず、検索ではなくツール操作の合成ベンチです。「コードで実行する方が確実」は推論です。</p>
+<h3>モデルの性能に応じた補助は、今回の範囲では<span class="nb">扱わない</span></h3>
+<p>モデルの性能に応じた補助(決まった手順をコードで実行する、モデルごとにプロンプトの派生版を持つ、など)は別の問題として扱い、今回の範囲では扱いません。</p>
 
-<h3>構成の選択肢は 4 つあり、現行の構成に、コードで実行する最初の検索を加える<span class="nb">形を勧める</span></h3>
+<h3>構成の選択肢は 4 つあり、現行の構成を拡張する案 3 を<span class="nb">勧める</span></h3>
 <figure class="wide">
 <div class="scroll">
 <table class="tbl">
@@ -549,14 +543,14 @@ pre {
   <thead><tr><th>案</th><th>内容</th><th>利点</th><th>欠点と制約</th></tr></thead>
   <tbody>
     <tr><th>案 1: <code>search</code> を直接公開</th><td><code>search</code> と <code>fetch</code> を UI 側 LLM に見せる</td><td>利用者が入力したキーワードとクエリの距離が最短</td><td>UI 側の小型モデルが構文を誤る。出典の検証と run の記録をサーバー側で管理できない</td></tr>
-    <tr><th>案 2: コードによる並列検索</th><td>LLM はキーワードの抽出だけを行い、検索はコードが並列に実行する</td><td>小型モデルの得意な範囲に収まる</td><td>1 回の検索で見つからない質問、複数文書の質問に弱い</td></tr>
+    <tr><th>案 2: コードによる並列検索</th><td>LLM はキーワードの抽出だけを行い、検索はコードが並列に実行する</td><td>検索の回数が予測できる</td><td>1 回の検索で見つからない質問、複数文書の質問に弱い</td></tr>
     <tr><th>案 3: 現行の構成の拡張</th><td><code>ask</code> の中で探索 LLM が検索する。利用者の発言と利用者が入力したキーワードを渡し、失敗を UI 側に返す</td><td>出典の検証、監査を保てる。ADR の変更が最小</td><td>UI 側 LLM から受け渡す際の情報の損失は残る</td></tr>
     <tr><th>案 4: <code>ask</code> と <code>search</code> の両方を公開</th><td><code>ask</code> に加えて、コネクタの <code>search</code> も UI 側 LLM に公開する</td><td>題名や ID が分かっている文書の検索を速く正確にできる</td><td>ツールの誤選択。Orchestrator を通らない検索は run に紐づかない</td></tr>
   </tbody>
 </table>
 </div>
 </figure>
-<p>推奨は、案 3 を基本にし、案 2 の「コードによる並列検索」を最初の検索として Orchestrator の中に組み込む構成です。案 4 は、6 章の比較実験で「人が書いたキーワードを直接入れる」条件が大きく上回り続ける場合の次の候補として残します。案 1 は、UI 側 LLM が小型モデルである限り勧めません。</p>
+<p>推奨は案 3 です。<code>ask</code> の中で探索 LLM がクエリを書いて検索する現行の構成を保ち、この章で述べた検索プロファイル、指示、制御メッセージ、止める基準と続ける基準で探索 LLM を支えます。案 2 は、探索 LLM が検索に十分な性能を持つという今回の前提では採りません。案 4 は、6 章の比較実験で「人が書いたキーワードを直接入れる」条件が大きく上回り続ける場合の次の候補として残します。案 1 は、UI 側 LLM が小型モデルである限り勧めません。</p>
 </section>
 
 <!-- 5 -->
@@ -593,8 +587,8 @@ outcome が resolved 以外のときは、先頭の注意書きを省かない�
 <h3>探索プロンプトの<span class="nb">「探索の進め方」</span></h3>
 <p>現行の共通の指針を、ソースごとの検索の仕様を参照する指示に置き換え、最初のターンの検索の構成と停止の基準を足した案です。</p>
 <pre># 探索の進め方
-1. 最初の利用者メッセージの「利用者が入力したキーワード」(質問から抜き出した固有名詞・ID・語句)と、
-   各ソースの「検索の仕様」を読む。検索の書き方はソースごとに違う。仕様に書かれていない
+1. 最初の利用者メッセージ(質問)に含まれる、利用者が入力したキーワード(固有名詞・ID・
+   エラーメッセージ・引用符で囲まれた語句)と、各ソースの「検索の仕様」を読む。検索の書き方はソースごとに違う。仕様に書かれていない
    記法(他のサービスの演算子など)は使わない。
 2. 最初のターンでは、次の検索を 1 回の応答でまとめて呼ぶ。
    - 利用者が入力したキーワードを変えずに使った検索(主題を表す語を 2〜3 語。文や助詞は入れない)
@@ -632,7 +626,7 @@ outcome が resolved 以外のときは、先頭の注意書きを省かない�
 
 <div class="panel wide" id="p-ctrl" role="tabpanel" aria-labelledby="tab-ctrl">
 <h3>0 件と重複のときの<span class="nb">制御メッセージ</span></h3>
-<p>権限や件数には触れません。</p>
+<p>権限や件数には触れません。1 つ目の例のうち「先頭 5 語だけを使う」という文は、構造化された検索プロファイル(ADR が要る)を前提とします。</p>
 <pre>[オーケストレーター] redmine への検索「VPN 接続手順 申請 承認 期限 例外」は結果を返さなかった。
 このソースは先頭 5 語だけを使う。語を 2 語以下に減らして検索し直す。
 見つからなかったことは、文書が存在しない根拠にならない。
@@ -716,7 +710,8 @@ redmine「経費」→ 新しい文書 3 件。ツールを呼べるターンは
 <section id="plan">
 <h2><span class="no">7</span>進め方は、計測、文面、コネクタ、IF の<span class="nb">順にする</span></h2>
 
-<p>1 から 6 は ADR なしで進められ、1 から 4 は人手による準備も要りません。7 以降は、1 から 4 を文面とコードで試して効果を確かめてから ADR を起こす方が、IF に入れる項目を絞れます。</p>
+<p>1 から 5 は ADR なしで進められ、1 から 4 は人手による準備も要りません。6 以降は、1 から 4 を文面とコードで試して効果を確かめてから ADR を起こす方が、IF に入れる項目を絞れます。</p>
+<p>現在は、ADR なしでできる範囲のうち、評価の仕組み、Orchestrator のプロンプトと制御メッセージ、コネクタの <code>summary</code> とスニペットの実装に着手しています。IF の変更は、ADR のドラフトを書いてレビューを待ちます。</p>
 
 <figure class="wide">
 <div class="scroll">
@@ -725,14 +720,13 @@ redmine「経費」→ 新しい文書 3 件。ツールを呼べるターンは
   <thead><tr><th>順</th><th>作業</th><th>ADR</th><th>ねらい</th></tr></thead>
   <tbody>
     <tr><td class="num">1</td><td>dev-eval にクエリと結果のトレースを出す。実ソース型のフィクスチャとコーパスの拡大。4 条件の比較実験。実機での検索の仕様の確認</td><td>不要</td><td>問題 a と b を数値にする</td></tr>
-    <tr><td class="num">2</td><td><code>ask</code> の description に <code>question</code> の書き方の指示を足す。利用者が入力したキーワードを抜き出し、最初の検索に必ず使う</td><td>不要</td><td>問題 b</td></tr>
+    <tr><td class="num">2</td><td><code>ask</code> の description に <code>question</code> の書き方の指示を足す。利用者が入力したキーワードを最初の検索に使うことを、<code>ask</code> の description と探索プロンプトで指示する</td><td>不要</td><td>問題 b</td></tr>
     <tr><td class="num">3</td><td>各コネクタの <code>summary</code> に検索の仕様を書く。探索プロンプトの共通の指針を、ソースごとの検索の仕様を参照する指示に替える(T-024 に統合)。Redmine でエラーになる <code>filters.container</code> を勧める記述を直す</td><td>不要</td><td>問題 a</td></tr>
-    <tr><td class="num">4</td><td>0 件、重複、語数超過の制御メッセージ。試したクエリの一覧。停止と差し戻しの基準</td><td>不要</td><td>無駄なターンと、早すぎる打ち切りを減らす</td></tr>
-    <tr><td class="num">5</td><td>コネクタの内部改善。一致箇所のスニペット、全角空白などの正規化、Redmine の AND と OR の決定</td><td>不要(ADR-016 との整合を確認、ADR-024 に追記)</td><td>目的の文書が結果に含まれていることを判断できるようにする</td></tr>
-    <tr class="split"><td class="num">6</td><td>Orchestrator 内での結果の統合(rank fusion)、LLM による選別、古い結果の圧縮</td><td>不要</td><td>適合率の向上、コンテキストの節約</td></tr>
-    <tr><td class="num">7</td><td><code>SourceDescription.searchProfile</code>、<code>SearchResult</code> の notices、認可済み件数の専用フィールド</td><td>必要(不変条件 5、ADR-012)</td><td>3 と 4 を構造化する</td></tr>
-    <tr><td class="num">8</td><td><code>ask</code> の引数追加(利用者の発言、会話の前提、利用者が入力したキーワード、対象ソース、探索の深さ)と返り値の拡張</td><td>必要(ADR-018、ADR-019)</td><td>2 を IF として固定する</td></tr>
-    <tr><td class="num">9</td><td><code>search</code> を UI 側 LLM にも公開する構成(表 6 の案 4)、Source Catalog(T-018)、検索層への昇格判定</td><td>必要</td><td>比較実験の結果しだい</td></tr>
+    <tr><td class="num">4</td><td>0 件、重複、既出の文書だけだった場合の制御メッセージ。試した検索の一覧。停止の基準と、fetch せずに提出しようとしたときの差し戻し</td><td>不要</td><td>無駄なターンと、早すぎる打ち切りを減らす</td></tr>
+    <tr class="split"><td class="num">5</td><td>コネクタの内部改善。一致箇所のスニペット、全角空白などの正規化、Redmine の AND と OR の決定</td><td>不要(ADR-016 との整合を確認、ADR-024 に追記)</td><td>目的の文書が結果に含まれていることを判断できるようにする</td></tr>
+    <tr><td class="num">6</td><td><code>SourceDescription.searchProfile</code>。語数の上限の超過など、検索の仕様に照らした制御メッセージ。<code>SearchResult</code> の notices、認可済み件数の専用フィールド</td><td>必要(不変条件 5、ADR-012)</td><td>3 と 4 を構造化する</td></tr>
+    <tr><td class="num">7</td><td><code>ask</code> の引数追加(利用者の発言、会話の前提、利用者が入力したキーワード、対象ソース、探索の深さ)と返り値の拡張</td><td>必要(ADR-018、ADR-019)</td><td>2 を IF として固定する</td></tr>
+    <tr><td class="num">8</td><td><code>search</code> を UI 側 LLM にも公開する構成(表 6 の案 4)、Source Catalog(T-018)、検索層への昇格判定</td><td>必要</td><td>比較実験の結果しだい</td></tr>
   </tbody>
 </table>
 </div>
@@ -751,13 +745,12 @@ redmine「経費」→ 新しい文書 3 件。ツールを呼べるターンは
   <caption><b>表8</b>提案の各要素と、不変条件・ADR の関係</caption>
   <thead><tr><th>変更</th><th>関係する制約</th><th>扱い</th></tr></thead>
   <tbody>
-    <tr><td>探索プロンプト、制御メッセージの改訂</td><td><code>prompt.ts</code> の運用規則</td><td>ADR 不要。評価レポートを添付</td></tr>
+    <tr><td>探索プロンプト、制御メッセージの改訂</td><td><code>prompt.ts</code> の運用規則</td><td>ADR 不要。評価レポートを添付。検索の仕様に照らした判定は、<code>searchProfile</code> の追加の後</td></tr>
     <tr><td>コネクタの <code>summary</code> に検索の仕様を書く</td><td>不変条件 5、ADR-005</td><td>IF は不変で ADR 不要</td></tr>
     <tr><td>ソース別の構文を Orchestrator のコアに直書きする</td><td>ADR-005、不変条件 8</td><td>避ける</td></tr>
     <tr><td><code>SourceDescription</code>、<code>SearchResult</code>、<code>SearchHit</code> へのフィールド追加</td><td>不変条件 5</td><td>ADR 必須、connector-sdk の版上げ</td></tr>
     <tr><td>件数を LLM に見せる</td><td>ADR-012</td><td>「認可済みで返却可能な件数」だけを表す専用フィールドを ADR で定義してから</td></tr>
     <tr><td>0 件時のヒント、0 件率の指標</td><td>ADR-012</td><td>クエリの形と認可済みの結果だけから作る</td></tr>
-    <tr><td>Orchestrator 内での結果の統合、再順位付け</td><td>ADR-012、不変条件 2</td><td>認可済みのヒットだけが対象で、抵触しない</td></tr>
     <tr><td>結果やプロファイルのキャッシュ</td><td>不変条件 4、ADR-014</td><td>結果は userId をキーに含める。Slack 由来は不可</td></tr>
     <tr><td><code>ask</code> の引数追加、<code>search</code> の UI 側 LLM への公開</td><td>ADR-018、ADR-019</td><td>ADR 必須。監査と生クエリ表に書く対象が増える</td></tr>
     <tr><td>esa の MCP の追加ツールの利用</td><td>ADR-023 の許可リスト</td><td>ADR-023 の追補</td></tr>
@@ -783,12 +776,12 @@ redmine「経費」→ 新しい文書 3 件。ツールを呼べるターンは
   <tbody>
     <tr><th>要約経由の引用</th><td>各社のエンジニアリング記事と公式文書の多く。取得ツールの抽出を経ている</td><td>数値と逐語は原典で再確認する。原文を直接確認したのは、Anthropic cookbook のプロンプト、主要 OSS のソース、Redmine のソースコード</td></tr>
     <tr><th>実物スキーマの観測</th><td>esa、Slack、GitHub、Drive の MCP ツール説明</td><td>設計の参考にとどめ、文面を引き写さない</td></tr>
-    <tr><th>査読前の論文</th><td>Lost in Delegation、AgentFloor、Question's Gambit、When Deep Research Agents Stagnate ほか</td><td>傾向として読み、数値を目標値にしない</td></tr>
+    <tr><th>査読前の論文</th><td>Lost in Delegation、Question's Gambit、When Deep Research Agents Stagnate ほか</td><td>傾向として読み、数値を目標値にしない</td></tr>
     <tr><th>条件の違う実験からの外挿</th><td>BM25 での拡張の効果を AND 既定の SaaS 検索に当てはめること。英語の Web 文書の結果を日本語の社内検索に当てはめること。同一モデルの委譲実験を leisen の構成に当てはめること</td><td>すべて推論。自前の評価で確かめる</td></tr>
     <tr><th>実機未確認の挙動</th><td>Redmine の <code>all_words=0</code>。esa の MCP 経由の検索の仕様。各ソースの日本語の分かち書き</td><td>実測するまで、プロファイルでは「不明」と書く</td></tr>
     <tr><th>静的な読解のみ</th><td>現行実装の記述はすべてコードと文書の読解で、実行による検証はしていない</td><td>行番号は 2026-11-25 時点</td></tr>
     <tr><th>データのない仮説</th><td>「名詞 1〜2 語」が実ソースで適合率を下げている。UI 側 LLM の言い換えで利用者が入力したキーワードが失われている</td><td>比較実験で確かめる</td></tr>
-    <tr><th>本レポートの提案</th><td>プロファイルを列挙値にして Orchestrator が文を生成する設計。現行の構成に、コードで実行する最初の検索を加える構成。比較実験の 4 条件</td><td>個々の要素に出典はあるが、組み合わせの実証はない</td></tr>
+    <tr><th>本レポートの提案</th><td>プロファイルを列挙値にして Orchestrator が文を生成する設計。探索 LLM がクエリを書く現行の構成を保ち、ハーネスが検索プロファイル、指示、制御メッセージ、止める基準と続ける基準で支える構成。比較実験の 4 条件</td><td>個々の要素に出典はあるが、組み合わせの実証はない</td></tr>
   </tbody>
 </table>
 </div>
