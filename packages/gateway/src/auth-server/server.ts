@@ -754,7 +754,11 @@ export class AuthHttpHandler {
       this.#html(res, 502, messagePage("接続できませんでした", `${source.sourceId} とのやり取りに失敗しました。時間をおいてやり直してください。`, "err", { href: back, label: "戻る" }));
       return;
     }
-    const idpEmail = tx?.identity?.email ?? (await this.#session(req))?.email;
+    // 照合に使う IdP の属性は、この接続を始めた本人のものに限る: ESC の取引(tx)があれば取引の
+    // 本人だけ(別の利用者のブラウザのセッションに寄せない)、なければ state の本人と同じセッション
+    const browserSession = tx === undefined ? await this.#session(req) : undefined;
+    const sameUser = browserSession !== undefined && browserSession.sub === state.sub ? browserSession : undefined;
+    const idpEmail = tx !== undefined ? tx.identity?.email : sameUser?.email;
     if (source.identityCheck === "email" && !emailMatches(idpEmail, result.verifiedEmails)) {
       // 誤接続(私用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
       await source.oauth.revoke(result.tokens);
@@ -772,7 +776,7 @@ export class AuthHttpHandler {
       return;
     }
     if (source.identityCheck === "username") {
-      const idpUsername = tx?.identity?.username ?? (await this.#session(req))?.username;
+      const idpUsername = tx !== undefined ? tx.identity?.username : sameUser?.username;
       if (!usernameMatches(idpUsername, result.usernames)) {
         // 誤接続(別の利用者・共用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
         await source.oauth.revoke(result.tokens);

@@ -38,7 +38,7 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-function redmineMock(state: { login: string | undefined; revoked: string[] }) {
+function redmineMock(state: { login: string | undefined; revoked: string[]; lookupStatus: number }) {
   return mockFetch({
     [`POST ${REDMINE}/oauth/token`]: (req) => {
       const form = req.form();
@@ -51,7 +51,9 @@ function redmineMock(state: { login: string | undefined; revoked: string[] }) {
       });
     },
     [`GET ${REDMINE}/users/current.json`]: () =>
-      jsonResponse({ user: { id: 5, ...(state.login !== undefined ? { login: state.login } : {}), firstname: "Alice" } }),
+      state.lookupStatus !== 200
+        ? new Response(null, { status: state.lookupStatus, headers: state.lookupStatus === 302 ? { location: "https://evil.example/" } : {} })
+        : jsonResponse({ user: { id: 5, ...(state.login !== undefined ? { login: state.login } : {}), firstname: "Alice" } }),
     [`POST ${REDMINE}/oauth/revoke`]: (req) => {
       state.revoked.push(String(req.form().get("token")));
       return jsonResponse({});
@@ -110,8 +112,8 @@ gateway:
     keys: { kind: local }
 connectors:
   - id: redmine
-    kind: dev-fixture
-    settings: { corpusFile: fixtures/dev-corpus.yaml }
+    kind: redmine
+    settings: { baseUrl: "${REDMINE}/" }
     auth:
       provider: token_vault
       oauth:
@@ -124,12 +126,14 @@ audit:
   sink: jsonl
   jsonl: { path: ${auditPath} }
 `);
-  const rm = { login: "alice" as string | undefined, revoked: [] as string[] };
+  const rm = { login: "alice" as string | undefined, revoked: [] as string[], lookupStatus: 200 };
   const fetchMock = redmineMock(rm);
   const assembled = await assembleGateway({
     config,
     configDir: EXAMPLES_DIR,
     fetchImpl: fetchMock.impl,
+    // 許可表の解決(kind: redmine → @leisen/connector-redmine)。実体はソースから読む
+    loadModule: async () => import("../../connector-redmine/src/index.js"),
     env: {
       LEISEN_MOCK_SESSIONS: sessions,
       LEISEN_VAULT_KEY: randomBytes(32).toString("base64"),
@@ -189,6 +193,8 @@ describe("プリセット redmine(Token Vault、identityCheck: username)", () =>
     ["ログイン名が違う", "alice-token=alice;username=bob", "alice"],
     ["IdP にログイン名がない", "alice-token=alice", "alice"],
     ["Redmine がログイン名を返さない", "alice-token=alice;username=alice", undefined],
+    ["IdP のログイン名が ASCII 以外(KELVIN SIGN)", "alice-token=alice;username=\u212Aato", "kato"],
+    ["IdP のログイン名に前後の空白", "alice-token=alice;username= alice", "alice"],
   ])("本人照合: %s なら保管せず、トークンを失効させる", async (_label, sessions, login) => {
     const { base, rm, audit } = await startGateway(sessions);
     rm.login = login;
@@ -201,8 +207,22 @@ describe("プリセット redmine(Token Vault、identityCheck: username)", () =>
   });
 });
 
+describe("本人照合の照会の失敗", () => {
+  it.each([500, 302, 401])("/users/current.json が HTTP %i なら保管せず失効させ、接続できない", async (status) => {
+    const { base, rm, audit } = await startGateway("alice-token=alice;username=alice");
+    rm.lookupStatus = status;
+    const result = await (await connect(base, "alice-token")).callback();
+    expect(result.status).toBe(502);
+    expect(rm.revoked).toEqual(["rm_refresh_0"]);
+    const failed = (await audit()).find((r) => r.recordType === "credential_event" && r.event === "connect_failed");
+    expect(failed).toMatchObject({ sourceId: "redmine" });
+    expect(String((failed as { reason?: string }).reason)).toMatch(/^oauth_(unavailable|rejected)$/);
+  });
+});
+
 describe("設定の検査", () => {
-  const yaml = (oauth: string) => `
+  const RM_SETTINGS = `{ baseUrl: "${REDMINE}/" }`;
+  const yaml = (oauth: string, kind = "redmine", settings = RM_SETTINGS) => `
 schemaVersion: 1
 deployment: { name: t }
 idp: { adapter: { kind: mock } }
@@ -211,13 +231,19 @@ gateway:
   credentials: { store: { kind: sqlite, path: ./x.db } }
 connectors:
   - id: d
-    kind: dev-fixture
-    settings: { corpusFile: fixtures/dev-corpus.yaml }
+    kind: ${kind}
+    settings: ${settings}
     auth: { provider: token_vault, oauth: { clientId: a, clientSecretEnv: S, ${oauth} } }
 `;
   const env = { S: "x", LEISEN_VAULT_KEY: randomBytes(32).toString("hex"), LEISEN_ESC_KEY: randomBytes(32).toString("hex") };
-  const codes = async (oauth: string) => {
-    const error = await assembleGateway({ config: parseDeploymentConfig(yaml(oauth)), configDir: EXAMPLES_DIR, env, validateOnly: true }).catch((e: unknown) => e);
+  const codes = async (oauth: string, kind?: string, settings?: string) => {
+    const error = await assembleGateway({
+      config: parseDeploymentConfig(yaml(oauth, kind, settings)),
+      configDir: EXAMPLES_DIR,
+      env,
+      validateOnly: true,
+      loadModule: async () => import("../../connector-redmine/src/index.js"),
+    }).catch((e: unknown) => e);
     return error instanceof DeploymentConfigError ? error.issues.map((i) => i.code) : [];
   };
 
@@ -225,7 +251,7 @@ connectors:
     const config = parseDeploymentConfig(yaml(`preset: redmine, endpoints: { apiBaseUrl: "${REDMINE}" }`));
     const auth = config.connectors[0]?.auth as { oauth: { identityCheck: string } };
     expect(auth.oauth.identityCheck).toBe("username");
-    const github = parseDeploymentConfig(yaml("preset: github"));
+    const github = parseDeploymentConfig(yaml("preset: github", "dev-fixture", "{ corpusFile: fixtures/dev-corpus.yaml }"));
     expect((github.connectors[0]?.auth as { oauth: { identityCheck: string } }).oauth.identityCheck).toBe("email");
   });
 
@@ -235,7 +261,16 @@ connectors:
 
   it("preset redmine の identityCheck: email、redmine 以外の username を拒否する", async () => {
     expect(await codes(`preset: redmine, identityCheck: email, endpoints: { apiBaseUrl: "${REDMINE}" }`)).toEqual(["identity_check_unsupported"]);
-    expect(await codes("preset: github, identityCheck: username")).toEqual(["identity_check_unsupported"]);
+    expect(await codes("preset: github, identityCheck: username", "dev-fixture", "{ corpusFile: fixtures/dev-corpus.yaml }")).toEqual(["identity_check_unsupported"]);
+  });
+
+  it("preset redmine は kind: redmine を要し、apiBaseUrl はコネクタの baseUrl と同じ Redmine に限る", async () => {
+    const ok = `preset: redmine, endpoints: { apiBaseUrl: "${REDMINE}" }`;
+    expect(await codes(ok, "dev-fixture", "{ corpusFile: fixtures/dev-corpus.yaml }")).toEqual(["redmine_oauth_requires_redmine_connector"]);
+    expect(await codes(ok, "redmine", `{ baseUrl: "https://other.example.test/redmine/" }`)).toEqual(["redmine_api_base_url_mismatch"]);
+    expect(await codes(`preset: redmine, endpoints: { apiBaseUrl: "https://redmine.example.test/other" }`)).toEqual(["redmine_api_base_url_mismatch"]);
+    expect(await codes(`preset: redmine, endpoints: { apiBaseUrl: "${REDMINE}?x=1" }`)).toEqual(["redmine_api_base_url_mismatch"]);
+    expect(await codes(`preset: redmine, endpoints: { apiBaseUrl: "https://u:p@redmine.example.test/redmine" }`)).toEqual(["redmine_api_base_url_mismatch"]);
   });
 
   it("正しい preset redmine の設定は通る", async () => {
@@ -266,6 +301,9 @@ describe("部品", () => {
     expect(usernameMatches("alice@corp.example", ["alice"])).toBe(false);
     expect(usernameMatches(undefined, ["alice"])).toBe(false);
     expect(usernameMatches(" ", ["alice"])).toBe(false);
+    expect(usernameMatches(" alice", ["alice"])).toBe(false);
+    // KELVIN SIGN(U+212A)は toLowerCase で "k" になるが、ASCII 以外は一致させない
+    expect(usernameMatches("\u212Aato", ["kato"])).toBe(false);
     expect(usernameMatches("alice", [])).toBe(false);
   });
 

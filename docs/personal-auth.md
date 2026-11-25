@@ -109,6 +109,11 @@ auth:
 - **本人照合はログイン名で行う**(`identityCheck: username`): 接続時に `GET /users/current.json` の `login` と、IdP のログイン名(OIDC の `preferred_username`)を大文字小文字を区別せずに比べ、完全一致を求める。Redmine のメールアドレスは既定で利用者本人の設定で隠され(「メールアドレスを隠す」)、検証済みの印もないため使わない(`identityCheck: email` は起動時に拒否)。ログイン名は管理者が決め、利用者は変えられない
   - 前提: IdP の `preferred_username` と Redmine のログイン名がそろっていること(LDAP / SSO で同じ ID を使う運用)。そろっていなければ接続は `identity_mismatch` で拒否される。ドメイン付きの UPN(`alice@corp.example`)とドメインなしのログイン名(`alice`)は一致しない
   - Keycloak は `preferred_username` をイントロスペクションの応答に含める(既定のクライアントスコープ `profile`)
+  - **導入の前提(必須)**: 照合が意味を持つのは、ログイン名を利用者が選べない場合だけである。次をそろえる(ADR-024 追補 決定 8)
+    - Keycloak: レルムの「ユーザー名の編集」(`editUsernameAllowed`)を無効にする。ユーザープロファイルで username を利用者が編集できる設定にしない。IdP 連携(ブローカー)の初回ログインで利用者にユーザー名を選ばせない(Review Profile でユーザー名を編集させない)。`registrationEmailAsUsername` を使う場合はメールアドレスも利用者が変えられないようにする。`preferred_username` を利用者が変えられる属性から作るマッパーを使わない
+    - Redmine: 自己登録を無効にする(「管理 > 設定 > 認証 > ユーザーによるアカウント登録」)か、ログイン名を LDAP / SSO から作る
+  - ログイン名は印字可能な ASCII(空白を除く)だけを照合する。ASCII 以外や前後の空白を含む値は一致しない
+- `endpoints.apiBaseUrl` は、コネクタの `settings.baseUrl` と同じ Redmine(origin とパスが同じ)でなければ起動時に拒否する(本人のトークンを別のホストへ送らないため)。`kind: redmine` 以外のコネクタでは `preset: redmine` を使えない
 - 開発用に個人 API キーで試すときは `provider: mock_env` と `credentialKind: api_key`(`packages/connector-redmine/README.md`)
 
 ### esa(ADR-023)

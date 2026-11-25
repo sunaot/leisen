@@ -473,7 +473,7 @@ export class SourceOAuthClient {
       throw new SourceOAuthError(response.status >= 500 ? "unavailable" : "rejected", `identity lookup returned HTTP ${response.status}`);
     }
     const login = isRecord(body) && isRecord(body["user"]) ? body["user"]["login"] : undefined;
-    return typeof login === "string" && login.trim() !== "" ? [login.trim().toLowerCase()] : [];
+    return typeof login === "string" && PRINTABLE_ASCII.test(login) ? [login.toLowerCase()] : [];
   }
 
   async #fetchVerifiedEmails(tokens: SourceTokenSet, slackUserId?: string): Promise<string[]> {
@@ -554,11 +554,16 @@ export function extractVerifiedEmails(preset: OAuthPreset, body: unknown): strin
  * ソース側のログイン名と一致するか(大文字小文字を区別しない。完全一致)
  */
 export function usernameMatches(idpUsername: string | undefined, usernames: readonly string[]): boolean {
-  if (idpUsername === undefined || idpUsername.trim() === "") {
+  // 印字可能な ASCII だけを比べる。Unicode の大文字小文字の畳み込み(例: KELVIN SIGN → k)で
+  // 別の名前が一致しないよう、ASCII 以外・空白を含む値は不一致とする(前後の空白も削らない)
+  if (idpUsername === undefined || !PRINTABLE_ASCII.test(idpUsername)) {
     return false;
   }
-  return usernames.includes(idpUsername.trim().toLowerCase());
+  return usernames.includes(idpUsername.toLowerCase());
 }
+
+/** ログイン名として受け付ける文字(空白を除く印字可能な ASCII)。Redmine のログイン名はこの範囲 */
+const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
 
 /** 本人照合(ADR-022 決定 8): IdP のメールアドレスがソース側の検証済みの一覧にあるか。 */
 export function emailMatches(idpEmail: string | undefined, verifiedEmails: readonly string[]): boolean {

@@ -71,6 +71,10 @@ Redmine 6.1.6(公式の Docker イメージ `redmine:6.1`)を立て、OAuth2 プ
 8. **本人照合の属性に `username` を加え、redmine はこれだけを使う(ADR-022 決定 8 の具体化)。** 接続時に `/users/current.json` の `login` と IdP のログイン名(OIDC の `preferred_username`)を、大文字小文字を区別しない完全一致で比べる。メールアドレスは既定で隠され、利用者が変えられ、検証済みの印もないため使わない(redmine の `identityCheck: email` は起動時に拒否する)。ログイン名は管理者が決め、利用者は変えられない。`username` は redmine 以外では拒否する(他のソースはメールアドレスで照合できるため)。redmine の `identityCheck` の既定は `username`
    - `Identity` に `username`(個人情報。ログ・監査に出さない)を加え、Keycloak アダプタは `preferred_username` を、モック IdP は `username=` 属性を入れる。ブラウザのセッションと ESC のトークンにも `email` と同じく載せる
    - 前提は IdP の `preferred_username` と Redmine のログイン名がそろうこと(LDAP / SSO の同じ ID)。ドメイン付きの UPN とドメインなしのログイン名を寄せる変換は設けない(必要になったら別に決める)
+   - 照合が意味を持つのは、ログイン名を利用者が選べない場合だけである(メールアドレスの照合と同じ性質)。Keycloak でユーザー名の編集・ブローカーの初回ログインでの選択を許さないこと、Redmine の自己登録を無効にする(またはログイン名を LDAP / SSO から作る)ことを導入の前提とし、docs/personal-auth.md に記す。コードでは検査できない
+   - 比べるのは印字可能な ASCII(空白を除く)だけで、それ以外は不一致とする(Unicode の大文字小文字の畳み込みで別の名前が一致しないように)
+   - ESC の接続では取引の本人の属性だけを使い、同じブラウザの別の利用者のセッションに寄せない(メールアドレスの照合も同じに改めた)
+   - `preset: redmine` は `kind: redmine` のコネクタに限り、`endpoints.apiBaseUrl` はコネクタの `settings.baseUrl` と同じ Redmine(origin とパス。認証情報・クエリ・断片なし)でなければ起動時に拒否する(本人のトークンを OAuth を行った Redmine 以外へ送らないため)
 9. **API キーの位置づけ。** 本番の経路が OAuth2 に決まったので、`api_key`(決定 1)は開発用の `mock_env` と、OAuth2 のない Redmine(6.1 未満)を試すためのものになる。6.1 未満を本番で扱う「接続ページでの API キー登録」は、必要になったときに別の ADR で決める
 
 ## 残る確認事項
