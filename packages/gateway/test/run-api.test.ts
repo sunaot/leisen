@@ -32,6 +32,7 @@ import {
   GATEWAY_META_KEYS,
   Gateway,
   ORCHESTRATOR_CREDENTIAL_HEADER,
+  canonicalRunQuestion,
   createGatewayHttpServer,
   createRunIdKeyRing,
   decodeRunIdPayload,
@@ -48,6 +49,11 @@ import {
 } from "./helpers/proxy.js";
 
 const KEY_A = Buffer.alloc(32, 1);
+
+/** 生クエリ表と最終質問 digest の元になる文字列(ask の入力を正規化した JSON。ADR-026 決定4)。 */
+function asked(question: string): string {
+  return canonicalRunQuestion({ question });
+}
 const KEY_B = Buffer.alloc(32, 2);
 const CREDENTIAL = "test-orchestrator-credential-0001";
 const NOW_MS = Date.UTC(2026, 9, 11, 12, 0, 0);
@@ -193,7 +199,7 @@ describe("POST /runs の認証(本人の Bearer + Orchestrator の資格情報)"
     expect(text).not.toContain("session-alice");
     expect(text).not.toContain(CREDENTIAL);
     expect(records(sink)).toHaveLength(0);
-    expect(await rawQueryStore?.findByDigest(digestQuery("q"))).toEqual([]);
+    expect(await rawQueryStore?.findByDigest(digestQuery(asked("q")))).toEqual([]);
   });
 
   it("run API のない構成では /runs は 404、名前空間付きの runId は tools/call で拒否される", async () => {
@@ -244,12 +250,12 @@ describe("POST /runs: 署名付き runId の発行と pending の AnswerRun", ()
       actor: HUMAN,
       startedAt: new Date(NOW_MS).toISOString(),
       finalOutcome: "pending",
-      finalQueryDigest: digestQuery("休暇の申請はどこで出す?"),
+      finalQueryDigest: digestQuery(asked("休暇の申請はどこで出す?")),
     });
     expect(JSON.stringify(pending[0])).not.toContain("休暇");
-    const raw = await rawQueryStore!.findByDigest(digestQuery("休暇の申請はどこで出す?"));
+    const raw = await rawQueryStore!.findByDigest(digestQuery(asked("休暇の申請はどこで出す?")));
     expect(raw).toHaveLength(1);
-    expect(raw[0]).toMatchObject({ userId: "alice", rawQuery: "休暇の申請はどこで出す?" });
+    expect(raw[0]).toMatchObject({ userId: "alice", rawQuery: asked("休暇の申請はどこで出す?") });
   });
 
   it("userId・runId は本文で指定できない(未知のキーは拒否)。質問の長さの上限を超えると拒否", async () => {
@@ -544,7 +550,7 @@ describe("fail-closed(ADR-011 §4、ADR-019 決定6)", () => {
     expect(start.text).not.toContain("injected");
     expect(JSON.stringify(start.json)).not.toContain("runId");
     // 生クエリ表には書けた分が残る(保持期間で消える。決定6)
-    expect(await rawQueryStore!.findByDigest(digestQuery("q"))).toHaveLength(1);
+    expect(await rawQueryStore!.findByDigest(digestQuery(asked("q")))).toHaveLength(1);
     const finish = await post(`/runs/${runId}/finish`, { outcome: "resolved" }, asOrchestrator());
     expect(finish.response.status).toBe(503);
     const feedback = await post(`/runs/${runId}/feedback`, { outcome: "resolved" }, asOrchestrator());
@@ -611,8 +617,8 @@ describe("引用 docId の記録規則(ADR-019 決定5・7)", () => {
     const config = testConfig({ connectors: [{ id: "alpha" }, { id: "beta", kind: "slack-rts" }] });
     const { sink, rawQueryStore, post, asOrchestrator, startRun } = await startHarness({ config });
     const { runId } = await startRun("session-alice", { question: "Slack で決まったこと" });
-    expect(await rawQueryStore!.findByDigest(digestQuery("Slack で決まったこと"))).toEqual([]);
-    expect(ofType(records(sink), "answer_run")[0]).toMatchObject({ finalQueryDigest: digestQuery("Slack で決まったこと") });
+    expect(await rawQueryStore!.findByDigest(digestQuery(asked("Slack で決まったこと")))).toEqual([]);
+    expect(ofType(records(sink), "answer_run")[0]).toMatchObject({ finalQueryDigest: digestQuery(asked("Slack で決まったこと")) });
     const { response } = await post(
       `/runs/${runId}/finish`,
       {
@@ -661,5 +667,66 @@ describe("引用 docId の記録規則(ADR-019 決定5・7)", () => {
     const { response } = await post(`/runs/${runId}/finish`, { outcome: "resolved", citations: [{ sourceId: "alpha", documentId: "doc-1" }] }, asOrchestrator());
     expect(response.status).toBe(503);
     expect(ofType(records(sink), "answer_run_finish")).toHaveLength(0);
+  });
+});
+
+describe("POST /runs: ask の入力全体の申告(ADR-026 決定4、ADR-019 への追補)", () => {
+  it("追加の引数を正規化した JSON(キーは辞書順、空白なし)を生クエリ表に書き、最終質問 digest もそこから作る", async () => {
+    const { sink, rawQueryStore, startRun } = await startHarness();
+    const body = {
+      question: "ERR-4012 の対処は?",
+      userMessage: "それ ERR-4012 のときどうする?",
+      context: "直前の話題は経費精算システム",
+      keepTerms: ["ERR-4012"],
+    };
+    await startRun("session-alice", body);
+    const expected =
+      '{"context":"直前の話題は経費精算システム","keepTerms":["ERR-4012"],"question":"ERR-4012 の対処は?","userMessage":"それ ERR-4012 のときどうする?"}';
+    expect(canonicalRunQuestion(body)).toBe(expected);
+    const raw = await rawQueryStore!.findByDigest(digestQuery(expected));
+    expect(raw).toHaveLength(1);
+    expect(raw[0]).toMatchObject({ userId: "alice", rawQuery: expected });
+    const pending = ofType(records(sink), "answer_run")[0];
+    expect(pending).toMatchObject({ finalQueryDigest: digestQuery(expected) });
+    // 監査本体には原文を持たない(digest だけ)
+    expect(JSON.stringify(pending)).not.toContain("ERR-4012");
+    expect(JSON.stringify(pending)).not.toContain("経費精算");
+  });
+
+  it("追加の引数の順によらず同じ JSON になる(省略した引数のキーは出さない)", () => {
+    expect(canonicalRunQuestion({ userMessage: "u", question: "q" })).toBe('{"question":"q","userMessage":"u"}');
+    expect(canonicalRunQuestion({ question: "q" })).toBe('{"question":"q"}');
+    expect(canonicalRunQuestion({ keepTerms: ["b", "a"], question: "q" })).toBe('{"keepTerms":["b","a"],"question":"q"}');
+  });
+
+  it.each([
+    ["userMessage が上限超過", { question: "q", userMessage: "あ".repeat(201) }],
+    ["context が上限超過", { question: "q", context: "あ".repeat(1001) }],
+    ["keepTerms の件数が上限超過", { question: "q", keepTerms: Array.from({ length: 11 }, (_, i) => `term${i}`) }],
+    ["keepTerms の要素が上限超過", { question: "q", keepTerms: ["あ".repeat(101)] }],
+    ["keepTerms が空の配列", { question: "q", keepTerms: [] }],
+    ["sources は申告しない(未知の引数)", { question: "q", sources: ["alpha"] }],
+  ] as const)("%s は 400 で拒否し、値をエコーせず、何も記録しない", async (_label, body) => {
+    const { sink, rawQueryStore, post, asOrchestrator } = await startHarness({
+      runtime: runtime({ maxBodyBytes: 16 * 1024 }),
+    });
+    const { response, text } = await post("/runs", body, asOrchestrator());
+    expect(response.status).toBe(400);
+    expect(text).not.toContain("あああ");
+    expect(text).not.toContain("term10");
+    expect(text).not.toContain("alpha");
+    expect(records(sink)).toEqual([]);
+    expect(await rawQueryStore!.findByDigest(digestQuery(canonicalRunQuestion({ question: "q" })))).toEqual([]);
+  });
+
+  it("Slack が有効な構成では、追加の引数を含む質問も生クエリ表に書かず digest だけを残す(不変条件7)", async () => {
+    const config = testConfig({ connectors: [{ id: "alpha" }, { id: "beta", kind: "slack-rts" }] });
+    const { sink, rawQueryStore, startRun } = await startHarness({ config });
+    const body = { question: "決定事項は?", userMessage: "#general で決まったこと", keepTerms: ["#general"] };
+    await startRun("session-alice", body);
+    const canonical = canonicalRunQuestion(body);
+    expect(await rawQueryStore!.findByDigest(digestQuery(canonical))).toEqual([]);
+    expect(ofType(records(sink), "answer_run")[0]).toMatchObject({ finalQueryDigest: digestQuery(canonical) });
+    expect(JSON.stringify(records(sink))).not.toContain("#general");
   });
 });

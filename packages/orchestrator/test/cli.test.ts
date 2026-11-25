@@ -385,6 +385,43 @@ describe("leisen-ask: 利用者の束縛(H1)と --config", () => {
     expect(lastAnswerRun(harness)).toMatchObject({ finalOutcome: "resolved", citedDocIds: ["alpha:doc-expense-policy"] });
   });
 
+  it("--config で Slack が有効なら、--json の searchesTried に query を載せない(ADR-026 決定5、不変条件7)", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(
+      DEPLOYMENT_YAML.replace("audit:", "  - id: slack\n    kind: slack-rts\naudit:"),
+    );
+    const { out, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "--json", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    const answer = answerSchema.parse(JSON.parse(out.join("\n")));
+    expect(answer.searchesTried).toEqual([{ sourceId: "alpha", outcome: "hits", newDocuments: 1 }]);
+    expect(out.join("\n")).not.toContain("\"query\"");
+  });
+
+  it("--config で Slack が無効なら、--json の searchesTried に query を載せる(ADR-026 決定3)", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(DEPLOYMENT_YAML);
+    const { out, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "--json", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    const answer = answerSchema.parse(JSON.parse(out.join("\n")));
+    expect(answer.searchesTried).toEqual([
+      { sourceId: "alpha", query: "締め日", outcome: "hits", newDocuments: 1 },
+    ]);
+  });
+
   it("--config の deployment.yaml が不正なら終了コード 2", async () => {
     const harness = await setup();
     const config = await writeDeployment("schemaVersion: 1\nconnectors: 3\n");

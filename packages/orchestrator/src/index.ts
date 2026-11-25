@@ -5,6 +5,8 @@
  * - orchestrator.ts   探索ループ(runId / iteration の採番、上限、出典検証、AnswerRun)
  * - failure-text.ts   outcome: error の回答文(失敗の分類ごとに次の行動を示す)
  * - answer.ts         回答スキーマ(zod)と submit_answer ツール
+ * - ask-input.ts      ask の追加の引数(ADR-026)の上限・探索 LLM への区分・depth と maxIterations
+ * - searches-tried.ts 返り値の試した検索(searchesTried。ADR-026 決定3)の集計
  * - citations.ts      証拠台帳(run 内で受け取った文書)と出典の検証
  * - sanitize.ts       回答本文の無害化(URL・リンク・画像・生の HTML を残さない)
  * - prompt.ts         system prompt(prompts/explore.v3.md が既定、v4 は設定で選ぶ。固定部のみ)、
@@ -26,6 +28,7 @@
  * - bin/leisen-ask.ts     CLI(bin/serve.ts: `leisen-ask serve`、bin/credential-options.ts: Orchestrator の資格情報)
  */
 export * from "./answer.js";
+export * from "./ask-input.js";
 export * from "./audit.js";
 export * from "./citations.js";
 export * from "./config.js";
@@ -36,6 +39,7 @@ export * from "./orchestrator.js";
 export * from "./prompt.js";
 export * from "./sanitize.js";
 export * from "./search-feedback.js";
+export * from "./searches-tried.js";
 export * from "./tools.js";
 export * from "./llm/types.js";
 export * from "./llm/capabilities.js";

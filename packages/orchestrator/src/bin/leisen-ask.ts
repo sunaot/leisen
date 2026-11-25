@@ -48,7 +48,7 @@ import {
   DeploymentConfigError,
   loadDeploymentConfig,
 } from "@leisen/gateway";
-import type { Answer } from "../answer.js";
+import { withoutSearchQueries, type Answer } from "../answer.js";
 import {
   orchestratorSettingsSchema,
   type LlmBackendConfigInput,
@@ -89,7 +89,13 @@ import {
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
-import { runServe, settingsFromDeployment, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import {
+  nonPersistableSourceIds,
+  runServe,
+  settingsFromDeployment,
+  waitForTerminationSignal,
+  type ServeEndpoint,
+} from "./serve.js";
 import { runDoctor } from "./doctor.js";
 import {
   INSECURE_UPSTREAM_HINT,
@@ -501,9 +507,14 @@ export async function runCli(
 
   // --config の orchestrator セクションを探索の設定にする(--max-iterations が優先)
   let settings: OrchestratorSettingsInput = {};
+  // 永続化できないソース(Slack)が有効な --config なら、--json の searchesTried から query を除く
+  // (ADR-026 決定5、不変条件7)
+  let omitSearchQueries = false;
   if (args.config !== undefined) {
     try {
-      settings = settingsFromDeployment(loadDeploymentConfig(resolve(args.config)));
+      const deployment = loadDeploymentConfig(resolve(args.config));
+      settings = settingsFromDeployment(deployment);
+      omitSearchQueries = nonPersistableSourceIds(deployment).length > 0;
     } catch (error) {
       await gateway.close();
       // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)
@@ -553,7 +564,11 @@ export async function runCli(
     if (hint !== undefined) {
       io.stderr(hint);
     }
-    io.stdout(args.json ? JSON.stringify(answer, null, 2) : renderAnswer(answer));
+    io.stdout(
+      args.json
+        ? JSON.stringify(omitSearchQueries ? withoutSearchQueries(answer) : answer, null, 2)
+        : renderAnswer(answer),
+    );
     return answer.outcome === "error" ? 1 : 0;
   } catch (error) {
     if (error instanceof OrchestratorError) {

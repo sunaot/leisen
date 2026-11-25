@@ -4,7 +4,8 @@
  * 実 Gateway(JSONL の監査ストアと生クエリ表)に対して Orchestrator が run を実行し、利用者が
  * フィードバックし、別の run を開始したまま終わらせず、Gateway を再起動して finish を再送したあと、
  * 昇格判定レポート(leisen-promotion-report)で Gateway の audit.jsonl を 1 つ読んで集計する:
- * - run が集計される(run > 0)、失敗クエリに質問原文が表示される
+ * - run が集計される(run > 0)、失敗クエリに質問原文が表示される(ask の入力を正規化した JSON。
+ *   キーは辞書順。digest もその JSON から作る。ADR-026 決定4、T-031)
  * - フィードバックが Gateway の再起動と finish の再送のあとも残る(部分レコードは消えない)
  * - finish のない期限切れの run が「放棄」と数えられる
  * 秘密情報の実値は使わない(不変条件6)。
@@ -17,6 +18,7 @@ import {
   BufferedAuditSink,
   JsonlAuditStore,
   JsonlRawQueryStore,
+  digestQuery,
   parseAuditRecord,
   type AuditRecord,
 } from "@leisen/audit";
@@ -33,6 +35,11 @@ import {
 
 const QUESTION = "有給休暇の繰越は何日までですか?";
 const ABANDONED_QUESTION = "終了を申告しない run の質問";
+/** ask の追加の引数(ADR-026)。run API には文字列を含む引数だけが申告される */
+const USER_MESSAGE = "有給の繰越って何日まで?";
+const KEEP_TERMS = ["有給", "繰越"];
+/** 生クエリ表に書かれる質問(ask の入力を正規化した JSON。キーは辞書順、空白なし。ADR-026 決定4) */
+const RECORDED_QUESTION = `{"keepTerms":["有給","繰越"],"question":"${QUESTION}","userMessage":"${USER_MESSAGE}"}`;
 /** Gateway と Orchestrator の時計: 実時刻の 1 時間前に固定する(レポート時点で runId の有効期間 600 秒が過ぎている) */
 const T0 = Date.now() - 60 * 60 * 1000;
 
@@ -78,6 +85,10 @@ describe("Gateway + Orchestrator + 昇格判定レポート(ゴールデン)", (
     ]);
     const answer = await new Orchestrator({ llm, now: () => T0 }).run({
       question: QUESTION,
+      userMessage: USER_MESSAGE,
+      keepTerms: KEEP_TERMS,
+      sources: ["alpha"],
+      depth: "standard",
       gateway: first.client(ALICE_TOKEN),
     });
     expect(answer.outcome).toBe("unresolved");
@@ -151,7 +162,8 @@ describe("Gateway + Orchestrator + 昇格判定レポート(ゴールデン)", (
       userMismatchWarnings: [],
     });
     expect(body["failedQueries"]).toEqual([
-      expect.objectContaining({ runId: answer.runId, status: "available", rawQuery: QUESTION, searchedSources: ["alpha"] }),
+      // 質問原文は ask の入力を正規化した JSON(ADR-026 決定4)
+      expect.objectContaining({ runId: answer.runId, status: "available", rawQuery: RECORDED_QUESTION, searchedSources: ["alpha"] }),
     ]);
     expect(body["sourceStats"]).toEqual([
       expect.objectContaining({ sourceId: "alpha", runs: 1, unresolvedRuns: 1, eligibility: "eligible" }),
@@ -161,7 +173,16 @@ describe("Gateway + Orchestrator + 昇格判定レポート(ゴールデン)", (
     expect(await runCli(args, { stdout: (l) => text.push(l), stderr: (l) => errors.push(l) })).toBe(0);
     const rendered = text.join("\n");
     expect(rendered).toContain("run数: 2(resolved=0 unresolved=1 未確定=1 放棄=1)");
-    expect(rendered).toContain(JSON.stringify(QUESTION));
+    expect(rendered).toContain(JSON.stringify(RECORDED_QUESTION));
+    // レポートの原文は JSON として読め、利用者の発言と UI 側 LLM の入力を区別できる
+    const failed = (body["failedQueries"] as { rawQuery: string }[])[0];
+    expect(JSON.parse(failed?.rawQuery ?? "")).toEqual({
+      keepTerms: KEEP_TERMS,
+      question: QUESTION,
+      userMessage: USER_MESSAGE,
+    });
+    // digest は正規化した JSON の sha256(AnswerRun の finalQueryDigest と一致する)
+    expect(merged.find((r) => r.runId === answer.runId)?.finalQueryDigest).toBe(digestQuery(RECORDED_QUESTION));
     // 放棄した run の質問は失敗クエリ(未解決)ではないので原文は出ない
     expect(rendered).not.toContain(ABANDONED_QUESTION);
     // レポートの実行はメタ監査に残る(audit_log と raw_query)
