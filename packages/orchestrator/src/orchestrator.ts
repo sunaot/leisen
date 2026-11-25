@@ -680,6 +680,9 @@ export class Orchestrator {
       ],
       activeSources: new Set(activeSources),
     };
+    // 検索の仕様に照らした判定の材料(検証済みの describe 結果。searchFeedback が有効なときだけ
+    // 制御メッセージになる)
+    state.searchLog.registerSources(context.discovery.briefs);
     return this.#loop(conversation, state, signal);
   }
 
@@ -951,7 +954,12 @@ export class Orchestrator {
             return dataResult(call.id, {
               tool: planned.tool,
               source: planned.source,
-              result: dispatched.result,
+              // search の notices(ADR-025)はツール結果のデータに入れない。searchFeedback が
+              // 有効なときに Orchestrator の定型文の制御メッセージとして渡す(v3 の入力を変えない)
+              result:
+                planned.tool === "search"
+                  ? withoutSearchNotices(dispatched.result)
+                  : dispatched.result,
             });
           case "tool_error":
             if (dispatched.error.errorClass === "source_not_connected") {
@@ -1365,4 +1373,16 @@ function localDate(ms: number): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** search の結果から notices を除く(形が想定外ならそのまま)。 */
+function withoutSearchNotices(result: unknown): unknown {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return result;
+  }
+  if (!Object.hasOwn(result, "notices")) {
+    return result;
+  }
+  const { notices: _notices, ...rest } = result as Record<string, unknown>;
+  return rest;
 }

@@ -1,9 +1,12 @@
 /**
- * connector-sdk v0.5: 全データソースコネクタが実装する共通インターフェース。
+ * connector-sdk v0.6: 全データソースコネクタが実装する共通インターフェース。
  * v0.2からの変更はADR-016(SearchOptions、listページング、snippet規約、redaction)。
  * v0.3からの変更はADR-016 追補2(プライベート領域の方針 SourcePolicy、結果ごとの
  * 領域分類 DocumentScope、能力 privateScopeHandling、エラー分類 private_scope_excluded)。
  * v0.4からの変更はADR-024(利用者ごとの API キー Credential `api_key`)。
+ * v0.5からの変更はADR-025(検索プロファイル SourceDescription.searchProfile、検索の通知
+ * SearchResult.notices と、その値域の検証関数)。追加はすべて省略可能なフィールドで、
+ * search / fetch / list / describe の引数は変えない。
  *
  * 不変条件(CLAUDE.md参照):
  * - すべての操作は AuthContext(利用者本人の資格情報)を受け取る。
@@ -129,6 +132,24 @@ export interface SearchFilters {
   author?: string;
 }
 
+/** SearchFilters のキーの値域(v0.6。値域の検証に使う)。 */
+export const SEARCH_FILTER_KEYS = [
+  "updatedAfter",
+  "updatedBefore",
+  "container",
+  "author",
+] as const satisfies readonly (keyof SearchFilters)[];
+type AssertNever<T extends never> = T;
+/** SEARCH_FILTER_KEYS が SearchFilters のキーを網羅することのコンパイル時の検査 */
+export type SearchFilterKeysCoverFilters = AssertNever<
+  Exclude<keyof SearchFilters, (typeof SEARCH_FILTER_KEYS)[number]>
+>;
+
+/** SearchFilters のキーか(実行時の値域の検証)。 */
+export function isSearchFilterKey(value: unknown): value is keyof SearchFilters {
+  return (SEARCH_FILTER_KEYS as readonly unknown[]).includes(value);
+}
+
 /** 検索オプション(ADR-016)。 */
 export interface SearchOptions {
   /** 続きを取得するカーソル */
@@ -198,7 +219,41 @@ export interface SearchResult {
    * (Gateway は中身を検査せずに LLM へ渡す。ADR-016 追補2 決定4)
    */
   nextCursor?: string;
+  /**
+   * コネクタが語を捨てた・指定を無視したことの通知(v0.6、ADR-025 決定4)。列挙値だけで
+   * 自由文を持たない。query と filters の形、および本人の資格情報でソースが返した(認可済みの)
+   * 結果からだけ作る。認可前の候補の有無・件数から作らない。「権限がないため 0 件」と
+   * 「本当に 0 件」を区別する情報を含めない(ADR-012)。Gateway は値域の外の値を落とす
+   * (sanitizeSearchNotices)。監査(ToolInvocation)には記録しない(ADR-025 確認事項5)
+   */
+  notices?: SearchNotice[];
 }
+
+/** 検索の通知の種類(ADR-025 決定4)。 */
+export const SEARCH_NOTICE_KINDS = [
+  /** 語数の上限を超えた語を捨てた */
+  "terms_dropped",
+  /** 文字数の上限で query を切った */
+  "query_truncated",
+  /** 演算子・修飾子を解釈しなかった */
+  "operator_ignored",
+  /** filters の指定を使わなかった */
+  "filter_ignored",
+  /** AND で結果がなく、コネクタの中で OR に切り替えて再検索した */
+  "join_relaxed",
+] as const;
+export type SearchNoticeKind = (typeof SEARCH_NOTICE_KINDS)[number];
+
+export interface SearchNotice {
+  readonly kind: SearchNoticeKind;
+  /** terms_dropped のとき、使った語の数(query から数えられる値に限る。0〜MAX_SEARCH_LIMIT_VALUE) */
+  readonly keptTerms?: number;
+  /** filter_ignored のとき、使わなかったフィルタのキー */
+  readonly filter?: keyof SearchFilters;
+}
+
+/** 1回の search で返せる通知の数の上限(種類とフィルタのキーの組み合わせの数より大きい) */
+export const MAX_SEARCH_NOTICES = 10;
 
 export interface FetchResult {
   documentId: string;
@@ -251,6 +306,304 @@ export interface SourceDescription {
   topContainers: ContainerEntry[];
   /** search が対応するフィルタ */
   supportedFilters: (keyof SearchFilters)[];
+  /**
+   * 検索の仕様(v0.6、ADR-025 決定1)。列挙値と数値だけで自由文を持たない。利用者の資格情報や
+   * 検索の結果で値を変えない(決定3。コードの既定値と ConnectorFactoryInit.settings から作る)。
+   * 省略時は全項目が不明として扱われる。Gateway と Orchestrator は sanitizeSearchProfile で
+   * 値域の外の項目を落とす。導入先は deployment.yaml の connectors[].searchProfile で項目単位に
+   * 上書きできる(Gateway が describe の射影で重ねる)
+   */
+  searchProfile?: SearchProfile;
+}
+
+// ---- 検索プロファイル(v0.6、ADR-025) ----
+//
+// 値域は下の定数で定義し、型はそこから導く。値域の検証(sanitizeSearchProfile /
+// sanitizeSearchNotices)もこの定数を使う。Gateway の deployment.yaml のスキーマ
+// (connectors[].searchProfile)も同じ定数から作る。列挙値の追加は SDK の版上げとして扱い、
+// ADR-025 の追補に記録する(決定1)。
+
+/** 値の根拠。tested = 実機で確かめた / documented = 公式文書・ソースコードで確かめた(実機では未確認) */
+export const SEARCH_PROFILE_BASES = ["tested", "documented"] as const;
+export type SearchProfileBasis = (typeof SEARCH_PROFILE_BASES)[number];
+
+export interface SearchProfileItem<T> {
+  readonly value: T;
+  readonly basis: SearchProfileBasis;
+}
+
+/** OR 演算子 / NOT 演算子 / 語の前の - による除外 / 括弧によるまとまり */
+export const SEARCH_OPERATORS = ["or", "not", "minus", "parentheses"] as const;
+export type SearchOperator = (typeof SEARCH_OPERATORS)[number];
+
+/** 修飾子が絞り込む対象 */
+export const SEARCH_QUALIFIER_TARGETS = [
+  "title",
+  "body",
+  "category",
+  "tag",
+  "author",
+  "date",
+  "state",
+  "type",
+] as const;
+export type SearchQualifierTarget = (typeof SEARCH_QUALIFIER_TARGETS)[number];
+
+/** 修飾子の名前の形式(ADR-025 決定1・確認事項4) */
+export const SEARCH_QUALIFIER_NAME_PATTERN = /^[a-z][a-z_]{0,15}$/;
+/** 1ソースの修飾子の数の上限(ADR-025 決定2) */
+export const MAX_SEARCH_QUALIFIERS = 20;
+
+export interface SearchQualifier {
+  /** 修飾子の名前(例: "title")。SEARCH_QUALIFIER_NAME_PATTERN に限る。query には "<name>:" として書く */
+  readonly name: string;
+  /** 絞り込む対象 */
+  readonly target: SearchQualifierTarget;
+}
+
+/** 上限の数値の範囲(ADR-025 決定1・2) */
+export const MIN_SEARCH_LIMIT_VALUE = 1;
+export const MAX_SEARCH_LIMIT_VALUE = 1_000;
+
+/** 超過時の挙動。dropped = 超えた分を黙って捨てる / truncated = 途中で切る / error = エラーを返す */
+export const SEARCH_LIMIT_OVERFLOWS = ["dropped", "truncated", "error", "unknown"] as const;
+export type SearchLimitOverflow = (typeof SEARCH_LIMIT_OVERFLOWS)[number];
+
+export interface SearchLimit {
+  /** MIN_SEARCH_LIMIT_VALUE 以上 MAX_SEARCH_LIMIT_VALUE 以下の整数 */
+  readonly limit: number;
+  readonly overflow: SearchLimitOverflow;
+}
+
+/** 列挙値の項目の値域 */
+export const SEARCH_PROFILE_ENUM_VALUES = {
+  /** 空白で区切った語の結合。and = すべて含む / or = いずれかを含む */
+  termJoin: ["and", "or", "unknown"],
+  /** 照合の単位。substring = 部分文字列 / token = 語(バックエンドの分割規則による) */
+  matchUnit: ["substring", "token", "unknown"],
+  /** 自然文の質問をそのまま渡したときに意味の近い文書を返すか(Slack の意味検索など) */
+  naturalLanguage: ["supported", "unsupported", "unknown"],
+  /** "…" による語句の完全一致 */
+  phraseQuote: ["supported", "unsupported", "unknown"],
+  /** 並び順。relevance = 関連度 / recency = 更新の新しい順 */
+  ranking: ["relevance", "recency", "unknown"],
+  /** スニペットの種類。match_context = 一致箇所の周辺 / leading_text = 本文の先頭 / mixed = 結果の種別による */
+  snippet: ["match_context", "leading_text", "mixed", "none"],
+} as const;
+type EnumValues = typeof SEARCH_PROFILE_ENUM_VALUES;
+export type SearchProfileEnumKey = keyof EnumValues;
+
+/** 上限の項目 */
+export const SEARCH_PROFILE_LIMIT_KEYS = ["maxTerms", "maxQueryChars", "maxOperators"] as const;
+export type SearchProfileLimitKey = (typeof SEARCH_PROFILE_LIMIT_KEYS)[number];
+
+export interface SearchProfile {
+  readonly termJoin?: SearchProfileItem<EnumValues["termJoin"][number]>;
+  readonly matchUnit?: SearchProfileItem<EnumValues["matchUnit"][number]>;
+  readonly naturalLanguage?: SearchProfileItem<EnumValues["naturalLanguage"][number]>;
+  readonly phraseQuote?: SearchProfileItem<EnumValues["phraseQuote"][number]>;
+  /** query の中に書ける演算子 */
+  readonly operators?: SearchProfileItem<readonly SearchOperator[]>;
+  /** query の中に書ける修飾子(名前は制約付き、対象は列挙値) */
+  readonly qualifiers?: SearchProfileItem<readonly SearchQualifier[]>;
+  /** 上限と超過時の挙動 */
+  readonly maxTerms?: SearchProfileItem<SearchLimit>;
+  readonly maxQueryChars?: SearchProfileItem<SearchLimit>;
+  readonly maxOperators?: SearchProfileItem<SearchLimit>;
+  readonly ranking?: SearchProfileItem<EnumValues["ranking"][number]>;
+  /** タイトルに語を含む文書を上位にするか */
+  readonly titleBoost?: SearchProfileItem<boolean>;
+  readonly snippet?: SearchProfileItem<EnumValues["snippet"][number]>;
+}
+
+/** 検索プロファイルの項目名(値域の検証と上書きの単位) */
+export const SEARCH_PROFILE_KEYS = [
+  "termJoin",
+  "matchUnit",
+  "naturalLanguage",
+  "phraseQuote",
+  "operators",
+  "qualifiers",
+  "maxTerms",
+  "maxQueryChars",
+  "maxOperators",
+  "ranking",
+  "titleBoost",
+  "snippet",
+] as const satisfies readonly (keyof SearchProfile)[];
+export type SearchProfileKey = (typeof SEARCH_PROFILE_KEYS)[number];
+/** SEARCH_PROFILE_KEYS が SearchProfile の項目を網羅することのコンパイル時の検査 */
+export type SearchProfileKeysCoverProfile = AssertNever<
+  Exclude<keyof SearchProfile, SearchProfileKey>
+>;
+
+type UnknownRecord = Readonly<Record<string, unknown>>;
+
+function plainRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : undefined;
+}
+
+function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
+  return typeof value === "string" && (values as readonly string[]).includes(value);
+}
+
+function isLimitValue(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= MIN_SEARCH_LIMIT_VALUE &&
+    value <= MAX_SEARCH_LIMIT_VALUE
+  );
+}
+
+/** 修飾子の名前が形式に合うか(ADR-025 決定1)。 */
+export function isSearchQualifierName(value: unknown): value is string {
+  return typeof value === "string" && SEARCH_QUALIFIER_NAME_PATTERN.test(value);
+}
+
+/**
+ * 1項目の値を値域で検証し、正規化した値を返す。値域の外・型の違い・形式違反は undefined
+ * (呼び出し側が項目ごと落とす)。配列は重複を除き、要素に1つでも違反があれば項目ごと落とす。
+ */
+function itemValueOf(key: SearchProfileKey, value: unknown): unknown {
+  switch (key) {
+    case "termJoin":
+    case "matchUnit":
+    case "naturalLanguage":
+    case "phraseQuote":
+    case "ranking":
+    case "snippet":
+      return isOneOf<string>(SEARCH_PROFILE_ENUM_VALUES[key], value) ? value : undefined;
+    case "titleBoost":
+      return typeof value === "boolean" ? value : undefined;
+    case "operators":
+      if (!Array.isArray(value) || !value.every((op) => isOneOf(SEARCH_OPERATORS, op))) {
+        return undefined;
+      }
+      return [...new Set(value as SearchOperator[])];
+    case "qualifiers": {
+      if (!Array.isArray(value) || value.length > MAX_SEARCH_QUALIFIERS) {
+        return undefined;
+      }
+      const qualifiers: SearchQualifier[] = [];
+      for (const raw of value) {
+        const record = plainRecord(raw);
+        const name = record?.["name"];
+        const target = record?.["target"];
+        if (!isSearchQualifierName(name) || !isOneOf(SEARCH_QUALIFIER_TARGETS, target)) {
+          return undefined;
+        }
+        if (!qualifiers.some((q) => q.name === name && q.target === target)) {
+          qualifiers.push({ name, target });
+        }
+      }
+      return qualifiers;
+    }
+    case "maxTerms":
+    case "maxQueryChars":
+    case "maxOperators": {
+      const record = plainRecord(value);
+      const limit = record?.["limit"];
+      const overflow = record?.["overflow"];
+      if (!isLimitValue(limit) || !isOneOf(SEARCH_LIMIT_OVERFLOWS, overflow)) {
+        return undefined;
+      }
+      return { limit, overflow };
+    }
+  }
+}
+
+/**
+ * 検索プロファイルを SDK の値域で検証し、既知の項目のうち値域を満たすものだけから組み立て
+ * 直す(ADR-025 決定2)。未知の項目・項目の未知のフィールドは捨て、値域の外の値・型の違う値・
+ * 修飾子の名前の形式違反・MAX_SEARCH_QUALIFIERS を超える修飾子・根拠(basis)の欠落や不正は
+ * 項目ごと落とす(=不明)。プロファイルがオブジェクトでない・有効な項目が1つもないときは undefined。
+ */
+export function sanitizeSearchProfile(value: unknown): SearchProfile | undefined {
+  const record = plainRecord(value);
+  if (record === undefined) {
+    return undefined;
+  }
+  const out: Record<string, SearchProfileItem<unknown>> = {};
+  for (const key of SEARCH_PROFILE_KEYS) {
+    const item = plainRecord(record[key]);
+    const basis = item?.["basis"];
+    if (item === undefined || !isOneOf(SEARCH_PROFILE_BASES, basis)) {
+      continue;
+    }
+    const itemValue = itemValueOf(key, item["value"]);
+    if (itemValue !== undefined) {
+      out[key] = { value: itemValue, basis };
+    }
+  }
+  return Object.keys(out).length > 0 ? (out as SearchProfile) : undefined;
+}
+
+/**
+ * 検索プロファイルに導入先の上書きを項目単位で重ねる(ADR-025 決定3)。上書きに書かれた項目は
+ * コネクタの値を置き換え、書かれていない項目はコネクタの値のまま。どちらも検証済みの値を渡す。
+ */
+export function mergeSearchProfile(
+  base: SearchProfile | undefined,
+  override: SearchProfile | undefined,
+): SearchProfile | undefined {
+  if (override === undefined) {
+    return base;
+  }
+  const merged: Record<string, unknown> = {};
+  for (const key of SEARCH_PROFILE_KEYS) {
+    const item = override[key] ?? base?.[key];
+    if (item !== undefined) {
+      merged[key] = item;
+    }
+  }
+  return Object.keys(merged).length > 0 ? (merged as SearchProfile) : undefined;
+}
+
+/**
+ * 検索の通知を値域で検証して組み立て直す(ADR-025 決定4)。未知の kind・型の違う要素は落とし、
+ * keptTerms は terms_dropped のときの 0〜MAX_SEARCH_LIMIT_VALUE の整数だけ、filter は
+ * filter_ignored のときの SearchFilters のキーだけを残す。それ以外のフィールドは捨てる。
+ * 重複を除き、MAX_SEARCH_NOTICES 件までにする。有効な通知がなければ undefined。
+ */
+export function sanitizeSearchNotices(value: unknown): SearchNotice[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out: SearchNotice[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const record = plainRecord(raw);
+    const kind = record?.["kind"];
+    if (record === undefined || !isOneOf(SEARCH_NOTICE_KINDS, kind)) {
+      continue;
+    }
+    const keptTerms = record["keptTerms"];
+    const filter = record["filter"];
+    const notice: SearchNotice = {
+      kind,
+      ...(kind === "terms_dropped" &&
+      typeof keptTerms === "number" &&
+      Number.isInteger(keptTerms) &&
+      keptTerms >= 0 &&
+      keptTerms <= MAX_SEARCH_LIMIT_VALUE
+        ? { keptTerms }
+        : {}),
+      ...(kind === "filter_ignored" && isSearchFilterKey(filter) ? { filter } : {}),
+    };
+    const key = `${notice.kind}:${notice.filter ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(notice);
+    if (out.length >= MAX_SEARCH_NOTICES) {
+      break;
+    }
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /** エラー分類。Gatewayのリトライ・監査ログの errorClass に対応する。 */

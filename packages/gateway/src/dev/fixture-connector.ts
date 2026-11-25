@@ -38,6 +38,7 @@ import {
   type SearchFilters,
   type SearchHit,
   type SearchOptions,
+  type SearchProfile,
   type SearchResult,
   type SourceDescription,
   type SourcePolicy,
@@ -127,6 +128,24 @@ const settingsSchema = z
   });
 
 const corpusFileSchema = z.strictObject({ documents: documentsSchema });
+
+/**
+ * 検索プロファイル(connector-sdk v0.6、ADR-025)。search の実装(空白区切りの全語 AND の
+ * 部分一致、タイトル一致の多い順 → 更新の新しい順、一致箇所の周辺のスニペット)そのものなので、
+ * 根拠は tested(このファイルのテストで固定する)。演算子・修飾子・引用符は解釈せず、記号も
+ * 語として照合する。語数・文字数の上限はない(項目を書かない)。利用者によらない定数
+ */
+export const DEV_FIXTURE_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "and", basis: "tested" },
+  matchUnit: { value: "substring", basis: "tested" },
+  naturalLanguage: { value: "unsupported", basis: "tested" },
+  phraseQuote: { value: "unsupported", basis: "tested" },
+  operators: { value: [], basis: "tested" },
+  qualifiers: { value: [], basis: "tested" },
+  ranking: { value: "recency", basis: "tested" },
+  titleBoost: { value: true, basis: "tested" },
+  snippet: { value: "match_context", basis: "tested" },
+};
 
 /** settings.corpusFile / documents がないときの組み込みサンプル(合成データ)。 */
 export const DEV_FIXTURE_SAMPLE_DOCUMENTS: readonly DevFixtureDocument[] = [
@@ -488,6 +507,7 @@ export class DevFixtureConnector implements Connector {
       summary: this.summary,
       topContainers: this.containerEntries().slice(0, TOP_CONTAINERS),
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
+      searchProfile: DEV_FIXTURE_SEARCH_PROFILE,
     };
   }
 

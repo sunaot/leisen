@@ -3,9 +3,9 @@
  * Redmine API はモックの fetch。API キーはダミーの値だけを使う。
  */
 import { describe, expect, it, vi } from "vitest";
-import { ConnectorError, MAX_SNIPPET_CHARS, type AuthContext } from "@leisen/connector-sdk";
-import { RedmineConnector } from "../src/redmine.js";
-import { normalizeQuery, snippetTerms } from "../src/query.js";
+import { ConnectorError, MAX_SNIPPET_CHARS, sanitizeSearchProfile, type AuthContext } from "@leisen/connector-sdk";
+import { REDMINE_SEARCH_PROFILE, RedmineConnector } from "../src/redmine.js";
+import { normalizeQuery, searchNoticesFor, snippetTerms } from "../src/query.js";
 
 const baseUrl = "https://redmine.example.invalid/";
 const AUTH: AuthContext = { userId: "alice", credential: { kind: "api_key", apiKey: "test-key-alice", expiresAt: 0 } };
@@ -92,5 +92,55 @@ describe("describe の summary と supportedFilters", () => {
     await expect(connector.search(AUTH, "x y", { container: "1" })).rejects.toMatchObject({ errorClass: "invalid_request" });
     await expect(connector.search(AUTH, "x y", { container: "1" })).rejects.toBeInstanceOf(ConnectorError);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("検索プロファイル(connector-sdk v0.6、ADR-025)", () => {
+  it("利用者によらず同じで、SDK の値域を満たし、根拠はすべて documented(実機では未確認)", async () => {
+    const { connector } = setup({ results: [] });
+    const bob: AuthContext = { userId: "bob", credential: { kind: "api_key", apiKey: "test-key-bob", expiresAt: 0 } };
+    const alice = await connector.describe(AUTH);
+    expect(alice.searchProfile).toEqual((await connector.describe(bob)).searchProfile);
+    expect(alice.searchProfile).toBe(REDMINE_SEARCH_PROFILE);
+    expect(sanitizeSearchProfile(REDMINE_SEARCH_PROFILE)).toEqual(REDMINE_SEARCH_PROFILE);
+    for (const item of Object.values(REDMINE_SEARCH_PROFILE)) {
+      expect(item.basis).toBe("documented");
+    }
+    expect(REDMINE_SEARCH_PROFILE.maxTerms?.value).toEqual({ limit: 5, overflow: "dropped" });
+    expect(REDMINE_SEARCH_PROFILE.ranking?.value).toBe("recency");
+    expect(REDMINE_SEARCH_PROFILE.operators?.value).toEqual([]);
+  });
+
+  it("語の結合は不明のまま(all_words=0 が AND か OR かは実機未確認)で、検索の挙動は変えない", async () => {
+    expect(REDMINE_SEARCH_PROFILE.termJoin?.value).toBe("unknown");
+    const { connector, seen } = setup({ results: [], total_count: 0 });
+    await connector.search(AUTH, "認可 方針");
+    expect(seen[0]?.searchParams.get("all_words")).toBe("0");
+  });
+});
+
+describe("検索の通知(ADR-025 決定4)", () => {
+  it("6 語以上(重複・漢字以外の 1 文字を除いて数える)なら terms_dropped(先頭 5 語)を返す", async () => {
+    const { connector } = setup({ results: [], total_count: 0 });
+    const many = await connector.search(AUTH, "経費 精算 申請 承認 期限 締め日");
+    expect(many.notices).toEqual([{ kind: "terms_dropped", keptTerms: 5 }]);
+    const five = await connector.search(AUTH, "経費 精算 申請 承認 期限 a 経費");
+    expect(five.notices).toBeUndefined();
+  });
+
+  it("通知は query だけから作り、結果の有無・件数で変わらない(ADR-012)", async () => {
+    const query = "経費 精算 申請 承認 期限 締め日";
+    const empty = await setup({ results: [], total_count: 0 }).connector.search(AUTH, query);
+    const withResults = await setup(
+      {
+        results: [{ id: 3, type: "wiki-page", title: "Wiki", url: "https://redmine.example.invalid/projects/p/wiki/Page", description: "経費" }],
+        total_count: 900,
+      },
+    ).connector.search(AUTH, query);
+    expect(withResults.hits).toHaveLength(1);
+    expect(withResults.notices).toEqual(empty.notices);
+    expect(JSON.stringify(withResults.notices)).not.toContain("900");
+    expect(searchNoticesFor(query)).toEqual([{ kind: "terms_dropped", keptTerms: 5 }]);
+    expect(searchNoticesFor('"経費 精算 申請 承認 期限 締め日"')).toEqual([]);
   });
 });

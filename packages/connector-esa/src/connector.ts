@@ -27,6 +27,7 @@ import {
   type SearchHit,
   type SearchOptions,
   type SearchResult,
+  type SearchProfile,
   type SourceDescription,
 } from "@leisen/connector-sdk";
 import { EsaMcpClient, type EsaMcpCaller, type EsaReadTool, type FetchLike } from "./mcp.js";
@@ -369,9 +370,40 @@ export class EsaConnector implements Connector {
       summary: this.#summary,
       topContainers: top,
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
+      searchProfile: ESA_SEARCH_PROFILE,
     };
   }
 }
+
+/**
+ * 検索プロファイル(connector-sdk v0.6、ADR-025)。esa の検索ヘルプ(docs.esa.io/posts/104)と
+ * 本コネクタの実装による値で、リモート MCP の esa_search_posts 経由では確かめていないため根拠は
+ * すべて documented(T-029 の結果で tested に変える)。照合の単位・自然文の扱い・語数と文字数の
+ * 上限は公式の記述がなく、項目を書かない(不明)。#タグ は「名前:」の形でないため修飾子に
+ * 含めない(summary に書く)。利用者によらない定数
+ */
+export const ESA_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "and", basis: "documented" },
+  phraseQuote: { value: "supported", basis: "documented" },
+  operators: { value: ["or", "minus", "parentheses"], basis: "documented" },
+  qualifiers: {
+    value: [
+      { name: "title", target: "title" },
+      { name: "body", target: "body" },
+      { name: "in", target: "category" },
+      { name: "on", target: "category" },
+      { name: "user", target: "author" },
+      { name: "created", target: "date" },
+      { name: "updated", target: "date" },
+      { name: "wip", target: "state" },
+      { name: "kind", target: "type" },
+    ],
+    basis: "documented",
+  },
+  ranking: { value: "relevance", basis: "documented" },
+  titleBoost: { value: true, basis: "documented" },
+  snippet: { value: "match_context", basis: "documented" },
+};
 
 /**
  * describe の summary に付ける検索の仕様(事実の記述。2026-11-25)。出典は esa の検索ヘルプ

@@ -16,17 +16,43 @@
  * 不変条件7: ここで持つ query は run の間だけメモリにあり、制御メッセージ(探索 LLM への
  * 揮発の入力)にだけ出す。warnings・回答・run API の申告(監査)には渡さない。
  *
- * 語数の上限など、ソースの検索の仕様に基づく判定はしない(構造化された検索プロファイルは
- * コネクタの IF 変更 = ADR が要る。不変条件5)。
+ * 検索の仕様に照らした判定(T-030、ADR-025): describe で得た検索プロファイルと supportedFilters
+ * (registerSources)に照らして、語数の上限の超過・空白のない文のままの query(ヒットなしのとき)・
+ * 非対応のフィルタの指定を知らせる。コネクタが返した検索の通知(SearchResult.notices。Gateway が
+ * 値域で検証済み)も定型文にして知らせる。いずれも query・filters・返却済みの結果だけが材料で、
+ * 文は search-profile.ts のテンプレートで作る(コネクタ由来の自由な文字列を入れない)。
  */
+import {
+  isSearchFilterKey,
+  sanitizeSearchNotices,
+  type SearchFilters,
+  type SearchProfile,
+} from "@leisen/connector-sdk";
 import {
   duplicateSearchNotice,
   noHitsNotice,
   noNewDocumentsNotice,
+  quoteQuery,
   searchHistoryNotice,
   type SearchAttemptOutcome,
   type SearchAttemptView,
+  type SourceBrief,
 } from "./prompt.js";
+import {
+  countQueryTerms,
+  isUnspacedSentence,
+  searchNoticeText,
+  termLimitNotice,
+  unspacedSentenceNotice,
+  unsupportedFilterNotice,
+} from "./search-profile.js";
+
+/** 1ソースの検索の仕様(describe 由来。検証済み)。 */
+interface SourceSearchSpec {
+  readonly profile: SearchProfile | undefined;
+  /** describe を読めたときだけ(読めなければ非対応のフィルタを判定しない) */
+  readonly supportedFilters: ReadonlySet<keyof SearchFilters> | undefined;
+}
 
 /** run あたりの差し戻しの上限(1件も fetch せずに提出しようとしたとき)。 */
 export const MAX_FETCH_PUSHBACKS = 1;
@@ -90,8 +116,23 @@ export class SearchLog {
   readonly #attempts: SearchAttemptView[] = [];
   readonly #searchKeys = new Set<string>();
   readonly #seen = new Set<string>();
+  readonly #specs = new Map<string, SourceSearchSpec>();
   #hitsReceived = 0;
   #fetched = 0;
+
+  /**
+   * describe の結果(検証済みの SourceBrief)から、ソースごとの検索の仕様を登録する。登録が
+   * ないソースは、検索の仕様に照らした判定をしない(コネクタの通知は伝える)。
+   */
+  registerSources(briefs: readonly SourceBrief[]): void {
+    for (const brief of briefs) {
+      this.#specs.set(brief.sourceId, {
+        profile: brief.searchProfile,
+        supportedFilters:
+          brief.filtersDeclared === true ? new Set(brief.supportedFilters ?? []) : undefined,
+      });
+    }
+  }
 
   /** ここまでに試した検索(応答内の順)。 */
   get attempts(): readonly SearchAttemptView[] {
@@ -130,10 +171,7 @@ export class SearchLog {
         }
         continue;
       }
-      const notice = this.#observeSearch(turn, observation);
-      if (notice !== undefined) {
-        notices.push(notice);
-      }
+      notices.push(...this.#observeSearch(turn, observation));
     }
     return notices;
   }
@@ -141,7 +179,7 @@ export class SearchLog {
   #observeSearch(
     turn: number,
     observation: Extract<ToolObservation, { tool: "search" }>,
-  ): string | undefined {
+  ): string[] {
     const rawQuery = observation.args["query"];
     const query = typeof rawQuery === "string" ? rawQuery : "";
     const filters = canonicalFilters(observation.args["filters"]);
@@ -187,14 +225,74 @@ export class SearchLog {
     this.#attempts.push(attempt);
     switch (outcome.kind) {
       case "duplicate":
-        return duplicateSearchNotice(attempt);
+        // 繰り返しには検索の仕様の判定を重ねない(初回で知らせている)
+        return [duplicateSearchNotice(attempt)];
       case "no_hits":
-        return noHitsNotice(attempt);
+        return [noHitsNotice(attempt), ...this.#specNotices(observation, query, filters, outcome)];
       case "no_new_documents":
-        return noNewDocumentsNotice(attempt);
+        return [
+          noNewDocumentsNotice(attempt),
+          ...this.#specNotices(observation, query, filters, outcome),
+        ];
       default:
-        return undefined;
+        return this.#specNotices(observation, query, filters, outcome);
     }
+  }
+
+  /**
+   * 検索の仕様に照らした判定と、コネクタの通知の文(T-030)。材料は query・filters と返却済みの
+   * 結果の notices だけ(ADR-012)。
+   */
+  #specNotices(
+    observation: Extract<ToolObservation, { tool: "search" }>,
+    query: string,
+    filters: readonly [string, string][],
+    outcome: SearchAttemptOutcome,
+  ): string[] {
+    const source = observation.source;
+    const spec = this.#specs.get(source);
+    const out: string[] = [];
+    const notices =
+      observation.ok && isRecord(observation.result)
+        ? (sanitizeSearchNotices(observation.result["notices"]) ?? [])
+        : [];
+    for (const notice of notices) {
+      out.push(searchNoticeText(source, notice));
+    }
+    if (spec === undefined) {
+      return out;
+    }
+    if (spec.supportedFilters !== undefined) {
+      const unsupported = filters
+        .map(([key]) => key)
+        .filter(
+          (key): key is keyof SearchFilters =>
+            isSearchFilterKey(key) && !spec.supportedFilters?.has(key),
+        );
+      if (unsupported.length > 0) {
+        out.push(unsupportedFilterNotice(source, unsupported));
+      }
+    }
+    const profile = spec.profile;
+    if (profile === undefined) {
+      return out;
+    }
+    const maxTerms = profile.maxTerms;
+    if (maxTerms !== undefined && !notices.some((n) => n.kind === "terms_dropped")) {
+      const terms = countQueryTerms(query, profile);
+      if (terms > maxTerms.value.limit) {
+        out.push(termLimitNotice(source, quoteQuery(query), terms, maxTerms));
+      }
+    }
+    // 自然文の意味検索がないと分かっているソースでだけ判定する(不明・対応のソースでは知らせない)
+    const sentenceKnownToFail =
+      profile.naturalLanguage?.value !== "supported" &&
+      (profile.matchUnit?.value === "substring" ||
+        profile.naturalLanguage?.value === "unsupported");
+    if (outcome.kind === "no_hits" && sentenceKnownToFail && isUnspacedSentence(query)) {
+      out.push(unspacedSentenceNotice(source, quoteQuery(query), profile));
+    }
+    return out;
   }
 
   /**

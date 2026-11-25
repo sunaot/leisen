@@ -17,9 +17,15 @@
  */
 import { readFile } from "node:fs/promises";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { ContainerEntry, SearchFilters } from "@leisen/connector-sdk";
+import {
+  sanitizeSearchProfile,
+  type ContainerEntry,
+  type SearchFilters,
+  type SearchProfile,
+} from "@leisen/connector-sdk";
 import { z } from "zod";
 import type { SkippedSource } from "./answer.js";
+import { renderSearchProfiles } from "./search-profile.js";
 
 /**
  * 固定部の版。
@@ -38,6 +44,8 @@ import type { SkippedSource } from "./answer.js";
  *   続ける基準と回数の目安を書いた。v4 では USAGE_HINTS(tools.ts)・ソース一覧の前置き・
  *   上限の制御メッセージも v4 の文言にし、検索の状況を返す制御メッセージ(search-feedback.ts)
  *   を既定で有効にする。記録は docs/eval/2026-11-25-explore-v4-unevaluated.md
+ *   T-030(ADR-025)で、v4 のときだけ検索プロファイルの定型文(search-profile.ts)を最初の
+ *   user ターンの制御メッセージとして足した(同じ記録の §6。評価未実施)
  *
  * 既定の版は EXPLORE_PROMPT_VERSION(v3)。v4 は設定 `explorePrompt` で選ぶ(leisen-ask の
  * `--explore-prompt`)。T-024 の評価(事前に固定した質問で v3 と比べる)で v3 より良いことを
@@ -85,6 +93,17 @@ export interface SourceBrief {
   readonly supportedFilters?: readonly SupportedFilter[];
   /** describe に失敗した場合の正規化分類(検索対象には残す) */
   readonly describeError?: string;
+  /**
+   * 検索プロファイル(connector-sdk v0.6、ADR-025)。SDK の値域で検証済み(値域の外の項目は
+   * 落としてある)。ソース一覧の JSON(データの枠)には入れず、explore.v4 のときに
+   * Orchestrator のテンプレートで制御メッセージにする(search-profile.ts)
+   */
+  readonly searchProfile?: SearchProfile;
+  /**
+   * describe の結果を読めたか(supportedFilters が空のときに「対応フィルタなし」と「不明」を
+   * 区別する。非対応のフィルタの判定に使う)。ソース一覧の JSON には入れない
+   */
+  readonly filtersDeclared?: boolean;
 }
 
 export type ContainerKind = ContainerEntry["kind"];
@@ -148,6 +167,7 @@ const describeSchema = z.object({
   summary: z.string().optional(),
   topContainers: z.array(z.unknown()).optional(),
   supportedFilters: z.array(z.unknown()).optional(),
+  searchProfile: z.unknown().optional(),
 });
 
 function clip(text: string, max: number): string {
@@ -186,6 +206,9 @@ export function sourceBriefFromDescribe(sourceId: string, result: unknown): Sour
   const filters = [
     ...new Set((data.supportedFilters ?? []).filter(isSupportedFilter)),
   ];
+  // 値域の外の値・型の違う値・形式違反の修飾子名は項目ごと落とす(Gateway の射影と同じ検証を
+  // Orchestrator でも行う。ADR-025 決定2)
+  const searchProfile = sanitizeSearchProfile(data.searchProfile);
   return {
     sourceId,
     ...(data.displayName !== undefined
@@ -196,6 +219,8 @@ export function sourceBriefFromDescribe(sourceId: string, result: unknown): Sour
       : {}),
     ...(containers.length > 0 ? { topContainers: containers } : {}),
     ...(filters.length > 0 ? { supportedFilters: filters } : {}),
+    ...(searchProfile !== undefined ? { searchProfile } : {}),
+    filtersDeclared: true,
   };
 }
 
@@ -246,9 +271,17 @@ export function sourceCatalogPreface(
   return version === "explore.v4" ? SOURCE_CATALOG_PREFACE_V4 : SOURCE_CATALOG_PREFACE;
 }
 
-/** ソース一覧のデータ本体(JSON。sources の各要素は SourceBrief)。 */
+/**
+ * ソース一覧のデータ本体(JSON。sources の各要素は SourceBrief のうち describe 結果の項目)。
+ * 検索プロファイルと filtersDeclared は入れない(プロファイルは制御メッセージとして別に渡す。
+ * v3 の入力を変えない)。
+ */
 export function renderSourceCatalog(sources: readonly SourceBrief[]): string {
-  return embeddedJson({ sources });
+  return embeddedJson({
+    sources: sources.map(
+      ({ searchProfile: _profile, filtersDeclared: _declared, ...brief }) => brief,
+    ),
+  });
 }
 
 /** オーケストレーターの制御メッセージ(未接続のソース・探索の上限)。 */
@@ -290,9 +323,14 @@ export function renderQuestion(question: string, today: string): string {
 export function buildFirstUserContent(
   context: RunPromptContext,
 ): Anthropic.TextBlockParam[] {
+  // 検索プロファイルの文(ADR-025 決定2)は v4 のときだけ、ソース一覧(データ)の外に制御メッセージ
+  // として置く。v3(既定)の入力は変えない
+  const profiles =
+    context.promptVersion === "explore.v4" ? renderSearchProfiles(context.sources) : undefined;
   return [
     { type: "text", text: sourceCatalogPreface(context.promptVersion) },
     { type: "text", text: renderSourceCatalog(context.sources) },
+    ...(profiles !== undefined ? [{ type: "text" as const, text: profiles }] : []),
     { type: "text", text: renderRunLimits(context) },
     { type: "text", text: renderQuestion(context.question, context.today) },
   ];

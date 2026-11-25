@@ -5,12 +5,13 @@
  * - capabilities: nativeSearch "degraded"、ingest false、privateScopeHandling "classified"
  */
 import { describe, expect, it } from "vitest";
-import { ConnectorError, type Connector } from "@leisen/connector-sdk";
-import { DEFAULT_GITHUB_SOURCE_ID, GitHubConnector } from "../src/connector.js";
+import { ConnectorError, sanitizeSearchProfile, type Connector } from "@leisen/connector-sdk";
+import { DEFAULT_GITHUB_SOURCE_ID, GITHUB_SEARCH_PROFILE, GitHubConnector } from "../src/connector.js";
 import * as publicApi from "../src/index.js";
 import { createGitHubConnector } from "../src/index.js";
 import {
   ALICE,
+  BOB,
   jsonResponse,
   linkNext,
   searchResponse,
@@ -165,6 +166,46 @@ describe("describe", () => {
     expect(description.displayName).toBe("GitHub Enterprise");
     expect(description.summary).toContain("コード検索はこの導入では無効");
     expect(description.topContainers).toEqual([]);
+  });
+});
+
+describe("検索プロファイル(connector-sdk v0.6、ADR-025)", () => {
+  it("利用者によらず同じで、SDK の値域を満たし、実機で確かめていない項目は documented", async () => {
+    const { github, connector } = setup();
+    // 利用者ごとに所属 org が違っても、検索プロファイルは変わらない
+    github.on(/^\/user\/orgs$/, (req) =>
+      jsonResponse([{ login: req.headers.get("authorization")?.includes("alice") ? "acme" : "other" }]),
+    );
+    const alice = await connector.describe(ALICE);
+    const bob = await connector.describe(BOB);
+    expect(alice.searchProfile).toEqual(bob.searchProfile);
+    expect(alice.searchProfile).toBe(GITHUB_SEARCH_PROFILE);
+    expect(sanitizeSearchProfile(GITHUB_SEARCH_PROFILE)).toEqual(GITHUB_SEARCH_PROFILE);
+    for (const item of Object.values(GITHUB_SEARCH_PROFILE)) {
+      expect(item.basis).toBe("documented");
+    }
+    expect(GITHUB_SEARCH_PROFILE.termJoin?.value).toBe("and");
+    expect(GITHUB_SEARCH_PROFILE.maxQueryChars?.value.limit).toBe(256);
+    expect(GITHUB_SEARCH_PROFILE.maxOperators?.value.limit).toBe(5);
+    // 日本語の語の分割は一次情報がないため照合の単位を書かない(不明)
+    expect(GITHUB_SEARCH_PROFILE.matchUnit).toBeUndefined();
+  });
+
+  it("searchCode の設定によらず同じ(導入の設定と利用者で変わらない)", async () => {
+    const on = setup();
+    const off = setup({ searchCode: false });
+    on.github.onJson(/^\/user\/orgs$/, []);
+    off.github.onJson(/^\/user\/orgs$/, []);
+    expect((await on.connector.describe(ALICE)).searchProfile).toEqual(
+      (await off.connector.describe(ALICE)).searchProfile,
+    );
+  });
+
+  it("search は通知を返さない(語・指定を捨てない)", async () => {
+    const { github, connector } = setup({ searchCode: false });
+    github.on(/^\/search\/issues$/, () => searchResponse([]));
+    const result = await connector.search(ALICE, "a b c d e f g");
+    expect(result.notices).toBeUndefined();
   });
 });
 
