@@ -449,16 +449,23 @@ export class RedmineConnector implements Connector {
 
   private async request(auth: AuthContext, path: string): Promise<unknown> {
     const credential = auth.credential;
-    if (credential.kind !== "api_key" || credential.apiKey.trim() === "") {
-      throw new ConnectorError("invalid_request", "Redmine connector requires an api_key credential");
+    // 本人の資格情報の 2 形式(ADR-024): 個人 API キー(開発用 mock_env)は X-Redmine-API-Key、
+    // Redmine の OAuth2(6.1 以降。Token Vault / ESC)のアクセストークンは Authorization: Bearer
+    let authHeader: Record<string, string>;
+    if (credential.kind === "api_key" && credential.apiKey.trim() !== "") {
+      authHeader = { "X-Redmine-API-Key": credential.apiKey };
+    } else if (credential.kind === "oauth_bearer" && credential.accessToken.trim() !== "") {
+      authHeader = { Authorization: `Bearer ${credential.accessToken}` };
+    } else {
+      throw new ConnectorError("invalid_request", "Redmine connector requires an api_key or oauth_bearer credential");
     }
     // 失効時刻は有限の epoch ms であること(NaN / ±Infinity は失効扱い)。0 以下は
     // 「失効時刻不明」(期限のない固定キー。ADR-016 追補3、ADR-024)で、判定せず Redmine の 401 に委ねる
     if (!Number.isFinite(credential.expiresAt)) {
-      throw new ConnectorError("auth_expired", "Redmine API key has no valid expiry time");
+      throw new ConnectorError("auth_expired", "Redmine credential has no valid expiry time");
     }
     if (credential.expiresAt > 0 && credential.expiresAt <= Date.now()) {
-      throw new ConnectorError("auth_expired", "Redmine API key is expired");
+      throw new ConnectorError("auth_expired", "Redmine credential is expired");
     }
     const url = new URL(path, this.baseUrl);
     if (url.origin !== this.baseUrl.origin || !url.pathname.startsWith(this.baseUrl.pathname)) {
@@ -470,7 +477,7 @@ export class RedmineConnector implements Connector {
         method: "GET",
         headers: {
           Accept: "application/json",
-          "X-Redmine-API-Key": credential.apiKey,
+          ...authHeader,
           "User-Agent": "Leisen-Redmine-Connector/0.1",
         },
         redirect: "manual",
@@ -482,7 +489,7 @@ export class RedmineConnector implements Connector {
     if (response.status >= 300 && response.status < 400) {
       throw new ConnectorError("source_unavailable", "Redmine API redirected the request");
     }
-    if (response.status === 401) throw new ConnectorError("auth_expired", "Redmine rejected the API key");
+    if (response.status === 401) throw new ConnectorError("auth_expired", "Redmine rejected the credential");
     if (response.status === 403) throw new ConnectorError("permission_denied", "Redmine denied the request");
     if (response.status === 404) throw new ConnectorError("not_found", "Redmine resource is not available");
     if (response.status === 429) throw new ConnectorError("rate_limited", "Redmine rate limit was reached");

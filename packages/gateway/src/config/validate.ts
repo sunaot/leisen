@@ -66,6 +66,8 @@ export type ConfigIssueCode =
   | "token_exchange_scope_missing"
   /** identityCheck: none に confirmIdentityCheckDisabled: true がない */
   | "identity_check_disabled_requires_confirmation"
+  /** プリセットが対応しない本人照合の属性(redmine の email、redmine 以外の username。ADR-024 追補) */
+  | "identity_check_unsupported"
   /** preset: esa の本人照合に、kind: esa と settings.team がない(ADR-023) */
   | "esa_identity_check_requires_esa_connector"
   /** 本番で esa の mcpUrl が https://mcp.esa.io 以外(本人のトークンの送り先の固定。ADR-023) */

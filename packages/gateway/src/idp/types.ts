@@ -68,6 +68,11 @@ export interface Identity {
    * 個人情報: ログ・監査に出さない(redactIdentity は含めない)
    */
   readonly email?: string;
+  /**
+   * IdP 上のログイン名(OIDC の preferred_username)。接続時の本人照合 identityCheck: username に
+   * 使う(ADR-024 追補)。個人情報: ログ・監査に出さない(redactIdentity は含めない)
+   */
+  readonly username?: string;
   readonly session: IdpSession;
 }
 

@@ -7,7 +7,11 @@
  * - PKCE(S256)を常に送る。state の生成・検証は接続ページ(auth-server/)が行う
  * - 本人照合(決定 8)用に、ソース側アカウントの検証済みメールアドレスを取得する。
  *   Slack の user ID は users.info の照会にだけ使い、戻り値・保管に含めない(不変条件7)
- * - プリセット: github / google / slack / esa。それ以外は custom(端点を設定で与える)
+ * - プリセット: github / google / slack / esa / redmine。それ以外は custom(端点を設定で与える)
+ * - redmine は自前で運用するインスタンスなので、端点は endpoints.apiBaseUrl(Redmine の基点 URL)
+ *   から導く。本人照合はログイン名(/users/current.json の login)と IdP の preferred_username の
+ *   一致で行う(identityCheck: username。メールアドレスは既定で利用者に隠され、検証済みの印も
+ *   ないため使わない。ADR-024 追補)
  * - resource(RFC 8707): 受け手を指定するソース(リモート MCP サーバー。esa は https://mcp.esa.io)
  *   では認可要求・コード交換・更新の 3 つに同じ値を載せる(ADR-023)
  * - トークン・コード・応答本文をログ・エラーに出さない(不変条件6)。エラーは分類と
@@ -16,7 +20,10 @@
 import { HttpCallError, HttpClient, isRecord, readJson, type HttpClientOptions } from "./http.js";
 import type { SourceTokenSet } from "./types.js";
 
-export type OAuthPreset = "github" | "google" | "slack" | "esa" | "custom";
+export type OAuthPreset = "github" | "google" | "slack" | "esa" | "redmine" | "custom";
+
+/** 接続時の本人照合で照らし合わせる属性(ADR-022 決定 8、ADR-024 追補)。 */
+export type IdentityAttribute = "email" | "username";
 
 export interface OAuthEndpoints {
   readonly authorizationEndpoint: string;
@@ -25,7 +32,10 @@ export interface OAuthEndpoints {
   readonly revocationEndpoint?: string;
   /** custom の本人照合: { email, email_verified } を返す OIDC の userinfo */
   readonly userinfoEndpoint?: string;
-  /** github の API の基点(GitHub Enterprise Server 用)。既定 https://api.github.com */
+  /**
+   * github の API の基点(GitHub Enterprise Server 用)。既定 https://api.github.com。
+   * redmine では Redmine の基点 URL(必須。端点と本人照合の URL をここから導く)
+   */
   readonly apiBaseUrl?: string;
 }
 
@@ -38,8 +48,10 @@ export interface SourceOAuthConfig {
   readonly scopes: readonly string[];
   /** プリセットの端点の上書き(custom では必須) */
   readonly endpoints?: Partial<OAuthEndpoints>;
-  /** 本人照合でメールアドレスを取得するか(identityCheck: email) */
+  /** 本人照合のためにソース側アカウントの属性を取得するか(identityCheck が none でない) */
   readonly fetchIdentity: boolean;
+  /** 取得する属性(既定 email。redmine は username だけ) */
+  readonly identityAttribute?: IdentityAttribute;
   /**
    * RFC 8707 の resource(トークンの受け手)。省略時はプリセットの既定(esa は
    * https://mcp.esa.io)。既定のないプリセットでは送らない
@@ -63,7 +75,7 @@ export class SourceOAuthError extends Error {
   }
 }
 
-const PRESET_ENDPOINTS: Record<Exclude<OAuthPreset, "custom">, OAuthEndpoints> = {
+const PRESET_ENDPOINTS: Record<Exclude<OAuthPreset, "custom" | "redmine">, OAuthEndpoints> = {
   github: {
     authorizationEndpoint: "https://github.com/login/oauth/authorize",
     tokenEndpoint: "https://github.com/login/oauth/access_token",
@@ -103,15 +115,35 @@ const IDENTITY_SCOPES: Record<OAuthPreset, readonly string[]> = {
   google: ["openid", "email"],
   slack: ["users:read", "users:read.email"],
   esa: [],
+  redmine: [],
   custom: [],
 };
 
+/** Redmine の OAuth2 プロバイダ(Doorkeeper。Redmine 6.1 以降)の端点(基点 URL からの相対)。 */
+function redmineEndpoints(apiBaseUrl: string | undefined): Partial<OAuthEndpoints> {
+  if (apiBaseUrl === undefined) {
+    return {};
+  }
+  const base = apiBaseUrl.replace(/\/+$/, "");
+  return {
+    authorizationEndpoint: `${base}/oauth/authorize`,
+    tokenEndpoint: `${base}/oauth/token`,
+    revocationEndpoint: `${base}/oauth/revoke`,
+    apiBaseUrl: base,
+  };
+}
+
 export function resolveEndpoints(preset: OAuthPreset, overrides: Partial<OAuthEndpoints> = {}): OAuthEndpoints {
-  const base = preset === "custom" ? undefined : PRESET_ENDPOINTS[preset];
+  const base =
+    preset === "custom" ? undefined : preset === "redmine" ? redmineEndpoints(overrides.apiBaseUrl) : PRESET_ENDPOINTS[preset];
   const authorizationEndpoint = overrides.authorizationEndpoint ?? base?.authorizationEndpoint;
   const tokenEndpoint = overrides.tokenEndpoint ?? base?.tokenEndpoint;
   if (authorizationEndpoint === undefined || tokenEndpoint === undefined) {
-    throw new Error("custom OAuth sources require authorizationEndpoint and tokenEndpoint");
+    throw new Error(
+      preset === "redmine"
+        ? "redmine OAuth sources require endpoints.apiBaseUrl (the Redmine base URL)"
+        : "custom OAuth sources require authorizationEndpoint and tokenEndpoint",
+    );
   }
   const revocationEndpoint = overrides.revocationEndpoint ?? base?.revocationEndpoint;
   const userinfoEndpoint = overrides.userinfoEndpoint ?? base?.userinfoEndpoint;
@@ -146,6 +178,8 @@ export interface CodeExchangeResult {
   readonly tokens: SourceTokenSet;
   /** ソース側アカウントの検証済みメールアドレス(本人照合用。保管しない) */
   readonly verifiedEmails: readonly string[];
+  /** ソース側アカウントのログイン名(identityCheck: username 用。小文字化。保管しない) */
+  readonly usernames: readonly string[];
 }
 
 export class SourceOAuthClient {
@@ -164,6 +198,10 @@ export class SourceOAuthClient {
     this.endpoints = resolveEndpoints(config.preset, config.endpoints);
     if (config.preset === "custom" && config.fetchIdentity && this.endpoints.userinfoEndpoint === undefined) {
       throw new Error("custom OAuth sources with identityCheck: email require userinfoEndpoint");
+    }
+    const attribute = config.identityAttribute ?? "email";
+    if (config.fetchIdentity && (attribute === "username") !== (config.preset === "redmine")) {
+      throw new Error("identityCheck: username is supported only by preset redmine, and preset redmine supports only identityCheck: username");
     }
     if (config.preset === "esa" && config.fetchIdentity && config.identityLookup === undefined) {
       throw new Error("esa OAuth sources with identityCheck: email require an identity lookup via the esa MCP server");
@@ -296,19 +334,24 @@ export class SourceOAuthClient {
     }
     const raw = await this.#rawCodeExchange(form);
     let verifiedEmails: string[] = [];
+    let usernames: string[] = [];
     if (this.#config.fetchIdentity) {
       try {
-        verifiedEmails =
-          this.#config.identityLookup !== undefined
-            ? await this.#config.identityLookup(raw.tokens.accessToken)
-            : await this.#fetchVerifiedEmails(raw.tokens, raw.slackUserId);
+        if (this.preset === "redmine") {
+          usernames = await this.#fetchRedmineLogin(raw.tokens);
+        } else {
+          verifiedEmails =
+            this.#config.identityLookup !== undefined
+              ? await this.#config.identityLookup(raw.tokens.accessToken)
+              : await this.#fetchVerifiedEmails(raw.tokens, raw.slackUserId);
+        }
       } catch (error) {
         // 本人照合ができなかったトークンは使わない。ソースへ失効を依頼して捨てる
         await this.revoke(raw.tokens);
         throw error;
       }
     }
-    return { tokens: raw.tokens, verifiedEmails };
+    return { tokens: raw.tokens, verifiedEmails, usernames };
   }
 
   async #rawCodeExchange(form: Record<string, string>): Promise<{ tokens: SourceTokenSet; slackUserId?: string }> {
@@ -412,6 +455,27 @@ export class SourceOAuthClient {
     }
   }
 
+  /**
+   * Redmine の本人のログイン名(GET /users/current.json の user.login)。ログイン名は管理者が
+   * 決め、利用者は変えられない(メールアドレスは利用者が変えられ、既定で隠される)
+   */
+  async #fetchRedmineLogin(tokens: SourceTokenSet): Promise<string[]> {
+    let response: Response;
+    try {
+      response = await this.#http.request(`${this.endpoints.apiBaseUrl as string}/users/current.json`, {
+        headers: { authorization: `Bearer ${tokens.accessToken}`, accept: "application/json" },
+      });
+    } catch (error) {
+      throw new SourceOAuthError("unavailable", error instanceof HttpCallError ? error.message : "identity lookup failed");
+    }
+    const body = await readJson(response);
+    if (!response.ok) {
+      throw new SourceOAuthError(response.status >= 500 ? "unavailable" : "rejected", `identity lookup returned HTTP ${response.status}`);
+    }
+    const login = isRecord(body) && isRecord(body["user"]) ? body["user"]["login"] : undefined;
+    return typeof login === "string" && login.trim() !== "" ? [login.trim().toLowerCase()] : [];
+  }
+
   async #fetchVerifiedEmails(tokens: SourceTokenSet, slackUserId?: string): Promise<string[]> {
     const bearer = { authorization: `Bearer ${tokens.accessToken}`, accept: "application/json" };
     let response: Response;
@@ -483,6 +547,17 @@ export function extractVerifiedEmails(preset: OAuthPreset, body: unknown): strin
     push(body["email"]);
   }
   return out;
+}
+
+/**
+ * 本人照合 identityCheck: username(ADR-024 追補): IdP のログイン名(preferred_username)が
+ * ソース側のログイン名と一致するか(大文字小文字を区別しない。完全一致)
+ */
+export function usernameMatches(idpUsername: string | undefined, usernames: readonly string[]): boolean {
+  if (idpUsername === undefined || idpUsername.trim() === "") {
+    return false;
+  }
+  return usernames.includes(idpUsername.trim().toLowerCase());
 }
 
 /** 本人照合(ADR-022 決定 8): IdP のメールアドレスがソース側の検証済みの一覧にあるか。 */

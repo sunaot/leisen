@@ -25,11 +25,39 @@ function connectorReturning(response: () => Response) {
 const emptySearch = () => Response.json({ results: [], total_count: 0 });
 
 describe("資格情報の検査", () => {
-  it("api_key 以外の kind は通信の前に拒否する", async () => {
+  it("api_key は X-Redmine-API-Key だけで送る", async () => {
+    const { connector, fetchImpl } = connectorReturning(emptySearch);
+    await connector.search(apiKey(), "q");
+    const headers = new Headers(fetchImpl.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("X-Redmine-API-Key")).toBe(KEY);
+    expect(headers.has("Authorization")).toBe(false);
+  });
+
+  it("oauth_bearer(Redmine の OAuth2)は Authorization: Bearer だけで送る", async () => {
+    const { connector, fetchImpl } = connectorReturning(emptySearch);
+    await connector.search(auth({ kind: "oauth_bearer", accessToken: "test-bearer-alice", expiresAt: Date.now() + 60_000 }), "q");
+    const init = fetchImpl.mock.calls[0]?.[1];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer test-bearer-alice");
+    expect(headers.has("X-Redmine-API-Key")).toBe(false);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).not.toContain("test-bearer-alice");
+  });
+
+  it.each([
+    ["delegated_identity", { kind: "delegated_identity", principal: "alice" } as Credential],
+    ["空の api_key", { kind: "api_key", apiKey: " ", expiresAt: 0 } as Credential],
+    ["空の oauth_bearer", { kind: "oauth_bearer", accessToken: "", expiresAt: 0 } as Credential],
+  ])("%s は通信の前に invalid_request", async (_label, credential) => {
+    const { connector, fetchImpl } = connectorReturning(emptySearch);
+    await expect(connector.search(auth(credential), "q")).rejects.toMatchObject({ errorClass: "invalid_request" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("期限切れの oauth_bearer は通信の前に auth_expired", async () => {
     const { connector, fetchImpl } = connectorReturning(emptySearch);
     await expect(
-      connector.search(auth({ kind: "oauth_bearer", accessToken: "test-bearer-alice", expiresAt: 0 }), "q"),
-    ).rejects.toMatchObject({ errorClass: "invalid_request" });
+      connector.search(auth({ kind: "oauth_bearer", accessToken: "test-bearer-alice", expiresAt: 1 }), "q"),
+    ).rejects.toMatchObject({ errorClass: "auth_expired" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

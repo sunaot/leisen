@@ -4,9 +4,16 @@ Redmine REST API 用の読み取り専用プロトタイプです。検索は `/
 
 ## 認証
 
-各 MCP リクエストの `AuthContext` に `credential.kind: "api_key"` が必要です。キーは `X-Redmine-API-Key` ヘッダーでだけ送信します。API キーを URL・connector settings・ログへ出しません。API リダイレクトは追従しません。
+`AuthContext` の資格情報は次の 2 形式を受けます(ADR-024)。どちらも URL・connector settings・ログへ出しません。API リダイレクトは追従しません。
 
-開発環境では Gateway の `mock_env` provider を `credentialKind: api_key` に設定し、`LEISEN_MOCK_TOKEN_<SOURCEID>__<USERID>` で利用者ごとにキーを与えます。全利用者で共有される `LEISEN_MOCK_TOKEN_<SOURCEID>` は、API キーでは使いません(期限のない全権限の個人キーを他の利用者に使わせないため)。本番環境では mock provider を使えません。本番の資格情報の経路(Redmine の OAuth2 と Token Vault、または接続ページでの API キー登録)は未決定です(ADR-024「残る確認事項」)。
+| `credential.kind` | 送り方 | 経路 |
+|---|---|---|
+| `oauth_bearer` | `Authorization: Bearer` | **本番**: Redmine 6.1 以降の OAuth2 を Gateway の `token_vault` / `esc`(`preset: redmine`)で使う |
+| `api_key` | `X-Redmine-API-Key` | 開発用: 本人の個人 API キーを `mock_env` で渡す |
+
+本番の設定(Redmine 側のアプリ登録、スコープ、ログイン名による本人照合)は [docs/personal-auth.md](../../docs/personal-auth.md) の「Redmine」を参照してください。
+
+開発環境では Gateway の `mock_env` provider を `credentialKind: api_key` に設定し、`LEISEN_MOCK_TOKEN_<SOURCEID>__<USERID>` で利用者ごとにキーを与えます。全利用者で共有される `LEISEN_MOCK_TOKEN_<SOURCEID>` は、API キーでは使いません(期限のない全権限の個人キーを他の利用者に使わせないため)。本番環境では mock provider を使えません。
 
 ## 機能と制限
 

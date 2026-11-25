@@ -295,6 +295,23 @@ export function createSourceCredentialProvider(
     issues.push({ code: "oauth_endpoints_missing", path: `${path}.oauth.endpoints`, message: "preset custom requires endpoints.authorizationEndpoint and endpoints.tokenEndpoint" });
     return undefined;
   }
+  // redmine(ADR-024 追補): 端点は Redmine の基点 URL から導く。本人照合はログイン名だけ
+  if (o.preset === "redmine" && o.endpoints?.apiBaseUrl === undefined) {
+    issues.push({ code: "oauth_endpoints_missing", path: `${path}.oauth.endpoints.apiBaseUrl`, message: "preset redmine requires endpoints.apiBaseUrl (the Redmine base URL)" });
+    return undefined;
+  }
+  if (o.preset === "redmine" && o.identityCheck === "email") {
+    issues.push({
+      code: "identity_check_unsupported",
+      path: `${path}.oauth.identityCheck`,
+      message: "preset redmine does not support identityCheck: email (Redmine hides e-mail addresses by default and does not mark them verified); use identityCheck: username",
+    });
+    return undefined;
+  }
+  if (o.preset !== "redmine" && o.identityCheck === "username") {
+    issues.push({ code: "identity_check_unsupported", path: `${path}.oauth.identityCheck`, message: "identityCheck: username is supported only by preset redmine" });
+    return undefined;
+  }
   if (o.preset === "custom" && o.identityCheck === "email" && o.endpoints?.userinfoEndpoint === undefined) {
     issues.push({ code: "oauth_endpoints_missing", path: `${path}.oauth.endpoints.userinfoEndpoint`, message: "preset custom with identityCheck: email requires endpoints.userinfoEndpoint" });
     return undefined;
@@ -346,7 +363,8 @@ export function createSourceCredentialProvider(
     ...(o.endpoints !== undefined
       ? { endpoints: Object.fromEntries(Object.entries(o.endpoints).filter(([, v]) => v !== undefined)) as Record<string, string> }
       : {}),
-    fetchIdentity: o.identityCheck === "email",
+    fetchIdentity: o.identityCheck !== "none",
+    identityAttribute: o.identityCheck === "username" ? "username" : "email",
     ...(o.resource !== undefined ? { resource: o.resource } : {}),
     ...(identityLookup !== undefined ? { identityLookup } : {}),
   }, runtime.fetchImpl !== undefined ? { fetchImpl: runtime.fetchImpl } : {});
