@@ -231,6 +231,7 @@ export function scriptedMessage(
       model: options.model ?? "claude-opus-5",
       content,
       container: null,
+      diagnostics: null,
       stop_reason: stopReason,
       stop_sequence: null,
       stop_details: null,
@@ -244,6 +245,7 @@ export function scriptedMessage(
         output_tokens_details: null,
         server_tool_use: null,
         service_tier: null,
+        speed: null,
       },
     },
   };

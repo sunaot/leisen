@@ -309,6 +309,7 @@ function fromBetaMessage(beta: Anthropic.Beta.Messages.BetaMessage): LlmTurn {
     model: beta.model,
     content,
     container: null,
+    diagnostics: null,
     stop_reason: stopReason,
     stop_sequence: beta.stop_sequence,
     stop_details:
@@ -329,6 +330,7 @@ function fromBetaMessage(beta: Anthropic.Beta.Messages.BetaMessage): LlmTurn {
       output_tokens_details: null,
       server_tool_use: null,
       service_tier: usage.service_tier,
+      speed: usage.speed ?? null,
     },
   };
 
