@@ -3,7 +3,7 @@
  * ヒット・取得した文書を読み出す。モック API サーバー(mock-anthropic-server.ts /
  * mock-openai-server.ts)の脚本も、受けた要求から同じ形(ScriptView)を作って使う。
  */
-import type { ScriptContext } from "../../src/index.js";
+import { scriptedToolUse, type LlmTurn, type ScriptContext } from "../../src/index.js";
 
 /** 脚本が読む直前の user ターンの要約(ScriptedLlmClient とモックサーバーで共通)。 */
 export type ScriptView = Pick<ScriptContext, "lastToolResults" | "lastUserTexts">;
@@ -79,4 +79,25 @@ export function firstHit(context: ScriptView): HitView {
     throw new Error("script expected at least one search hit in the last tool results");
   }
   return hit;
+}
+
+/** 最初に見つかった fetch 済みの文書(無ければテストを失敗させる)。 */
+export function firstFetched(context: ScriptView): HitView {
+  const document = fetchedDocuments(context)[0];
+  if (document === undefined) {
+    throw new Error("script expected at least one fetched document in the last tool results");
+  }
+  return document;
+}
+
+/**
+ * 直前のターンの最初のヒットを fetch する手順。既定の探索プロンプト(v4)では、ヒットを受け
+ * 取ったのに1件も fetch せずに submit_answer を出すと1回差し戻される(search-feedback.ts)。
+ * 版と関係のない挙動を確かめる脚本では、提出の前にこの手順を入れる
+ */
+export function fetchFirstHit(context: ScriptView): LlmTurn {
+  const hit = firstHit(context);
+  return scriptedToolUse([
+    { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+  ]);
 }

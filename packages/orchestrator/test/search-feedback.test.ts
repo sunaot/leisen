@@ -7,7 +7,7 @@
  *   落ちたか・総件数・エラーの内訳(権限外か不在か)を出さない
  * - 不変条件7: query の一覧は探索 LLM への制御メッセージだけに置き、回答・warnings・run API の
  *   申告(監査)に載せない
- * - 既定は v3(評価前の v4 と制御メッセージを既定にしない。prompt.ts の運用規則)
+ * - 既定は v4 で、制御メッセージも既定で有効(2026-11-26 に評価して既定にした。T-024)
  */
 import { describe, expect, it } from "vitest";
 import { toolDefinitions } from "@leisen/gateway";
@@ -103,19 +103,30 @@ describe("ask の引数の書き方(ADR-026 決定1: question は必須のまま
 // ---------------------------------------------------------------------------
 
 describe("既定の版と設定", () => {
-  it("既定は explore.v3、検索の状況の制御メッセージは v4 のときだけ既定で有効", () => {
-    expect(EXPLORE_PROMPT_VERSION).toBe("explore.v3");
+  it("既定は explore.v4(2026-11-26、T-024)、検索の状況の制御メッセージは v4 のときだけ既定で有効", () => {
+    expect(EXPLORE_PROMPT_VERSION).toBe("explore.v4");
     const defaults = orchestratorSettingsSchema.parse({});
-    expect(defaults.explorePrompt).toBe("explore.v3");
+    expect(defaults.explorePrompt).toBe("explore.v4");
     expect(defaults.searchFeedback).toBeUndefined();
     const llm = new ScriptedLlmClient([]);
+    // 省略時は v4 で、制御メッセージは有効
     expect(new Orchestrator({ llm }).promptProfile).toEqual({
-      version: "explore.v3",
-      searchFeedback: false,
+      version: "explore.v4",
+      searchFeedback: true,
     });
     expect(
       new Orchestrator({ llm, settings: { explorePrompt: "explore.v4" } }).promptProfile,
     ).toEqual({ version: "explore.v4", searchFeedback: true });
+    // v3 は引き続き選べ、v3 のときの既定は無効のまま
+    expect(
+      new Orchestrator({ llm, settings: { explorePrompt: "explore.v3" } }).promptProfile,
+    ).toEqual({ version: "explore.v3", searchFeedback: false });
+    expect(
+      new Orchestrator({
+        llm,
+        settings: { explorePrompt: "explore.v3", searchFeedback: true },
+      }).promptProfile,
+    ).toEqual({ version: "explore.v3", searchFeedback: true });
     expect(
       new Orchestrator({
         llm,
@@ -195,7 +206,7 @@ describe("prompts/explore.v4.md(固定部)", () => {
   });
 
   it("v3 の固定部は変えていない", async () => {
-    const v3 = await loadExplorePrompt();
+    const v3 = await loadExplorePrompt("explore.v3");
     expect(v3).toContain("名詞を 1〜2 語だけ");
     expect(v3).toContain("言い換えの候補を 1 つの query に並べない");
   });
@@ -212,8 +223,10 @@ describe("版ごとのツールの指針・前置き・上限の制御メッセ�
     inputSchema: tool.inputSchema,
   }));
 
-  it("v3(既定)の search の指針は変えていない。v4 は summary の検索の仕様を参照させる", () => {
-    const v3 = buildClaudeTools(gatewayTools, ["alpha"]).find((t) => t.name === "search");
+  it("v3 の search の指針は変えていない。v4 は summary の検索の仕様を参照させる", () => {
+    const v3 = buildClaudeTools(gatewayTools, ["alpha"], "explore.v3").find(
+      (t) => t.name === "search",
+    );
     expect(v3?.description).toContain("名詞を 1〜2 語だけ");
     const v4 = buildClaudeTools(gatewayTools, ["alpha"], "explore.v4").find(
       (t) => t.name === "search",
@@ -235,7 +248,11 @@ describe("版ごとのツールの指針・前置き・上限の制御メッセ�
       today: "2026-11-25",
       question: "VPN 申請",
     };
-    expect(buildFirstUserContent(context)[0]?.text).toBe(SOURCE_CATALOG_PREFACE);
+    expect(buildFirstUserContent({ ...context, promptVersion: "explore.v3" })[0]?.text).toBe(
+      SOURCE_CATALOG_PREFACE,
+    );
+    // 省略時は既定の v4 の前置き
+    expect(buildFirstUserContent(context)[0]?.text).toBe(SOURCE_CATALOG_PREFACE_V4);
     const blocks = buildFirstUserContent({
       ...context,
       promptVersion: "explore.v4",
@@ -604,14 +621,14 @@ describe("探索ループ: 検索の状況の制御メッセージ(v4)", () => {
     expect(answer.outcome).toBe("unresolved");
   });
 
-  it("v3(既定)では制御メッセージを足さない", async () => {
+  it("v3 では制御メッセージを足さない", async () => {
     const { seen } = await runWith(
       [
         () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "無い語" } }]),
         () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "無い語" } }]),
         () => scriptedSubmit({ answer: "見つけられなかった", citations: [], confidence: 0 }),
       ],
-      {},
+      { explorePrompt: "explore.v3" },
     );
     expect(seen[1]?.lastUserTexts).toEqual([]);
     expect(seen[2]?.lastUserTexts).toEqual([]);
@@ -712,13 +729,13 @@ describe("探索ループ: 1件も fetch せずに提出したときの差し戻
     expect(answer.outcome).toBe("resolved");
   });
 
-  it("v3(既定)では差し戻さない", async () => {
+  it("v3 では差し戻さない", async () => {
     const { answer, seen } = await runWith(
       [
         () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "経費精算" } }]),
         submitDoc1,
       ],
-      {},
+      { explorePrompt: "explore.v3" },
       { 経費精算: ["doc-1"] },
     );
     expect(seen).toHaveLength(2);

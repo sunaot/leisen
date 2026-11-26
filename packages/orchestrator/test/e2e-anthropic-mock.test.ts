@@ -35,7 +35,7 @@ import {
   type AnthropicMockStep,
   type MockAnthropicServer,
 } from "./helpers/mock-anthropic-server.js";
-import { fetchedDocuments, firstHit, searchHits } from "./helpers/script.js";
+import { fetchedDocuments, firstFetched, firstHit, searchHits } from "./helpers/script.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -206,8 +206,15 @@ describe("e2e(Anthropic 経路・モック Messages API)", () => {
           { name: "search", input: { source: "alpha", query: "expense reimbursement deadline" } },
         ]);
       },
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
       (script) => {
         const hit = firstHit(script);
+        return anthropicToolUse([
+          { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+        ]);
+      },
+      (script) => {
+        const hit = firstFetched(script);
         return anthropicSubmit({
           answer: "出張経費の精算は30日以内に申請します。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -286,7 +293,14 @@ describe("e2e(Anthropic 経路・モック Messages API)", () => {
           if (rejected?.isError !== true) {
             throw new Error("the call to the unconnected source must be rejected");
           }
+          // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
           const hit = firstHit(script);
+          return anthropicToolUse([
+            { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+          ]);
+        },
+        (script) => {
+          const hit = firstFetched(script);
           return anthropicSubmit({
             answer: "経費精算の締め日は毎月25日です。",
             citations: [{ documentId: hit.documentId, sourceId: "alpha" }],

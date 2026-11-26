@@ -27,7 +27,7 @@ import {
   type GatewayHarness,
   type GatewayHarnessOptions,
 } from "./helpers/harness.js";
-import { firstHit } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -48,8 +48,9 @@ async function setup(options: Partial<GatewayHarnessOptions> = {}): Promise<Gate
 function resolvingScript(): ScriptedLlmClient {
   return new ScriptedLlmClient([
     () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+    fetchFirstHit,
     (context) => {
-      const hit = firstHit(context);
+      const hit = firstFetched(context);
       return scriptedSubmit({
         answer: "経費精算の締め日は毎月25日です。",
         citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -182,10 +183,11 @@ describe("AnswerRun の書き方(Gateway の run API)", () => {
     const harness = await setup({ wrapSink });
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      fetchFirstHit,
       (context) => {
         // 最終状態を書く直前に監査ストアを壊す
         sink.failWrites = true;
-        const hit = firstHit(context);
+        const hit = firstFetched(context);
         return scriptedSubmit({
           answer: "経費精算の締め日は毎月25日です。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -202,8 +204,13 @@ describe("AnswerRun の書き方(Gateway の run API)", () => {
     expect(error).toBeInstanceOf(OrchestratorError);
     expect(error).toMatchObject({ errorClass: "audit_write_failed" });
     expect(String(error)).not.toContain("dev-only-sink-detail");
-    // pending は残り、finish は書けていない
-    expect(sink.written.map((r) => r.recordType)).toEqual(["answer_run", "tool_invocation", "tool_invocation"]);
+    // pending は残り、finish は書けていない(tool_invocation は describe・search・fetch)
+    expect(sink.written.map((r) => r.recordType)).toEqual([
+      "answer_run",
+      "tool_invocation",
+      "tool_invocation",
+      "tool_invocation",
+    ]);
   });
 
   it("探索中の想定外の例外でも run を error で閉じてから投げ直す(m6)", async () => {

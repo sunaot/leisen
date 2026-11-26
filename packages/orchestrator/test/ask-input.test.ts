@@ -5,7 +5,8 @@
  * - 不変条件7(ADR-026 決定5): 永続化できないソース(Slack)が有効な構成(retentionClass:
  *   non_persistable)では、structuredContent と text の searchesTried / 探した範囲に query・filters
  *   を載せない
- * - 後方互換: 追加の引数を省いた ask({ question }) は、探索 LLM への入力が従来と同じ
+ * - 後方互換: 追加の引数を省いた ask({ question }) は、同じ版の探索プロンプトなら探索 LLM への
+ *   入力が従来と同じ(既定の版は 2026-11-26 に v4 に変わった。T-024)
  * - 引数の検証: 上限超過・有効でない sourceId・未知の引数を固定文言で拒否し、値をエコーしない
  * - 追加の引数は最初の user ターンの利用者の入力の区分に入り、`[オーケストレーター]` の
  *   制御メッセージにしない
@@ -109,6 +110,13 @@ const submitDoc1: ScriptStep = () =>
     confidence: 0.8,
   });
 
+/**
+ * 既定の v4 では、ヒットを受け取ったのに1件も fetch せずに提出すると差し戻される。版と関係のない
+ * 挙動を確かめる脚本では、提出の前にこの手順で doc-1 を読む
+ */
+const fetchDoc1: ScriptStep = () =>
+  scriptedToolUse([{ name: "fetch", input: { source: "alpha", documentId: "doc-1" } }]);
+
 const submitNothing: ScriptStep = () =>
   scriptedSubmit({ answer: "見つかりませんでした。", citations: [], confidence: 0.1 });
 
@@ -204,6 +212,7 @@ describe("Slack(永続化できないソース)が有効な構成での searches
           },
         ]),
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "経費精算" } }]),
+      fetchDoc1,
       outcome === "resolved" ? submitDoc1 : submitNothing,
     ]);
     return { answer, failureReason };
@@ -281,9 +290,13 @@ describe("Slack(永続化できないソース)が有効な構成での searches
 // ---------------------------------------------------------------------------
 
 describe("追加の引数を省いた ask({ question })(後方互換)", () => {
-  it("探索 LLM への最初の user ターンは従来の組み立て(buildFirstUserContent)と同じ", async () => {
+  it("同じ版(v3)を指定すれば、探索 LLM への最初の user ターンは従来の組み立て(buildFirstUserContent)と同じ", async () => {
+    // 既定の版は 2026-11-26 に v4 に変わった(T-024、意図した変更)。追加の引数を省いたときに
+    // 入力が変わらないことは、版を揃えて確かめる
     const started = Date.now();
-    const { llm, gateway } = await runWith([submitNothing]);
+    const { llm, gateway } = await runWith([submitNothing], {}, {
+      settings: { explorePrompt: "explore.v3" },
+    });
     const expected = buildFirstUserContent({
       sources: [
         {
@@ -315,6 +328,38 @@ describe("追加の引数を省いた ask({ question })(後方互換)", () => {
     expect(gateway.started).toEqual([{ question: QUESTION }]);
   });
 
+  it("既定の版(v4)でも、追加の引数を省けば最初の user ターンは buildFirstUserContent の組み立てと同じ", async () => {
+    const started = Date.now();
+    const { llm, gateway } = await runWith([submitNothing]);
+    const expected = buildFirstUserContent({
+      sources: [
+        {
+          sourceId: "alpha",
+          displayName: "alpha",
+          summary: "alpha の社内文書",
+          supportedFilters: ["updatedAfter"],
+        },
+        {
+          sourceId: "beta",
+          displayName: "beta",
+          summary: "beta の社内文書",
+          supportedFilters: ["updatedAfter"],
+        },
+      ],
+      skippedSources: [],
+      maxIterations: 6,
+      today: localDate(started),
+      question: QUESTION,
+      promptVersion: "explore.v4",
+      maxToolCallsPerTurn: 8,
+    });
+    expect(llm.requests[0]?.messages[0]?.content).toEqual(expected);
+    expect(llm.requests[0]?.system).toEqual([
+      { type: "text", text: await loadExplorePrompt("explore.v4"), cache_control: { type: "ephemeral" } },
+    ]);
+    expect(gateway.started).toEqual([{ question: QUESTION }]);
+  });
+
   it("サーバーは追加の引数を Orchestrator に渡さない(question だけ)", async () => {
     const { port, inputs } = recordingPort();
     const result = await runOrchestratorTool(toolContext(port), "ask", { question: ` ${QUESTION} ` });
@@ -326,6 +371,7 @@ describe("追加の引数を省いた ask({ question })(後方互換)", () => {
   it("resolved の text は従来の形のまま(探した範囲を載せない)", async () => {
     const { answer, failureReason } = await runWith([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "経費精算" } }]),
+      fetchDoc1,
       submitDoc1,
     ]);
     expect(answer.outcome).toBe("resolved");
@@ -518,7 +564,7 @@ describe("追加の引数は最初の user ターンの利用者の入力の区�
     ]);
   });
 
-  it("偽装のない question は 1 文字も変えない(既定の v3 の入力を変えない)", () => {
+  it("偽装のない question は 1 文字も変えない(探索 LLM への入力を変えない)", () => {
     for (const question of [
       QUESTION,
       "設定の [オーケストレーター] という語の意味は?",
@@ -561,6 +607,7 @@ describe("sources による絞り込みと depth(ADR-026 決定1・2)", () => {
             { name: "search", input: { source: "beta", query: "経費精算" } },
             { name: "search", input: { source: "alpha", query: "経費精算" } },
           ]),
+        fetchDoc1,
         submitDoc1,
       ],
       { sources: ["alpha"] },
@@ -676,6 +723,7 @@ describe("searchesTried の組み立て(ADR-026 決定3、ADR-012)", () => {
           { name: "search", input: { source: "gamma", query: "経費精算" } },
           { name: "search", input: { source: "alpha", query: "経費精算" } },
         ]),
+      fetchDoc1,
       submitDoc1,
     ]);
     expect(answer.searchesTried).toEqual([
@@ -718,6 +766,7 @@ describe("searchesTried の組み立て(ADR-026 決定3、ADR-012)", () => {
     const { askStructuredContentSchema } = await import("../src/index.js");
     const { answer, failureReason } = await runWith([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "経費精算", filters: { updatedAfter: "2026-01-01" } } }]),
+      fetchDoc1,
       submitNothing,
     ]);
     for (const retentionClass of ["persistable", "non_persistable"] as RetentionClass[]) {

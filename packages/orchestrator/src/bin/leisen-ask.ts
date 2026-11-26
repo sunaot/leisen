@@ -30,8 +30,9 @@
  *   query と filters を載せるのは、--config で永続化できないソース(Slack 系)がないと確かめられた
  *   ときだけ(--config がなければ除く。不変条件7、ADR-026 決定5)
  * - --explore-prompt explore.v3|explore.v4 と --search-feedback on|off は開発・評価用(T-024 の
- *   v3 / v4 の比較。dev-eval の `--` 以降に渡す)。評価前の版を本番で選ばせないため、
- *   NODE_ENV=production では引数の不備として拒否する(leisen-ask serve には出さない)
+ *   v3 / v4 の比較。dev-eval の `--` 以降に渡す。既定は explore.v4 で、2026-11-26 に v3 から
+ *   上げた)。本番で版を切り替えさせないため、NODE_ENV=production では引数の不備として拒否する
+ *   (leisen-ask serve には出さない)
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
@@ -268,7 +269,7 @@ function parseCliArgs(
     }
   }
 
-  // 探索プロンプトの版と検索の状況の制御メッセージは開発・評価用(評価前の版を本番で選ばせない。
+  // 探索プロンプトの版と検索の状況の制御メッセージは開発・評価用(本番で版を切り替えさせない。
   // prompt.ts の運用規則、T-024)
   const promptOption = values["explore-prompt"];
   const feedbackOption = values["search-feedback"];

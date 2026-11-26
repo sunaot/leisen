@@ -323,6 +323,37 @@ describe("runDevEval(CLI)", () => {
     expect(err.join("\n")).not.toContain('{"kind":"audit"}');
   });
 
+  it("レポートのプロンプトの版は leisen-ask に渡した引数で実際に使う版(既定は explore.v4)", async () => {
+    const path = await questionFile([resolvedQuestion]);
+    const runner: LeisenAskRunner = async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify(answer()),
+      stderr: "",
+      timedOut: false,
+    });
+    const report = async (extra: string[]) => {
+      const { out, io } = capture();
+      await runDevEval(
+        ["--questions", path, "--", "--gateway", "http://127.0.0.1:8787/mcp", ...extra],
+        io,
+        runner,
+      );
+      return out.join("\n");
+    };
+    expect(await report([])).toContain(
+      "- プロンプト: explore.v4(検索の状況の制御メッセージ 有効)",
+    );
+    expect(await report(["--explore-prompt", "explore.v3"])).toContain(
+      "- プロンプト: explore.v3(検索の状況の制御メッセージ 無効)",
+    );
+    expect(await report(["--explore-prompt=explore.v3", "--search-feedback", "on"])).toContain(
+      "- プロンプト: explore.v3(検索の状況の制御メッセージ 有効)",
+    );
+    expect(await report(["--search-feedback", "off"])).toContain(
+      "- プロンプト: explore.v4(検索の状況の制御メッセージ 無効)",
+    );
+  });
+
   it("不合格・エラーがあれば終了コード 1。エラーの run は leisen-ask の stderr を流す", async () => {
     const path = await questionFile([resolvedQuestion]);
     const runner: LeisenAskRunner = async () => ({

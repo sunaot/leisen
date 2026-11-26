@@ -24,7 +24,7 @@ import {
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
-import { firstHit, searchHits } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched, firstHit, searchHits } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -187,8 +187,9 @@ describe("受け入れ条件4: runId / iteration の申告と ToolInvocation の
     const script = () =>
       new ScriptedLlmClient([
         () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+        fetchFirstHit,
         (context) => {
-          const hit = firstHit(context);
+          const hit = firstFetched(context);
           return scriptedSubmit({
             answer: "毎月25日です。",
             citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -209,7 +210,8 @@ describe("受け入れ条件4: runId / iteration の申告と ToolInvocation の
         .toolInvocations(answer.runId)
         .map((r) => r.iteration)
         .sort((a, b) => a - b);
-      expect(iterations).toEqual([0, 1, 2]);
+      // describe 2 件(alpha・beta)・search・fetch
+      expect(iterations).toEqual([0, 1, 2, 3]);
     }
   });
 });

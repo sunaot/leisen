@@ -34,7 +34,7 @@ node packages/orchestrator/dist/bin/leisen-ask.js \
 | `--reasoning-effort <level>` | openai-compatible のみ。`low` / `medium` / `high`(`reasoning_effort` に対応するモデルのみ。指定したときだけ送る) |
 | `--allow-insecure-upstream` | 環境変数 `LEISEN_ALLOW_INSECURE_UPSTREAM=1` でも可。Gateway の URL と LLM のベース URL について、ループバック以外の `http` を許す(開発・評価用途。`NODE_ENV=production` では固定文言で拒否して終了コード 2。有効時は平文 http の上流をホスト名で列挙した WARNING を stderr に1行) |
 | `--max-iterations <N>` | ツールを呼べるターン数の上限(1〜20、既定 6) |
-| `--explore-prompt <版>` | 開発・評価用。探索プロンプトの版(`explore.v3` / `explore.v4`、既定 `explore.v3`)。T-024 の v3 / v4 の比較に使う(dev-eval の `--` 以降に渡す)。`NODE_ENV=production` では終了コード 2。`leisen-ask serve` には出さない(下記「プロンプトの変更」) |
+| `--explore-prompt <版>` | 開発・評価用。探索プロンプトの版(`explore.v3` / `explore.v4`、既定 `explore.v4`。2026-11-26 に既定を v4 にした。T-024)。v3 との比較に使う(dev-eval の `--` 以降に渡す)。`NODE_ENV=production` では終了コード 2。`leisen-ask serve` には出さない(下記「プロンプトの変更」) |
 | `--search-feedback on\|off` | 開発・評価用。検索の状況を返す制御メッセージと、fetch 前の提出の差し戻し(既定は `explore.v4` のときだけ on)。`NODE_ENV=production` では終了コード 2 |
 | `--user-id <ID>` | 照合用の質問者の申告(環境変数 `LEISEN_USER_ID` でも可)。AnswerRun に記録されるのは Gateway が `POST /runs` の Bearer で認証した userId で、申告と食い違えば run は `error`(`user_mismatch`)。省略時は照合しない |
 | `--config <deployment.yaml>` | 任意。`orchestrator` セクション(`maxIterations` / `costLimitPerQuery` / `runTimeoutSec`)を探索の設定にする(`--max-iterations` が優先)。citedDocIds の記録方針(Slack・プライベートスコープ)は Gateway が run API でかけるため、ここでは読まない(ADR-019 決定5)。読めない・不正なら終了コード 2。省略時は既定の設定で動く。`--json` の `searchesTried` に `query` と `filters` を載せるのは、`--config` で永続化できないソース(kind が `slack` / `slack-*`)がないと確かめられたときだけ(`--config` がないとき・永続化できないソースが有効なときは除く。不変条件7、ADR-026 決定5) |
@@ -402,7 +402,7 @@ OpenAI 互換の変換(一次情報: OpenAI API リファレンスの Chat Compl
 
 ## 探索ループの仕様
 
-- 開始時: Gateway の run API に開始を申告し(`POST /runs`。質問・実行区分・actor)、署名付き runId(`r1.<kid>.<payload>.<sig>`。Gateway が生クエリ表と pending の AnswerRun を書く)を受け取る。受け付けられなければ LLM を呼ばず、Gateway にもそれ以上アクセスしない(`GatewayClientError`)→ 探索の時間上限を runId の有効期間(`expiresAt`。Gateway の `gateway.runs.ttlSec`)に収める(最終ターン `finalTurnTimeoutMs` と finish の往復の余裕 `RUN_FINISH_MARGIN_MS`(5 秒)を残す。短くしたら warnings に記録)→ `tools/list` → 全ソースに `describe`(`source_not_connected` のソースは skippedSources に入れて検索対象から外す。それ以外の失敗は正規化後の分類で警告を残して検索対象に残す)→ describe の結果の `_meta` から Gateway が認証した userId を得て申告と照合する → system prompt(固定部 `prompts/explore.v3.md` だけ。`explorePrompt` で v4 を選んだときは `prompts/explore.v4.md`)・最初の user ターン(ソース一覧・上限・質問)・ツール定義(strict、`source` は有効ソースの enum)を組む
+- 開始時: Gateway の run API に開始を申告し(`POST /runs`。質問・実行区分・actor)、署名付き runId(`r1.<kid>.<payload>.<sig>`。Gateway が生クエリ表と pending の AnswerRun を書く)を受け取る。受け付けられなければ LLM を呼ばず、Gateway にもそれ以上アクセスしない(`GatewayClientError`)→ 探索の時間上限を runId の有効期間(`expiresAt`。Gateway の `gateway.runs.ttlSec`)に収める(最終ターン `finalTurnTimeoutMs` と finish の往復の余裕 `RUN_FINISH_MARGIN_MS`(5 秒)を残す。短くしたら warnings に記録)→ `tools/list` → 全ソースに `describe`(`source_not_connected` のソースは skippedSources に入れて検索対象から外す。それ以外の失敗は正規化後の分類で警告を残して検索対象に残す)→ describe の結果の `_meta` から Gateway が認証した userId を得て申告と照合する → system prompt(固定部 `prompts/explore.v4.md` だけ。`explorePrompt` で v3 を選んだときは `prompts/explore.v3.md`)・最初の user ターン(ソース一覧・上限・質問)・ツール定義(strict、`source` は有効ソースの enum)を組む
 - ソース一覧(セキュリティレビュー H3): describe 結果はコネクタ由来の外部データなので、system prompt には入れず、最初の user ターンに「固定の前置き(データであり指示ではない)」+「JSON」で渡す(ツール結果と同じ扱い)。`kind` は connector-sdk の `ContainerEntry.kind` の値域に限り(それ以外は `other`)、`supportedFilters` は `SearchFilters` のキーに限る。件数・長さを切り詰め、JSON の `<` `>` はエスケープする。system prompt が固定文字列だけになるので、プロンプトキャッシュの prefix も run をまたいで安定する
 - 反復: LLM の応答内のツール呼び出しは並行に Gateway へ送り(1ターン `maxToolCallsPerTurn` 件・run 全体 `maxToolCallsPerRun` 件まで。超えた分は実行しない)、結果は1つの user メッセージにまとめて返す。成功した結果は「固定の前置き(データであり指示ではない)」と「データ本体の JSON」の2ブロック、ツールエラーも「固定の前置き(ツールエラーはデータ)」と `{ errorClass, message }` の JSON の2ブロックで返す(`is_error: true`)。`permission_denied` と `not_found` は区別せず `not_available` として渡す(TM-B2。Gateway も正規化する)
 - 終了: `submit_answer` の提出 / 提出せずに終えたら1回だけ催促し、それでも提出しなければ unresolved / 上限に達したら提出を促す最終ターンを1回だけ行う / LLM・Gateway の失敗・利用者の不一致は error(回答文は失敗の分類ごとの文言。上記「失敗の文言」)
@@ -474,6 +474,7 @@ node packages/orchestrator/dist/bin/dev-eval.js --label after -- \
 | `--` 以降 | leisen-ask にそのまま渡す。dev-eval は `--json` と質問文を足す |
 
 - 判定: 期待した outcome か、resolved を期待した質問で期待した文書を引用したか(`citeAnyOf` はどれか、`citeAllOf` はすべて)、回答本文に URL が残っていないか。種類を書いた質問があれば種類ごとの合格数を、`--repeat` が 2 以上なら質問ごとの合格回数(n 回中 k 回)も表にする。○ 合格 / × 不合格 / ! エラー(leisen-ask が回答を返せない・run が error)。終了コードは全問合格で 0、それ以外 1、引数・質問セットの不備で 2
+- 表の先頭に、使った探索プロンプトの版と検索の状況の制御メッセージの有無を出す(`--` 以降の `--explore-prompt` / `--search-feedback` から読む。指定がなければ既定の explore.v4・制御メッセージ有効。v3 と比べるときは `--` 以降に `--explore-prompt explore.v3` を足す)
 - 表に出すのは質問 ID・判定・outcome・引用した文書 ID・LLM ターン数・ツール呼び出し数(describe を含む)・トークン数・所要時間(leisen-ask の起動から終了までの実時間)。質問文・回答本文は出さない。進捗は stderr、表は stdout(`> report.md` で保存できる)
 - leisen-ask の stderr(失敗時の案内)は、回答を返せなかった run のときだけ流す。run の記録(AnswerRun)は Gateway の監査ログに残る(ADR-019。dev-eval 側に残す手段はない)
 - 合成データ専用。表には引用した文書 ID(`sourceId:documentId`)をそのまま出し、Gateway が AnswerRun の citedDocIds にかける規則(Slack・有効でないソースは記録しない)を通らないため、Slack を含むデプロイや実データには向けない(不変条件7)。実データの質問セットの扱い(機密クエリの保管・アイデンティティごとの期待値・文書 ID の分類)は T-008 で決める
@@ -517,7 +518,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.
 | `--ui-model <モデル>` | 条件 4 の UI 側 LLM のモデル(省略時は探索 LLM と同じ。プロバイダ・接続先は探索 LLM と同じ) |
 | LLM の指定 | `--llm` / `--model` / `--llm-base-url` / `--llm-api-key-env` / `--reasoning-effort` / `--effort`(leisen-ask と同じ。環境変数 `LEISEN_LLM_*` も同じ) |
 | `--limit <N>` | 質問を先頭の N 問に絞る(`--only` の後にかける) |
-| `--explore-prompt <版>` / `--search-feedback on\|off` | 探索プロンプトの版(`explore.v3` / `explore.v4`)と検索の状況の制御メッセージ(leisen-ask と同じ。既定は v3、制御メッセージは v4 のときだけ有効。NODE_ENV=production では使えない) |
+| `--explore-prompt <版>` / `--search-feedback on\|off` | 探索プロンプトの版(`explore.v3` / `explore.v4`)と検索の状況の制御メッセージ(leisen-ask と同じ。既定は v4、制御メッセージは v4 のときだけ既定で有効。NODE_ENV=production では使えない) |
 | `--llm claude-cli --model <モデル>` | 条件 3・4 の LLM に `claude -p` を使う(下の節。`--model` は必須で既定値はない) |
 | `--claude-cli-command <コマンド>` / `--claude-cli-timeout-sec <N>` / `--claude-cli-max-total-usd <X>` | `claude` のコマンド(既定 `claude`)、1 回の呼び出しのタイムアウト(既定 300 秒)、費用の合計の上限(USD。超えたら以後の呼び出しを失敗させる) |
 
@@ -534,16 +535,16 @@ node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.
 
 ```sh
 npm run build
-# 例: esa 型、全質問、条件 3・4、探索プロンプト v4(制御メッセージ有効)、haiku
+# 例: esa 型、全質問、条件 3・4、既定の探索プロンプト(v4、制御メッセージ有効)、haiku
 node packages/orchestrator/dist/bin/dev-search-eval.js \
   --modes esa --conditions orchestrator-utterance,orchestrator-ui \
   --llm claude-cli --model haiku --ui-model haiku \
-  --explore-prompt explore.v4 --search-feedback on \
   --run-timeout-sec 600 --claude-cli-max-total-usd 5 \
   --trace /tmp/search-trace.jsonl --label "esa / haiku / v4" > /tmp/search-eval.md
+# v3 と比べるときは --explore-prompt explore.v3 を足す(制御メッセージは v3 の既定で無効)
 ```
 
-- **費用と時間の目安**(2026-11-25 の実測、haiku、esa 型、全 23 問 × 条件 3・4): 1 試行あたり平均 4 回強の呼び出しで約 $0.0065〜0.0093、平均 19〜23 秒(最大 44 秒)。23 問 × 条件 3・4 で 1 回の実行が約 $0.30〜0.40、約 16〜17 分。試行は順に実行する(別のプロセスで v3 と v4 を同時に流すことはできた)。`--run-timeout-sec` は既定の 120 秒では足りないことがあるので 600 程度にする。モデルを sonnet などに変えると費用は数倍になる(未計測)。結果は `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md`
+- **費用と時間の目安**(2026-11-25 の実測、haiku、esa 型、全 23 問 × 条件 3・4): 1 試行あたり平均 4 回強の呼び出しで約 $0.0065〜0.0093、平均 19〜23 秒(最大 44 秒)。23 問 × 条件 3・4 で 1 回の実行が約 $0.30〜0.40、約 16〜17 分。試行は順に実行する(別のプロセスで v3 と v4 を同時に流すことはできた)。`--run-timeout-sec` は既定の 120 秒では足りないことがあるので 600 程度にする。モデルを sonnet などに変えると費用は数倍になる(未計測)。結果は `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md`(各 1 回)と `docs/eval/2026-11-26-search-eval-claude-cli-haiku-esa-x3.md`(各 3 回)
 - 注意: `claude` にログインしていること(`claude -p "hi"` が動くこと)。費用はログイン中のアカウントに付く。トレース・表はリポジトリの外に置く(合成コーパスだけが対象だが、量が多い)
 
 ### 実 LLM での条件 3・4 の実行手順
@@ -573,16 +574,18 @@ node packages/orchestrator/dist/bin/dev-search-eval.js \
 
 ## プロンプトの変更
 
-固定部は `prompts/explore.v3.md`、制御メッセージ(催促・最終ターンの指示・ソース一覧とツール結果・ツールエラーの前置き)は `src/prompt.ts`。変更する PR には評価レポート(T-008)を添付する。挙動が変わる改訂はファイルを `explore.v3.md` として追加し、`EXPLORE_PROMPT_VERSION` を上げる。v2 はセキュリティレビュー(2026-09-27)でソース一覧を user ターンへ移し、回答本文に URL を書かない方針にした版(v1 は評価結果がないまま置き換えた。T-008 の評価レポートは未添付)。v3(2026-10-08)は実モデルでの初回実走で見えた空振りへの対処で、検索語を名詞 1〜2 語にして言い換えを 1 つの query に並べない(多くのソースは語の AND)、0 件なら語を減らす、list は区画だけを返し文書は返さない(区画内は `filters.container` で探す)、見つからないことを「存在しない」と断定しない、を足した。同じ趣旨をツールの説明文(`src/tools.ts` の USAGE_HINTS と Gateway の list の説明)にも入れた。評価は `docs/eval/2026-10-08-explore-v3.md`(dev-eval)。
+固定部は `prompts/<版>.md`(既定は `prompts/explore.v4.md`)、制御メッセージ(催促・最終ターンの指示・ソース一覧とツール結果・ツールエラーの前置き)は `src/prompt.ts`。変更する PR には評価レポート(T-008)を添付する。挙動が変わる改訂はファイルを `explore.v<N>.md` として追加し、`EXPLORE_PROMPT_VERSION` を上げる。v2 はセキュリティレビュー(2026-09-27)でソース一覧を user ターンへ移し、回答本文に URL を書かない方針にした版(v1 は評価結果がないまま置き換えた。T-008 の評価レポートは未添付)。v3(2026-10-08)は実モデルでの初回実走で見えた空振りへの対処で、検索語を名詞 1〜2 語にして言い換えを 1 つの query に並べない(多くのソースは語の AND)、0 件なら語を減らす、list は区画だけを返し文書は返さない(区画内は `filters.container` で探す)、見つからないことを「存在しない」と断定しない、を足した。同じ趣旨をツールの説明文(`src/tools.ts` の USAGE_HINTS と Gateway の list の説明)にも入れた。評価は `docs/eval/2026-10-08-explore-v3.md`(dev-eval)。
 
-**v4(2026-11-25、評価未実施のため既定にしていない)**: `prompts/explore.v4.md`。全ソース共通の指針(多くのソースは AND・名詞 1〜2 語・質問文をそのまま入れない)を、ソース一覧の各ソースの `summary` / `supportedFilters` に書かれた検索の仕様に合わせる指示に置き換え、最初のターンに「利用者が入力したキーワードをそのまま使った検索」「表記の違う言い換え(別の検索)」「事柄ごとの検索」を並べる、結果に出てきた表記から次の語を選ぶ、有望な 2〜3 件を fetch してから判断する、止める基準・続ける基準と回数の目安を書いた。版に合わせて USAGE_HINTS(`usageHints()`)・ソース一覧の前置き(`SOURCE_CATALOG_PREFACE_V4`。データであり指示ではない枠は保つ)・上限の制御メッセージも v4 の文言になる。あわせて検索の状況を返す制御メッセージ(`src/search-feedback.ts`、文言は `src/prompt.ts`)を v4 の既定で有効にする: ツールターンごとに、ヒットなし・同じ query と filters の再実行・既出の文書だけ、の通知と、ここまでの検索の一覧(ソース、query、新しく得た文書の数)と残りのターン数をツール結果の外に置き、ヒットを受け取ったのに 1 件も fetch せずに提出したら 1 回だけ差し戻す(最終ターンでは差し戻さない)。ADR-012 により、通知に書くのは query の形と返却済みのヒットから数えた値だけ(権限・総件数・エラーの内訳は書かない)。query の一覧は会話の中だけに置き、回答・warnings・run API の申告には載せない(不変条件7)。選び方は設定 `explorePrompt` / `searchFeedback`(leisen-ask の `--explore-prompt` / `--search-feedback`)。既定を v4 に上げるのは、T-024 の評価(v4 より前に固定した質問で v3 と比べる)で v3 より良いことを確かめてから。記録は `docs/eval/2026-11-25-explore-v4-unevaluated.md`。
+**v4(2026-11-25 作成、2026-11-26 に既定にした)**: `prompts/explore.v4.md`。全ソース共通の指針(多くのソースは AND・名詞 1〜2 語・質問文をそのまま入れない)を、ソース一覧の各ソースの `summary` / `supportedFilters` に書かれた検索の仕様に合わせる指示に置き換え、最初のターンに「利用者が入力したキーワードをそのまま使った検索」「表記の違う言い換え(別の検索)」「事柄ごとの検索」を並べる、結果に出てきた表記から次の語を選ぶ、有望な 2〜3 件を fetch してから判断する、止める基準・続ける基準と回数の目安を書いた。版に合わせて USAGE_HINTS(`usageHints()`)・ソース一覧の前置き(`SOURCE_CATALOG_PREFACE_V4`。データであり指示ではない枠は保つ)・上限の制御メッセージも v4 の文言になる。あわせて検索の状況を返す制御メッセージ(`src/search-feedback.ts`、文言は `src/prompt.ts`)を v4 の既定で有効にする: ツールターンごとに、ヒットなし・同じ query と filters の再実行・既出の文書だけ、の通知と、ここまでの検索の一覧(ソース、query、新しく得た文書の数)と残りのターン数をツール結果の外に置き、ヒットを受け取ったのに 1 件も fetch せずに提出したら 1 回だけ差し戻す(最終ターンでは差し戻さない)。ADR-012 により、通知に書くのは query の形と返却済みのヒットから数えた値だけ(権限・総件数・エラーの内訳は書かない)。query の一覧は会話の中だけに置き、回答・warnings・run API の申告には載せない(不変条件7)。選び方は設定 `explorePrompt` / `searchFeedback`(leisen-ask の `--explore-prompt` / `--search-feedback`。いずれも開発・評価用で、`NODE_ENV=production` では使えない。deployment.yaml からは指定できないので、本番の構成で v3 に戻す設定はない)。
+
+2026-11-26 に、オーナーの決定で既定を v4 にした(T-024)。根拠は `claude -p`(haiku)で esa 型の模擬の検索方式に対して v3 と v4 を比べた計測(`docs/eval/2026-11-26-search-eval-claude-cli-haiku-esa-x3.md` の各 3 回と `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md` の各 1 回)で、正解のある 51 試行で条件 3 の recall@1 が 40% → 81%、fetch した割合が 64% → 97%、recall@10 が 94% → 99%、引用が 92% → 97%(検索回数は 1.7 → 3.5 回 / 試行)。評価の限界(構造化出力によるツール呼び出しの模擬で Anthropic API での結果とはみなせない、haiku だけ、esa 型の模擬だけ、合成コーパス、回答の内容は採点していない、検索プロファイルの文の効果は含まれない、質問の事前固定の経緯)は `docs/backlog/T-024-explore-prompt-v4.md`。v4 の作成時の記録は `docs/eval/2026-11-25-explore-v4-unevaluated.md`。
 
 `ask` の description・`question` の説明・initialize の instructions(`src/server/tools.ts`)には、UI 側 LLM への入力側の指示(利用者の直近の発言を言い換え・要約・翻訳せずに入れる、固有名詞・ID・エラーメッセージ・引用符の語句を変えない、意味が通らないときだけ「補足: …」で対象を補う、言っていない条件を足さない、ask は過去の会話を覚えていない)を足した。引数は `question` のまま(ADR-018 決定1)。dev-eval は UI 側 LLM を通らないため、この文言の効きは dev-eval では測れない(未評価)。
 
 ## 既知の限界
 
 - **実走は限定的**: OpenAI 互換(LM Studio)で合成コーパスの 4 問を流しただけ(2026-10-08、`docs/eval/`)。Claude API の資格情報が用意されるまで、Claude のモデル・effort・max_tokens の既定値、プロンプトの効き、キャッシュの効き(`cache_read_input_tokens`)は未計測
-- **OpenAI 互換の限界**: プロンプト(`prompts/explore.v3.md`)は Claude を前提に書いており、オープンウェイトのモデルで同じ効きになる保証はない(バックエンド別の派生を `prompts/` に置いてよい。ADR-017)。strict がないため引数の形は保証されず、壊れた引数の呼び出しは実行せずに不正な入力として返す。submit_answer の引数が壊れていると再提出を求めずに unresolved で終える(再提出させるかは T-008 の計測を見て決める)。推論の過程(`reasoning_content` 等の非標準フィールド)は履歴に戻さない。`max_tokens` を送る(OpenAI 本家の o 系・推論モデルは `max_completion_tokens` のみを受けるため対象外)。プロンプト+`max_tokens` がコンテキスト長を超える要求を 400 で拒否するサーバー(vLLM 等)では `maxTokensPerTurn` を下げる
+- **OpenAI 互換の限界**: プロンプト(`prompts/explore.v4.md`。v3 も同じ)は Claude を前提に書いており、オープンウェイトのモデルで同じ効きになる保証はない(バックエンド別の派生を `prompts/` に置いてよい。ADR-017)。strict がないため引数の形は保証されず、壊れた引数の呼び出しは実行せずに不正な入力として返す。submit_answer の引数が壊れていると再提出を求めずに unresolved で終える(再提出させるかは T-008 の計測を見て決める)。推論の過程(`reasoning_content` 等の非標準フィールド)は履歴に戻さない。`max_tokens` を送る(OpenAI 本家の o 系・推論モデルは `max_completion_tokens` のみを受けるため対象外)。プロンプト+`max_tokens` がコンテキスト長を超える要求を 400 で拒否するサーバー(vLLM 等)では `maxTokensPerTurn` を下げる
 - **評価ハーネス(T-008)未実装**: 解決率・引用正確性・インジェクション耐性(RS-3 / RS-4)の率は測れていない
 - **Slack コネクタ未実装**: Slack コネクタ(T-006)は未着手(導入形態は 2026-10-13 に類型(a)で確定、issue #59)。citedDocIds の記録の規則は Gateway がデプロイ単位でかける(ADR-019 決定5。Slack が有効な構成では段階 1 の間 citedDocIds を記録しない)。Orchestrator 側に残るのは `leisen-ask serve` の起動拒否(不変条件7)の判定だけ
 - **回答本文の URL の検出の限界**: スキーム・`www.`・`//`・パス/クエリのない裸のドメイン名(`evil.example`)とメールアドレスは残す(ファイル名等と区別できない)。利用側は fuzzy な自動リンク(裸のドメインのリンク化)を無効にし、外部画像を自動取得しない(T-009)。検出は保守的(fail-closed)で、`Node.js/Express` のような表記やコード片の中の URL も除去される(除去は warnings に出る)。ゼロ幅接合子(ZWJ)も除くため、絵文字の合成列は分かれて表示される

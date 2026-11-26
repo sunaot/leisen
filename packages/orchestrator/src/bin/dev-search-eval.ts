@@ -20,7 +20,8 @@
  *   呼び出しではない。dev-search-eval の中だけで選べ、NODE_ENV=production では拒否する)。
  *   --model は必須。費用と所要時間の合計を表の注記と stderr に出す
  * - --explore-prompt / --search-feedback: 探索プロンプトの版と検索の状況の制御メッセージ
- *   (leisen-ask と同じ。NODE_ENV=production では拒否する)。--limit N: 質問を先頭の N 問に絞る
+ *   (leisen-ask と同じ。既定は explore.v4 で、制御メッセージは explore.v4 のときだけ既定で有効。
+ *   NODE_ENV=production では拒否する)。--limit N: 質問を先頭の N 問に絞る
  * - 外部の Gateway・実ソースには接続しない(接続先を指定する引数がない)
  * - 終了コード: 0 実行できた、1 実行中の失敗、2 引数・質問セットの不備
  */
@@ -34,6 +35,7 @@ import { createLlmClient } from "../llm/factory.js";
 import type { LlmClient } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
 import {
+  EXPLORE_PROMPT_VERSION,
   EXPLORE_PROMPT_VERSIONS,
   isExplorePromptVersion,
   type ExplorePromptVersion,
@@ -74,6 +76,7 @@ const USAGE = [
   "  ツール呼び出しの模擬)。[--claude-cli-command <コマンド>] [--claude-cli-timeout-sec N] [--claude-cli-max-total-usd X]",
   "  条件 3・4(orchestrator-*)には LLM の指定が要る(leisen-ask と同じ)。--ui-model は条件 4 の UI 側の",
   "  モデル(省略時は探索 LLM と同じ)。",
+  `  --explore-prompt は探索プロンプトの版(既定 ${EXPLORE_PROMPT_VERSION})。--search-feedback は検索の状況の制御メッセージ(既定は explore.v4 のときだけ on)。`,
   ...LLM_USAGE_LINES,
 ].join("\n");
 

@@ -30,6 +30,7 @@ import {
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
+import { firstHit } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -171,6 +172,14 @@ describe("価格表: プロバイダ+モデルで引く", () => {
       [
         () =>
           scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }], servedBy("claude-opus-5")),
+        // 既定の v4 では fetch せずに提出すると差し戻されるため、提出の前に読む
+        (context) => {
+          const hit = firstHit(context);
+          return scriptedToolUse(
+            [{ name: "fetch", input: { source: hit.source, documentId: hit.documentId } }],
+            servedBy("claude-opus-5"),
+          );
+        },
         () => scriptedSubmit({ answer: "不明です。", citations: [], confidence: 0 }, servedBy("claude-opus-5")),
       ],
       { provider: "openai_compatible", capabilities: OPENAI_COMPATIBLE_BASE_CAPABILITIES },
@@ -183,7 +192,7 @@ describe("価格表: プロバイダ+モデルで引く", () => {
     });
 
     expect(harness.toolInvocations(answer.runId).filter((r) => r.tool === "search")).toHaveLength(1);
-    expect(answer.usage).toMatchObject({ inputTokens: 2_000, outputTokens: 1_000, llmTurns: 2 });
+    expect(answer.usage).toMatchObject({ inputTokens: 3_000, outputTokens: 1_500, llmTurns: 3 });
     expect(answer.usage.estimatedCost).toBeUndefined();
     expect(answer.warnings).toContain(
       "価格表にないモデル(claude-opus-5)を使ったため、費用を概算できません。",

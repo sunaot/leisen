@@ -14,8 +14,8 @@
  *   探索 LLM が送った query・filters と、describe で得た仕様だけから行う。通知(notices)の文は
  *   Gateway が値域で検証した列挙値から作る。どちらも未認可の候補の有無・件数を扱わない(ADR-012。
  *   Orchestrator はそれを持たない)
- * - 文言はプロンプトの一部(prompt.ts の運用規則)。explore.v4 と同じく評価未実施で、既定の v3 では
- *   使わない(検索プロファイルの文は explore.v4 のとき、判定と通知は searchFeedback が有効なとき)
+ * - 文言はプロンプトの一部(prompt.ts の運用規則)。v3 では使わない
+ *   (検索プロファイルの文は explore.v4 のとき、判定と通知は searchFeedback が有効なとき)
  */
 import {
   MAX_SEARCH_LIMIT_VALUE,

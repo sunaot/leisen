@@ -1,5 +1,7 @@
 # 記録: 探索プロンプト v4 と検索の状況の制御メッセージ(2026-11-25、評価未実施)
 
+> **追記(2026-11-26)**: この記録の後、v3 と v4 を `claude -p`(haiku)、esa 型の模擬の検索方式で比べて評価し(`docs/eval/2026-11-26-search-eval-claude-cli-haiku-esa-x3.md` の各 3 回と `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md` の各 1 回)、オーナーの決定で既定を v4 にした(検索の状況の制御メッセージも既定で有効)。v3 は設定 `explorePrompt: "explore.v3"` で引き続き選べる。評価の限界と残る確認は `docs/backlog/T-024-explore-prompt-v4.md` の 2026-11-26 の追記にある。以下の本文は 2026-11-25 時点の記録として残す(「既定は v3」などの記述は当時のもの)。
+
 Status: **評価未実施**(実装とユニットテストのみ。実モデルでの実走はしていない)/ 対象: `packages/orchestrator/prompts/explore.v4.md`、`packages/orchestrator/src/prompt.ts`(v4 の前置き・上限の制御メッセージ・検索の状況の制御メッセージの文言)、`packages/orchestrator/src/tools.ts`(USAGE_HINTS の v4)、`packages/orchestrator/src/search-feedback.ts`、`packages/orchestrator/src/server/tools.ts`(`ask` の description・`question` の説明・instructions)
 
 これは評価レポートではない。`prompt.ts` の運用規則(プロンプトと制御メッセージの変更には評価レポートを添える)と T-024(改訂の評価は、改訂より前に固定した質問で v3 と比べる)に従い、評価が済むまで v4 と新しい制御メッセージを既定にしないことと、その理由を残す。

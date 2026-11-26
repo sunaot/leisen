@@ -30,7 +30,7 @@ import {
   type ServerLimitsInput,
 } from "../../src/index.js";
 import { TEST_ORCHESTRATOR_CREDENTIAL } from "./harness.js";
-import { searchHits } from "./script.js";
+import { fetchedDocuments, searchHits } from "./script.js";
 
 export type AnswerRunRecord = Extract<AuditRecord, { recordType: "answer_run" }>;
 
@@ -183,23 +183,31 @@ export function rawPost(
 }
 
 /**
- * 全ターン共通の脚本: 直前に search のヒットがなければ alpha を検索し、あれば最初の
- * ヒットを出典にして回答を提出する(複数の run で同じ LLM クライアントを共有できる)。
+ * 全ターン共通の脚本: 直前に fetch した文書があればそれを出典にして回答を提出し、search の
+ * ヒットがあれば最初のヒットを fetch し、どちらもなければ alpha を検索する(複数の run で同じ
+ * LLM クライアントを共有できる)。既定の探索プロンプト(v4)では、ヒットを受け取ったのに
+ * 1件も fetch せずに提出すると差し戻されるため、提出の前に読む
  */
 export function searchThenSubmit(
   answer = "経費精算の締め日は毎月25日です。",
   query = "締め日",
 ): (context: ScriptContext) => LlmTurn {
   return (context) => {
-    const [hit] = searchHits(context);
-    if (hit === undefined) {
-      return scriptedToolUse([{ name: "search", input: { source: "alpha", query } }]);
+    const [fetched] = fetchedDocuments(context);
+    if (fetched !== undefined) {
+      return scriptedSubmit({
+        answer,
+        citations: [{ documentId: fetched.documentId, sourceId: fetched.source }],
+        confidence: 0.9,
+      });
     }
-    return scriptedSubmit({
-      answer,
-      citations: [{ documentId: hit.documentId, sourceId: hit.source }],
-      confidence: 0.9,
-    });
+    const [hit] = searchHits(context);
+    if (hit !== undefined) {
+      return scriptedToolUse([
+        { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+      ]);
+    }
+    return scriptedToolUse([{ name: "search", input: { source: "alpha", query } }]);
   };
 }
 

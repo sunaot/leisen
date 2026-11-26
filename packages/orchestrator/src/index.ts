@@ -9,7 +9,7 @@
  * - searches-tried.ts 返り値の試した検索(searchesTried。ADR-026 決定3)の集計
  * - citations.ts      証拠台帳(run 内で受け取った文書)と出典の検証
  * - sanitize.ts       回答本文の無害化(URL・リンク・画像・生の HTML を残さない)
- * - prompt.ts         system prompt(prompts/explore.v3.md が既定、v4 は設定で選ぶ。固定部のみ)、
+ * - prompt.ts         system prompt(prompts/explore.v4.md が既定、v3 は設定で選ぶ。固定部のみ)、
  *                     最初の user ターン(ソース一覧・上限・質問)と制御メッセージ
  * - search-feedback.ts 検索の状況(0 件・重複・既出のみ・試した検索の一覧)の判定と、
  *                     fetch 前の提出の差し戻しの条件(v4 の既定で有効)、検索の仕様に照らした判定

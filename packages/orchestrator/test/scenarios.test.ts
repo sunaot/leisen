@@ -23,7 +23,13 @@ import {
   type GatewayHarness,
   type GatewayHarnessOptions,
 } from "./helpers/harness.js";
-import { fetchedDocuments, firstHit, searchHits } from "./helpers/script.js";
+import {
+  fetchFirstHit,
+  fetchedDocuments,
+  firstFetched,
+  firstHit,
+  searchHits,
+} from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -141,8 +147,10 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
           },
         ]);
       },
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
+      fetchFirstHit,
       (context) => {
-        const hit = firstHit(context);
+        const hit = firstFetched(context);
         return scriptedSubmit({
           answer: "出張経費の精算は30日以内に申請します。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -250,7 +258,11 @@ describe("受け入れ条件1: 再現可能なシナリオ", () => {
           (r) => (r.toolInput as { source?: string }).source === "beta",
         );
         expect(rejected).toMatchObject({ isError: true, json: { errorClass: "unknown_source" } });
-        const hit = firstHit(context);
+        // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
+        return fetchFirstHit(context);
+      },
+      (context) => {
+        const hit = firstFetched(context);
         return scriptedSubmit({
           answer: "経費精算の締め日は毎月25日です。",
           citations: [{ documentId: hit.documentId, sourceId: "alpha" }],

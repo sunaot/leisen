@@ -1,7 +1,7 @@
 /**
  * system prompt と制御メッセージ(T-007、ADR-017 決定4)。
  *
- * - 固定部は `prompts/explore.v3.md` でバージョン管理する。ESM のため
+ * - 固定部は `prompts/<版>.md`(既定は explore.v4.md)でバージョン管理する。ESM のため
  *   `import.meta.url` 基準で読む(src/ と dist/ のどちらから読んでも
  *   パッケージ直下の prompts/ を指す)
  * - **system prompt は固定部だけ**(キャッシュのブレークポイント付き)。run ごとに
@@ -36,7 +36,7 @@ import { renderSearchProfiles } from "./search-profile.js";
  *   返し文書は返さないこと、区画内は search の filters.container で探すことを明記した。
  *   見つからなかったことを「存在しない」と断定しない。v2 との比較は評価レポート
  *   (docs/eval/)
- * - v4(2026-11-25、オーナー決定の方針。**評価未実施のため既定にしない**): 全ソース共通の
+ * - v4(2026-11-25、オーナー決定の方針。2026-11-26 に評価して既定にした): 全ソース共通の
  *   指針(多くのソースは AND・名詞 1〜2 語・質問文をそのまま入れない)を、各ソースの summary
  *   に書かれた検索の仕様に合わせる指示に置き換えた。最初のターンに、利用者が入力した
  *   キーワードをそのまま使った検索・表記の違う言い換え・事柄ごとの検索を並べる。結果に
@@ -45,17 +45,21 @@ import { renderSearchProfiles } from "./search-profile.js";
  *   上限の制御メッセージも v4 の文言にし、検索の状況を返す制御メッセージ(search-feedback.ts)
  *   を既定で有効にする。記録は docs/eval/2026-11-25-explore-v4-unevaluated.md
  *   T-030(ADR-025)で、v4 のときだけ検索プロファイルの定型文(search-profile.ts)を最初の
- *   user ターンの制御メッセージとして足した(同じ記録の §6。評価未実施)
+ *   user ターンの制御メッセージとして足した(同じ記録の §6)。
+ *   2026-11-26 に既定を v4 にした(オーナー決定。根拠は
+ *   docs/eval/2026-11-26-search-eval-claude-cli-haiku-esa-x3.md と
+ *   docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md、評価の限界は
+ *   docs/backlog/T-024-explore-prompt-v4.md)
  *
- * 既定の版は EXPLORE_PROMPT_VERSION(v3)。v4 は設定 `explorePrompt` で選ぶ(leisen-ask の
- * `--explore-prompt`)。T-024 の評価(事前に固定した質問で v3 と比べる)で v3 より良いことを
- * 確かめてから既定を上げる(本ファイル冒頭の運用規則)。
+ * 既定の版は EXPLORE_PROMPT_VERSION(v4)。v3 は設定 `explorePrompt: "explore.v3"`(leisen-ask の
+ * `--explore-prompt explore.v3`。開発・評価用)で引き続き選べる。版を上げるときは、事前に
+ * 固定した質問で前の版と比べた評価を添える(本ファイル冒頭の運用規則)。
  */
 export const EXPLORE_PROMPT_VERSIONS = ["explore.v3", "explore.v4"] as const;
 export type ExplorePromptVersion = (typeof EXPLORE_PROMPT_VERSIONS)[number];
 
-/** 既定の版(評価済みの版。v4 は評価が済むまで既定にしない)。 */
-export const EXPLORE_PROMPT_VERSION: ExplorePromptVersion = "explore.v3";
+/** 既定の版(2026-11-26 に評価して v4 にした。T-024)。 */
+export const EXPLORE_PROMPT_VERSION: ExplorePromptVersion = "explore.v4";
 
 export function isExplorePromptVersion(value: unknown): value is ExplorePromptVersion {
   return (EXPLORE_PROMPT_VERSIONS as readonly unknown[]).includes(value);
@@ -67,7 +71,7 @@ function promptUrl(version: ExplorePromptVersion): URL {
 
 const cachedPrompts = new Map<ExplorePromptVersion, Promise<string>>();
 
-/** 固定部(prompts/<版>.md、既定は v3)を読む。版ごとにプロセス内でキャッシュする。 */
+/** 固定部(prompts/<版>.md、既定は v4)を読む。版ごとにプロセス内でキャッシュする。 */
 export function loadExplorePrompt(
   version: ExplorePromptVersion = EXPLORE_PROMPT_VERSION,
 ): Promise<string> {
@@ -295,8 +299,9 @@ export function renderRunLimits(
     context.maxToolCallsPerTurn !== undefined
       ? `1 ターンに最大 ${context.maxToolCallsPerTurn} 件の呼び出しを並べてよい`
       : "1 ターンに複数の呼び出しを並べてよい";
+  const version = context.promptVersion ?? EXPLORE_PROMPT_VERSION;
   const lines = [
-    context.promptVersion === "explore.v4"
+    version === "explore.v4"
       ? `[オーケストレーター] ツールを呼べるターンは最大 ${context.maxIterations} 回(${perTurn})。呼び出しの目安は、単純な質問で合わせて 2〜4 回、複数の事柄を含む質問で 10 回前後。上限に達すると、その時点の情報で回答の提出を求められる。`
       : `[オーケストレーター] ツールを呼べるターンは最大 ${context.maxIterations} 回。上限に達すると、その時点の情報で回答の提出を求められる。`,
   ];
@@ -334,7 +339,7 @@ function looksLikeControlLine(line: string): boolean {
  * 利用者の入力(question / userMessage / context)を最初の user ターンに置く前に、行頭の
  * `[オーケストレーター]`(全角の `［ ］`、`【 】` を含む)の体裁だけを無害化する: その行の
  * 先頭に SPOOFED_CONTROL_LINE_PREFIX を付ける。体裁のない入力は 1 文字も変えない
- * (既定の v3 の探索 LLM への入力を変えない)。行の区切りは元のまま残す
+ * (v3 の探索 LLM への入力を変えない)。行の区切りは元のまま残す
  */
 export function neutralizeControlLines(text: string): string {
   const parts = text.split(LINE_BREAK);
@@ -351,7 +356,7 @@ export function neutralizeControlLines(text: string): string {
 }
 
 /**
- * 質問(日付など要求ごとに変わる値を含む)。質問は利用者の入力のまま置く(既定の v3 の入力を
+ * 質問(日付など要求ごとに変わる値を含む)。質問は利用者の入力のまま置く(v3 の入力を
  * 変えないため引用しない)。行頭の制御メッセージの体裁だけを無害化する
  */
 export function renderQuestion(question: string, today: string): string {
@@ -367,11 +372,13 @@ export function buildFirstUserContent(
   context: RunPromptContext,
 ): Anthropic.TextBlockParam[] {
   // 検索プロファイルの文(ADR-025 決定2)は v4 のときだけ、ソース一覧(データ)の外に制御メッセージ
-  // として置く。v3(既定)の入力は変えない
+  // として置く。v3 の入力は変えない。版を省略したときは既定の版(前置き・検索の仕様・上限の
+  // 制御メッセージで同じ版を使う)
+  const version = context.promptVersion ?? EXPLORE_PROMPT_VERSION;
   const profiles =
-    context.promptVersion === "explore.v4" ? renderSearchProfiles(context.sources) : undefined;
+    version === "explore.v4" ? renderSearchProfiles(context.sources) : undefined;
   return [
-    { type: "text", text: sourceCatalogPreface(context.promptVersion) },
+    { type: "text", text: sourceCatalogPreface(version) },
     { type: "text", text: renderSourceCatalog(context.sources) },
     ...(profiles !== undefined ? [{ type: "text" as const, text: profiles }] : []),
     { type: "text", text: renderRunLimits(context) },

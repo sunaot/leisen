@@ -32,7 +32,7 @@ import {
   type GatewayHarness,
 } from "./helpers/harness.js";
 import { FakeGatewayClient, describeOk, searchHit } from "./helpers/fake-gateway.js";
-import { firstHit } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -53,8 +53,9 @@ async function setup(now?: () => number): Promise<GatewayHarness> {
 function resolvingScript(): ScriptedLlmClient {
   return new ScriptedLlmClient([
     () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+    fetchFirstHit,
     (context) => {
-      const hit = firstHit(context);
+      const hit = firstFetched(context);
       return scriptedSubmit({
         answer: "経費精算の締め日は毎月25日です。",
         citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -149,7 +150,13 @@ describe("H1: AnswerRun.userId は Gateway が認証した値", () => {
       gateway,
     });
 
-    expect(events).toEqual(["run:start", "gateway:describe", "gateway:search", "run:finish:resolved"]);
+    expect(events).toEqual([
+      "run:start",
+      "gateway:describe",
+      "gateway:search",
+      "gateway:fetch",
+      "run:finish:resolved",
+    ]);
     expect(harness.records()[0]?.recordType).toBe("answer_run");
     expect(harness.answerRuns()[0]).toMatchObject({
       userId: "alice",

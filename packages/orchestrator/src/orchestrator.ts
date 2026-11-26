@@ -201,7 +201,7 @@ export interface OrchestratorOptions {
   readonly settings?: OrchestratorSettingsInput;
   /**
    * system prompt 固定部の差し替え(評価用)。省略時は settings.explorePrompt の版
-   * (prompts/<版>.md、既定 explore.v3)。USAGE_HINTS・前置き・制御メッセージは
+   * (prompts/<版>.md、既定 explore.v4)。USAGE_HINTS・前置き・制御メッセージは
    * settings.explorePrompt の版に従う
    */
   readonly systemPrompt?: string;

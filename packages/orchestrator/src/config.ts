@@ -193,15 +193,16 @@ export const orchestratorSettingsSchema = z.strictObject({
   connectGuidance: z.string().min(1).default(DEFAULT_CONNECT_GUIDANCE),
   /**
    * 探索プロンプトの版(prompts/<版>.md と、版に合わせた USAGE_HINTS・ソース一覧の前置き・
-   * 上限の制御メッセージ)。既定は評価済みの v3。v4 は評価(T-024)が済むまで既定にしない
-   * (prompt.ts の運用規則)
+   * 上限の制御メッセージ)。既定は v4(2026-11-26 に評価して既定にした。T-024)。v3 は
+   * "explore.v3" と書けば選べる。deployment.yaml からは指定できない(leisen-ask の
+   * --explore-prompt は開発・評価用)
    */
   explorePrompt: z.enum(EXPLORE_PROMPT_VERSIONS).default(EXPLORE_PROMPT_VERSION),
   /**
    * 検索の状況を返す制御メッセージ(0 件・重複・既出のみ・試した検索の一覧と残りのターン数、
    * 1件も fetch せずに提出したときの差し戻し。search-feedback.ts)。省略時は explorePrompt が
-   * explore.v4 のときだけ有効(v4 の文面がこの制御メッセージを前提にする)。プロンプトの一部と
-   * して扱い、v3 との組み合わせも評価なしでは既定にしない
+   * explore.v4 のときだけ有効(v4 の文面がこの制御メッセージを前提にする。既定の v4 では
+   * 有効)。プロンプトの一部として扱い、v3 との組み合わせは評価なしでは既定にしない
    */
   searchFeedback: z.boolean().optional(),
 });

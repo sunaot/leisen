@@ -5,7 +5,7 @@
  * - SourceBrief で値域の外の値(未知の列挙値・範囲外の数値・形式違反の修飾子名・21 個以上の修飾子)が落ちる
  * - テンプレートの出力は、コネクタの値によらず定型文の組み合わせだけ(コネクタの文字列が制御メッセージに
  *   入らない。TM-D4)
- * - v3(既定)の探索 LLM への入力を変えない(ソース一覧の JSON・ツール結果・制御メッセージ)
+ * - v3 の探索 LLM への入力を変えない(ソース一覧の JSON・ツール結果・制御メッセージ)
  * - 検索の仕様に照らした判定(語数の上限・空白のない文・非対応のフィルタ)と通知の伝達は searchFeedback の下
  * - ADR-012: 判定と通知の文は query・filters・返却済みの結果だけから作り、権限・件数を書かない
  * - 不変条件7: 判定と通知の文(query の再掲を含む)は回答・申告に載らない
@@ -239,8 +239,10 @@ describe("最初の user ターン", () => {
   ];
   const context = { sources, skippedSources: [], maxIterations: 6, today: "2026-11-25", question: "q" };
 
-  it("v3(既定)ではブロックを足さず、ソース一覧の JSON も従来の形のまま", () => {
-    const blocks = buildFirstUserContent(context).map((b) => b.text);
+  it("v3 ではブロックを足さず、ソース一覧の JSON も従来の形のまま", () => {
+    const blocks = buildFirstUserContent({ ...context, promptVersion: "explore.v3" }).map(
+      (b) => b.text,
+    );
     expect(blocks).toHaveLength(4);
     expect(JSON.parse(blocks[1] ?? "")).toEqual({
       sources: [{ sourceId: "alpha", summary: "s", supportedFilters: ["updatedAfter"] }],
@@ -454,8 +456,8 @@ async function runProfile(settings: OrchestratorSettingsInput) {
 }
 
 describe("探索ループ: 検索プロファイルと通知", () => {
-  it("v3(既定)では、検索の仕様の文も通知も探索 LLM に渡さず、ツール結果にも notices を入れない", async () => {
-    const { llm, seen, answer } = await runProfile({});
+  it("v3 では、検索の仕様の文も通知も探索 LLM に渡さず、ツール結果にも notices を入れない", async () => {
+    const { llm, seen, answer } = await runProfile({ explorePrompt: "explore.v3" });
     const first = JSON.stringify(llm.requests[0]?.messages);
     expect(first).not.toContain("検索の仕様(オーケストレーター");
     expect(first).not.toContain("searchProfile");

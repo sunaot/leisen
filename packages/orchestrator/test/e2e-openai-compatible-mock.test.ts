@@ -44,7 +44,7 @@ import {
   type MockOpenAiServer,
   type OpenAiMockStep,
 } from "./helpers/mock-openai-server.js";
-import { fetchedDocuments, firstHit, searchHits } from "./helpers/script.js";
+import { fetchedDocuments, firstFetched, firstHit, searchHits } from "./helpers/script.js";
 
 const MODEL = "openai/gpt-oss-20b";
 
@@ -206,7 +206,8 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
     const search = tools.find((tool) => tool.function.name === "search");
     expect(search?.function.parameters).toMatchObject({ type: "object", additionalProperties: false });
     expect(search?.function.parameters.properties?.source?.enum).toEqual(["alpha", "beta"]);
-    expect(search?.function.description).toContain("類義語");
+    // 版ごとの USAGE_HINTS が説明文に載る(既定の v4 の文面)
+    expect(search?.function.description).toContain("summary と supportedFilters に書かれた検索の仕様に合わせる");
     // system メッセージ1件(固定部が先頭)→ user(質問)
     const messages = wireMessages(mock, 0);
     expect(messages.map((message) => message.role)).toEqual(["system", "user"]);
@@ -215,7 +216,15 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
 
     // 2回目: assistant の tool_calls(arguments は JSON 文字列)→ tool メッセージ(tool_call_id)
     const second = wireMessages(mock, 1);
-    expect(second.map((message) => message.role)).toEqual(["system", "user", "assistant", "tool"]);
+    // 既定の v4 では、tool メッセージの後ろに検索の状況の制御メッセージ(user)が続く
+    expect(second.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+      "user",
+    ]);
+    expect(second[4]?.content?.startsWith("[オーケストレーター]")).toBe(true);
     const call = second[2]?.tool_calls?.[0];
     expect(second[2]?.content).toBeNull();
     expect(call?.type).toBe("function");
@@ -241,8 +250,15 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
           { name: "search", input: { source: "alpha", query: "expense reimbursement deadline" } },
         ]);
       },
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
       (script) => {
         const hit = firstHit(script);
+        return openAiToolCalls([
+          { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+        ]);
+      },
+      (script) => {
+        const hit = firstFetched(script);
         return openAiSubmit({
           answer: "出張経費の精算は30日以内に申請します。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -318,7 +334,14 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
           if (rejected?.isError !== true) {
             throw new Error("the call to the unconnected source must be rejected");
           }
+          // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
           const hit = firstHit(script);
+          return openAiToolCalls([
+            { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+          ]);
+        },
+        (script) => {
+          const hit = firstFetched(script);
           return openAiSubmit({
             answer: "経費精算の締め日は毎月25日です。",
             citations: [{ documentId: hit.documentId, sourceId: "alpha" }],
@@ -353,8 +376,15 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
         }
         return openAiToolCalls([{ name: "search", input: { source: "alpha", query: "経費精算" } }]);
       },
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
       (script) => {
         const hit = firstHit(script);
+        return openAiToolCalls([
+          { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+        ]);
+      },
+      (script) => {
+        const hit = firstFetched(script);
         return openAiSubmit({
           answer: "経費精算の締め日は毎月25日です。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -373,7 +403,8 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
     // Gateway には有効な search だけが届き、壊れた呼び出しは iteration を消費しない
     const records = context.harness.toolInvocations(answer.runId);
     expect(records.filter((record) => record.tool === "search")).toHaveLength(1);
-    expect(searchIterations(context.harness, answer.runId)).toEqual([0, 1]);
+    // describe・search・fetch
+    expect(searchIterations(context.harness, answer.runId)).toEqual([0, 1, 2]);
   });
 
   it("submit_answer の arguments が壊れた JSON: 落ちずに unresolved(invalid_answer_submission)で終える", async () => {
@@ -497,8 +528,15 @@ describe("leisen-ask(OpenAI 互換、モック)", () => {
   function resolvingScript(): OpenAiMockStep[] {
     return [
       () => openAiToolCalls([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、ヒットを読んでから提出する
       (script) => {
         const hit = firstHit(script);
+        return openAiToolCalls([
+          { name: "fetch", input: { source: hit.source, documentId: hit.documentId } },
+        ]);
+      },
+      (script) => {
+        const hit = firstFetched(script);
         return openAiSubmit({
           answer: "経費精算の締め日は毎月25日です。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -550,7 +588,8 @@ describe("leisen-ask(OpenAI 互換、モック)", () => {
     );
 
     expect(code).toBe(0);
-    expect(mock.requests).toHaveLength(2);
+    // search → fetch → submit_answer
+    expect(mock.requests).toHaveLength(3);
   });
 
   it("サーバーが資格情報を要求(401)したら OpenAI 互換向けの案内を出して終了コード 2", async () => {
