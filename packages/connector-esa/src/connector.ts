@@ -27,7 +27,6 @@ import {
   type SearchHit,
   type SearchOptions,
   type SearchResult,
-  type SearchProfile,
   type SourceDescription,
 } from "@leisen/connector-sdk";
 import { EsaMcpClient, type EsaMcpCaller, type EsaReadTool, type FetchLike } from "./mcp.js";
@@ -42,9 +41,10 @@ export interface EsaConnectorOptions {
   readonly team: string;
   readonly displayName?: string;
   /**
-   * describe の summary のうち、このソースに何があるかの説明(エージェントの初手選択に使う)。
-   * 検索の仕様(searchSpecOf)はコネクタが後ろに付ける。Orchestrator は summary を 1,000 字で
-   * 切るため、ここは短くする
+   * describe の summary(このソースに何があるかの説明。エージェントの初手選択に使う)。内容の
+   * 説明だけを書く。検索の仕様は summary に入れず、静的な宣言 searchSpec(searchSpecOf)で渡す
+   * (connector-sdk v0.7、ADR-017 追補 1)。この値は searchSpec に入らない。Orchestrator は summary を
+   * 1,000 字で切るため、ここは短くする
    */
   readonly summary?: string;
   /** リモート MCP サーバーの URL(既定 https://mcp.esa.io/) */
@@ -119,6 +119,13 @@ export class EsaConnector implements Connector {
     ingest: false,
     privateScopeHandling: "classified",
   };
+  /**
+   * 検索の仕様の静的な宣言(connector-sdk v0.7、ADR-017 追補 1)。実装の定数(searchSpecOf)と、
+   * 導入の設定 includeWip から決まる定型の句だけで作る。settings.summary などの自由な文字列、
+   * esa から取得した文(カテゴリ名、リモート MCP サーバーのツールの説明・検索のヘルプ)は入れない。
+   * 構築時に決まり、利用者によらない
+   */
+  readonly searchSpec: string;
   readonly #team: string;
   readonly #displayName: string;
   readonly #summary: string;
@@ -144,7 +151,8 @@ export class EsaConnector implements Connector {
     const contents =
       options.summary ??
       `esa チーム ${options.team} の Markdown の投稿(設計書・議事録・手順書・日報など)。カテゴリで整理されている。`;
-    this.#summary = `${contents.trim()}\n${searchSpecOf(options.includeWip ?? true)}`;
+    this.#summary = contents.trim();
+    this.searchSpec = searchSpecOf(options.includeWip ?? true);
     const timeoutMs = integerOption("timeoutMs", options.timeoutMs, 15_000, 1_000, 120_000);
     this.#defaultLimit = integerOption("defaultSearchLimit", options.defaultSearchLimit, 10, 1, 100);
     this.#snippetChars = integerOption("snippetChars", options.snippetChars, 300, 1, MAX_SNIPPET_CHARS);
@@ -370,45 +378,16 @@ export class EsaConnector implements Connector {
       summary: this.#summary,
       topContainers: top,
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
-      searchProfile: ESA_SEARCH_PROFILE,
     };
   }
 }
 
 /**
- * 検索プロファイル(connector-sdk v0.6、ADR-025)。esa の検索ヘルプ(docs.esa.io/posts/104)と
- * 本コネクタの実装による値で、リモート MCP の esa_search_posts 経由では確かめていないため根拠は
- * すべて documented(T-029 の結果で tested に変える)。照合の単位・自然文の扱い・語数と文字数の
- * 上限は公式の記述がなく、項目を書かない(不明)。#タグ は「名前:」の形でないため修飾子に
- * 含めない(summary に書く)。利用者によらない定数
- */
-export const ESA_SEARCH_PROFILE: SearchProfile = {
-  termJoin: { value: "and", basis: "documented" },
-  phraseQuote: { value: "supported", basis: "documented" },
-  operators: { value: ["or", "minus", "parentheses"], basis: "documented" },
-  qualifiers: {
-    value: [
-      { name: "title", target: "title" },
-      { name: "body", target: "body" },
-      { name: "in", target: "category" },
-      { name: "on", target: "category" },
-      { name: "user", target: "author" },
-      { name: "created", target: "date" },
-      { name: "updated", target: "date" },
-      { name: "wip", target: "state" },
-      { name: "kind", target: "type" },
-    ],
-    basis: "documented",
-  },
-  ranking: { value: "relevance", basis: "documented" },
-  titleBoost: { value: true, basis: "documented" },
-  snippet: { value: "match_context", basis: "documented" },
-};
-
-/**
- * describe の summary に付ける検索の仕様(事実の記述。2026-11-25)。出典は esa の検索ヘルプ
+ * 検索の仕様(searchSpec に入れる事実の記述。2026-11-25 に summary の後ろに付ける文として書き、
+ * 2026-11-26 に searchSpec へ移した。文面は変えていない)。出典は esa の検索ヘルプ
  * (docs.esa.io/posts/104、/389)と本コネクタの実装。リモート MCP 経由で実機確認していない
- * 挙動は「不明」「未確認」と書く。Orchestrator が 1,000 字で切るため、内容の説明と合わせて収める
+ * 挙動は「不明」「未確認」と書く。1 行で MAX_SEARCH_SPEC_LENGTH(1,500)字以内に収め、改行や
+ * 予約の語句を含めない(connector-sdk の checkSearchSpec)
  */
 export function searchSpecOf(includeWip: boolean): string {
   return (

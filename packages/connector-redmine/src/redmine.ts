@@ -10,11 +10,10 @@ import {
   type SearchFilters,
   type SearchHit,
   type SearchOptions,
-  type SearchProfile,
   type SearchResult,
   type SourceDescription,
 } from "@leisen/connector-sdk";
-import { REDMINE_MAX_TOKENS, normalizeQuery, searchNoticesFor, snippetTerms } from "./query.js";
+import { normalizeQuery, snippetTerms } from "./query.js";
 import { matchWindowStart, windowSnippet } from "./snippet.js";
 
 type FetchLike = typeof fetch;
@@ -165,13 +164,20 @@ function decodeWikiDocumentId(documentId: string): { project: string; title: str
   }
 }
 
-/**
- * describe の summary: 対象と検索の仕様(事実の記述。2026-11-25)。出典は Redmine 本体の
- * ソース(app/controllers/search_controller.rb、lib/redmine/search.rb、acts_as_searchable)と
- * 本コネクタの実装。実機では確認していない。Orchestrator が 1,000 字で切るため、その長さに収める
- */
+/** describe の summary: 対象の説明だけ(検索の仕様は REDMINE_SEARCH_SPEC。connector-sdk v0.7)。 */
 export const REDMINE_SUMMARY =
-  "本人の Redmine API キーで、アクセスできるプロジェクトの Issue、Issue のノート、Wiki ページを /search.json で探す。" +
+  "本人の Redmine API キーで、アクセスできるプロジェクトの Issue、Issue のノート、Wiki ページを /search.json で探す。";
+
+/**
+ * 検索の仕様(searchSpec に入れる事実の記述。2026-11-25 に describe の summary の一部として書き、
+ * 2026-11-26 に searchSpec へ移した。文面は変えていない)。出典は Redmine 本体のソース
+ * (app/controllers/search_controller.rb、lib/redmine/search.rb、acts_as_searchable)と本コネクタの
+ * 実装。実機では確認していない。実装の定数だけで、設定・利用者によらない。1 行で
+ * MAX_SEARCH_SPEC_LENGTH(1,500)字以内に収め、改行や予約の語句を含めない(connector-sdk の
+ * checkSearchSpec)。導入先の全文検索プラグインなどで変わる句が必要になったら、settings で実装者が
+ * 用意した句を選ぶ形で足す(ADR-025 追補 2 決定 4)
+ */
+export const REDMINE_SEARCH_SPEC =
   "検索の仕様(Redmine 本体のソースによる。実機では未確認で、導入先の版や全文検索プラグインで変わりうる): " +
   "1 回の search で返る種別は Issue と Wiki ページ。標準の検索ではノートに一致しても親の Issue が返り、全文検索プラグインがある導入先ではノートが直接返る。" +
   "query は空白で語に分け、\"…\" で囲んだ語句は 1 語になる。使われるのは重複を除いた先頭の 5 語までで、残りは無視される。漢字以外の 1 文字の語は無視される。" +
@@ -183,33 +189,14 @@ export const REDMINE_SUMMARY =
   "filters には対応しておらず、指定すると invalid_request になる。" +
   "ノートの検索可否を含め、検索対象は Redmine の設定やプラグインに依存する。";
 
-/**
- * 検索プロファイル(connector-sdk v0.6、ADR-025)。Redmine 本体のソース(lib/redmine/search.rb、
- * acts_as_searchable)と本コネクタの実装による値で、実機では確かめていないため根拠はすべて
- * documented(T-029 の結果で tested に変える)。導入先の版や全文検索プラグイン
- * (redmine_full_text_search)で変わる項目は deployment.yaml の connectors[].searchProfile で
- * 上書きする。利用者によらない定数
- * - termJoin は unknown: コネクタは all_words=0 を送る(検索の挙動は変えていない)。Redmine 本体の
- *   ソースでは値があれば AND と読めるが、意図は OR とも読め、実機で確かめていない
- * - phraseQuote: "…" で囲んだ語句は 1 語として部分一致で照合される
- * - operators / qualifiers は空: OR・-・修飾子はなく、書いた記号も語として照合される
- * - snippet: 本コネクタが検索結果の説明から一致箇所の周辺を切り出す(なければ先頭)
- */
-export const REDMINE_SEARCH_PROFILE: SearchProfile = {
-  termJoin: { value: "unknown", basis: "documented" },
-  matchUnit: { value: "substring", basis: "documented" },
-  naturalLanguage: { value: "unsupported", basis: "documented" },
-  phraseQuote: { value: "supported", basis: "documented" },
-  operators: { value: [], basis: "documented" },
-  qualifiers: { value: [], basis: "documented" },
-  maxTerms: { value: { limit: REDMINE_MAX_TOKENS, overflow: "dropped" }, basis: "documented" },
-  ranking: { value: "recency", basis: "documented" },
-  snippet: { value: "match_context", basis: "documented" },
-};
-
 export class RedmineConnector implements Connector {
   readonly sourceId: string;
   readonly capabilities = CAPABILITIES;
+  /**
+   * 検索の仕様の静的な宣言(connector-sdk v0.7、ADR-017 追補 1)。実装の定数 REDMINE_SEARCH_SPEC
+   * だけ(displayName などの設定、Redmine から取得した文は入れない)。利用者によらない
+   */
+  readonly searchSpec: string = REDMINE_SEARCH_SPEC;
   private readonly baseUrl: URL;
   private readonly displayName: string;
   private readonly timeoutMs: number;
@@ -246,7 +233,6 @@ export class RedmineConnector implements Connector {
         return [this.projectEntry(id, name)];
       }),
       supportedFilters: [],
-      searchProfile: REDMINE_SEARCH_PROFILE,
     };
   }
 
@@ -326,14 +312,11 @@ export class RedmineConnector implements Connector {
       }
     }
     const totalCount = finiteInt(root?.total_count);
-    // 通知は query だけから作る(結果の件数によらない。ADR-012)
-    const notices = searchNoticesFor(q);
     return {
       hits,
       ...(totalCount !== undefined && offset + results.length < totalCount
         ? { nextCursor: encodedCursor(offset + results.length) }
         : {}),
-      ...(notices.length > 0 ? { notices } : {}),
     };
   }
 

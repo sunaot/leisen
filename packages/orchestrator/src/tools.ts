@@ -37,12 +37,13 @@ const USAGE_HINTS_V3: Readonly<Record<GatewayToolName, string>> = {
 };
 
 /**
- * v4: 全ソース共通の指針(多くのソースは AND・名詞 1〜2 語)をやめ、各ソースの summary に
- * 書かれた検索の仕様に合わせさせる。
+ * v4: 全ソース共通の指針(多くのソースは AND・名詞 1〜2 語)をやめ、各ソースの検索の仕様に
+ * 合わせさせる。2026-11-26(T-032)に、検索の仕様の置き場所を summary からソース一覧の後ろの
+ * ブロック(connector-sdk v0.7 の searchSpec)に改めた。
  */
 const USAGE_HINTS_V4: Readonly<Record<GatewayToolName, string>> = {
   search:
-    "質問に関係しそうな文書を探すときに使う。query の書き方(空白で区切った語の扱い・使える記法)と使えるフィルタはソースごとに違うので、ソース一覧のそのソースの summary と supportedFilters に書かれた検索の仕様に合わせる。仕様が書かれていないソースでは、文ではなく文書に出てきそうな語を空白で区切って入れる。言い換えは別の search に分け、互いに独立した search は 1 回の応答に並べて呼んでよい。filters はそのソースの supportedFilters にあるものだけを使う。",
+    "質問に関係しそうな文書を探すときに使う。query の書き方(空白で区切った語の扱い・使える記法)と使えるフィルタはソースごとに違うので、ソース一覧の後ろに示したそのソースの検索の仕様(コネクタの実装者が書いた文)と、ソース一覧の supportedFilters に合わせる。仕様が示されていないソースでは、文ではなく文書に出てきそうな語を空白で区切って入れる。言い換えは別の search に分け、互いに独立した search は 1 回の応答に並べて呼んでよい。filters はそのソースの supportedFilters にあるものだけを使う。",
   fetch:
     "有望なヒットの本文を読むときに使う。採否はスニペットだけで決めず、有望な 2〜3 件を読んでから判断する。documentId と source は search の結果の値をそのまま使う。",
   list: "区画(フォルダ・リポジトリ等)の一覧を得るときに使う。文書は返さない(空の結果は文書がないことを意味しない)。区画内の文書は、そのソースの supportedFilters に container があれば search の filters.container で探す。",

@@ -1,6 +1,6 @@
 /**
- * 検索語の正規化・一致箇所のスニペット・filters と OR の括弧・summary の検索の仕様
- * (2026-11-25)。esa の MCP はモックする(fakeCaller)。トークンはダミーの値だけを使う。
+ * 検索語の正規化・一致箇所のスニペット・filters と OR の括弧・検索の仕様(2026-11-25。
+ * 2026-11-26 に summary から searchSpec へ移した)。esa の MCP はモックする(fakeCaller)。トークンはダミーの値だけを使う。
  */
 import { describe, expect, it } from "vitest";
 import { ConnectorError, MAX_SNIPPET_CHARS, type AuthContext } from "@leisen/connector-sdk";
@@ -171,24 +171,30 @@ function createWithChars(snippetChars: number, posts: unknown[]) {
   return { c: createEsaConnector({ sourceId: "esa", team: "example-team", caller, now: () => NOW, snippetChars }) };
 }
 
-describe("describe の summary(検索の仕様)", () => {
-  it("内容の説明に検索の仕様を続け、1,000 字に収まる", async () => {
+describe("検索の仕様(searchSpec)と summary", () => {
+  it("searchSpec は検索の仕様を 1 行で持ち、1,500 字に収まる", () => {
     const { c } = setup([]);
-    const { summary } = await c.describe(AUTH);
-    expect(summary.length).toBeLessThanOrEqual(1_000);
-    expect(summary).toContain("esa チーム example-team");
+    expect(c.searchSpec.length).toBeLessThanOrEqual(1_500);
+    expect(c.searchSpec).not.toMatch(/[\n\r]/u);
     for (const fact of ["AND", "OR", "title:", "in:", "updated:", "best_match", "スニペット", "filters", "不明", "未確認"]) {
-      expect(summary).toContain(fact);
+      expect(c.searchSpec).toContain(fact);
     }
   });
 
-  it("settings.summary は内容の説明を置き換え、検索の仕様は残る", async () => {
+  it("summary は内容の説明だけで、検索の仕様を含まない", async () => {
+    const { c } = setup([]);
+    const { summary } = await c.describe(AUTH);
+    expect(summary).toBe("esa チーム example-team の Markdown の投稿(設計書・議事録・手順書・日報など)。カテゴリで整理されている。");
+    expect(summary).not.toContain("検索の仕様");
+  });
+
+  it("settings.summary は内容の説明を置き換え、searchSpec は変わらない", async () => {
     // deployment.yaml の settings.summary は factory を通って EsaConnectorOptions.summary になる
     expect(() => createConnector({ sourceId: "esa", settings: { team: "example-team", summary: "開発部の設計書と議事録" } })).not.toThrow();
     const { c: injected } = setup([], { summary: "開発部の設計書と議事録" });
     const { summary } = await injected.describe(AUTH);
-    expect(summary.startsWith("開発部の設計書と議事録\n検索の仕様:")).toBe(true);
-    expect(summary).toContain(searchSpecOf(true));
+    expect(summary).toBe("開発部の設計書と議事録");
+    expect(injected.searchSpec).toBe(searchSpecOf(true));
   });
 
   it("includeWip: false のときは wip:false が付くことを書く", () => {

@@ -18,17 +18,6 @@
  *   設定ファイルの所在ディレクトリを基準に解決する(起動コードの規約。cwd に
  *   依存させない)。
  */
-import {
-  MAX_SEARCH_LIMIT_VALUE,
-  MAX_SEARCH_QUALIFIERS,
-  MIN_SEARCH_LIMIT_VALUE,
-  SEARCH_LIMIT_OVERFLOWS,
-  SEARCH_OPERATORS,
-  SEARCH_PROFILE_BASES,
-  SEARCH_PROFILE_ENUM_VALUES,
-  SEARCH_QUALIFIER_NAME_PATTERN,
-  SEARCH_QUALIFIER_TARGETS,
-} from "@leisen/connector-sdk";
 import { RUN_API_SEGMENT, runApiPathFor } from "../run/path.js";
 import { z } from "zod";
 
@@ -62,52 +51,23 @@ const searchLayerSchema = z.strictObject({
 });
 
 /**
- * 検索プロファイルの導入先による上書き(ADR-025 決定3、connectors[].searchProfile)。
- * 値域は connector-sdk の定数から作る(SDK の sanitizeSearchProfile と同じ値域)。射影と違い、
- * 違反は黙って落とさずに起動時に拒否する(未知の項目・項目の未知のキーも拒否)。上書きの単位は
- * 項目で、書いた項目はコネクタの値を置き換える(proxy/gateway.ts の describe の射影で重ねる)。
- * basis は導入先が書く(導入先で確かめたなら tested)。
+ * connectors[] の廃止したキーの案内(未知のキーとして拒否するときの文面)。
+ * - searchProfile: 検索プロファイルの上書き(ADR-025 決定3)は connector-sdk v0.7 で廃止した
+ *   (ADR-025 追補 2)。黙って無視すると導入先が上書きが効いていると誤解するため、廃止を示す
+ *   文面で起動時に拒否する
  */
-function searchProfileItemSchema<T extends z.ZodType>(value: T) {
-  return z.strictObject({ value, basis: z.enum(SEARCH_PROFILE_BASES) });
+export const REMOVED_CONNECTOR_KEY_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
+  searchProfile:
+    "connectors[].searchProfile was removed in connector-sdk v0.7 (ADR-025 addendum 2); delete it. " +
+    "Differences in search behavior between deployments are expressed in the connector's own settings",
+});
+
+function removedConnectorKeyMessage(keys: readonly PropertyKey[]): string | undefined {
+  const messages = keys
+    .filter((key): key is string => typeof key === "string" && Object.hasOwn(REMOVED_CONNECTOR_KEY_MESSAGES, key))
+    .map((key) => REMOVED_CONNECTOR_KEY_MESSAGES[key] as string);
+  return messages.length > 0 ? messages.join("; ") : undefined;
 }
-
-const searchLimitSchema = z.strictObject({
-  limit: z.number().int().min(MIN_SEARCH_LIMIT_VALUE).max(MAX_SEARCH_LIMIT_VALUE),
-  overflow: z.enum(SEARCH_LIMIT_OVERFLOWS),
-});
-
-export const searchProfileOverrideSchema = z.strictObject({
-  termJoin: searchProfileItemSchema(z.enum(SEARCH_PROFILE_ENUM_VALUES.termJoin)).optional(),
-  matchUnit: searchProfileItemSchema(z.enum(SEARCH_PROFILE_ENUM_VALUES.matchUnit)).optional(),
-  naturalLanguage: searchProfileItemSchema(
-    z.enum(SEARCH_PROFILE_ENUM_VALUES.naturalLanguage),
-  ).optional(),
-  phraseQuote: searchProfileItemSchema(z.enum(SEARCH_PROFILE_ENUM_VALUES.phraseQuote)).optional(),
-  operators: searchProfileItemSchema(
-    z
-      .array(z.enum(SEARCH_OPERATORS))
-      .refine((ops) => new Set(ops).size === ops.length, { error: "operators must not repeat" }),
-  ).optional(),
-  qualifiers: searchProfileItemSchema(
-    z
-      .array(
-        z.strictObject({
-          name: z.string().regex(SEARCH_QUALIFIER_NAME_PATTERN, {
-            error: "qualifier name must match /^[a-z][a-z_]{0,15}$/",
-          }),
-          target: z.enum(SEARCH_QUALIFIER_TARGETS),
-        }),
-      )
-      .max(MAX_SEARCH_QUALIFIERS),
-  ).optional(),
-  maxTerms: searchProfileItemSchema(searchLimitSchema).optional(),
-  maxQueryChars: searchProfileItemSchema(searchLimitSchema).optional(),
-  maxOperators: searchProfileItemSchema(searchLimitSchema).optional(),
-  ranking: searchProfileItemSchema(z.enum(SEARCH_PROFILE_ENUM_VALUES.ranking)).optional(),
-  titleBoost: searchProfileItemSchema(z.boolean()).optional(),
-  snippet: searchProfileItemSchema(z.enum(SEARCH_PROFILE_ENUM_VALUES.snippet)).optional(),
-});
 
 /** コネクタ呼び出しタイムアウトの既定(ms)。 */
 export const DEFAULT_CONNECTOR_TIMEOUT_MS = 30_000;
@@ -342,12 +302,10 @@ const connectorSchema = z
     /** privateScopes: included の明示確認フラグ。なければ起動拒否(ADR-013 §1) */
     confirmPrivateScopesIncluded: z.boolean().default(false),
     searchLayer: searchLayerSchema.prefault({}),
-    /**
-     * 検索プロファイルの項目単位の上書き(ADR-025 決定3。省略可能)。例: Redmine に全文検索
-     * プラグインを入れた導入先の matchUnit / ranking、Slack の意味検索が使える導入先の
-     * naturalLanguage。値域違反は起動時に拒否する
-     */
-    searchProfile: searchProfileOverrideSchema.optional(),
+  }, {
+    // 廃止したキー(searchProfile など)は、未知のキーの拒否に廃止を示す文面を付ける
+    error: (issue) =>
+      issue.code === "unrecognized_keys" ? removedConnectorKeyMessage(issue.keys) : undefined,
   })
   // kind の既定は id と同じ。解析後の設定では常に kind が確定している
   .transform(({ kind, ...rest }) => ({ ...rest, kind: kind ?? rest.id }));

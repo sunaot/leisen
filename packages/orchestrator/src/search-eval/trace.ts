@@ -14,7 +14,6 @@
  * - 資格情報(トークン)は記録しない(不変条件6)。記録するのはツールの引数と結果の一部だけ
  */
 import { appendFileSync, writeFileSync } from "node:fs";
-import { sanitizeSearchNotices, type SearchNotice } from "@leisen/connector-sdk";
 import type {
   FinishRunInput,
   GatewayCallOptions,
@@ -81,11 +80,6 @@ export type TraceEvent =
       readonly limit?: number;
       readonly hits: readonly TracedHit[];
       readonly hasMore: boolean;
-      /**
-       * コネクタが返した検索の通知(Gateway が値域で検証した値。kind と keptTerms / filter だけ。
-       * 通知がなければ省略)
-       */
-      readonly notices?: readonly SearchNotice[];
       /** ツールエラーの分類(成功なら省略) */
       readonly errorClass?: string;
     })
@@ -211,10 +205,6 @@ export class TracingGatewayClient implements GatewayClient {
       const filters = optionalFilters(args["filters"]);
       const limit = typeof args["limit"] === "number" ? args["limit"] : undefined;
       const { hits, hasMore } = outcome.ok ? tracedHitsOf(outcome.result) : { hits: [], hasMore: false };
-      const notices =
-        outcome.ok && isRecord(outcome.result)
-          ? sanitizeSearchNotices(outcome.result["notices"])
-          : undefined;
       this.sink.write({
         ...this.context,
         type: "search",
@@ -224,7 +214,6 @@ export class TracingGatewayClient implements GatewayClient {
         ...(limit !== undefined ? { limit } : {}),
         hits,
         hasMore,
-        ...(notices !== undefined ? { notices } : {}),
         ...(outcome.ok ? {} : { errorClass: outcome.error.errorClass }),
       });
     } else if (name === "fetch") {

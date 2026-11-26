@@ -1,5 +1,6 @@
 /**
- * 検索語の正規化・issue / PR の一致箇所のスニペット・summary の検索の仕様(2026-11-25)。
+ * 検索語の正規化・issue / PR の一致箇所のスニペット・検索の仕様(2026-11-25。2026-11-26 に summary から
+ * searchSpec へ移した)。
  * GitHub API はフェイク(FakeGitHub)。トークンはダミーの値だけを使う。
  */
 import { describe, expect, it } from "vitest";
@@ -73,16 +74,18 @@ describe("issue / PR の一致箇所を含むスニペット", () => {
   });
 });
 
-describe("describe の summary(検索の仕様)", () => {
-  it("検索の仕様を書き、1,000 字に収まる(コード検索の有無の両方)", async () => {
+describe("検索の仕様(searchSpec)", () => {
+  it("検索の仕様を 1 行で書き、1,500 字に収まる(コード検索の有無の両方)", async () => {
     for (const searchCode of [true, false]) {
       const { github, connector } = setup({ searchCode });
       github.onJson(/^\/user\/orgs$/, []);
-      const { summary } = await connector.describe(ALICE);
-      expect(summary.length).toBeLessThanOrEqual(1_000);
+      expect(connector.searchSpec.length).toBeLessThanOrEqual(1_500);
+      expect(connector.searchSpec).not.toMatch(/[\n\r]/u);
       for (const fact of ["AND", "OR", "NOT", "256 文字", "best match", "スニペット", "不明", "filters.container", "is:issue"]) {
-        expect(summary).toContain(fact);
+        expect(connector.searchSpec).toContain(fact);
       }
+      const { summary } = await connector.describe(ALICE);
+      expect(summary).not.toContain("検索の仕様");
     }
   });
 });

@@ -626,7 +626,17 @@ export class Orchestrator {
                 if (dispatched.userId !== undefined) {
                   userIds.push(dispatched.userId);
                 }
-                return sourceBriefFromDescribe(sourceId, dispatched.result);
+                {
+                  const brief = sourceBriefFromDescribe(sourceId, dispatched.result);
+                  if (brief.searchSpecRejected !== undefined) {
+                    // 検査に通らない検索の仕様はそのソースの行だけを置かない。警告には値を
+                    // 入れない(規則の名前だけ。ADR-017 追補 1、セキュリティレビュー m-3・m-6)
+                    state.warn(
+                      `ソース ${sourceId} の検索の仕様(searchSpec)は検査に通らなかったため、探索 LLM に渡していません(${brief.searchSpecRejected})。`,
+                    );
+                  }
+                  return brief;
+                }
               case "tool_error": {
                 if (dispatched.userId !== undefined) {
                   userIds.push(dispatched.userId);
@@ -741,12 +751,9 @@ export class Orchestrator {
       activeSources: new Set(activeSources),
       maxIterations,
     };
-    // 検索の仕様に照らした判定の材料(検証済みの describe 結果。searchFeedback が有効なときだけ
-    // 制御メッセージになる)。検索プロファイルの文は v4 のときだけ最初の user ターンに置く
-    // (buildFirstUserContent)ため、ヒットなしの制御メッセージが読み直す先もそれに合わせる
-    state.searchLog.registerSources(context.discovery.briefs, {
-      profileMessageShown: this.#promptVersion === "explore.v4",
-    });
+    // 非対応のフィルタの判定の材料(検証済みの describe 結果。searchFeedback が有効なときだけ
+    // 制御メッセージになる)
+    state.searchLog.registerSources(context.discovery.briefs);
     return this.#loop(conversation, state, signal);
   }
 
@@ -1019,8 +1026,8 @@ export class Orchestrator {
             return dataResult(call.id, {
               tool: planned.tool,
               source: planned.source,
-              // search の notices(ADR-025)はツール結果のデータに入れない。searchFeedback が
-              // 有効なときに Orchestrator の定型文の制御メッセージとして渡す(v3 の入力を変えない)
+              // search の notices(connector-sdk v0.6。v0.7 で廃止、ADR-025 追補 2)は、v0.6 の
+              // Gateway から届いてもツール結果のデータに入れない(LLM に渡さない)
               result:
                 planned.tool === "search"
                   ? withoutSearchNotices(dispatched.result)
@@ -1445,7 +1452,10 @@ function localDate(ms: number): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-/** search の結果から notices を除く(形が想定外ならそのまま)。 */
+/**
+ * search の結果から notices を除く(形が想定外ならそのまま)。notices は connector-sdk v0.7 で
+ * 廃止した(ADR-025 追補 2)。v0.6 の Gateway につながった場合に備えて残す
+ */
 function withoutSearchNotices(result: unknown): unknown {
   if (typeof result !== "object" || result === null || Array.isArray(result)) {
     return result;

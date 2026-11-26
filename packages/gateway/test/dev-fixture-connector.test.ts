@@ -19,7 +19,6 @@ import {
 } from "@leisen/connector-sdk";
 import {
   DEV_FIXTURE_SAMPLE_DOCUMENTS,
-  DEV_FIXTURE_SEARCH_PROFILE,
   DeploymentConfigError,
   DevFixtureConnector,
   IdpError,
@@ -384,23 +383,23 @@ describe("list / describe", () => {
         { id: "hr", name: "hr", kind: "folder", childCount: 1, scope: "shared" },
       ],
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
-      searchProfile: DEV_FIXTURE_SEARCH_PROFILE,
     });
   });
 
-  it("検索プロファイル(ADR-025)は利用者によらず、search の実装(AND の部分一致)と合う", async () => {
+  it("検索の仕様(searchSpec、connector-sdk v0.7)は静的な宣言で、search の実装(AND の部分一致)と合う", async () => {
     const c = connector(DOCS);
-    const bob: AuthContext = { ...bearer(), userId: "bob" };
-    expect((await c.describe(AUTH)).searchProfile).toEqual((await c.describe(bob)).searchProfile);
-    expect(DEV_FIXTURE_SEARCH_PROFILE.termJoin).toEqual({ value: "and", basis: "tested" });
-    expect(DEV_FIXTURE_SEARCH_PROFILE.matchUnit).toEqual({ value: "substring", basis: "tested" });
+    expect(c.searchSpec).toContain("すべてを含む文書だけを返す(AND)");
+    expect(c.searchSpec).toContain("部分一致");
+    expect(c.searchSpec).toContain("OR などの演算子・引用符・title: などの修飾子は解釈せず");
+    // describe には入れない(Gateway が静的な宣言から付ける)
+    expect(await c.describe(AUTH)).not.toHaveProperty("searchSpec");
     // AND: 両方の語を含む文書だけ / 部分一致: 語の一部でも一致する
     expect((await c.search(AUTH, "VPN ヘルプデスク")).hits.map((h) => h.documentId)).toEqual(["vpn"]);
     expect((await c.search(AUTH, "ヘルプ")).hits.map((h) => h.documentId)).toEqual(["vpn"]);
     // 演算子は解釈しない(OR も語として照合する)
     expect((await c.search(AUTH, "VPN OR Expense")).hits).toEqual([]);
-    // 通知は返さない
-    expect((await c.search(AUTH, "VPN")).notices).toBeUndefined();
+    // 通知(廃止)を返さない
+    expect(Object.keys(await c.search(AUTH, "VPN"))).toEqual(["hits"]);
   });
 
   it("静的能力はネイティブ検索あり・ingestなし・プライベート領域は enforced", () => {

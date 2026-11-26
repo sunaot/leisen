@@ -1,5 +1,5 @@
 /**
- * connector-sdk v0.6: 全データソースコネクタが実装する共通インターフェース。
+ * connector-sdk v0.7: 全データソースコネクタが実装する共通インターフェース。
  * v0.2からの変更はADR-016(SearchOptions、listページング、snippet規約、redaction)。
  * v0.3からの変更はADR-016 追補2(プライベート領域の方針 SourcePolicy、結果ごとの
  * 領域分類 DocumentScope、能力 privateScopeHandling、エラー分類 private_scope_excluded)。
@@ -7,6 +7,10 @@
  * v0.5からの変更はADR-025(検索プロファイル SourceDescription.searchProfile、検索の通知
  * SearchResult.notices と、その値域の検証関数)。追加はすべて省略可能なフィールドで、
  * search / fetch / list / describe の引数は変えない。
+ * v0.6からの変更はADR-025 追補 2とADR-017 追補 1(検索プロファイル searchProfile と検索の通知
+ * notices を削除。検索の仕様の専用フィールド SourceDescription.searchSpec と、その静的な宣言
+ * Connector.searchSpec、検査の関数 checkSearchSpec を追加)。search / fetch / list / describe の
+ * 引数は変えない。
  *
  * 不変条件(CLAUDE.md参照):
  * - すべての操作は AuthContext(利用者本人の資格情報)を受け取る。
@@ -203,6 +207,22 @@ export interface SearchHit {
   scope: DocumentScope;
 }
 
+/**
+ * search の戻り値。
+ *
+ * 注(v0.7、ADR-025 追補 2): 検索の通知(notices)は廃止した。v0.6 のプラグインが返した
+ * notices は Gateway の射影で落ちる(既知のフィールドだけから組み立て直すため)。
+ *
+ * 検索の進め方の判断と private の結果(ADR-017 追補 1「セキュリティレビューの記録」M-4。
+ * 廃止した join_relaxed の元にあった規則を一般化したもの): privateScopeHandling が
+ * classified のコネクタは、方針(SourcePolicy.privateScopes)が included でない限り、
+ * 再検索・条件の緩和(AND を OR にするなど)・別の検索方法へのフォールバックの判断を、
+ * 方針をかけた後の shared の結果だけで行うこと。private を含めた結果の有無で判断すると、
+ * 「private の文書だけが一致した」ことが結果の中身(緩めた条件でのヒット)から分かりうる
+ * (ADR-012、ADR-016 追補2)。Gateway は private の結果を落とせても、判断の跡は防げない。
+ * nextCursor の有無も同じ問題になりうる(shared の結果の続きがないのに、private の結果だけが
+ * 続きにあるときにカーソルを返すと、その存在が分かる)
+ */
 export interface SearchResult {
   hits: SearchHit[];
   /**
@@ -219,47 +239,7 @@ export interface SearchResult {
    * (Gateway は中身を検査せずに LLM へ渡す。ADR-016 追補2 決定4)
    */
   nextCursor?: string;
-  /**
-   * コネクタが語を捨てた・指定を無視したことの通知(v0.6、ADR-025 決定4)。列挙値だけで
-   * 自由文を持たない。query と filters の形、および本人の資格情報でソースが返した(認可済みの)
-   * 結果からだけ作る。認可前の候補の有無・件数から作らない。「権限がないため 0 件」と
-   * 「本当に 0 件」を区別する情報を含めない(ADR-012)。Gateway は値域の外の値を落とす
-   * (sanitizeSearchNotices)。監査(ToolInvocation)には記録しない(ADR-025 確認事項5)
-   *
-   * join_relaxed を出すかどうか(緩めた再検索をするかどうか)は、SourcePolicy をかけた後の
-   * shared のヒットだけで判断すること。private を分類するコネクタは、方針(privateScopes)が
-   * included でない限り、コネクタの中で緩めた再検索をしないこと。Gateway は方針が included で
-   * ないコネクタの join_relaxed を落とすが、通知を落とすだけでは、再検索の有無が結果の中身に
-   * 出るため防げない(セキュリティレビュー m1)
-   */
-  notices?: SearchNotice[];
 }
-
-/** 検索の通知の種類(ADR-025 決定4)。 */
-export const SEARCH_NOTICE_KINDS = [
-  /** 語数の上限を超えた語を捨てた */
-  "terms_dropped",
-  /** 文字数の上限で query を切った */
-  "query_truncated",
-  /** 演算子・修飾子を解釈しなかった */
-  "operator_ignored",
-  /** filters の指定を使わなかった */
-  "filter_ignored",
-  /** AND で結果がなく、コネクタの中で OR に切り替えて再検索した */
-  "join_relaxed",
-] as const;
-export type SearchNoticeKind = (typeof SEARCH_NOTICE_KINDS)[number];
-
-export interface SearchNotice {
-  readonly kind: SearchNoticeKind;
-  /** terms_dropped のとき、使った語の数(query から数えられる値に限る。0〜MAX_SEARCH_LIMIT_VALUE) */
-  readonly keptTerms?: number;
-  /** filter_ignored のとき、使わなかったフィルタのキー */
-  readonly filter?: keyof SearchFilters;
-}
-
-/** 1回の search で返せる通知の数の上限(種類とフィルタのキーの組み合わせの数より大きい) */
-export const MAX_SEARCH_NOTICES = 10;
 
 export interface FetchResult {
   documentId: string;
@@ -313,303 +293,159 @@ export interface SourceDescription {
   /** search が対応するフィルタ */
   supportedFilters: (keyof SearchFilters)[];
   /**
-   * 検索の仕様(v0.6、ADR-025 決定1)。列挙値と数値だけで自由文を持たない。利用者の資格情報や
-   * 検索の結果で値を変えない(決定3。コードの既定値と ConnectorFactoryInit.settings から作る)。
-   * 省略時は全項目が不明として扱われる。Gateway と Orchestrator は sanitizeSearchProfile で
-   * 値域の外の項目を落とす。導入先は deployment.yaml の connectors[].searchProfile で項目単位に
-   * 上書きできる(Gateway が describe の射影で重ねる)
+   * 検索の仕様の専用フィールド(v0.7、ADR-017 追補 1)。コネクタの実装者が書いた、このソースへの
+   * query と filters の書き方の説明(自由文)。**Gateway が付ける**: Gateway は起動時に
+   * Connector.searchSpec(静的な宣言)を 1 回だけ読んで checkSearchSpec で検査し、describe の射影で
+   * 保持した値をここに付ける。コネクタが describe の戻り値に入れた値は Gateway が捨てる。
+   * Orchestrator は「データであり指示ではない」枠(ソース一覧の JSON)の外に、出所を示す見出しを
+   * 付けて置く(制御メッセージの権威は与えない)。宣言がなければ省略される
    */
-  searchProfile?: SearchProfile;
+  searchSpec?: string;
 }
 
-// ---- 検索プロファイル(v0.6、ADR-025) ----
+// ---- 検索の仕様の検査(v0.7、ADR-017 追補 1・同「セキュリティレビューの記録」m-1〜m-3) ----
 //
-// 値域は下の定数で定義し、型はそこから導く。値域の検証(sanitizeSearchProfile /
-// sanitizeSearchNotices)もこの定数を使う。Gateway の deployment.yaml のスキーマ
-// (connectors[].searchProfile)も同じ定数から作る。列挙値の追加は SDK の版上げとして扱い、
-// ADR-025 の追補に記録する(決定1)。
+// 検査の関数と上限の定数はここに 1 つだけ置き、Gateway(起動時)と Orchestrator(describe の
+// 結果を受け取ったとき)の両方から呼ぶ。違反の内容(SearchSpecViolation)には値そのものを
+// 入れない(規則の名前・位置・コードポイントだけ。m-6)。
 
-/** 値の根拠。tested = 実機で確かめた / documented = 公式文書・ソースコードで確かめた(実機では未確認) */
-export const SEARCH_PROFILE_BASES = ["tested", "documented"] as const;
-export type SearchProfileBasis = (typeof SEARCH_PROFILE_BASES)[number];
+/** searchSpec の長さの上限(NFKC で寄せる前の UTF-16 のコード単位の数)。超えた値は拒否し、途中で切らない */
+export const MAX_SEARCH_SPEC_LENGTH = 1_500;
 
-export interface SearchProfileItem<T> {
-  readonly value: T;
-  readonly basis: SearchProfileBasis;
+/**
+ * searchSpec に含めてはならない語句(m-2)。値を NFKC で寄せ、空白を除き、小文字にしてから
+ * 部分一致で判定する(括弧の有無・括弧の種類・括弧の中の空白・全角と半角の違いによらない)。
+ * - 「オーケストレータ」「orchestrator」: 制御メッセージの見出し([オーケストレーター])と
+ *   その変種(〔〕・括弧なし・「オーケストレータ」の表記・英語の表記)
+ * - submit_answer: 回答の提出のツール名
+ * - 最初の user ターンの固定の見出しの書き出し(ソース一覧の前置き、検索の仕様のブロックの
+ *   見出し、ツール結果・ツールエラーの前置き、質問の見出し、ask の追加の引数の区分の見出し)。
+ *   Orchestrator のテストで、各見出しがこの検査で拒否されることを確かめる
+ */
+export const SEARCH_SPEC_RESERVED_PHRASES: readonly string[] = [
+  "オーケストレータ",
+  "orchestrator",
+  "submit_answer",
+  "以下はソースの一覧",
+  "コネクタの実装者が書いた",
+  "以下はツール結果",
+  "以下はツールエラー",
+  "今日の日付:",
+  "質問:",
+  "利用者の発言",
+  "UI 側 LLM による補足",
+  "利用者が入力したキーワード",
+  "対象のソース(利用者の指定",
+  "期間(利用者の指定",
+];
+
+/** 違反の規則の名前。 */
+export type SearchSpecRule =
+  /** 文字列でない(undefined は宣言なしとして違反にしない) */
+  | "not_string"
+  /** MAX_SEARCH_SPEC_LENGTH を超える */
+  | "too_long"
+  /** 拒否する文字(制御文字・書式文字・私用領域・サロゲート・行と段落の区切り・非文字・許さない空白) */
+  | "forbidden_character"
+  /** SEARCH_SPEC_RESERVED_PHRASES の語句を含む */
+  | "reserved_phrase";
+
+/** 違反の内容。値そのものは入れない(ログ・エラーに出してよい情報だけ)。 */
+export interface SearchSpecViolation {
+  readonly rule: SearchSpecRule;
+  /** too_long のときの長さ(UTF-16 のコード単位の数) */
+  readonly length?: number;
+  /** forbidden_character のときの位置(UTF-16 のコード単位の位置。0 から) */
+  readonly position?: number;
+  /** forbidden_character のときのコードポイント */
+  readonly codePoint?: number;
 }
 
-/** OR 演算子 / NOT 演算子 / 語の前の - による除外 / 括弧によるまとまり */
-export const SEARCH_OPERATORS = ["or", "not", "minus", "parentheses"] as const;
-export type SearchOperator = (typeof SEARCH_OPERATORS)[number];
+export type SearchSpecCheck =
+  /** value が undefined なら宣言なし(空文字・undefined) */
+  | { readonly ok: true; readonly value: string | undefined }
+  | { readonly ok: false; readonly violation: SearchSpecViolation };
 
-/** 修飾子が絞り込む対象 */
-export const SEARCH_QUALIFIER_TARGETS = [
-  "title",
-  "body",
-  "category",
-  "tag",
-  "author",
-  "date",
-  "state",
-  "type",
-] as const;
-export type SearchQualifierTarget = (typeof SEARCH_QUALIFIER_TARGETS)[number];
-
-/** 修飾子の名前の形式(ADR-025 決定1・確認事項4) */
-export const SEARCH_QUALIFIER_NAME_PATTERN = /^[a-z][a-z_]{0,15}$/;
-/** 1ソースの修飾子の数の上限(ADR-025 決定2) */
-export const MAX_SEARCH_QUALIFIERS = 20;
-
-export interface SearchQualifier {
-  /** 修飾子の名前(例: "title")。SEARCH_QUALIFIER_NAME_PATTERN に限る。query には "<name>:" として書く */
-  readonly name: string;
-  /** 絞り込む対象 */
-  readonly target: SearchQualifierTarget;
+/** 検査のための正規化(NFKC で寄せ、空白を除き、小文字にする)。 */
+function normalizeForReservedPhrase(text: string): string {
+  return text.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
 }
 
-/** 上限の数値の範囲(ADR-025 決定1・2) */
-export const MIN_SEARCH_LIMIT_VALUE = 1;
-export const MAX_SEARCH_LIMIT_VALUE = 1_000;
+const NORMALIZED_RESERVED_PHRASES: readonly string[] = SEARCH_SPEC_RESERVED_PHRASES.map(
+  normalizeForReservedPhrase,
+);
 
-/** 超過時の挙動。dropped = 超えた分を黙って捨てる / truncated = 途中で切る / error = エラーを返す */
-export const SEARCH_LIMIT_OVERFLOWS = ["dropped", "truncated", "error", "unknown"] as const;
-export type SearchLimitOverflow = (typeof SEARCH_LIMIT_OVERFLOWS)[number];
+/** 一般カテゴリ Cc・Cf・Co・Cs・Zl・Zp(m-1)。 */
+const FORBIDDEN_CATEGORY = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}]/u;
+/** 空白(Zs)。許すのは U+0020 と U+3000 だけ */
+const SPACE_SEPARATOR = /\p{Zs}/u;
 
-export interface SearchLimit {
-  /** MIN_SEARCH_LIMIT_VALUE 以上 MAX_SEARCH_LIMIT_VALUE 以下の整数 */
-  readonly limit: number;
-  readonly overflow: SearchLimitOverflow;
+/** Unicode の非文字(U+FDD0〜U+FDEF と、各面の末尾の 2 つ)。 */
+function isNoncharacter(codePoint: number): boolean {
+  return (codePoint >= 0xfdd0 && codePoint <= 0xfdef) || (codePoint & 0xfffe) === 0xfffe;
 }
 
-/** 列挙値の項目の値域 */
-export const SEARCH_PROFILE_ENUM_VALUES = {
-  /** 空白で区切った語の結合。and = すべて含む / or = いずれかを含む */
-  termJoin: ["and", "or", "unknown"],
-  /** 照合の単位。substring = 部分文字列 / token = 語(バックエンドの分割規則による) */
-  matchUnit: ["substring", "token", "unknown"],
-  /** 自然文の質問をそのまま渡したときに意味の近い文書を返すか(Slack の意味検索など) */
-  naturalLanguage: ["supported", "unsupported", "unknown"],
-  /** "…" による語句の完全一致 */
-  phraseQuote: ["supported", "unsupported", "unknown"],
-  /** 並び順。relevance = 関連度 / recency = 更新の新しい順 */
-  ranking: ["relevance", "recency", "unknown"],
-  /** スニペットの種類。match_context = 一致箇所の周辺 / leading_text = 本文の先頭 / mixed = 結果の種別による */
-  snippet: ["match_context", "leading_text", "mixed", "none"],
-} as const;
-type EnumValues = typeof SEARCH_PROFILE_ENUM_VALUES;
-export type SearchProfileEnumKey = keyof EnumValues;
-
-/** 上限の項目 */
-export const SEARCH_PROFILE_LIMIT_KEYS = ["maxTerms", "maxQueryChars", "maxOperators"] as const;
-export type SearchProfileLimitKey = (typeof SEARCH_PROFILE_LIMIT_KEYS)[number];
-
-export interface SearchProfile {
-  readonly termJoin?: SearchProfileItem<EnumValues["termJoin"][number]>;
-  readonly matchUnit?: SearchProfileItem<EnumValues["matchUnit"][number]>;
-  readonly naturalLanguage?: SearchProfileItem<EnumValues["naturalLanguage"][number]>;
-  readonly phraseQuote?: SearchProfileItem<EnumValues["phraseQuote"][number]>;
-  /** query の中に書ける演算子 */
-  readonly operators?: SearchProfileItem<readonly SearchOperator[]>;
-  /** query の中に書ける修飾子(名前は制約付き、対象は列挙値) */
-  readonly qualifiers?: SearchProfileItem<readonly SearchQualifier[]>;
-  /** 上限と超過時の挙動 */
-  readonly maxTerms?: SearchProfileItem<SearchLimit>;
-  readonly maxQueryChars?: SearchProfileItem<SearchLimit>;
-  readonly maxOperators?: SearchProfileItem<SearchLimit>;
-  readonly ranking?: SearchProfileItem<EnumValues["ranking"][number]>;
-  /** タイトルに語を含む文書を上位にするか */
-  readonly titleBoost?: SearchProfileItem<boolean>;
-  readonly snippet?: SearchProfileItem<EnumValues["snippet"][number]>;
-}
-
-/** 検索プロファイルの項目名(値域の検証と上書きの単位) */
-export const SEARCH_PROFILE_KEYS = [
-  "termJoin",
-  "matchUnit",
-  "naturalLanguage",
-  "phraseQuote",
-  "operators",
-  "qualifiers",
-  "maxTerms",
-  "maxQueryChars",
-  "maxOperators",
-  "ranking",
-  "titleBoost",
-  "snippet",
-] as const satisfies readonly (keyof SearchProfile)[];
-export type SearchProfileKey = (typeof SEARCH_PROFILE_KEYS)[number];
-/** SEARCH_PROFILE_KEYS が SearchProfile の項目を網羅することのコンパイル時の検査 */
-export type SearchProfileKeysCoverProfile = AssertNever<
-  Exclude<keyof SearchProfile, SearchProfileKey>
->;
-
-type UnknownRecord = Readonly<Record<string, unknown>>;
-
-function plainRecord(value: unknown): UnknownRecord | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : undefined;
-}
-
-function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
-  return typeof value === "string" && (values as readonly string[]).includes(value);
-}
-
-function isLimitValue(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= MIN_SEARCH_LIMIT_VALUE &&
-    value <= MAX_SEARCH_LIMIT_VALUE
-  );
-}
-
-/** 修飾子の名前が形式に合うか(ADR-025 決定1)。 */
-export function isSearchQualifierName(value: unknown): value is string {
-  return typeof value === "string" && SEARCH_QUALIFIER_NAME_PATTERN.test(value);
+function isForbiddenCharacter(ch: string, codePoint: number): boolean {
+  if (FORBIDDEN_CATEGORY.test(ch) || isNoncharacter(codePoint)) {
+    return true;
+  }
+  return SPACE_SEPARATOR.test(ch) && ch !== " " && ch !== "　";
 }
 
 /**
- * 1項目の値を値域で検証し、正規化した値を返す。値域の外・型の違い・形式違反は undefined
- * (呼び出し側が項目ごと落とす)。配列は重複を除き、要素に1つでも違反があれば項目ごと落とす。
+ * searchSpec の値を検査する(ADR-017 追補 1、同「セキュリティレビューの記録」m-1・m-2)。
+ * - undefined と空文字は宣言なし({ ok: true, value: undefined })
+ * - 文字列でない値は not_string
+ * - 長さ(NFKC の前の UTF-16 のコード単位)が MAX_SEARCH_SPEC_LENGTH を超えたら too_long
+ * - Cc・Cf・Co・Cs・Zl・Zp と非文字、U+0020 と U+3000 以外の空白は forbidden_character
+ *   (改行・タブ・U+0085・U+2028・U+2029・双方向テキストの制御・U+FEFF・ゼロ幅の文字・
+ *   対になっていないサロゲート・私用領域を含む)
+ * - SEARCH_SPEC_RESERVED_PHRASES を含む値は reserved_phrase
+ * 値は変えずに返す(切り詰め・置き換えをしない)。
  */
-function itemValueOf(key: SearchProfileKey, value: unknown): unknown {
-  switch (key) {
-    case "termJoin":
-    case "matchUnit":
-    case "naturalLanguage":
-    case "phraseQuote":
-    case "ranking":
-    case "snippet":
-      return isOneOf<string>(SEARCH_PROFILE_ENUM_VALUES[key], value) ? value : undefined;
-    case "titleBoost":
-      return typeof value === "boolean" ? value : undefined;
-    case "operators":
-      if (!Array.isArray(value) || !value.every((op) => isOneOf(SEARCH_OPERATORS, op))) {
-        return undefined;
-      }
-      return [...new Set(value as SearchOperator[])];
-    case "qualifiers": {
-      if (!Array.isArray(value) || value.length > MAX_SEARCH_QUALIFIERS) {
-        return undefined;
-      }
-      const qualifiers: SearchQualifier[] = [];
-      for (const raw of value) {
-        const record = plainRecord(raw);
-        const name = record?.["name"];
-        const target = record?.["target"];
-        if (!isSearchQualifierName(name) || !isOneOf(SEARCH_QUALIFIER_TARGETS, target)) {
-          return undefined;
-        }
-        if (!qualifiers.some((q) => q.name === name && q.target === target)) {
-          qualifiers.push({ name, target });
-        }
-      }
-      return qualifiers;
-    }
-    case "maxTerms":
-    case "maxQueryChars":
-    case "maxOperators": {
-      const record = plainRecord(value);
-      const limit = record?.["limit"];
-      const overflow = record?.["overflow"];
-      if (!isLimitValue(limit) || !isOneOf(SEARCH_LIMIT_OVERFLOWS, overflow)) {
-        return undefined;
-      }
-      return { limit, overflow };
-    }
+export function checkSearchSpec(value: unknown): SearchSpecCheck {
+  if (value === undefined || value === "") {
+    return { ok: true, value: undefined };
   }
+  if (typeof value !== "string") {
+    return { ok: false, violation: { rule: "not_string" } };
+  }
+  if (value.length > MAX_SEARCH_SPEC_LENGTH) {
+    return { ok: false, violation: { rule: "too_long", length: value.length } };
+  }
+  let position = 0;
+  // for...of はコードポイントごとに進む(対になっていないサロゲートは 1 つの要素になる)
+  for (const ch of value) {
+    const codePoint = ch.codePointAt(0) ?? 0;
+    if (isForbiddenCharacter(ch, codePoint)) {
+      return { ok: false, violation: { rule: "forbidden_character", position, codePoint } };
+    }
+    position += ch.length;
+  }
+  const normalized = normalizeForReservedPhrase(value);
+  if (NORMALIZED_RESERVED_PHRASES.some((phrase) => normalized.includes(phrase))) {
+    return { ok: false, violation: { rule: "reserved_phrase" } };
+  }
+  return { ok: true, value };
 }
 
 /**
- * 検索プロファイルを SDK の値域で検証し、既知の項目のうち値域を満たすものだけから組み立て
- * 直す(ADR-025 決定2)。未知の項目・項目の未知のフィールドは捨て、値域の外の値・型の違う値・
- * 修飾子の名前の形式違反・MAX_SEARCH_QUALIFIERS を超える修飾子・根拠(basis)の欠落や不正は
- * 項目ごと落とす(=不明)。プロファイルがオブジェクトでない・有効な項目が1つもないときは undefined。
+ * 違反の内容を、値を含まない英語の短い文にする(起動時のエラーと警告に使う。m-6)。
+ * 例: "forbidden_character at index 12 (U+2028)"
  */
-export function sanitizeSearchProfile(value: unknown): SearchProfile | undefined {
-  const record = plainRecord(value);
-  if (record === undefined) {
-    return undefined;
-  }
-  const out: Record<string, SearchProfileItem<unknown>> = {};
-  for (const key of SEARCH_PROFILE_KEYS) {
-    const item = plainRecord(record[key]);
-    const basis = item?.["basis"];
-    if (item === undefined || !isOneOf(SEARCH_PROFILE_BASES, basis)) {
-      continue;
+export function describeSearchSpecViolation(violation: SearchSpecViolation): string {
+  switch (violation.rule) {
+    case "not_string":
+      return "not_string (searchSpec must be a string)";
+    case "too_long":
+      return `too_long (${violation.length ?? "?"} UTF-16 code units; the limit is ${MAX_SEARCH_SPEC_LENGTH})`;
+    case "forbidden_character": {
+      const cp = (violation.codePoint ?? 0).toString(16).toUpperCase().padStart(4, "0");
+      return `forbidden_character at index ${violation.position ?? "?"} (U+${cp})`;
     }
-    const itemValue = itemValueOf(key, item["value"]);
-    if (itemValue !== undefined) {
-      out[key] = { value: itemValue, basis };
-    }
+    case "reserved_phrase":
+      return "reserved_phrase (contains a phrase reserved for the orchestrator's own messages)";
   }
-  return Object.keys(out).length > 0 ? (out as SearchProfile) : undefined;
-}
-
-/**
- * 検索プロファイルに導入先の上書きを項目単位で重ねる(ADR-025 決定3)。上書きに書かれた項目は
- * コネクタの値を置き換え、書かれていない項目はコネクタの値のまま。どちらも検証済みの値を渡す。
- */
-export function mergeSearchProfile(
-  base: SearchProfile | undefined,
-  override: SearchProfile | undefined,
-): SearchProfile | undefined {
-  if (override === undefined) {
-    return base;
-  }
-  const merged: Record<string, unknown> = {};
-  for (const key of SEARCH_PROFILE_KEYS) {
-    const item = override[key] ?? base?.[key];
-    if (item !== undefined) {
-      merged[key] = item;
-    }
-  }
-  return Object.keys(merged).length > 0 ? (merged as SearchProfile) : undefined;
-}
-
-/**
- * 検索の通知を値域で検証して組み立て直す(ADR-025 決定4)。未知の kind・型の違う要素は落とし、
- * keptTerms は terms_dropped のときの 0〜MAX_SEARCH_LIMIT_VALUE の整数だけ、filter は
- * filter_ignored のときの SearchFilters のキーだけを残す。それ以外のフィールドは捨てる。
- * 重複を除き、MAX_SEARCH_NOTICES 件までにする。有効な通知がなければ undefined。
- */
-export function sanitizeSearchNotices(value: unknown): SearchNotice[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const out: SearchNotice[] = [];
-  const seen = new Set<string>();
-  for (const raw of value) {
-    const record = plainRecord(raw);
-    const kind = record?.["kind"];
-    if (record === undefined || !isOneOf(SEARCH_NOTICE_KINDS, kind)) {
-      continue;
-    }
-    const keptTerms = record["keptTerms"];
-    const filter = record["filter"];
-    const notice: SearchNotice = {
-      kind,
-      ...(kind === "terms_dropped" &&
-      typeof keptTerms === "number" &&
-      Number.isInteger(keptTerms) &&
-      keptTerms >= 0 &&
-      keptTerms <= MAX_SEARCH_LIMIT_VALUE
-        ? { keptTerms }
-        : {}),
-      ...(kind === "filter_ignored" && isSearchFilterKey(filter) ? { filter } : {}),
-    };
-    const key = `${notice.kind}:${notice.filter ?? ""}`;
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    out.push(notice);
-    if (out.length >= MAX_SEARCH_NOTICES) {
-      break;
-    }
-  }
-  return out.length > 0 ? out : undefined;
 }
 
 /** エラー分類。Gatewayのリトライ・監査ログの errorClass に対応する。 */
@@ -666,7 +502,30 @@ export interface ConnectorCapabilities {
 export interface Connector {
   readonly sourceId: string;
   readonly capabilities: ConnectorCapabilities;
+  /**
+   * 検索の仕様の静的な宣言(v0.7、ADR-017 追補 1 の B-2)。このソースへの query と filters の
+   * 書き方の説明(自由文、1 行)。Gateway が起動時に 1 回だけ読み、checkSearchSpec で検査して
+   * 保持し、describe の射影で SourceDescription.searchSpec に付ける。違反(文字列でない値、
+   * 長さの上限 MAX_SEARCH_SPEC_LENGTH の超過、改行などの拒否する文字、SEARCH_SPEC_RESERVED_PHRASES
+   * の語句)は起動を拒否する。空文字・省略は宣言なし。
+   *
+   * 規約(コネクタの実装者が守る。Orchestrator からは文字列として区別できない):
+   * - 入れてよいのは、実装の定数と、導入の設定(ConnectorFactoryInit.settings)の値から決まる
+   *   定型の句(実装者が用意した文のどれを使うかが設定で決まるもの)だけ
+   * - 入れない: ソースから取得した文(区画名・説明など)、ソースやリモート MCP サーバーから実行時に
+   *   取得した文(ツールの説明・検索のヘルプを含む)、設定で差し替えられる自由な文字列
+   *   (settings.summary など)。factory と構築時にネットワークから文を取得して入れない
+   * - 利用者によって変えない。値はコネクタの構築時に決め、後から変えない
+   * - getter(accessor)にせず、データプロパティ(クラスのフィールドやオブジェクトリテラルの値)で
+   *   宣言する。Gateway は accessor を起動時に拒否する
+   * - describe の戻り値には入れない(入れても Gateway が捨てる)
+   */
+  readonly searchSpec?: string;
   describe(auth: AuthContext): Promise<SourceDescription>;
+  /**
+   * 検索。classified のコネクタの再検索・条件の緩和・フォールバックの判断は、方針をかけた後の
+   * shared の結果だけで行う(SearchResult の説明。ADR-017 追補 1「セキュリティレビューの記録」M-4)
+   */
   search(
     auth: AuthContext,
     query: string,

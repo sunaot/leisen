@@ -36,7 +36,6 @@ import {
   type SearchFilters,
   type SearchHit,
   type SearchOptions,
-  type SearchProfile,
   type SearchResult,
   type SourceDescription,
 } from "@leisen/connector-sdk";
@@ -149,6 +148,12 @@ export class GitHubConnector implements Connector {
     ingest: false,
     privateScopeHandling: "classified",
   };
+  /**
+   * 検索の仕様の静的な宣言(connector-sdk v0.7、ADR-017 追補 1)。実装の定数(searchSpecOf)と、
+   * 導入の設定 searchCode から決まる定型の句だけで作る。displayName などの自由な文字列の設定、
+   * GitHub から取得した文(組織名など)は入れない。構築時に決まり、利用者によらない
+   */
+  readonly searchSpec: string;
   private readonly api: GitHubApiClient;
   private readonly displayName: string;
   private readonly searchCode: boolean;
@@ -169,6 +174,7 @@ export class GitHubConnector implements Connector {
     this.displayName = options.displayName ?? "GitHub";
     this.api = new GitHubApiClient(options);
     this.searchCode = options.searchCode ?? true;
+    this.searchSpec = searchSpecOf(this.searchCode);
     this.defaultSearchLimit = integerOption(
       "defaultSearchLimit",
       options.defaultSearchLimit,
@@ -760,40 +766,19 @@ export class GitHubConnector implements Connector {
       summary: this.summary(),
       topContainers,
       supportedFilters: [...SUPPORTED_FILTERS],
-      searchProfile: GITHUB_SEARCH_PROFILE,
     };
   }
 
   /**
-   * describe の summary: 対象と検索の仕様(事実の記述。2026-11-25)。出典は GitHub の REST
-   * 検索のドキュメントと本コネクタの実装。実機で確認していない挙動は「不明」と書く。
-   * Orchestrator が 1,000 字で切るため、その長さに収める
+   * describe の summary: 対象の説明だけ(内容の説明。検索の仕様は searchSpec に置く。
+   * connector-sdk v0.7、ADR-017 追補 1)
    */
   private summary(): string {
-    const scope =
+    return (
       "利用者本人がアクセスできる GitHub の issue・pull request" +
       (this.searchCode ? "・コード" : "") +
-      "を GitHub 検索 API で検索する(権限外のリポジトリは結果に現れない)。";
-    const kinds = this.searchCode
-      ? "検索の仕様: 1 回の search で issue(is:issue)・PR(is:pull-request)・コードを別々に検索し、limit を 3 種に分けて交互に並べて返す。"
-      : "検索の仕様: 1 回の search で issue(is:issue)と PR(is:pull-request)を別々に検索し、limit を 2 種に分けて交互に並べて返す。";
-    const syntax =
-      "空白区切りは AND。OR・NOT と \"語句\"(完全一致)が使え、AND/OR/NOT は 5 個まで、修飾子を除き 256 文字まで(GitHub のドキュメント)。" +
-      "日本語の語の分割と AND の厳密さは不明。並び順は GitHub の既定(best match)。" +
-      "issue・PR はタイトル・本文・コメントの語彙一致。label: state: などの修飾子は query に書けるが、is: はコネクタが付ける is:issue / is:pull-request と重なる。";
-    const code = this.searchCode
-      ? "コード検索は degraded: デフォルトブランチのみ・384KB 未満のファイル・語彙一致のみで、" +
-        "レート制限が厳しい(認証時 毎分約10回)。author / updatedAfter / updatedBefore を指定するとコード検索は行わない。"
-      : "コード検索はこの導入では無効(issue・PR のみを検索する)。";
-    const snippet =
-      "スニペットは、issue・PR では本文のうち query の語(演算子・修飾子を除く)が現れる箇所の周辺(本文に語がなければ本文の先頭)" +
-      (this.searchCode ? "、コードでは GitHub が返す一致箇所の断片。" : "。");
-    const usage =
-      'filters.container は "owner/repo" または組織名(repo: / org:)で、検索範囲を絞るヒントであり安全境界ではない' +
-      "(範囲外の結果を防ぐのは GitHub 側の本人権限による認可)。filters.author は GitHub のログイン名(author:)。" +
-      "updatedAfter / updatedBefore は ISO 8601(updated:>= / updated:<=)。" +
-      "fetch は issue / PR の本文と先頭のコメント、または 1MB 以下のテキストファイルを返す。";
-    return `${scope}${kinds}${syntax}${code}${snippet}${usage}`;
+      "を GitHub 検索 API で検索する(権限外のリポジトリは結果に現れない)。"
+    );
   }
 
   private blobUrl(owner: string, repo: string, gitRef: string, path: string): string {
@@ -1088,31 +1073,31 @@ function webBaseUrlOf(apiBaseUrl: string): string {
 }
 
 /**
- * 検索プロファイル(connector-sdk v0.6、ADR-025)。GitHub の REST 検索のドキュメントと本コネクタの
- * 実装による値で、実機では確かめていないため根拠はすべて documented(T-029 の結果で tested に
- * 変える)。日本語の語の分割(照合の単位)は一次情報がなく、項目を書かない(不明)。演算子と
- * 文字数の上限を超えたときの挙動はドキュメントで確かめていないため overflow は unknown。
- * is: はコネクタが is:issue / is:pull-request を付けるため修飾子に含めない。スニペットは
- * issue・PR では本文の一致箇所の周辺、コードでは GitHub が返す一致箇所の断片で、どちらも
- * match_context。利用者によらない定数
+ * 検索の仕様(searchSpec に入れる事実の記述。2026-11-25 に describe の summary の一部として書き、
+ * 2026-11-26 に searchSpec へ移した。文面は変えていない)。出典は GitHub の REST 検索のドキュメントと
+ * 本コネクタの実装。実機で確認していない挙動は「不明」と書く。searchCode(導入の設定)で定型の句を
+ * 選ぶ。1 行で MAX_SEARCH_SPEC_LENGTH(1,500)字以内に収め、改行や予約の語句を含めない
+ * (connector-sdk の checkSearchSpec)
  */
-export const GITHUB_SEARCH_PROFILE: SearchProfile = {
-  termJoin: { value: "and", basis: "documented" },
-  naturalLanguage: { value: "unsupported", basis: "documented" },
-  phraseQuote: { value: "supported", basis: "documented" },
-  operators: { value: ["or", "not"], basis: "documented" },
-  qualifiers: {
-    value: [
-      { name: "label", target: "tag" },
-      { name: "state", target: "state" },
-      { name: "author", target: "author" },
-      { name: "created", target: "date" },
-      { name: "updated", target: "date" },
-    ],
-    basis: "documented",
-  },
-  maxQueryChars: { value: { limit: 256, overflow: "unknown" }, basis: "documented" },
-  maxOperators: { value: { limit: 5, overflow: "unknown" }, basis: "documented" },
-  ranking: { value: "relevance", basis: "documented" },
-  snippet: { value: "match_context", basis: "documented" },
-};
+export function searchSpecOf(searchCode: boolean): string {
+  const kinds = searchCode
+    ? "検索の仕様: 1 回の search で issue(is:issue)・PR(is:pull-request)・コードを別々に検索し、limit を 3 種に分けて交互に並べて返す。"
+    : "検索の仕様: 1 回の search で issue(is:issue)と PR(is:pull-request)を別々に検索し、limit を 2 種に分けて交互に並べて返す。";
+  const syntax =
+    "空白区切りは AND。OR・NOT と \"語句\"(完全一致)が使え、AND/OR/NOT は 5 個まで、修飾子を除き 256 文字まで(GitHub のドキュメント)。" +
+    "日本語の語の分割と AND の厳密さは不明。並び順は GitHub の既定(best match)。" +
+    "issue・PR はタイトル・本文・コメントの語彙一致。label: state: などの修飾子は query に書けるが、is: はコネクタが付ける is:issue / is:pull-request と重なる。";
+  const code = searchCode
+    ? "コード検索は degraded: デフォルトブランチのみ・384KB 未満のファイル・語彙一致のみで、" +
+      "レート制限が厳しい(認証時 毎分約10回)。author / updatedAfter / updatedBefore を指定するとコード検索は行わない。"
+    : "コード検索はこの導入では無効(issue・PR のみを検索する)。";
+  const snippet =
+    "スニペットは、issue・PR では本文のうち query の語(演算子・修飾子を除く)が現れる箇所の周辺(本文に語がなければ本文の先頭)" +
+    (searchCode ? "、コードでは GitHub が返す一致箇所の断片。" : "。");
+  const usage =
+    'filters.container は "owner/repo" または組織名(repo: / org:)で、検索範囲を絞るヒントであり安全境界ではない' +
+    "(範囲外の結果を防ぐのは GitHub 側の本人権限による認可)。filters.author は GitHub のログイン名(author:)。" +
+    "updatedAfter / updatedBefore は ISO 8601(updated:>= / updated:<=)。" +
+    "fetch は issue / PR の本文と先頭のコメント、または 1MB 以下のテキストファイルを返す。";
+  return `${kinds}${syntax}${code}${snippet}${usage}`;
+}

@@ -27,7 +27,6 @@ import {
   mockTokenEnvVar,
   type DevFixtureDocument,
   type DevFixtureSearchMode,
-  type DevFixtureSpecDelivery,
 } from "@leisen/gateway";
 import { McpGatewayClient } from "../gateway/mcp-client.js";
 import type { GatewayClient } from "../gateway/types.js";
@@ -95,16 +94,10 @@ export async function startEvalGateway(options: {
   readonly sourceId: string;
   readonly documents: readonly DevFixtureDocument[];
   readonly mode: SearchEvalMode;
-  /**
-   * 検索の仕様の伝え方(summary / both / profile / split)。省略時は開発用コネクタの既定(既定の方式は
-   * 検索プロファイルを返し、模擬の方式は summary の自由文だけ)
-   */
-  readonly specDelivery?: DevFixtureSpecDelivery;
 }): Promise<EvalGateway> {
   const { sourceId } = options;
   const connector = new DevFixtureConnector(sourceId, options.documents, {
     ...connectorModeOf(options.mode),
-    ...(options.specDelivery !== undefined ? { specDelivery: options.specDelivery } : {}),
     displayName: "社内文書(開発用の合成コーパス)",
   });
   const provider = new MockCredentialProvider(sourceId, {

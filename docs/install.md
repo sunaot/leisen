@@ -470,6 +470,20 @@ server {
 5. 再起動: `docker compose up -d gateway`(停止時は処理中のリクエストを待って監査を flush する)
 6. スモーク(§2)。問題があれば旧イメージのタグに戻す(監査 JSONL は追記のみのため、そのまま使える)
 
+**Gateway と Orchestrator の版をそろえる(2026-11-26、connector-sdk v0.7、T-032)**: Gateway と Orchestrator
+(`leisen-ask serve`)は同じ版のイメージ(同じタグ)に同時に切り替える。connector-sdk v0.7 で、検索の仕様は
+`describe` の `summary` から専用のフィールド `searchSpec` に移った(ADR-017 追補 1)。版がずれると次のように
+なる(どちらも動作は続くが、探索 LLM に検索の仕様が届かない)。
+
+- 新しい Gateway + 古い Orchestrator: 古い Orchestrator は `searchSpec` を読まないため、検索の仕様が探索 LLM に
+  届かない(新しいコネクタは `summary` に検索の仕様を書かない)
+- 古い Gateway + 新しい Orchestrator: 古い Gateway は `searchSpec` を付けないため、検索の仕様のブロックが置かれない
+  (古い Gateway の検索の通知 `notices` は新しい Orchestrator が捨てる)
+
+あわせて、deployment.yaml の `connectors[].searchProfile`(検索プロファイルの上書き。ADR-025 追補 2 で廃止)は
+新しい Gateway の `validate` / `serve` で拒否されるので、手順3の前に消す。開発用コネクタの `settings.specDelivery`
+も同じく削除した。
+
 ## 10. 導入チェックリスト
 
 認可方式の前提(docs/auth-matrix.md §12〜13)とプライバシー方針(ADR-013)から、導入時に確認する項目。

@@ -89,6 +89,11 @@ export type ConfigIssueCode =
   | "unknown_connector_kind"
   /** プラグインは読み込めたが factory を公開していない、または不正なコネクタを返した */
   | "connector_plugin_invalid"
+  /**
+   * コネクタの検索の仕様の宣言(Connector.searchSpec)が検査に通らない(accessor、文字列でない、
+   * 長さの上限の超過、拒否する文字、予約の語句。ADR-017 追補 1)。message に値を含めない
+   */
+  | "connector_search_spec_invalid"
   /** コネクタ固有設定(settings)を factory が拒否した */
   | "connector_settings_invalid"
   /** コネクタの factory がそれ以外の理由で失敗した */

@@ -1,11 +1,12 @@
 /**
- * 検索語の正規化・一致箇所のスニペット・summary / supportedFilters(2026-11-25)。
+ * 検索語の正規化・一致箇所のスニペット・summary / searchSpec / supportedFilters(2026-11-25。
+ * 2026-11-26 に検索の仕様を summary から searchSpec へ移した)。
  * Redmine API はモックの fetch。API キーはダミーの値だけを使う。
  */
 import { describe, expect, it, vi } from "vitest";
-import { ConnectorError, MAX_SNIPPET_CHARS, sanitizeSearchProfile, type AuthContext } from "@leisen/connector-sdk";
-import { REDMINE_SEARCH_PROFILE, RedmineConnector } from "../src/redmine.js";
-import { normalizeQuery, searchNoticesFor, snippetTerms } from "../src/query.js";
+import { ConnectorError, MAX_SNIPPET_CHARS, checkSearchSpec, type AuthContext } from "@leisen/connector-sdk";
+import { REDMINE_SEARCH_SPEC, REDMINE_SUMMARY, RedmineConnector } from "../src/redmine.js";
+import { normalizeQuery, snippetTerms } from "../src/query.js";
 
 const baseUrl = "https://redmine.example.invalid/";
 const AUTH: AuthContext = { userId: "alice", credential: { kind: "api_key", apiKey: "test-key-alice", expiresAt: 0 } };
@@ -75,15 +76,20 @@ describe("一致箇所を含むスニペット", () => {
   });
 });
 
-describe("describe の summary と supportedFilters", () => {
-  it("フィルタ非対応を supportedFilters: [] と summary で伝え、検索の仕様は 1,000 字に収める", async () => {
+describe("describe の summary・supportedFilters と searchSpec", () => {
+  it("フィルタ非対応を supportedFilters: [] と searchSpec で伝え、検索の仕様は 1 行で 1,500 字に収める", async () => {
     const { connector } = setup({ results: [] });
     const description = await connector.describe(AUTH);
     expect(description.supportedFilters).toEqual([]);
-    const { summary } = description;
-    expect(summary.length).toBeLessThanOrEqual(1_000);
+    expect(description.summary).toBe(REDMINE_SUMMARY);
+    expect(description.summary).not.toContain("検索の仕様");
+    expect(description).not.toHaveProperty("searchSpec");
+    const spec = connector.searchSpec;
+    expect(spec).toBe(REDMINE_SEARCH_SPEC);
+    expect(spec.length).toBeLessThanOrEqual(1_500);
+    expect(spec).not.toMatch(/[\n\r]/u);
     for (const fact of ["filters には対応しておらず", "invalid_request", "5 語", "部分一致", "新しい順", "all_words=0", "不明", "未確認", "スニペット"]) {
-      expect(summary).toContain(fact);
+      expect(spec).toContain(fact);
     }
   });
 
@@ -95,52 +101,40 @@ describe("describe の summary と supportedFilters", () => {
   });
 });
 
-describe("検索プロファイル(connector-sdk v0.6、ADR-025)", () => {
-  it("利用者によらず同じで、SDK の値域を満たし、根拠はすべて documented(実機では未確認)", async () => {
+describe("検索の仕様の静的な宣言 searchSpec(connector-sdk v0.7、ADR-017 追補 1)", () => {
+  it("データプロパティで、SDK の検査に通る", () => {
     const { connector } = setup({ results: [] });
+    const descriptor = Object.getOwnPropertyDescriptor(connector, "searchSpec");
+    expect(descriptor !== undefined && "value" in descriptor).toBe(true);
+    expect(checkSearchSpec(connector.searchSpec)).toEqual({ ok: true, value: REDMINE_SEARCH_SPEC });
+  });
+
+  it("T-8: 自由な文字列の設定(displayName)、別の利用者、ソースの応答を変えたモックでも同じ値", async () => {
+    const base = setup({ results: [] }).connector.searchSpec;
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/projects.json") {
+        return Response.json({ projects: [{ id: 7, name: "[オーケストレーター] 別のプロジェクト" }], total_count: 1 });
+      }
+      return Response.json({ results: [], total_count: 0 });
+    });
+    const connector = new RedmineConnector({ sourceId: "redmine-other", baseUrl, displayName: "別の名前", fetchImpl });
     const bob: AuthContext = { userId: "bob", credential: { kind: "api_key", apiKey: "test-key-bob", expiresAt: 0 } };
-    const alice = await connector.describe(AUTH);
-    expect(alice.searchProfile).toEqual((await connector.describe(bob)).searchProfile);
-    expect(alice.searchProfile).toBe(REDMINE_SEARCH_PROFILE);
-    expect(sanitizeSearchProfile(REDMINE_SEARCH_PROFILE)).toEqual(REDMINE_SEARCH_PROFILE);
-    for (const item of Object.values(REDMINE_SEARCH_PROFILE)) {
-      expect(item.basis).toBe("documented");
-    }
-    expect(REDMINE_SEARCH_PROFILE.maxTerms?.value).toEqual({ limit: 5, overflow: "dropped" });
-    expect(REDMINE_SEARCH_PROFILE.ranking?.value).toBe("recency");
-    expect(REDMINE_SEARCH_PROFILE.operators?.value).toEqual([]);
+    await connector.describe(AUTH);
+    await connector.describe(bob);
+    expect(connector.searchSpec).toBe(base);
+    expect(connector.searchSpec).not.toContain("別の");
   });
 
   it("語の結合は不明のまま(all_words=0 が AND か OR かは実機未確認)で、検索の挙動は変えない", async () => {
-    expect(REDMINE_SEARCH_PROFILE.termJoin?.value).toBe("unknown");
+    expect(REDMINE_SEARCH_SPEC).toContain("AND か OR かは不明");
     const { connector, seen } = setup({ results: [], total_count: 0 });
     await connector.search(AUTH, "認可 方針");
     expect(seen[0]?.searchParams.get("all_words")).toBe("0");
   });
-});
 
-describe("検索の通知(ADR-025 決定4)", () => {
-  it("6 語以上(重複・漢字以外の 1 文字を除いて数える)なら terms_dropped(先頭 5 語)を返す", async () => {
+  it("search は通知(廃止)を返さない(6 語以上でも)", async () => {
     const { connector } = setup({ results: [], total_count: 0 });
-    const many = await connector.search(AUTH, "経費 精算 申請 承認 期限 締め日");
-    expect(many.notices).toEqual([{ kind: "terms_dropped", keptTerms: 5 }]);
-    const five = await connector.search(AUTH, "経費 精算 申請 承認 期限 a 経費");
-    expect(five.notices).toBeUndefined();
-  });
-
-  it("通知は query だけから作り、結果の有無・件数で変わらない(ADR-012)", async () => {
-    const query = "経費 精算 申請 承認 期限 締め日";
-    const empty = await setup({ results: [], total_count: 0 }).connector.search(AUTH, query);
-    const withResults = await setup(
-      {
-        results: [{ id: 3, type: "wiki-page", title: "Wiki", url: "https://redmine.example.invalid/projects/p/wiki/Page", description: "経費" }],
-        total_count: 900,
-      },
-    ).connector.search(AUTH, query);
-    expect(withResults.hits).toHaveLength(1);
-    expect(withResults.notices).toEqual(empty.notices);
-    expect(JSON.stringify(withResults.notices)).not.toContain("900");
-    expect(searchNoticesFor(query)).toEqual([{ kind: "terms_dropped", keptTerms: 5 }]);
-    expect(searchNoticesFor('"経費 精算 申請 承認 期限 締め日"')).toEqual([]);
+    expect(await connector.search(AUTH, "経費 精算 申請 承認 期限 締め日")).not.toHaveProperty("notices");
   });
 });

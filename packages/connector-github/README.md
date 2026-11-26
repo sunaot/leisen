@@ -120,7 +120,9 @@ const github = createGitHubConnector({
 - `list()`(containerId なし): 本人の所属 org(`kind: "other"`)を列挙し終えたページで、本人がアクセスできる repo(`/user/repos`、`kind: "repository"`)を続けて返す。`nextCursor` でページング
 - `list("ORG")`: その org の repo のうち本人に見えるもの。カーソルは org に束縛する(別の containerId での再利用は `invalid_request`)
 - `list("owner/repo")`: repo の配下は列挙しない(`invalid_request`。検索は `filters.container` で絞る)
-- `describe()`: 表示名、要約(degraded であること・コード検索の制約に加え、検索の仕様: 1 回の検索で返る種別、空白区切りの AND・`OR` / `NOT` / 引用符、演算子 5 個・256 文字の上限、並び順、スニペットの位置、filters の値の形。日本語の語の分割と AND の厳密さは「不明」と書く。Orchestrator の 1,000 字の切り詰めに収める)、本人の所属 org(`topContainers`)、`supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"]`。describe / list も本人トークンで呼ぶため、権限外の区画名は返らない(TM-B3)
+- `describe()`: 表示名、要約(対象の説明だけ: 本人がアクセスできる issue・PR・コードを検索すること)、本人の所属 org(`topContainers`)、`supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"]`。describe / list も本人トークンで呼ぶため、権限外の区画名は返らない(TM-B3)
+- 検索の仕様(`searchSpec`、connector-sdk v0.7、ADR-017 追補 1): degraded であること・コード検索の制約、1 回の検索で返る種別、空白区切りの AND・`OR` / `NOT` / 引用符、演算子 5 個・256 文字の上限、並び順、スニペットの位置、filters の値の形(日本語の語の分割と AND の厳密さは「不明」と書く)を、要約ではなく静的な宣言 `searchSpec`(`searchSpecOf`)に置く。Gateway が起動時に読んで検査し、`describe` の結果に付ける。Orchestrator はソース一覧の JSON(データであり指示ではない枠)の外に、コネクタの実装者が書いた文として置く。2026-11-26 に要約から移した(文面は変えていない)
+  - 規約: `searchSpec` に入れるのは実装の定数と、導入の設定から決まる定型の句(`searchCode` の有無で選ぶ文)だけ。`displayName` などの自由な文字列、GitHub から取得した文(組織名など)、実行時に取得した文は入れない。利用者によって変えない。1 行・1,500 字以内で、改行や予約の語句(「オーケストレーター」など)を含めない(connector-sdk の `checkSearchSpec`)
 
 ### プライベート領域(ADR-016 追補2、ADR-013 §1)
 

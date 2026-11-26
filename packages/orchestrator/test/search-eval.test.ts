@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   Orchestrator,
+  SEARCH_SPEC_HEADING,
   ScriptedLlmClient,
   scriptedSubmit,
   scriptedText,
@@ -206,7 +207,7 @@ describe("トレース(TracingGatewayClient)", () => {
     ]);
   });
 
-  it("search の通知(notices)は値域で検証した値だけを書く", async () => {
+  it("search の通知(connector-sdk v0.6、廃止)はトレースに書かない", async () => {
     const inner = {
       callTool: async () => ({
         ok: true,
@@ -218,7 +219,8 @@ describe("トレース(TracingGatewayClient)", () => {
     } as unknown as GatewayClient;
     const sink = new MemoryTraceSink();
     await new TracingGatewayClient(inner, sink, CTX).callTool("search", { source: "dev-docs", query: "a" }, {});
-    expect(sink.events[0]).toMatchObject({ type: "search", notices: [{ kind: "terms_dropped", keptTerms: 5 }] });
+    expect(sink.events[0]).toMatchObject({ type: "search", hits: [] });
+    expect(sink.events[0]).not.toHaveProperty("notices");
     expect(JSON.stringify(sink.events)).not.toContain("自由文");
   });
 });
@@ -421,16 +423,15 @@ describe("dev-search-eval(CLI)", () => {
     ).toBe(2);
   });
 
-  it("--spec-delivery: 伝え方ごとに実行し、profile では検索プロファイルの文が探索 LLM に渡り、通知がトレースに残る", async () => {
-    const SIX = "INC-2026-0412 障害 報告 原因 対策 影響";
-    const llm = new ScriptedLlmClient(exploreScript(() => SIX));
+  it("検索の仕様は枠の外のブロックで探索 LLM に渡り、ソース一覧の summary には入らない(T-032)", async () => {
+    const llm = new ScriptedLlmClient(exploreScript(() => "存在しない語ZQX"));
     const deps = { env: {}, createLlmClient: () => llm };
     const ok = io();
-    const trace = join(dir, "trace-delivery.jsonl");
+    const trace = join(dir, "trace-spec.jsonl");
     const code = await runDevSearchEval(
       [
-        "--modes", "redmine-and", "--spec-delivery", "summary,profile", "--conditions", "orchestrator-utterance",
-        "--only", "ki-inc-0412", "--trace", trace,
+        "--modes", "esa,redmine-and", "--conditions", "orchestrator-utterance", "--only", "ki-inc-0412",
+        "--trace", trace,
         "--llm", "openai-compatible", "--llm-base-url", "http://127.0.0.1:9/v1", "--model", "m1",
       ],
       ok.io,
@@ -438,63 +439,36 @@ describe("dev-search-eval(CLI)", () => {
     );
     expect(code).toBe(0);
     const report = ok.out.join("\n");
-    expect(report).toContain("| redmine-and/summary | 3 発言→探索LLM |");
-    expect(report).toContain("| redmine-and/profile | 3 発言→探索LLM |");
-    // 最初の user ターン: summary は自由文だけ、profile は検索プロファイルの文だけ
+    expect(report).toContain("| esa | 3 発言→探索LLM |");
+    expect(report).toContain("| redmine-and | 3 発言→探索LLM |");
     const firstTurns = llm.requests
       .filter((r) => r.messages.length === 1)
-      .map((r) => JSON.stringify(r.messages[0]?.content));
+      .map((r) => (r.messages[0]?.content as { type: string; text?: string }[]).map((b) => b.text ?? ""));
     expect(firstTurns).toHaveLength(2);
-    expect(firstTurns[0]).not.toContain("各ソースの検索の仕様");
-    expect(firstTurns[0]).toContain("Redmine 型を模した");
-    expect(firstTurns[1]).toContain("各ソースの検索の仕様");
-    expect(firstTurns[1]).toContain("使われるのは先頭 5 語まで");
-    expect(firstTurns[1]).not.toContain("Redmine 型を模した");
+    const [esaTurn, redmineTurn] = firstTurns;
+    // ソース一覧の JSON(2 つ目のブロック)に検索の仕様はない。3 つ目のブロックが検索の仕様
+    expect(esaTurn?.[1]).not.toContain("検索の仕様(esa 型を模した");
+    expect(esaTurn?.[2]?.startsWith(SEARCH_SPEC_HEADING)).toBe(true);
+    expect(esaTurn?.[2]).toContain("検索の仕様(esa 型を模した開発用の方式)");
+    expect(redmineTurn?.[2]).toContain("すべての語を含む文書だけを返す(AND)");
+    // 検索プロファイルの文・通知は入らない
+    const sent = JSON.stringify(llm.requests.map((r) => r.messages));
+    expect(sent).not.toContain("各ソースの検索の仕様(オーケストレーター");
+    expect(sent).not.toContain("語数の上限を超えたため");
+    // 0 件の制御メッセージは新しい置き場所を指す
+    expect(sent).toContain("「各ソースの検索の仕様」の dev-docs の行を読み直し");
     const events = (await readFile(trace, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as TraceEvent);
-    const searches = events.filter((e) => e.type === "search");
-    expect(searches.map((e) => [e.mode, e.type === "search" ? e.notices : undefined])).toEqual([
-      ["redmine-and/summary", undefined],
-      ["redmine-and/profile", [{ kind: "terms_dropped", keptTerms: 5 }]],
-    ]);
-    // profile では通知が探索 LLM への制御メッセージになる
-    const later = llm.requests.filter((r) => r.messages.length > 1).map((r) => JSON.stringify(r.messages));
-    expect(later.filter((m) => m.includes("語数の上限を超えたため"))).toHaveLength(1);
-  });
-
-  it("--spec-delivery split: 検索プロファイルの文と補足だけの summary が探索 LLM に渡り、0 件の制御メッセージは検索の仕様の制御メッセージを指す", async () => {
-    const llm = new ScriptedLlmClient(exploreScript(() => "存在しない語ZQX"));
-    const deps = { env: {}, createLlmClient: () => llm };
-    const ok = io();
-    const code = await runDevSearchEval(
-      [
-        "--modes", "esa", "--spec-delivery", "split", "--conditions", "orchestrator-utterance",
-        "--only", "ki-inc-0412",
-        "--llm", "openai-compatible", "--llm-base-url", "http://127.0.0.1:9/v1", "--model", "m1",
-      ],
-      ok.io,
-      deps,
-    );
-    expect(code).toBe(0);
-    expect(ok.out.join("\n")).toContain("| esa/split | 3 発言→探索LLM |");
-    const first = JSON.stringify(llm.requests.find((r) => r.messages.length === 1)?.messages[0]?.content);
-    expect(first).toContain("各ソースの検索の仕様");
-    expect(first).toContain("query の中で使える演算子は OR(いずれかを含む)");
-    expect(first).toContain("検索の仕様の補足(esa 型を模した開発用の方式)");
-    expect(first).toContain("OR は空白による結合より先に結び付く");
-    // summary の自由文(プロファイルと重複する記述)は入らない
-    expect(first).not.toContain("検索の仕様(esa 型を模した");
-    expect(first).not.toContain("並び順はタイトルに一致した語の数が多い順");
-    const later = llm.requests.filter((r) => r.messages.length > 1).map((r) => JSON.stringify(r.messages));
-    expect(later.some((m) => m.includes("「各ソースの検索の仕様」の制御メッセージにある"))).toBe(true);
+    expect(events.filter((e) => e.type === "search").every((e) => !("notices" in e))).toBe(true);
   });
 
   it("不正な引数は 2", async () => {
     for (const argv of [
       ["--modes", "solr"],
       ["--spec-delivery", "free_text"],
+      ["--spec-delivery", "summary"],
       ["--conditions", "x"],
       ["--k", "0"],
       ["--repeat", "99"],

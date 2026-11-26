@@ -321,3 +321,12 @@ Status: Accepted(2026-11-26 オーナー決定。下の「オーナー決定」�
 - ADR-017 追補 1(describe の結果を出所で分けて渡す)
 - ADR-005、ADR-007、ADR-012、ADR-016 追補 1・追補 2
 - T-032(実装)、T-029(実機での確認。結果は検索の仕様の自由文に書く)、T-030(削除の対象を実装したタスク)
+
+### 実装の記録(T-032、2026-11-26)
+
+- connector-sdk を v0.7 にし、`SourceDescription.searchProfile`、`SearchProfile` と関連の型・定数、`sanitizeSearchProfile`、`mergeSearchProfile`、`SearchResult.notices`、`SearchNotice`、`SEARCH_NOTICE_KINDS`、`MAX_SEARCH_NOTICES`、`sanitizeSearchNotices` を削除した(オーナー決定の確認事項 1 の案 (c))。`join_relaxed` の元にあった規則は一般化して `search` と `SearchResult` のコメントに残した(ADR-017 追補 1「セキュリティレビューの記録」M-4)
+- Gateway: `projectDescription` の検索プロファイルの検証と重ね合わせ、`projectSearchResult` の通知、`enforcePrivateScopes` の `join_relaxed` を落とす処理、`connectors[].searchProfile` のスキーマを削除した。v0.6 のプラグインが返す `searchProfile` と `notices` は、既知のフィールドだけから組み立て直す射影で落ちる(確認事項 2 の (a))。`connectors[].searchProfile` を書いた deployment.yaml は、未知のキーの拒否に本追補を示す文面(`connectors[].searchProfile was removed in connector-sdk v0.7 (ADR-025 addendum 2)`)を付けて、`validate` / `serve` で拒否する
+- Orchestrator: `src/search-profile.ts`(検索プロファイルの制御メッセージ、語数の上限・空白のない文の判定、通知の定型文)と公開 API を削除した。非対応のフィルタの判定(`unsupportedFilterNotice`)は `src/prompt.ts` に移して残した。v0.6 の Gateway から届いた `notices` を探索 LLM に渡さない処理(`withoutSearchNotices`)は残した
+- コネクタ: esa・GitHub・Redmine の `*_SEARCH_PROFILE` と、connector-redmine の `terms_dropped`(`searchNoticesFor`)を削除した。検索の仕様の自由文は `searchSpec` に移した(ADR-017 追補 1 の実装の記録)
+- 開発用コネクタ: 検索プロファイル・通知・`settings.specDelivery` を削除し、`dev-search-eval` の `--spec-delivery` を削除した(確認事項 3 の (a))。既定の方式(`default`)には、模擬の実装と一致する自由文の検索の仕様を新しく書いた(テストで実装と一致することを確かめる)
+- 評価: `docs/eval/2026-11-26-search-eval-search-spec-haiku.md`

@@ -30,10 +30,7 @@ import { randomUUID } from "node:crypto";
 import {
   ConnectorError,
   MAX_SNIPPET_CHARS,
-  mergeSearchProfile,
   normalizeDocumentScope,
-  sanitizeSearchNotices,
-  sanitizeSearchProfile,
   type AuthContext,
   type Connector,
   type ConnectorCapabilities,
@@ -56,6 +53,7 @@ import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
 import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";
 import { SourceRateLimiter } from "./ratelimit.js";
+import { readSearchSpecDeclaration } from "./search-spec.js";
 import { recordsRawQuestion } from "../run/index.js";
 import { RunApi, runSourcePolicyFromConfig, type RunRuntime } from "./runs.js";
 import { isValidIteration, resolveCallContext, validateDeclaration } from "./session.js";
@@ -105,6 +103,11 @@ interface RegistryEntry {
    */
   connector: Connector | undefined;
   config: ConnectorConfig;
+  /**
+   * コネクタの検索の仕様の静的な宣言(Connector.searchSpec)。構築時に 1 回だけ読んで検査した値で、
+   * describe の射影はこの値だけを付ける(ADR-017 追補 1 の B-2、セキュリティレビュー M-2)
+   */
+  searchSpec: string | undefined;
 }
 
 /**
@@ -188,9 +191,23 @@ export class Gateway {
           `no connector registered for configured source: ${connectorConfig.id}`,
         );
       }
+      // 検索の仕様の宣言は起動時に 1 回だけ読み、検査して保持する(違反は起動を拒否する。
+      // エラーには値を出さない。ADR-017 追補 1、セキュリティレビュー M-2・m-6)
+      let searchSpec: string | undefined;
+      if (connector !== undefined) {
+        const declared = readSearchSpecDeclaration(connector);
+        if (!declared.ok) {
+          throw new GatewayError(
+            "misconfigured",
+            `connector "${connectorConfig.id}": searchSpec was rejected: ${declared.reason}`,
+          );
+        }
+        searchSpec = declared.value;
+      }
       this.registry.set(connectorConfig.id, {
         connector,
         config: connectorConfig,
+        searchSpec,
       });
       if (connectorConfig.limits.maxRequestsPerMinute !== undefined) {
         rateLimits.set(
@@ -425,7 +442,7 @@ export class Gateway {
       call.sourceId,
     );
     return enforcePrivateScopes(
-      projectResult(raw, entry.config),
+      projectResult(raw, entry.searchSpec),
       entry.config.privateScopes,
     );
   }
@@ -472,10 +489,10 @@ export class Gateway {
 // - 任意フィールドは型が合う場合だけ残す。meta は string → string の組だけ残す
 // - snippet は MAX_SNIPPET_CHARS で強制 truncate(ADR-016)
 // - scope は "shared" 以外(欠落・未知の値)を "private" に正規化する(ADR-016 追補2 決定4)
-// - describe の searchProfile と search の notices(v0.6、ADR-025)は SDK の値域で検証し、
-//   値域の外の項目・通知を落とす(sanitizeSearchProfile / sanitizeSearchNotices)。
-//   searchProfile には deployment.yaml の connectors[].searchProfile(起動時に検証済み)を
-//   項目単位で重ねる(決定3)。notices は監査(ToolInvocation)に記録しない(確認事項5)
+// - describe の searchSpec(v0.7、ADR-017 追補 1)は、コネクタの describe の戻り値からは取らず
+//   (戻り値の searchSpec は捨てる)、起動時に読んで検査した静的な宣言の値だけを付ける。
+//   v0.6 のプラグインが返す searchProfile(describe)と notices(search)は、既知のフィールドだけ
+//   から組み立て直すため落ちる(ADR-025 追補 2 確認事項2)
 // 射影後の値は文字列・数値・配列・プレーンオブジェクトだけで構成される。
 
 const ANCHOR_KINDS: Readonly<Record<HitAnchor["kind"], true>> = {
@@ -603,11 +620,9 @@ function projectHit(value: unknown): SearchHit {
 function projectSearchResult(value: unknown): SearchResult {
   const result = requireRecord(value);
   const nextCursor = optionalString(result["nextCursor"]);
-  const notices = sanitizeSearchNotices(result["notices"]);
   return {
     hits: requireArray(result["hits"]).map(projectHit),
     ...(nextCursor !== undefined ? { nextCursor } : {}),
-    ...(notices !== undefined ? { notices } : {}),
   };
 }
 
@@ -655,15 +670,9 @@ function projectListResult(value: unknown): ListResult {
 
 function projectDescription(
   value: unknown,
-  config: Pick<ConnectorConfig, "searchProfile">,
+  searchSpec: string | undefined,
 ): SourceDescription {
   const description = requireRecord(value);
-  // コネクタの値を検証してから導入先の上書きを重ねる。上書きは設定の読み込み時に同じ値域で
-  // 検証済み(違反は起動時に拒否)で、ここでは型を SDK の形にそろえるために同じ関数を通す
-  const searchProfile = mergeSearchProfile(
-    sanitizeSearchProfile(description["searchProfile"]),
-    sanitizeSearchProfile(config.searchProfile),
-  );
   return {
     sourceId: requireString(description["sourceId"]),
     displayName: requireString(description["displayName"]),
@@ -673,14 +682,15 @@ function projectDescription(
       (filter): filter is keyof SearchFilters =>
         isKnownKey(SEARCH_FILTER_KEYS, filter),
     ),
-    ...(searchProfile !== undefined ? { searchProfile } : {}),
+    // 起動時に検査して保持した値だけ(describe の戻り値の searchSpec は使わない)
+    ...(searchSpec !== undefined ? { searchSpec } : {}),
   };
 }
 
 /** コネクタの返答を既知フィールドだけに射影する(上記の規則)。 */
 function projectResult(
   result: GatewayToolResult,
-  config: Pick<ConnectorConfig, "searchProfile">,
+  searchSpec: string | undefined,
 ): GatewayToolResult {
   switch (result.tool) {
     case "search":
@@ -690,7 +700,7 @@ function projectResult(
     case "list":
       return { tool: "list", result: projectListResult(result.result) };
     case "describe":
-      return { tool: "describe", result: projectDescription(result.result, config) };
+      return { tool: "describe", result: projectDescription(result.result, searchSpec) };
   }
 }
 
@@ -724,27 +734,14 @@ function enforcePrivateScopes(
     return result;
   }
   switch (result.tool) {
-    case "search": {
-      // join_relaxed(AND で結果がなく、コネクタの中で OR に緩めて再検索した)の通知は、
-      // 方針が included でないコネクタでは落とす(防御。セキュリティレビュー m1)。コネクタが
-      // private を含めた AND の結果の有無で緩めるかを決めると、通知の有無から「private の文書
-      // だけが AND に一致した」ことが分かりうるため。
-      // ただし、ここで通知を落とすだけでは防げない: 緩めた再検索をしたかどうかは結果の中身
-      // (いずれかの語だけを含むヒット)に出る。join_relaxed を出すかどうか(緩めた再検索を
-      // するかどうか)は、SourcePolicy をかけた後の shared のヒットだけで判断すること。private を
-      // 分類するコネクタは、方針が included でない限りコネクタの中で緩めた再検索をしないこと
-      // (connector-sdk の SearchResult.notices の説明)
-      const { notices, ...rest } = result.result;
-      const kept = notices?.filter((notice) => notice.kind !== "join_relaxed");
+    case "search":
       return {
         tool: "search",
         result: {
-          ...rest,
+          ...result.result,
           hits: result.result.hits.filter((hit) => hit.scope === "shared"),
-          ...(kept !== undefined && kept.length > 0 ? { notices: kept } : {}),
         },
       };
-    }
     case "fetch":
       if (result.result.scope !== "shared") {
         // 本文は返さない(このスコープを抜けた時点で参照を失う)

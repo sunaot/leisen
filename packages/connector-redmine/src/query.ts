@@ -5,8 +5,6 @@
  * 漢字のみ残し、先頭の 5 語だけを使う。全文検索プラグインがある導入先では異なりうる。
  */
 
-import type { SearchNotice } from "@leisen/connector-sdk";
-
 /** Redmine が使う語の数の上限(Tokenizer::MAX_TOKENS) */
 export const REDMINE_MAX_TOKENS = 5;
 
@@ -87,16 +85,4 @@ export function snippetTerms(query: string): string[] {
   return searchTokens(query)
     .slice(0, REDMINE_MAX_TOKENS)
     .filter((token) => token.length <= MAX_SNIPPET_TERM_CHARS || [...token].length <= MAX_SNIPPET_TERM_CHARS);
-}
-
-/**
- * 検索の通知(connector-sdk v0.6、ADR-025 決定4)。Redmine は先頭の REDMINE_MAX_TOKENS 語だけを
- * 使い残りを黙って捨てる(Redmine 本体のソースによる。実機では未確認)ので、query から数えた語が
- * 上限を超えるときに terms_dropped を返す。query だけから作り、検索の結果(件数を含む)には
- * よらない(ADR-012)
- */
-export function searchNoticesFor(query: string): SearchNotice[] {
-  return searchTokens(query).length > REDMINE_MAX_TOKENS
-    ? [{ kind: "terms_dropped", keptTerms: REDMINE_MAX_TOKENS }]
-    : [];
 }

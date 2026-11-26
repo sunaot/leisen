@@ -207,7 +207,7 @@ describe("e2e(OpenAI 互換経路・モック Chat Completions)", () => {
     expect(search?.function.parameters).toMatchObject({ type: "object", additionalProperties: false });
     expect(search?.function.parameters.properties?.source?.enum).toEqual(["alpha", "beta"]);
     // 版ごとの USAGE_HINTS が説明文に載る(既定の v4 の文面)
-    expect(search?.function.description).toContain("summary と supportedFilters に書かれた検索の仕様に合わせる");
+    expect(search?.function.description).toContain("ソース一覧の後ろに示したそのソースの検索の仕様");
     // system メッセージ1件(固定部が先頭)→ user(質問)
     const messages = wireMessages(mock, 0);
     expect(messages.map((message) => message.role)).toEqual(["system", "user"]);

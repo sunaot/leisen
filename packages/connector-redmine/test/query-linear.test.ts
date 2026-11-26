@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_SNIPPET_TERM_CHARS,
   REDMINE_MAX_TOKENS,
-  searchNoticesFor,
   searchTokens,
   snippetTerms,
 } from "../src/query.js";
@@ -38,7 +37,7 @@ describe("検索語の取り出しの計算量(M1)", () => {
   it("20 万文字の引用符内の空白", () => {
     const query = `"a${" ".repeat(200_000)}b"`;
     expect(elapsedMs(() => snippetTerms(query))).toBeLessThan(LIMIT_MS);
-    expect(elapsedMs(() => searchNoticesFor(query))).toBeLessThan(LIMIT_MS);
+    expect(elapsedMs(() => searchTokens(query))).toBeLessThan(LIMIT_MS);
     expect(searchTokens(query)).toEqual([`a${" ".repeat(200_000)}b`]);
   });
 
@@ -58,8 +57,10 @@ describe("検索語の取り出しの計算量(M1)", () => {
     let terms: string[] = [];
     expect(elapsedMs(() => (terms = snippetTerms(query)))).toBeLessThan(LIMIT_MS);
     expect(terms).toEqual(words.slice(0, REDMINE_MAX_TOKENS));
-    expect(elapsedMs(() => searchNoticesFor(query))).toBeLessThan(LIMIT_MS);
-    expect(searchNoticesFor(query)).toEqual([{ kind: "terms_dropped", keptTerms: REDMINE_MAX_TOKENS }]);
+    // 語の数え方(先頭 5 語に切る前の全体。以前は検索の通知 terms_dropped がこれを使った)も線形
+    let all: string[] = [];
+    expect(elapsedMs(() => (all = searchTokens(query)))).toBeLessThan(LIMIT_MS);
+    expect(all).toHaveLength(words.length);
   });
 
   it("多数の語をスニペットの位置の計算に渡しても短い時間で終わる", () => {

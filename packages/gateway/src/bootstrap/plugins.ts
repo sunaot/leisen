@@ -32,6 +32,9 @@
  * - settings 内の相対パスは init.configDir(設定ファイルの所在ディレクトリ)基準で解決する
  * - factory の中でソースAPIを呼ばない(利用者本人の資格情報がない時点のため。
  *   サービスアカウントでの代替は不変条件1に反する)
+ * - 検索の仕様は Connector.searchSpec に静的な宣言(データプロパティ)として置く。起動時に
+ *   検査し、違反(accessor、文字列でない値、長さ・文字・予約の語句)は
+ *   connector_search_spec_invalid で起動を拒否する(値はエラーに出さない。ADR-017 追補 1)
  * - init.policy(connector-sdk の SourcePolicy。deployment.yaml の privateScopes)に
  *   従い、capabilities.privateScopeHandling を宣言する。全結果(SearchHit / FetchResult /
  *   ContainerEntry)に scope を付ける(ADR-016 追補2 決定1〜3)。宣言のないプラグイン
@@ -58,6 +61,7 @@ import {
   createDevFixtureConnector,
 } from "../dev/fixture-connector.js";
 import { IdpError } from "../idp/types.js";
+import { readSearchSpecDeclaration } from "../proxy/search-spec.js";
 
 export interface ConnectorFactoryInit {
   /** deployment.yaml の connectors[].id。返す Connector の sourceId と一致させる */
@@ -393,6 +397,21 @@ export async function buildConnector(
           message:
             `connector kind "${connector.kind}": factory returned a connector for source ` +
             `"${instance.sourceId}", expected "${connector.id}"`,
+        },
+      ],
+    };
+  }
+  // 検索の仕様の宣言(connector-sdk v0.7)。serve と validate の両方でここで拒否する。Gateway の
+  // コンストラクタも同じ検査をして値を保持する(ここは validate が全件を列挙するための先行の検査)
+  const searchSpec = readSearchSpecDeclaration(instance);
+  if (!searchSpec.ok) {
+    return {
+      ok: false,
+      issues: [
+        {
+          code: "connector_search_spec_invalid",
+          path: `${base}.kind`,
+          message: `connector kind "${connector.kind}" (source "${connector.id}"): searchSpec was rejected: ${searchSpec.reason}`,
         },
       ],
     };

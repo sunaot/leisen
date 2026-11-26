@@ -18,7 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@leisen/connector-sdk": "0.6.0",
+    "@leisen/connector-sdk": "0.7.0",
     "@modelcontextprotocol/sdk": "1.32.2"
   }
 }

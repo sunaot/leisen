@@ -111,14 +111,14 @@ describe("esa 型", () => {
     expect(groups.map((g) => g.length)).toEqual([2, 1]);
   });
 
-  it("語がなければ invalid_request、フィルタは使える、summary に仕様がある", async () => {
+  it("語がなければ invalid_request、フィルタは使える、searchSpec に仕様がある", async () => {
     await expect(esa.search(AUTH, '  ""  ')).rejects.toMatchObject({ errorClass: "invalid_request" });
     expect(ids(await esa.search(AUTH, "経費精算", { container: "開発" }))).toEqual(["new-body"]);
-    const described = await esa.describe(AUTH);
-    expect(described.summary).toContain("esa 型");
-    expect(described.summary).toContain("OR");
-    expect(described.summary).toContain("title:");
-    expect(described.summary.length).toBeLessThanOrEqual(1000);
+    expect(esa.searchSpec).toContain("esa 型");
+    expect(esa.searchSpec).toContain("OR");
+    expect(esa.searchSpec).toContain("title:");
+    expect(esa.searchSpec.length).toBeLessThanOrEqual(1500);
+    expect((await esa.describe(AUTH)).summary).not.toContain("検索の仕様");
   });
 });
 
@@ -155,17 +155,16 @@ describe("Redmine 型", () => {
     expect(ids(await redmine.search(AUTH, "a b"))).toEqual([]);
   });
 
-  it("フィルタは invalid_request、describe の supportedFilters は空で、summary に仕様がある", async () => {
+  it("フィルタは invalid_request、describe の supportedFilters は空で、searchSpec に仕様がある", async () => {
     const redmine = connector({ searchMode: "redmine" });
     const error = await redmine.search(AUTH, "経費精算", { container: "総務" }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConnectorError);
     expect((error as ConnectorError).errorClass).toBe("invalid_request");
     const described = await redmine.describe(AUTH);
     expect(described.supportedFilters).toEqual([]);
-    expect(described.summary).toContain("先頭 5 語");
-    expect(described.summary).toContain("OR");
-    const and = await connector({ searchMode: "redmine", redmineAllWords: true }).describe(AUTH);
-    expect(and.summary).toContain("AND");
+    expect(redmine.searchSpec).toContain("先頭 5 語");
+    expect(redmine.searchSpec).toContain("OR");
+    expect(connector({ searchMode: "redmine", redmineAllWords: true }).searchSpec).toContain("AND");
   });
 });
 
@@ -209,11 +208,10 @@ describe("GitHub 型", () => {
     expect(result.hits.some((h) => h.meta?.["type"] === "code")).toBe(false);
   });
 
-  it("既定の件数は 20、summary に仕様がある", async () => {
-    const described = await github.describe(AUTH);
-    expect(described.summary).toContain("GitHub 型");
-    expect(described.summary).toContain("meta.type");
-    expect(described.summary.length).toBeLessThanOrEqual(1000);
+  it("既定の件数は 20、searchSpec に仕様がある", async () => {
+    expect(github.searchSpec).toContain("GitHub 型");
+    expect(github.searchSpec).toContain("meta.type");
+    expect(github.searchSpec.length).toBeLessThanOrEqual(1500);
   });
 });
 
@@ -232,7 +230,7 @@ describe("設定(kind: dev-fixture の settings)", () => {
     } as Parameters<typeof createDevFixtureConnector>[0]);
     const described = await c.describe(AUTH);
     expect(described.summary).toContain("34件");
-    expect(described.summary).toContain("AND");
+    expect(c.searchSpec).toContain("AND");
   });
 
   it("未知の方式・範囲外の生成数は設定の不備", async () => {
