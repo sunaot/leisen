@@ -61,6 +61,17 @@ export type TraceEvent =
       readonly type: "ui_question";
       /** UI 側 LLM が ask に渡した question(ask を呼ばなかったら null) */
       readonly question: string | null;
+      /** UI 側 LLM への入力の再現の種類(simple / librechat / librechat-instructions) */
+      readonly uiPrompt?: string;
+      /** UI 側 LLM が呼んだツールの名前(ask / ask_mcp_leisen) */
+      readonly toolName?: string;
+      /**
+       * UI 側 LLM が書いた ask の引数すべて(合成コーパスに対する評価の発言から作られたもの。
+       * 資格情報は入らない)
+       */
+      readonly arguments?: Readonly<Record<string, unknown>>;
+      /** ask が引数を拒否したときの分類(leisen-ask serve の errorClass。librechat の再現だけ) */
+      readonly rejectedErrorClass?: string;
     })
   | (TraceCaseContext & {
       readonly type: "search";
