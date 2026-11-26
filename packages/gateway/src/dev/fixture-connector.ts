@@ -17,7 +17,8 @@
  *   空白区切りの全語AND)。総件数は返さない(ADR-012/016: SearchResult に totalCount を持たない)。
  *   snippet は一致箇所の周辺を MAX_SNIPPET_CHARS 以内で切り出す。評価用に、実ソースの検索の
  *   仕様を模した方式(esa / redmine / github)を settings.searchMode で選べる(search-modes.ts。
- *   方式の仕様は describe の summary に載せる)
+ *   方式の仕様は describe の summary の自由文と検索プロファイルで伝え、どちらを使うかを
+ *   settings.specDelivery で選べる。both / profile では search が通知 notices も返す)
  * - コーパスに、乱数の種を固定して生成した無関係な文書を足せる(settings.synthetic、
  *   synthetic-corpus.ts。検索の適合率を測るための規模の確保)
  * - fetch: 本文を pageChars 文字(コードポイント)ごとにページングする
@@ -57,11 +58,17 @@ import { assertNotProduction } from "../idp/mock.js";
 import {
   DEV_FIXTURE_DOCUMENT_KINDS,
   DEV_FIXTURE_SEARCH_MODES,
+  DEV_FIXTURE_SPEC_DELIVERIES,
+  DEFAULT_MODE_SEARCH_PROFILE,
   defaultSearchLimit,
+  defaultSpecDelivery,
   planQuery,
+  searchModeNotices,
+  searchModeProfile,
   searchModeSpec,
   type DevFixtureDocumentKind,
   type DevFixtureSearchMode,
+  type DevFixtureSpecDelivery,
   type QueryPlan,
 } from "./search-modes.js";
 import {
@@ -140,6 +147,11 @@ const settingsSchema = z
     searchMode: z.enum(DEV_FIXTURE_SEARCH_MODES).default("default"),
     /** Redmine 型の語の結合(true: AND / false: OR。既定 false = connector-redmine の all_words=0 の意図) */
     redmineAllWords: z.boolean().default(false),
+    /**
+     * 検索の仕様の伝え方(評価用。search-modes.ts の DevFixtureSpecDelivery)。省略時は、既定の
+     * 方式では検索プロファイルを返し、模擬の方式では summary の自由文だけ
+     */
+    specDelivery: z.enum(DEV_FIXTURE_SPEC_DELIVERIES).optional(),
     /** 乱数の種を固定して生成した無関係な文書をコーパスに足す(synthetic-corpus.ts) */
     synthetic: z
       .strictObject({
@@ -156,22 +168,11 @@ const settingsSchema = z
 const corpusFileSchema = z.strictObject({ documents: documentsSchema });
 
 /**
- * 検索プロファイル(connector-sdk v0.6、ADR-025)。search の実装(空白区切りの全語 AND の
- * 部分一致、タイトル一致の多い順 → 更新の新しい順、一致箇所の周辺のスニペット)そのものなので、
- * 根拠は tested(このファイルのテストで固定する)。演算子・修飾子・引用符は解釈せず、記号も
- * 語として照合する。語数・文字数の上限はない(項目を書かない)。利用者によらない定数
+ * 既定の検索方式の検索プロファイル(connector-sdk v0.6、ADR-025)。値は search-modes.ts の
+ * DEFAULT_MODE_SEARCH_PROFILE(根拠は tested。このファイルのテストで固定する)。模擬の方式の
+ * プロファイルは searchModeProfile。いずれも利用者によらない定数
  */
-export const DEV_FIXTURE_SEARCH_PROFILE: SearchProfile = {
-  termJoin: { value: "and", basis: "tested" },
-  matchUnit: { value: "substring", basis: "tested" },
-  naturalLanguage: { value: "unsupported", basis: "tested" },
-  phraseQuote: { value: "unsupported", basis: "tested" },
-  operators: { value: [], basis: "tested" },
-  qualifiers: { value: [], basis: "tested" },
-  ranking: { value: "recency", basis: "tested" },
-  titleBoost: { value: true, basis: "tested" },
-  snippet: { value: "match_context", basis: "tested" },
-};
+export const DEV_FIXTURE_SEARCH_PROFILE: SearchProfile = DEFAULT_MODE_SEARCH_PROFILE;
 
 /** settings.corpusFile / documents がないときの組み込みサンプル(合成データ)。 */
 export const DEV_FIXTURE_SAMPLE_DOCUMENTS: readonly DevFixtureDocument[] = [
@@ -224,6 +225,8 @@ export interface DevFixtureConnectorOptions {
   searchMode?: DevFixtureSearchMode;
   /** Redmine 型の語の結合(true: AND / false: OR。既定 false) */
   redmineAllWords?: boolean;
+  /** 検索の仕様の伝え方(既定は defaultSpecDelivery)。search-modes.ts */
+  specDelivery?: DevFixtureSpecDelivery;
 }
 
 interface IndexedDocument {
@@ -335,6 +338,10 @@ export class DevFixtureConnector implements Connector {
   private readonly summary: string;
   private readonly searchMode: DevFixtureSearchMode;
   private readonly redmineAllWords: boolean;
+  /** describe で返す検索プロファイル(伝え方が summary なら返さない) */
+  private readonly searchProfile: SearchProfile | undefined;
+  /** search で通知を返すか(伝え方が both / profile) */
+  private readonly returnsNotices: boolean;
   private readonly now: () => number;
 
   constructor(
@@ -379,9 +386,15 @@ export class DevFixtureConnector implements Connector {
     const contentSummary =
       options.summary ??
       `開発用の合成文書コーパス(${validated.length}件)。実在の組織・人物・秘密情報は含まない。`;
-    // 既定の方式は summary を変えない。ほかの方式は検索の仕様を日本語で足す
-    const spec = searchModeSpec(this.searchMode, { redmineAllWords: this.redmineAllWords });
+    const planOptions = { redmineAllWords: this.redmineAllWords };
+    const delivery = options.specDelivery ?? defaultSpecDelivery(this.searchMode);
+    // 既定の方式は summary を変えない(検索の仕様の文がない)。ほかの方式は、伝え方が summary /
+    // both なら検索の仕様を日本語で足し、profile なら内容の説明だけにする
+    const spec = delivery === "profile" ? "" : searchModeSpec(this.searchMode, planOptions);
     this.summary = spec === "" ? contentSummary : `${contentSummary}\n${spec}`;
+    this.searchProfile =
+      delivery === "summary" ? undefined : searchModeProfile(this.searchMode, planOptions);
+    this.returnsNotices = delivery !== "summary";
     this.now = options.now ?? Date.now;
   }
 
@@ -402,8 +415,12 @@ export class DevFixtureConnector implements Connector {
     }
     const after = parseFilterTime(filters?.updatedAfter, "updatedAfter");
     const before = parseFilterTime(filters?.updatedBefore, "updatedBefore");
+    // 通知は query の形だけから作る(認可前の候補の有無・件数を使わない。ADR-012)
+    const notices = this.returnsNotices ? searchModeNotices(this.searchMode, query) : [];
+    const withNotices = (result: SearchResult): SearchResult =>
+      notices.length > 0 ? { ...result, notices } : result;
     if (plan === "no_terms") {
-      return { hits: [] };
+      return withNotices({ hits: [] });
     }
 
     const matches = this.documents.filter(({ document, updatedAtMs }) => {
@@ -429,15 +446,17 @@ export class DevFixtureConnector implements Connector {
         filters?.author === undefined &&
         filters?.updatedAfter === undefined &&
         filters?.updatedBefore === undefined;
-      return this.githubPage(ranked, plan, limit, codeEligible, options?.cursor);
+      return withNotices(this.githubPage(ranked, plan, limit, codeEligible, options?.cursor));
     }
 
     const offset = decodeCursor(options?.cursor, "search");
     const hits = ranked.slice(offset, offset + limit).map((entry) => this.toHit(entry, plan));
     // 総件数は返さない(ADR-012/016)。続きの有無だけをカーソルで示す
-    return offset + limit < ranked.length
-      ? { hits, nextCursor: encodeCursor("search", offset + limit) }
-      : { hits };
+    return withNotices(
+      offset + limit < ranked.length
+        ? { hits, nextCursor: encodeCursor("search", offset + limit) }
+        : { hits },
+    );
   }
 
   /**
@@ -564,9 +583,9 @@ export class DevFixtureConnector implements Connector {
         this.searchMode === "redmine"
           ? []
           : ["updatedAfter", "updatedBefore", "container", "author"],
-      // 検索プロファイルは既定の検索方式の仕様だけを表す。esa 型などの模擬の方式では返さない
-      // (方式ごとのプロファイルは未実装。summary の自由文で仕様を伝える)。
-      ...(this.searchMode === "default" ? { searchProfile: DEV_FIXTURE_SEARCH_PROFILE } : {}),
+      // 検索プロファイルは方式ごと(search-modes.ts)。伝え方が summary のときは返さない
+      // (模擬の方式の既定。summary の自由文で仕様を伝える)
+      ...(this.searchProfile !== undefined ? { searchProfile: this.searchProfile } : {}),
     };
   }
 
@@ -687,5 +706,6 @@ export async function createDevFixtureConnector(
     policy: init.policy,
     searchMode: settings.searchMode,
     redmineAllWords: settings.redmineAllWords,
+    ...(settings.specDelivery !== undefined ? { specDelivery: settings.specDelivery } : {}),
   });
 }

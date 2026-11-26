@@ -493,6 +493,7 @@ dev-eval の検索方式モード。同じ質問と正解文書に対して、�
 1 と 3 の差が探索 LLM のクエリ生成による損失、3 と 4 の差が UI 側 LLM を通すことによる損失の目安になる。
 
 - **検索方式**(`--modes`): 検索方式ごとに、プロセス内に Gateway(127.0.0.1 の空きポート、モック IdP、監査はメモリに書いて捨てる)を起動し、開発用コネクタ(`dev-fixture`)を 1 つ載せる。条件 1・2 も Gateway の `tools/call` を通す。方式は `default`(現行の AND 部分一致・タイトル一致優先・一致箇所のスニペット)/ `esa`(空白は AND、`OR`・引用符・`title:` を解釈、タイトル一致を優遇、スニペットは本文の先頭 300 字)/ `redmine-or`・`redmine-and`(部分一致、先頭 5 語だけを使う、関連度なしの更新日降順、スニペットは本文の先頭、フィルタ非対応)/ `github`(空白は AND、issue・PR・コードを種別ごとに等分して交互に並べる)。各方式の仕様は describe の `summary` に日本語で載る(探索 LLM に届く)。実装は `packages/gateway/src/dev/search-modes.ts`。実ソースの挙動を実機で確かめたものではなく、調査の読解に基づく模擬である
+- **検索の仕様の伝え方**(`--spec-delivery`): 各方式は、模擬の実装と一致する検索プロファイル(ADR-025。根拠はすべて `tested`。実装そのものが仕様であるため)と、検索の通知(`notices`。Redmine 型で使える語が 6 語以上のとき `terms_dropped`、esa 型で `title:` 以外の修飾子・`-語`・`( )` を含むとき `operator_ignored`)を持つ。`summary`(`summary` の自由文だけ。検索プロファイルと通知を返さない)/ `both`(自由文 + 検索プロファイル + 通知)/ `profile`(検索プロファイル + 通知だけ。`summary` は内容の説明だけ)から選ぶ。カンマ区切りで複数を選ぶと、方式 × 伝え方ごとに Gateway を起動し、表・トレースの方式の欄を `esa/profile` のように「方式/伝え方」にする。省略時は開発用コネクタの既定(`default` は検索プロファイルを返す。模擬の方式は `summary` と同じ = これまでの計測の条件)。検索プロファイルの文は探索プロンプト v4 のときだけ、通知の文と検索プロファイルに照らした判定は検索の状況の制御メッセージが有効なときだけ探索 LLM に届く。トレースの `search` には、返った通知(`notices`)を書く
 - **コーパス**: 質問セットの `corpus` が指すファイル(`examples/fixtures/dev-corpus.yaml` の 7 件 + `examples/fixtures/search-eval-corpus.yaml` の正解文書 18 件)に、乱数の種を固定して生成した無関係な文書(`packages/gateway/src/dev/synthetic-corpus.ts`。同じ語を含む議事録・週報・問い合わせ・PR・コード・お知らせ。既定 400 件)を足す。起動時に、正解の文書がコーパスにあること、答えられない質問の `mustNotAppear` の語の組を含む文書がないことを確かめる
 - **質問セット**: `examples/eval/search-questions.json`(既知項目検索 10・複数文書 7・答えられない 6)。各質問に `utterance`・`keywords`・`relevant` を持たせる。検索方式の切り替えより前のコミットで固定した(T-024 の規則)
 - **トレース**(`--trace <file.jsonl>`): 試行(方式 × 条件 × 質問 × 回)ごとに、`case_start`(入力)、`ui_question`(条件 4 の UI 側 LLM の question)、`search`(ソース・query・filters・limit・順位付きのヒットの documentId と title)、`fetch`(documentId)、`answer`(outcome・出典)、`case_error` を 1 行 1 イベントで書く。監査ログ(`@leisen/audit`)とは別物で、Gateway の本番経路は変えない。記録は Orchestrator に渡す `GatewayClient` を包んで行う(`TracingGatewayClient`)
@@ -518,6 +519,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.
 | `--ui-model <モデル>` | 条件 4 の UI 側 LLM のモデル(省略時は探索 LLM と同じ。プロバイダ・接続先は探索 LLM と同じ) |
 | LLM の指定 | `--llm` / `--model` / `--llm-base-url` / `--llm-api-key-env` / `--reasoning-effort` / `--effort`(leisen-ask と同じ。環境変数 `LEISEN_LLM_*` も同じ) |
 | `--limit <N>` | 質問を先頭の N 問に絞る(`--only` の後にかける) |
+| `--spec-delivery <a,b>` | 検索の仕様の伝え方(`summary` / `both` / `profile`。上の「検索の仕様の伝え方」。省略時は開発用コネクタの既定) |
 | `--explore-prompt <版>` / `--search-feedback on\|off` | 探索プロンプトの版(`explore.v3` / `explore.v4`)と検索の状況の制御メッセージ(leisen-ask と同じ。既定は v4、制御メッセージは v4 のときだけ既定で有効。NODE_ENV=production では使えない) |
 | `--llm claude-cli --model <モデル>` | 条件 3・4 の LLM に `claude -p` を使う(下の節。`--model` は必須で既定値はない) |
 | `--claude-cli-command <コマンド>` / `--claude-cli-timeout-sec <N>` / `--claude-cli-max-total-usd <X>` | `claude` のコマンド(既定 `claude`)、1 回の呼び出しのタイムアウト(既定 300 秒)、費用の合計の上限(USD。超えたら以後の呼び出しを失敗させる) |
@@ -542,6 +544,13 @@ node packages/orchestrator/dist/bin/dev-search-eval.js \
   --run-timeout-sec 600 --claude-cli-max-total-usd 5 \
   --trace /tmp/search-trace.jsonl --label "esa / haiku / v4" > /tmp/search-eval.md
 # v3 と比べるときは --explore-prompt explore.v3 を足す(制御メッセージは v3 の既定で無効)
+
+# 例: 検索の仕様の伝え方の比較(Redmine 型の AND、条件 3、3 通り)
+node packages/orchestrator/dist/bin/dev-search-eval.js \
+  --modes redmine-and --spec-delivery summary,both,profile --conditions orchestrator-utterance \
+  --llm claude-cli --model haiku --repeat 3 \
+  --run-timeout-sec 600 --claude-cli-max-total-usd 3 \
+  --trace /tmp/spec-delivery-trace.jsonl > /tmp/spec-delivery.md
 ```
 
 - **費用と時間の目安**(2026-11-25 の実測、haiku、esa 型、全 23 問 × 条件 3・4): 1 試行あたり平均 4 回強の呼び出しで約 $0.0065〜0.0093、平均 19〜23 秒(最大 44 秒)。23 問 × 条件 3・4 で 1 回の実行が約 $0.30〜0.40、約 16〜17 分。試行は順に実行する(別のプロセスで v3 と v4 を同時に流すことはできた)。`--run-timeout-sec` は既定の 120 秒では足りないことがあるので 600 程度にする。モデルを sonnet などに変えると費用は数倍になる(未計測)。結果は `docs/eval/2026-11-25-search-eval-claude-cli-haiku-esa.md`(各 1 回)と `docs/eval/2026-11-26-search-eval-claude-cli-haiku-esa-x3.md`(各 3 回)
@@ -570,7 +579,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js \
 
 ### 開発用コネクタの設定(deployment.yaml の `kind: dev-fixture`)
 
-比較実験と同じ検索方式・コーパスを、手元の Gateway(既存の dev-eval・leisen-ask・LibreChat 経由の確認)でも使える。`settings.searchMode`(`default` / `esa` / `redmine` / `github`、既定 `default`)、`settings.redmineAllWords`(Redmine 型の AND / OR、既定 `false` = OR)、`settings.synthetic: { seed, count }`(生成した無関係な文書を `corpusFile` / `documents` に足す。`count` は 5,000 まで)。文書の `kind`(`issue` / `pull_request` / `code`、省略時 `issue`)は GitHub 型の種別に使う。既定の方式・既存のコーパスの結果は変わらない。
+比較実験と同じ検索方式・コーパスを、手元の Gateway(既存の dev-eval・leisen-ask・LibreChat 経由の確認)でも使える。`settings.searchMode`(`default` / `esa` / `redmine` / `github`、既定 `default`)、`settings.redmineAllWords`(Redmine 型の AND / OR、既定 `false` = OR)、`settings.synthetic: { seed, count }`(生成した無関係な文書を `corpusFile` / `documents` に足す。`count` は 5,000 まで)、`settings.specDelivery`(`summary` / `both` / `profile`。上の「検索の仕様の伝え方」。省略時は `default` が検索プロファイルを返し、模擬の方式は `summary` の自由文だけ)。文書の `kind`(`issue` / `pull_request` / `code`、省略時 `issue`)は GitHub 型の種別に使う。既定の方式・既存のコーパスの結果は変わらない。
 
 ## プロンプトの変更
 

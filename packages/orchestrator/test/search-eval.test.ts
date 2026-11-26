@@ -205,6 +205,22 @@ describe("トレース(TracingGatewayClient)", () => {
       { ...CTX, type: "fetch", source: "dev-docs", documentId: "a", errorClass: "not_available" },
     ]);
   });
+
+  it("search の通知(notices)は値域で検証した値だけを書く", async () => {
+    const inner = {
+      callTool: async () => ({
+        ok: true,
+        result: {
+          hits: [],
+          notices: [{ kind: "terms_dropped", keptTerms: 5, text: "自由文" }, { kind: "unknown_kind" }],
+        },
+      }),
+    } as unknown as GatewayClient;
+    const sink = new MemoryTraceSink();
+    await new TracingGatewayClient(inner, sink, CTX).callTool("search", { source: "dev-docs", query: "a" }, {});
+    expect(sink.events[0]).toMatchObject({ type: "search", notices: [{ kind: "terms_dropped", keptTerms: 5 }] });
+    expect(JSON.stringify(sink.events)).not.toContain("自由文");
+  });
 });
 
 describe("UI 側 LLM の再現(条件 4)", () => {
@@ -405,9 +421,53 @@ describe("dev-search-eval(CLI)", () => {
     ).toBe(2);
   });
 
+  it("--spec-delivery: 伝え方ごとに実行し、profile では検索プロファイルの文が探索 LLM に渡り、通知がトレースに残る", async () => {
+    const SIX = "INC-2026-0412 障害 報告 原因 対策 影響";
+    const llm = new ScriptedLlmClient(exploreScript(() => SIX));
+    const deps = { env: {}, createLlmClient: () => llm };
+    const ok = io();
+    const trace = join(dir, "trace-delivery.jsonl");
+    const code = await runDevSearchEval(
+      [
+        "--modes", "redmine-and", "--spec-delivery", "summary,profile", "--conditions", "orchestrator-utterance",
+        "--only", "ki-inc-0412", "--trace", trace,
+        "--llm", "openai-compatible", "--llm-base-url", "http://127.0.0.1:9/v1", "--model", "m1",
+      ],
+      ok.io,
+      deps,
+    );
+    expect(code).toBe(0);
+    const report = ok.out.join("\n");
+    expect(report).toContain("| redmine-and/summary | 3 発言→探索LLM |");
+    expect(report).toContain("| redmine-and/profile | 3 発言→探索LLM |");
+    // 最初の user ターン: summary は自由文だけ、profile は検索プロファイルの文だけ
+    const firstTurns = llm.requests
+      .filter((r) => r.messages.length === 1)
+      .map((r) => JSON.stringify(r.messages[0]?.content));
+    expect(firstTurns).toHaveLength(2);
+    expect(firstTurns[0]).not.toContain("各ソースの検索の仕様");
+    expect(firstTurns[0]).toContain("Redmine 型を模した");
+    expect(firstTurns[1]).toContain("各ソースの検索の仕様");
+    expect(firstTurns[1]).toContain("使われるのは先頭 5 語まで");
+    expect(firstTurns[1]).not.toContain("Redmine 型を模した");
+    const events = (await readFile(trace, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as TraceEvent);
+    const searches = events.filter((e) => e.type === "search");
+    expect(searches.map((e) => [e.mode, e.type === "search" ? e.notices : undefined])).toEqual([
+      ["redmine-and/summary", undefined],
+      ["redmine-and/profile", [{ kind: "terms_dropped", keptTerms: 5 }]],
+    ]);
+    // profile では通知が探索 LLM への制御メッセージになる
+    const later = llm.requests.filter((r) => r.messages.length > 1).map((r) => JSON.stringify(r.messages));
+    expect(later.filter((m) => m.includes("語数の上限を超えたため"))).toHaveLength(1);
+  });
+
   it("不正な引数は 2", async () => {
     for (const argv of [
       ["--modes", "solr"],
+      ["--spec-delivery", "free_text"],
       ["--conditions", "x"],
       ["--k", "0"],
       ["--repeat", "99"],

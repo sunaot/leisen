@@ -5,7 +5,7 @@
  *   node packages/orchestrator/dist/bin/dev-search-eval.js \
  *     [--questions examples/eval/search-questions.json] [--modes default,esa,redmine-or,redmine-and,github] \
  *     [--conditions keywords,utterance] [--k 1,5,10] [--repeat N] [--only id1,id2] \
- *     [--trace trace.jsonl] [--label <見出し>] \
+ *     [--trace trace.jsonl] [--label <見出し>] [--spec-delivery summary,both,profile] \
  *     [--llm ... --model ... --llm-base-url ...] [--ui-model <モデル>] [--max-iterations N] [--run-timeout-sec N]
  *
  * - 検索方式ごとにプロセス内の Gateway(開発用コネクタ dev-fixture、モック IdP、監査はメモリ)を
@@ -22,6 +22,10 @@
  * - --explore-prompt / --search-feedback: 探索プロンプトの版と検索の状況の制御メッセージ
  *   (leisen-ask と同じ。既定は explore.v4 で、制御メッセージは explore.v4 のときだけ既定で有効。
  *   NODE_ENV=production では拒否する)。--limit N: 質問を先頭の N 問に絞る
+ * - --spec-delivery: 開発用コネクタが検索の仕様を伝える方法(summary = summary の自由文だけ /
+ *   both = 自由文 + 検索プロファイル + 通知 / profile = 検索プロファイル + 通知だけ)。カンマ区切りで
+ *   複数を選ぶと、方式 × 伝え方ごとに実行し、表の方式の欄を「方式/伝え方」にする。省略時は
+ *   開発用コネクタの既定(既定の方式は検索プロファイルを返し、模擬の方式は自由文だけ)
  * - 外部の Gateway・実ソースには接続しない(接続先を指定する引数がない)
  * - 終了コード: 0 実行できた、1 実行中の失敗、2 引数・質問セットの不備
  */
@@ -44,6 +48,10 @@ import {
   ClaudeCliLlmClient,
   type ClaudeCliLlmClientOptions,
 } from "../search-eval/claude-cli-llm.js";
+import {
+  DEV_FIXTURE_SPEC_DELIVERIES,
+  type DevFixtureSpecDelivery,
+} from "@leisen/gateway";
 import {
   DEFAULT_RECALL_KS,
   JsonlTraceSink,
@@ -71,12 +79,15 @@ const USAGE = [
   "                       [--conditions keywords,utterance,orchestrator-utterance,orchestrator-ui]",
   "                       [--k 1,5,10] [--repeat N] [--only id1,id2] [--trace <file.jsonl>] [--label <見出し>]",
   "                       [--limit N] [--explore-prompt explore.v3|explore.v4] [--search-feedback on|off]",
+  "                       [--spec-delivery summary,both,profile]",
   "                       [--ui-model <モデル>] [--max-iterations N] [--run-timeout-sec N] [LLM の指定]",
   "  --llm claude-cli --model <モデル> は条件 3・4 の LLM に `claude -p` を使う(開発・評価専用。構造化出力による",
   "  ツール呼び出しの模擬)。[--claude-cli-command <コマンド>] [--claude-cli-timeout-sec N] [--claude-cli-max-total-usd X]",
   "  条件 3・4(orchestrator-*)には LLM の指定が要る(leisen-ask と同じ)。--ui-model は条件 4 の UI 側の",
   "  モデル(省略時は探索 LLM と同じ)。",
   `  --explore-prompt は探索プロンプトの版(既定 ${EXPLORE_PROMPT_VERSION})。--search-feedback は検索の状況の制御メッセージ(既定は explore.v4 のときだけ on)。`,
+  "  --spec-delivery は検索の仕様の伝え方(summary: summary の自由文だけ / both: 自由文 + 検索プロファイル + 通知 /",
+  "  profile: 検索プロファイル + 通知だけ)。省略時は開発用コネクタの既定。",
   ...LLM_USAGE_LINES,
 ].join("\n");
 
@@ -154,6 +165,7 @@ export async function runDevSearchEval(
         limit: { type: "string" },
         "explore-prompt": { type: "string" },
         "search-feedback": { type: "string" },
+        "spec-delivery": { type: "string" },
         "claude-cli-command": { type: "string" },
         "claude-cli-timeout-sec": { type: "string" },
         "claude-cli-max-total-usd": { type: "string" },
@@ -186,6 +198,18 @@ export async function runDevSearchEval(
   ]);
   if (conditions === undefined) {
     return usage(`--conditions は ${SEARCH_EVAL_CONDITIONS.join(" / ")} をカンマ区切りで指定してください。`);
+  }
+  let deliveries: (DevFixtureSpecDelivery | undefined)[] = [undefined];
+  if (values["spec-delivery"] !== undefined) {
+    const parsed = listOf<DevFixtureSpecDelivery>(
+      values["spec-delivery"],
+      DEV_FIXTURE_SPEC_DELIVERIES,
+      DEV_FIXTURE_SPEC_DELIVERIES,
+    );
+    if (parsed === undefined) {
+      return usage(`--spec-delivery は ${DEV_FIXTURE_SPEC_DELIVERIES.join(" / ")} をカンマ区切りで指定してください。`);
+    }
+    deliveries = parsed;
   }
   let ks: number[] = [...DEFAULT_RECALL_KS];
   if (values.k !== undefined) {
@@ -383,18 +407,26 @@ export async function runDevSearchEval(
     }
 
     const results: CaseMetrics[] = [];
-    for (const mode of modes) {
+    const runs = modes.flatMap((mode) => deliveries.map((specDelivery) => ({ mode, specDelivery })));
+    for (const { mode, specDelivery } of runs) {
+      // 伝え方を指定したときは、表とトレースの方式の欄を「方式/伝え方」にする
+      const label = specDelivery === undefined ? mode : `${mode}/${specDelivery}`;
       let gateway;
       try {
-        gateway = await startEvalGateway({ sourceId: set.source, documents, mode });
+        gateway = await startEvalGateway({
+          sourceId: set.source,
+          documents,
+          mode,
+          ...(specDelivery !== undefined ? { specDelivery } : {}),
+        });
       } catch {
-        io.stderr(`評価用の Gateway を起動できませんでした(${mode})。NODE_ENV=production では使えません。`);
+        io.stderr(`評価用の Gateway を起動できませんでした(${label})。NODE_ENV=production では使えません。`);
         return 1;
       }
       try {
         results.push(
           ...(await runSearchEval({
-            mode,
+            mode: label,
             source: set.source,
             questions,
             conditions,

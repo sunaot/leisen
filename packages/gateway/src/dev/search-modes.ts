@@ -10,10 +10,17 @@
  * - github: 空白は AND、issue / pull request / コードを種別ごとに検索して交互に並べる
  *   (種別の配分・カーソルはコネクタ側。fixture-connector.ts)
  *
- * 各方式の仕様は describe の summary に日本語で載せる(searchModeSpec)。実ソースの挙動を
+ * 各方式の仕様は、describe の summary の日本語の文(searchModeSpec)と、検索プロファイル
+ * (searchModeProfile。ADR-025)の一方または両方で伝える(settings.specDelivery)。実ソースの挙動を
  * 確かめたものではなく、調査(reports/エージェント検索ハーネス設計調査)の読解に基づく模擬である。
+ * 検索プロファイルの根拠を tested とするのは、模擬の実装そのものが仕様であるため。
  */
-import { ConnectorError, MAX_SNIPPET_CHARS } from "@leisen/connector-sdk";
+import {
+  ConnectorError,
+  MAX_SNIPPET_CHARS,
+  type SearchNotice,
+  type SearchProfile,
+} from "@leisen/connector-sdk";
 
 export const DEV_FIXTURE_SEARCH_MODES = ["default", "esa", "redmine", "github"] as const;
 export type DevFixtureSearchMode = (typeof DEV_FIXTURE_SEARCH_MODES)[number];
@@ -271,6 +278,173 @@ export function planQuery(
 /** 方式ごとの既定の件数(GitHub 型は connector-github と同じ 20)。 */
 export function defaultSearchLimit(mode: DevFixtureSearchMode): number {
   return mode === "github" ? 20 : 10;
+}
+
+// ---------------------------------------------------------------------------
+// 検索プロファイルと検索の通知(connector-sdk v0.6、ADR-025)
+// ---------------------------------------------------------------------------
+
+/**
+ * 検索の仕様の伝え方(settings.specDelivery。評価用)。
+ * - summary: summary の自由文だけ(検索プロファイルと通知を返さない)
+ * - both: 自由文 + 検索プロファイル + 通知
+ * - profile: 検索プロファイル + 通知だけ(summary は内容の説明だけ)
+ */
+export const DEV_FIXTURE_SPEC_DELIVERIES = ["summary", "both", "profile"] as const;
+export type DevFixtureSpecDelivery = (typeof DEV_FIXTURE_SPEC_DELIVERIES)[number];
+
+/**
+ * 伝え方の既定: 既定の検索方式は検索プロファイルを返す(summary に検索の仕様の文はない)、
+ * 模擬の方式は summary の自由文だけ(T-027 の計測の条件を変えない)。
+ */
+export function defaultSpecDelivery(mode: DevFixtureSearchMode): DevFixtureSpecDelivery {
+  return mode === "default" ? "both" : "summary";
+}
+
+/**
+ * 既定の検索方式の検索プロファイル。search の実装(空白区切りの全語 AND の部分一致、タイトル一致の
+ * 多い順 → 更新の新しい順、一致箇所の周辺のスニペット)そのものなので、根拠は tested。演算子・
+ * 修飾子・引用符は解釈せず、記号も語として照合する。語数・文字数の上限はない(項目を書かない)
+ */
+export const DEFAULT_MODE_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "and", basis: "tested" },
+  matchUnit: { value: "substring", basis: "tested" },
+  naturalLanguage: { value: "unsupported", basis: "tested" },
+  phraseQuote: { value: "unsupported", basis: "tested" },
+  operators: { value: [], basis: "tested" },
+  qualifiers: { value: [], basis: "tested" },
+  ranking: { value: "recency", basis: "tested" },
+  titleBoost: { value: true, basis: "tested" },
+  snippet: { value: "match_context", basis: "tested" },
+};
+
+/**
+ * esa 型の模擬(esaPlan)の検索プロファイル。空白は AND、OR(大文字)・引用符の語句・title: を
+ * 解釈し、それ以外の記法(-語、( )、in: などの修飾子)は文字として照合する。タイトル一致の多い順
+ * → 更新の新しい順、スニペットは本文の先頭。実装そのものが仕様なので根拠は tested(実際の esa の
+ * 挙動を確かめたものではない)
+ */
+export const ESA_MODE_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "and", basis: "tested" },
+  matchUnit: { value: "substring", basis: "tested" },
+  naturalLanguage: { value: "unsupported", basis: "tested" },
+  phraseQuote: { value: "supported", basis: "tested" },
+  operators: { value: ["or"], basis: "tested" },
+  qualifiers: { value: [{ name: "title", target: "title" }], basis: "tested" },
+  ranking: { value: "recency", basis: "tested" },
+  titleBoost: { value: true, basis: "tested" },
+  snippet: { value: "leading_text", basis: "tested" },
+};
+
+/**
+ * Redmine 型の模擬(redminePlan)の検索プロファイル。部分一致、引用符の語句は 1 語、先頭 5 語だけを
+ * 使い残りは黙って捨てる、関連度もタイトルの優遇もない更新の新しい順、スニペットは本文の先頭。
+ * 語の結合は設定(redmineAllWords)による。根拠は tested(実際の Redmine を確かめたものではない)
+ */
+export function redmineModeSearchProfile(allWords: boolean): SearchProfile {
+  return {
+    termJoin: { value: allWords ? "and" : "or", basis: "tested" },
+    matchUnit: { value: "substring", basis: "tested" },
+    naturalLanguage: { value: "unsupported", basis: "tested" },
+    phraseQuote: { value: "supported", basis: "tested" },
+    operators: { value: [], basis: "tested" },
+    qualifiers: { value: [], basis: "tested" },
+    maxTerms: { value: { limit: REDMINE_MAX_TOKENS, overflow: "dropped" }, basis: "tested" },
+    ranking: { value: "recency", basis: "tested" },
+    titleBoost: { value: false, basis: "tested" },
+    snippet: { value: "leading_text", basis: "tested" },
+  };
+}
+
+/**
+ * GitHub 型の模擬の検索プロファイル。空白は AND の部分一致(引用符・演算子・修飾子は解釈しない)、
+ * 種類の中でタイトル(パス)一致の多い順 → 更新の新しい順、スニペットは種類による(issue と PR は
+ * 本文の先頭、コードは一致箇所の周辺)。根拠は tested(実際の GitHub を確かめたものではない)
+ */
+export const GITHUB_MODE_SEARCH_PROFILE: SearchProfile = {
+  termJoin: { value: "and", basis: "tested" },
+  matchUnit: { value: "substring", basis: "tested" },
+  naturalLanguage: { value: "unsupported", basis: "tested" },
+  phraseQuote: { value: "unsupported", basis: "tested" },
+  operators: { value: [], basis: "tested" },
+  qualifiers: { value: [], basis: "tested" },
+  ranking: { value: "recency", basis: "tested" },
+  titleBoost: { value: true, basis: "tested" },
+  snippet: { value: "mixed", basis: "tested" },
+};
+
+/** 方式ごとの検索プロファイル(利用者によらない定数。ADR-025 決定3)。 */
+export function searchModeProfile(
+  mode: DevFixtureSearchMode,
+  options: QueryPlanOptions,
+): SearchProfile {
+  switch (mode) {
+    case "default":
+      return DEFAULT_MODE_SEARCH_PROFILE;
+    case "esa":
+      return ESA_MODE_SEARCH_PROFILE;
+    case "redmine":
+      return redmineModeSearchProfile(options.redmineAllWords);
+    case "github":
+      return GITHUB_MODE_SEARCH_PROFILE;
+  }
+}
+
+/** Redmine 型で、使う語の候補(重複と 1 文字の語を除いた後、上限で切る前)の数。 */
+function redmineCandidateCount(query: string): number {
+  const tokens = new Set<string>();
+  for (const match of query.matchAll(REDMINE_TOKEN)) {
+    const token = (match[1] ?? match[2] ?? "").trim();
+    if (Array.from(token).length > 1) {
+      tokens.add(token);
+    }
+  }
+  return tokens.size;
+}
+
+/** esa 型が解釈せず文字として照合する修飾子の形(title: 以外の「名前:」)。 */
+const ESA_UNSUPPORTED_QUALIFIER = /^[a-z][a-z_]{0,15}:/u;
+
+/**
+ * esa 型の模擬が解釈しない記法を含むか: 引用符の外の語のうち、title: 以外の修飾子の形(in: など)、
+ * 語の前の -、( )。いずれも模擬では文字として照合する。
+ */
+function esaHasUninterpretedSyntax(query: string): boolean {
+  for (const match of query.matchAll(ESA_TOKEN)) {
+    const bare = match[3];
+    if (bare === undefined) {
+      continue;
+    }
+    const qualifier = ESA_UNSUPPORTED_QUALIFIER.exec(bare);
+    if (qualifier !== null && qualifier[0].toLowerCase() !== "title:") {
+      return true;
+    }
+    if (/^-\S/u.test(bare) || bare.startsWith("(") || bare.endsWith(")")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 模擬の検索が返す通知(ADR-025 決定4)。query の形だけから作る(認可前の候補の有無・件数を
+ * 使わない。ADR-012)。
+ * - Redmine 型: 使える語が上限(5 語)を超えたとき terms_dropped(keptTerms = 5)
+ * - esa 型: 解釈しない記法(title: 以外の修飾子、-語、( ))を含むとき operator_ignored
+ * - 既定・GitHub 型: 語を捨てる・指定を無視する処理がないため、通知はない
+ */
+export function searchModeNotices(mode: DevFixtureSearchMode, query: string): SearchNotice[] {
+  switch (mode) {
+    case "redmine":
+      return redmineCandidateCount(query) > REDMINE_MAX_TOKENS
+        ? [{ kind: "terms_dropped", keptTerms: REDMINE_MAX_TOKENS }]
+        : [];
+    case "esa":
+      return esaHasUninterpretedSyntax(query) ? [{ kind: "operator_ignored" }] : [];
+    case "default":
+    case "github":
+      return [];
+  }
 }
 
 /**
