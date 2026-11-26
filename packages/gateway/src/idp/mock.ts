@@ -29,6 +29,8 @@ export interface MockUser {
   readonly displayName?: string;
   /** 本人照合(ADR-022 決定 8)の開発用。LEISEN_MOCK_SESSIONS の `token=userId;email=...` */
   readonly email?: string;
+  /** 本人照合 identityCheck: username の開発用。`token=userId;username=...`(ADR-024 追補) */
+  readonly username?: string;
 }
 
 export interface MockIdpAdapterOptions {
@@ -86,21 +88,28 @@ export function parseMockSessions(
     if (!token || !userId) {
       throw new IdpError(
         "misconfigured",
-        "LEISEN_MOCK_SESSIONS must be 'token=userId[;email=addr][,token=userId...]'",
+        "LEISEN_MOCK_SESSIONS must be 'token=userId[;email=addr][;username=name][,token=userId...]'",
       );
     }
     let email: string | undefined;
+    let username: string | undefined;
     for (const attr of attrs) {
       if (attr.startsWith("email=") && attr.length > "email=".length) {
         email = attr.slice("email=".length);
+      } else if (attr.startsWith("username=") && attr.length > "username=".length) {
+        username = attr.slice("username=".length);
       } else if (attr !== "") {
         throw new IdpError(
           "misconfigured",
-          "LEISEN_MOCK_SESSIONS attributes must be 'email=<address>'",
+          "LEISEN_MOCK_SESSIONS attributes must be 'email=<address>' or 'username=<name>'",
         );
       }
     }
-    sessions[token] = { userId, ...(email !== undefined ? { email } : {}) };
+    sessions[token] = {
+      userId,
+      ...(email !== undefined ? { email } : {}),
+      ...(username !== undefined ? { username } : {}),
+    };
   }
   return sessions;
 }
@@ -150,6 +159,7 @@ export class MockIdpAdapter extends CredentialResolvingIdpAdapter {
         ? { displayName: user.displayName }
         : {}),
       ...(user.email !== undefined ? { email: user.email } : {}),
+      ...(user.username !== undefined ? { username: user.username } : {}),
       session: { subjectToken: sessionToken },
     };
   }

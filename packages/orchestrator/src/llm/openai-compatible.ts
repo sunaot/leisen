@@ -376,6 +376,7 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
       model,
       content,
       container: null,
+      diagnostics: null,
       stop_reason: stopReason,
       stop_sequence: null,
       stop_details: null,
@@ -390,6 +391,7 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
         output_tokens_details: null,
         server_tool_use: null,
         service_tier: null,
+        speed: null,
       },
     };
     assertUsableStop(message);

@@ -448,6 +448,7 @@ export function turnFromStructuredOutput(
       model: first?.model ?? meta.model,
       content,
       container: null,
+      diagnostics: null,
       stop_reason: stopReason,
       stop_sequence: null,
       stop_details: null,
@@ -461,6 +462,7 @@ export function turnFromStructuredOutput(
         output_tokens_details: null,
         server_tool_use: null,
         service_tier: null,
+        speed: null,
       },
     },
     attempts:

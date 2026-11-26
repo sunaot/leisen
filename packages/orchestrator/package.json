@@ -20,7 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.128.0",
+    "@anthropic-ai/sdk": "1.12.0",
     "@leisen/audit": "0.1.0",
     "@leisen/connector-sdk": "0.7.0",
     "@leisen/gateway": "0.1.0",
