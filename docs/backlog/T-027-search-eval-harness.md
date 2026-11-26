@@ -57,3 +57,6 @@ T-007(Orchestrator)、T-022(dev-eval の質問セットと集計)。T-008(評価
 - 実ソースの仕様のうち、実機で確かめていない部分(Redmine の `all_words=0`、esa の MCP 経由の検索の仕様、各ソースの日本語の扱い)は模せない。T-029 の結果で方式を直す
 - 合成コーパスは実データの語彙の分布と違う。実ソースでの効きは T-029 の調査用スクリプトと、実疎通後の評価で別に測る
 - 1 モデル(LM Studio)での計測。Claude API は資格情報が用意されてから(ADR-017)
+
+## 進捗の記録
+- 2026-11-26: 開発用コネクタの模擬の方式(esa 型・Redmine 型・GitHub 型)に、模擬の実装と一致する検索プロファイル(根拠は `tested`)と通知(Redmine 型の `terms_dropped`、esa 型の `operator_ignored`)を持たせ、検索の仕様の伝え方を `settings.specDelivery` / `dev-search-eval --spec-delivery`(`summary` / `both` / `profile`)で切り替えられるようにした。haiku・条件 3・各 3 回で 3 通りを比べた結果は `docs/eval/2026-11-26-search-eval-spec-delivery-haiku.md`(差は試行ごとのばらつきと同じ程度。esa 型の `operator_ignored` の条件が広すぎる点を記録)
