@@ -315,7 +315,23 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <p>同じランタイムを使うのは、実験環境の結果が実行環境でも成り立つための条件だからです。</p>
 
-<p>実験環境だけが持つ機能は 2 つあります。候補のエージェント定義をファイルから読み込むことと、トレースを保存することです。これらを実行環境の CLI に持たせると、本番で誤って有効になる経路ができます。そのため、評価ハーネスは非公開の別パッケージに置き、実行環境の CLI からは構造上使えないようにします。</p>
+<p>実験環境だけが持つ機能は 2 つあります。候補のエージェント定義をファイルから読み込むことと、トレースを保存することです。これらを実行環境の CLI に持たせると、本番で誤って有効になる経路ができます。そのため、評価ハーネスは別のパッケージに置き、表3 の 3 つの手段で経路を閉じます。</p>
+
+<div class="tablewrap">
+<table>
+<caption><b>表3</b>実験環境の機能が実行環境で有効にならないようにする手段</caption>
+<thead><tr><th>手段</th><th>内容</th></tr></thead>
+<tbody>
+<tr><th scope="row">依存の向き</th><td>実行環境のパッケージ(<code>@leisen/orchestrator</code>、<code>@leisen/gateway</code>)は評価ハーネスを import しない。<code>npm run lint:imports</code> で検査する</td></tr>
+<tr><th scope="row">CLI の入口</th><td><code>leisen-ask</code> と <code>leisen-ask serve</code> は、エージェント定義をファイルから読むオプションと、トレースを出力するオプションを持たない</td></tr>
+<tr><th scope="row">配布するイメージ</th><td><code>deploy/Dockerfile</code> の runtime ステージに、評価ハーネスのパッケージを含めない</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>評価ハーネスを隠すことは目的ではありません。リポジトリは公開するので、誰でも clone して実行できます。防ぐのは、設定の誤りで本番に入ることです。</p>
+
+<p>トレースのコールバックは、ランタイムのライブラリ API として実行環境のパッケージに含まれます。<code>@leisen/orchestrator</code> をライブラリとして組み込む利用者は、コールバックを指定できます。自分でコードを書いて指定する場合は、誤って有効になる状況には当たらないので許容します。ただし、実データで使うと不変条件 7 に抵触しうることを、ライブラリの文書に明記します。</p>
 
 <p>トレースには検索語と文書の本文が入ります。そこで、評価ハーネスは Gateway を同一プロセスで起動し、開発用コネクタだけを接続します。外部の Gateway の URL は受け取りません。実データを対象とするトレースは、ADR-026 では認めていません。</p>
 
@@ -331,7 +347,7 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <div class="tablewrap">
 <table>
-<caption><b>表3</b>既定と固定の違い</caption>
+<caption><b>表4</b>既定と固定の違い</caption>
 <thead><tr><th></th><th>既定</th><th>固定</th></tr></thead>
 <tbody>
 <tr><th scope="row">使われる定義</th><td>そのリリースで最良と評価されたもの</td><td>指定したもの</td></tr>
@@ -355,11 +371,11 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 </ul>
 
 <h3>固定が保証するのは、エージェント定義の同一性だけである</h3>
-<p>エージェント定義を固定しても、動作のすべてが固定されるわけではありません(表4)。この範囲は、運用者向けの文書に明記します。ランタイムのセキュリティ修正は、固定している導入先にも適用します。</p>
+<p>エージェント定義を固定しても、動作のすべてが固定されるわけではありません(表5)。この範囲は、運用者向けの文書に明記します。ランタイムのセキュリティ修正は、固定している導入先にも適用します。</p>
 
 <div class="tablewrap">
 <table>
-<caption><b>表4</b>エージェント定義を固定しても変わりうるもの</caption>
+<caption><b>表5</b>エージェント定義を固定しても変わりうるもの</caption>
 <thead><tr><th>変わりうるもの</th><th>理由</th><th>固定する手段</th></tr></thead>
 <tbody>
 <tr><th scope="row">モデル</th><td>エイリアスの指す先が変わる。ローカルのモデルを入れ替える</td><td>モデル ID を日付付きのスナップショットで指定する</td></tr>
@@ -416,7 +432,7 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <div class="tablewrap">
 <table>
-<caption><b>表5</b>検査の種類と、検索エージェントでの例</caption>
+<caption><b>表6</b>検査の種類と、検索エージェントでの例</caption>
 <thead><tr><th>種類</th><th>意味</th><th>例</th></tr></thead>
 <tbody>
 <tr><th scope="row">形式</th><td>出力がランタイムの求める形を守ったか</td><td>催促なしで <code>submit_answer</code> を呼んだ。ツールの引数が壊れていない。出典が検証で落ちていない</td></tr>
@@ -470,7 +486,7 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <div class="tablewrap">
 <table>
-<caption><b>表6</b>3 つの層の比較</caption>
+<caption><b>表7</b>3 つの層の比較</caption>
 <thead><tr><th>層</th><th>モデル</th><th>1 回の所要時間</th><th>用途</th><th>現状</th></tr></thead>
 <tbody>
 <tr><th scope="row">広い評価</th><td>実モデル</td><td>約 1 分(1 run)</td><td>エージェント定義を採用するかの判断</td><td>dev-eval がある</td></tr>
@@ -535,11 +551,11 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <h2 id="s9"><span class="num">9</span>試行結果には、比較できるかを判断するための版を記録する</h2>
 
-<p>試行結果は JSONL に追記し、比較レポートはそこから生成します。2 つの結果を比べてよいかを後から判断できるように、試行を特定する値に加えて、表7 の版を記録します。</p>
+<p>試行結果は JSONL に追記し、比較レポートはそこから生成します。2 つの結果を比べてよいかを後から判断できるように、試行を特定する値に加えて、表8 の版を記録します。</p>
 
 <div class="tablewrap">
 <table>
-<caption><b>表7</b>試行結果に記録するもの</caption>
+<caption><b>表8</b>試行結果に記録するもの</caption>
 <thead><tr><th>記録するもの</th><th>理由</th></tr></thead>
 <tbody>
 <tr><td>エージェント定義の識別子、質問の ID、モデル、試行回</td><td>試行を特定する</td></tr>
@@ -559,7 +575,7 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <div class="tablewrap">
 <table>
-<caption><b>表8</b>不変条件との関係</caption>
+<caption><b>表9</b>不変条件との関係</caption>
 <thead><tr><th>不変条件</th><th>関係</th></tr></thead>
 <tbody>
 <tr><th scope="row">1 認可の委譲</th><td>変更なし。エージェント定義は資格情報に関与しない</td></tr>
@@ -614,7 +630,7 @@ svg .fail { fill: none; stroke: var(--text); stroke-width: 1.6; }
 
 <div class="tablewrap">
 <table>
-<caption><b>表9</b>未決事項</caption>
+<caption><b>表10</b>未決事項</caption>
 <thead><tr><th>項目</th><th>現在の案</th><th>記載先</th></tr></thead>
 <tbody>
 <tr><td>データの前置きの文言の置き場所</td><td>安全側としてランタイムに固定する</td><td>ADR-026 確認事項 1</td></tr>

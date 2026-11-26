@@ -26,7 +26,7 @@ dev-eval は `leisen-ask` を子プロセスで起動し、試行ごとに合否
 ## 内容
 
 ### 評価ハーネスの本体
-- 非公開の別パッケージ(`packages/eval`)。dev-eval の判定と集計(`packages/orchestrator/src/dev-eval.ts`)をここへ移し、`leisen-ask` の子プロセス起動をやめる
+- 別のパッケージ(`packages/eval`)。実行環境のパッケージからは import せず、`deploy/Dockerfile` の runtime ステージにも含めない(ADR-026 決定 8 の 3 つの手段)。dev-eval の判定と集計(`packages/orchestrator/src/dev-eval.ts`)をここへ移し、`leisen-ask` の子プロセス起動をやめる
 - Gateway を同一プロセスで起動し、開発用コネクタ(合成コーパス)だけを接続する。外部の Gateway の URL は受け取らない。テストの `packages/orchestrator/test/helpers/harness.ts` と同じ構成を使う
 - エージェント定義 × 質問 × 試行回数の組み合わせを実行する。保存済みの試行は再実行しない(中断後の再開)。並行数を指定できる(ローカルのモデルでは 1)
 - 候補のエージェント定義をファイルから読み込む
@@ -81,7 +81,10 @@ dev-eval は `leisen-ask` を子プロセスで起動し、試行ごとに合否
 - [ ] 保存済みのトレースから、LLM を呼ばずに判定し直せる
 - [ ] 確率的テストが 1 件以上あり、同じ状態からの 1 ターンを指定した回数だけ実行して通過率を出せる
 - [ ] 評価ハーネスが開発用コネクタ以外を接続できないこと、トレースに秘密情報が入らないことがテストされている
-- [ ] 実行環境の CLI が、評価ハーネスのパッケージとトレースのコールバックに依存していない(`npm run lint:imports` に検査を足す)
+- [ ] 実行環境のパッケージ(`@leisen/orchestrator`、`@leisen/gateway`)が評価ハーネスのパッケージを import していない(`npm run lint:imports` に検査を足す)
+- [ ] `leisen-ask` と `leisen-ask serve` に、エージェント定義をファイルから読むオプションと、トレースを出力するオプションがないことがテストされている
+- [ ] 配布するイメージに評価ハーネスのパッケージが含まれていない(`deploy/Dockerfile` の runtime ステージに足していない。CI の `reference-deploy` で確かめる)
+- [ ] トレースのコールバックを実データで使うと不変条件 7 に抵触しうることが、`packages/orchestrator/README.md` に書かれている
 - [ ] 失敗を下の層へ移す手順と、評価レポートの作り方が README にある
 
 ## 判断が必要な点
