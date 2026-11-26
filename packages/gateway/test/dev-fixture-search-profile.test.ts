@@ -20,6 +20,8 @@ import {
   createDevFixtureConnector,
   searchModeNotices,
   searchModeProfile,
+  searchModeSpec,
+  searchModeSpecSupplement,
   type DevFixtureDocument,
   type DevFixtureSearchMode,
   type DevFixtureSpecDelivery,
@@ -296,11 +298,24 @@ describe("通知(notices)", () => {
     ]);
   });
 
-  it("esa 型: title: 以外の修飾子・-語・( ) を含むとき operator_ignored", () => {
+  it("esa 型: title: 以外の修飾子・-語・括弧によるまとまりを含むとき operator_ignored", () => {
     expect(searchModeNotices("esa", "経費 in:総務")).toEqual([{ kind: "operator_ignored" }]);
     expect(searchModeNotices("esa", "経費 -交通費")).toEqual([{ kind: "operator_ignored" }]);
     expect(searchModeNotices("esa", "(経費 OR 交通費) 申請")).toEqual([{ kind: "operator_ignored" }]);
+    expect(searchModeNotices("esa", "申請 (経費 OR 交通費)")).toEqual([{ kind: "operator_ignored" }]);
+    expect(searchModeNotices("esa", "(経費)")).toEqual([{ kind: "operator_ignored" }]);
     expect(searchModeNotices("esa", 'title:経費 "a -b" 経費 OR 交通費 10:00 ISO-8601')).toEqual([]);
+  });
+
+  it("esa 型: 括弧を含む題名(( で始まる語と ) で終わる語の組がない)では operator_ignored を出さない", () => {
+    expect(searchModeNotices("esa", "経費精算ルール(2026年度版)")).toEqual([]);
+    expect(searchModeNotices("esa", "title:経費精算ルール(2026年度版) 申請")).toEqual([]);
+    expect(searchModeNotices("esa", "経費)")).toEqual([]);
+    expect(searchModeNotices("esa", "(経費")).toEqual([]);
+    // ) で終わる語が ( で始まる語より前にある
+    expect(searchModeNotices("esa", "経費) (交通費")).toEqual([]);
+    // 引用符の中の括弧は語句の一部
+    expect(searchModeNotices("esa", '"(経費 OR 交通費)"')).toEqual([]);
   });
 
   it("既定・GitHub 型は通知を返さない", () => {
@@ -355,6 +370,15 @@ describe("伝え方の切り替え(specDelivery)", () => {
         case "profile":
           expect(hasSpec).toBe(false);
           expect(described.summary).toBe("開発用の合成文書コーパス(5件)。実在の組織・人物・秘密情報は含まない。");
+          expect(described.searchProfile).toEqual(profileOf(c));
+          expect(result.notices !== undefined).toBe(expectsNotice);
+          break;
+        case "split":
+          expect(described.summary).toBe(
+            `開発用の合成文書コーパス(5件)。実在の組織・人物・秘密情報は含まない。\n${searchModeSpecSupplement(c.mode, base)}`,
+          );
+          expect(described.summary).toContain("検索の仕様の補足");
+          expect(described.summary).not.toContain(searchModeSpec(c.mode, base));
           expect(described.searchProfile).toEqual(profileOf(c));
           expect(result.notices !== undefined).toBe(expectsNotice);
           break;
@@ -435,5 +459,121 @@ describe("伝え方の切り替え(specDelivery)", () => {
     await expect(createDevFixtureConnector(init({ specDelivery: "free_text" }))).rejects.toBeInstanceOf(
       DeploymentConfigError,
     );
+  });
+});
+
+describe("伝え方 split の summary の補足(searchModeSpecSupplement)", () => {
+  const nonDefault = CASES.filter((c) => c.mode !== "default");
+  const supplementOf = (c: (typeof CASES)[number]) =>
+    searchModeSpecSupplement(c.mode, { redmineAllWords: c.redmineAllWords });
+
+  it("既定の方式は補足を持たない(split でも summary は変わらない)", async () => {
+    expect(supplementOf(CASES[0]!)).toBe("");
+    const described = await connector("default", { specDelivery: "split" }).describe(ALICE);
+    expect(described.summary).toBe("開発用の合成文書コーパス(5件)。実在の組織・人物・秘密情報は含まない。");
+    expect(described.searchProfile).toEqual(DEV_FIXTURE_SEARCH_PROFILE);
+  });
+
+  it.each(nonDefault)("$name: 検索プロファイルの項目と重複する記述を含まない(代表的な語で確認)", (c) => {
+    const text = supplementOf(c);
+    expect(text.startsWith("検索の仕様の補足(")).toBe(true);
+    // 語の結合(AND / OR の結合)、部分一致、自然文、並び順・タイトルの優遇、語数の上限、スニペットの種類
+    for (const phrase of [
+      "(AND)",
+      "(OR)",
+      "すべてを含む",
+      "いずれかの語を含む",
+      "部分一致",
+      "自然文",
+      "並び順",
+      "更新の新しい順",
+      "タイトルに一致した語の数",
+      `先頭 ${5} 語`,
+      "スニペットは本文の先頭",
+      "そのまま一致させる",
+      "タイトルに含む文書だけに絞る",
+    ]) {
+      expect(text, phrase).not.toContain(phrase);
+    }
+  });
+
+  it("esa 型の補足: OR の結び付き(例の通りに照合する)・title:\"語句\"・先頭と末尾の OR・小文字の or", async () => {
+    const text = supplementOf(CASES[1]!);
+    expect(text).toContain("OR は空白による結合より先に結び付く");
+    expect(text).toContain("「経費 OR 交通費 申請」は「経費または交通費」かつ「申請」");
+    expect(text).toContain('title:"経費 精算"');
+    const c = connector("esa", { specDelivery: "split" });
+    // 「経費 OR 交通費 申請」: (経費 または 交通費) かつ 申請 → 申請を含む title-a だけ
+    expect(ids(await c.search(ALICE, "経費 OR 交通費 申請"))).toEqual(["title-a"]);
+    // 「a OR b OR c」は a・b・c のいずれか
+    expect(ids(await c.search(ALICE, "手引き OR 議事録 OR メモ"))).toEqual(["body-both", "phrase", "title-a"]);
+    // 先頭・末尾の OR は無視する
+    expect(ids(await c.search(ALICE, "OR 手引き OR"))).toEqual(["title-a"]);
+    // 小文字の or は語として照合する(or を含む文書はない)
+    expect(ids(await c.search(ALICE, "手引き or 議事録"))).toEqual([]);
+    // title: は引用符の語句にも付けられる
+    expect(ids(await c.search(ALICE, 'title:"経費の 手引き"'))).toEqual([]);
+    expect(ids(await c.search(ALICE, 'title:"経費の手引"'))).toEqual(["title-a"]);
+    // 大文字小文字を区別しない
+    expect(ids(await c.search(ALICE, "SRC/EXPENSE"))).toEqual(["code-x"]);
+  });
+
+  it("esa 型の補足: filters の値の形(container は topContainers の id、author は完全一致、日時は ISO 8601)", async () => {
+    const text = supplementOf(CASES[1]!);
+    expect(text).toContain("updatedAfter / updatedBefore(日時。ISO 8601)");
+    const c = connector("esa", { specDelivery: "split" });
+    const described = await c.describe(ALICE);
+    expect(described.supportedFilters).toEqual(["updatedAfter", "updatedBefore", "container", "author"]);
+    const containerId = described.topContainers?.find((t) => t.name === "総務")?.id;
+    expect(containerId).toBe("総務");
+    expect(ids(await c.search(ALICE, "経費", { container: containerId! }))).toEqual(["title-a"]);
+    await expect(c.search(ALICE, "経費", { updatedAfter: "先月" })).rejects.toMatchObject({
+      errorClass: "invalid_request",
+    });
+  });
+
+  it.each([CASES[2]!, CASES[3]!])("$name の補足: 語の数え方・1 文字の語・フィルタ非対応が実装と一致する", async (c) => {
+    const text = supplementOf(c);
+    expect(text).toContain("重複する語と 1 文字の語を除いて数える");
+    expect(text).toContain("filters には対応しない(指定すると invalid_request)");
+    // AND / OR で補足は変わらない(語の結合は検索プロファイルで伝える)
+    expect(text).toBe(supplementOf(c.redmineAllWords ? CASES[2]! : CASES[3]!));
+    const conn = connector("redmine", { redmineAllWords: c.redmineAllWords, specDelivery: "split" });
+    // 1 文字の語だけの query は結果を返さない
+    expect((await conn.search(ALICE, "経 a")).hits).toEqual([]);
+    // 1 文字の語と重複は語数に数えない: 5 語 + 1 文字の語 + 重複 で 6 語目を捨てない
+    const five = await conn.search(ALICE, "経費 交通費 冒頭 段落 扱い");
+    const withExtras = await conn.search(ALICE, "経費 a 交通費 経費 冒頭 段落 扱い");
+    expect(ordered(withExtras)).toEqual(ordered(five));
+    expect(withExtras.notices).toBeUndefined();
+    await expect(conn.search(ALICE, "経費", { author: "x" })).rejects.toMatchObject({
+      errorClass: "invalid_request",
+    });
+  });
+
+  it("GitHub 型の補足: 種類・meta.type・コードのタイトル・種類ごとのスニペットが実装と一致する", async () => {
+    const text = supplementOf(CASES[4]!);
+    expect(text).toContain("ヒットの meta.type に種類(issue / pull_request / code)が入る");
+    expect(text).toContain("コードの結果のタイトルはファイルのパス");
+    const c = connector("github", { specDelivery: "split" });
+    const result = await c.search(ALICE, "経費");
+    const code = hit(result, "code-x");
+    expect(code?.title).toBe("src/expense.ts");
+    expect(code?.meta?.["type"]).toBe("code");
+    expect(hit(result, "title-a")?.meta?.["type"]).toBe("issue");
+    // フィルタを指定するとコードは検索しない
+    const filtered = await c.search(ALICE, "経費", { author: "nobody" });
+    expect(hit(filtered, "code-x")).toBeUndefined();
+  });
+
+  it("伝え方 split は検索の結果(ヒット)を変えない", async () => {
+    for (const c of nonDefault) {
+      const base = { redmineAllWords: c.redmineAllWords };
+      for (const query of ["経費 交通費", "経費", "手引き OR 議事録"]) {
+        const a = await connector(c.mode, { ...base, specDelivery: "summary" }).search(ALICE, query);
+        const b = await connector(c.mode, { ...base, specDelivery: "split" }).search(ALICE, query);
+        expect(b.hits).toEqual(a.hits);
+      }
+    }
   });
 });

@@ -11,7 +11,8 @@
  *   (種別の配分・カーソルはコネクタ側。fixture-connector.ts)
  *
  * 各方式の仕様は、describe の summary の日本語の文(searchModeSpec)と、検索プロファイル
- * (searchModeProfile。ADR-025)の一方または両方で伝える(settings.specDelivery)。実ソースの挙動を
+ * (searchModeProfile。ADR-025)の一方または両方で伝える(settings.specDelivery)。split では
+ * summary に検索プロファイルで表せない補足(searchModeSpecSupplement)だけを書く。実ソースの挙動を
  * 確かめたものではなく、調査(reports/エージェント検索ハーネス設計調査)の読解に基づく模擬である。
  * 検索プロファイルの根拠を tested とするのは、模擬の実装そのものが仕様であるため。
  */
@@ -289,8 +290,10 @@ export function defaultSearchLimit(mode: DevFixtureSearchMode): number {
  * - summary: summary の自由文だけ(検索プロファイルと通知を返さない)
  * - both: 自由文 + 検索プロファイル + 通知
  * - profile: 検索プロファイル + 通知だけ(summary は内容の説明だけ)
+ * - split: 検索プロファイル + 通知 + summary の補足(内容の説明と、検索プロファイルの項目で
+ *   表せない仕様だけ。searchModeSpecSupplement。プロファイルと重複する記述は書かない)
  */
-export const DEV_FIXTURE_SPEC_DELIVERIES = ["summary", "both", "profile"] as const;
+export const DEV_FIXTURE_SPEC_DELIVERIES = ["summary", "both", "profile", "split"] as const;
 export type DevFixtureSpecDelivery = (typeof DEV_FIXTURE_SPEC_DELIVERIES)[number];
 
 /**
@@ -407,9 +410,12 @@ const ESA_UNSUPPORTED_QUALIFIER = /^[a-z][a-z_]{0,15}:/u;
 
 /**
  * esa 型の模擬が解釈しない記法を含むか: 引用符の外の語のうち、title: 以外の修飾子の形(in: など)、
- * 語の前の -、( )。いずれも模擬では文字として照合する。
+ * 語の前の -、括弧によるまとまり。いずれも模擬では文字として照合する。括弧は、`(` で始まる語と、
+ * それと同じかそれより後ろの `)` で終わる語の組があるときだけ、まとまりとして使われたとみなす
+ * (「経費精算ルール(2026年度版)」のような括弧を含む題名では出さない)。
  */
 function esaHasUninterpretedSyntax(query: string): boolean {
+  let openSeen = false;
   for (const match of query.matchAll(ESA_TOKEN)) {
     const bare = match[3];
     if (bare === undefined) {
@@ -419,7 +425,13 @@ function esaHasUninterpretedSyntax(query: string): boolean {
     if (qualifier !== null && qualifier[0].toLowerCase() !== "title:") {
       return true;
     }
-    if (/^-\S/u.test(bare) || bare.startsWith("(") || bare.endsWith(")")) {
+    if (/^-\S/u.test(bare)) {
+      return true;
+    }
+    if (bare.startsWith("(")) {
+      openSeen = true;
+    }
+    if (openSeen && bare.endsWith(")")) {
       return true;
     }
   }
@@ -430,7 +442,7 @@ function esaHasUninterpretedSyntax(query: string): boolean {
  * 模擬の検索が返す通知(ADR-025 決定4)。query の形だけから作る(認可前の候補の有無・件数を
  * 使わない。ADR-012)。
  * - Redmine 型: 使える語が上限(5 語)を超えたとき terms_dropped(keptTerms = 5)
- * - esa 型: 解釈しない記法(title: 以外の修飾子、-語、( ))を含むとき operator_ignored
+ * - esa 型: 解釈しない記法(title: 以外の修飾子、-語、括弧によるまとまり)を含むとき operator_ignored
  * - 既定・GitHub 型: 語を捨てる・指定を無視する処理がないため、通知はない
  */
 export function searchModeNotices(mode: DevFixtureSearchMode, query: string): SearchNotice[] {
@@ -487,6 +499,54 @@ export function searchModeSpec(mode: DevFixtureSearchMode, options: QueryPlanOpt
         "空白で区切った語は、すべてを含む文書だけを返す(AND。大文字小文字を区別しない部分一致)。" +
         "種類の中では、タイトル(コードはファイルのパス)に一致した語の数が多い順、次に更新の新しい順。" +
         `スニペットは issue と pull request が本文の先頭(最大 ${MAX_SNIPPET_CHARS} 字)、コードが一致箇所の周辺。` +
+        "filters.author / updatedAfter / updatedBefore を指定するとコードは検索しない。" +
+        `既定の件数は ${defaultSearchLimit("github")}。`
+      );
+  }
+}
+
+/**
+ * 伝え方 split の summary に足す補足(日本語)。検索プロファイルの項目(語の結合・部分一致・自然文・
+ * 引用符・演算子の一覧・修飾子の一覧・語数の上限・並び順・タイトルの優遇・スニペットの種類)で
+ * 表せない仕様だけを、searchModeSpec の自由文から抜き出したもの。プロファイルと重複する記述は
+ * 書かない。default は検索の仕様の文を持たないため空。
+ */
+export function searchModeSpecSupplement(
+  mode: DevFixtureSearchMode,
+  // Redmine 型の補足は AND / OR で変わらない(語の結合は検索プロファイルで伝える)。引数は searchModeSpec とそろえる
+  _options: QueryPlanOptions,
+): string {
+  switch (mode) {
+    case "default":
+      return "";
+    case "esa":
+      return (
+        "検索の仕様の補足(esa 型を模した開発用の方式): " +
+        "OR は語と語の間に大文字で置く(小文字の or は語として照合する)。OR は空白による結合より先に結び付く" +
+        "(例: 「経費 OR 交通費 申請」は「経費または交通費」かつ「申請」。「a OR b OR c」は a・b・c のいずれか)。" +
+        "query の先頭・末尾に置いた OR は無視する。" +
+        'title: は引用符で囲んだ語句にも付けられる(title:"経費 精算")。' +
+        "照合は大文字小文字を区別せず、表記ゆれ(長音・全角と半角・同義語)は吸収しない。" +
+        "filters は updatedAfter / updatedBefore(日時。ISO 8601)、container(ソース一覧の topContainers の id と同じ値)、" +
+        "author(作成者の名前と完全に一致する値)に対応する。"
+      );
+    case "redmine":
+      return (
+        "検索の仕様の補足(Redmine 型を模した開発用の方式): " +
+        "語の数は、引用符で囲んだ語句を 1 語とし、重複する語と 1 文字の語を除いて数える" +
+        "(1 文字の語は検索に使われず、1 文字の語だけの query は結果を返さない)。" +
+        "照合は大文字小文字を区別しない。" +
+        "filters には対応しない(指定すると invalid_request)。"
+      );
+    case "github":
+      return (
+        "検索の仕様の補足(GitHub 型を模した開発用の方式): issue・pull request・コードの 3 種類を別々に検索し、" +
+        "種類ごとの結果を交互に並べて返す。1 回の件数の枠を種類ごとにほぼ等分するため、" +
+        "ある種類の結果が少なくても他の種類の枠は増えない。種類を選ぶ指定はない。" +
+        "ヒットの meta.type に種類(issue / pull_request / code)が入る。" +
+        "コードの結果のタイトルはファイルのパス。" +
+        "結果の種類ごとのスニペットは、issue と pull request が本文の先頭、コードが一致箇所の周辺。" +
+        "照合は大文字小文字を区別しない。" +
         "filters.author / updatedAfter / updatedBefore を指定するとコードは検索しない。" +
         `既定の件数は ${defaultSearchLimit("github")}。`
       );

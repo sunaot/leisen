@@ -42,6 +42,7 @@ import {
   countQueryTerms,
   isUnspacedSentence,
   searchNoticeText,
+  searchProfileSentences,
   termLimitNotice,
   unspacedSentenceNotice,
   unsupportedFilterNotice,
@@ -52,6 +53,8 @@ interface SourceSearchSpec {
   readonly profile: SearchProfile | undefined;
   /** describe を読めたときだけ(読めなければ非対応のフィルタを判定しない) */
   readonly supportedFilters: ReadonlySet<keyof SearchFilters> | undefined;
+  /** 検索プロファイルの文を「各ソースの検索の仕様」の制御メッセージとして探索 LLM に渡したか */
+  readonly profileShown: boolean;
 }
 
 /** run あたりの差し戻しの上限(1件も fetch せずに提出しようとしたとき)。 */
@@ -124,12 +127,25 @@ export class SearchLog {
    * describe の結果(検証済みの SourceBrief)から、ソースごとの検索の仕様を登録する。登録が
    * ないソースは、検索の仕様に照らした判定をしない(コネクタの通知は伝える)。
    */
-  registerSources(briefs: readonly SourceBrief[]): void {
+  registerSources(
+    briefs: readonly SourceBrief[],
+    options: {
+      /**
+       * 検索プロファイルの文を制御メッセージとして渡しているか(explore.v4 のとき)。true なら、
+       * プロファイルの文があるソースへのヒットなしの制御メッセージで、読み直す先にその制御
+       * メッセージを示す。省略時 false(従来の文言)
+       */
+      readonly profileMessageShown?: boolean;
+    } = {},
+  ): void {
     for (const brief of briefs) {
       this.#specs.set(brief.sourceId, {
         profile: brief.searchProfile,
         supportedFilters:
           brief.filtersDeclared === true ? new Set(brief.supportedFilters ?? []) : undefined,
+        profileShown:
+          options.profileMessageShown === true &&
+          searchProfileSentences(brief.searchProfile) !== undefined,
       });
     }
   }
@@ -228,7 +244,13 @@ export class SearchLog {
         // 繰り返しには検索の仕様の判定を重ねない(初回で知らせている)
         return [duplicateSearchNotice(attempt)];
       case "no_hits":
-        return [noHitsNotice(attempt), ...this.#specNotices(observation, query, filters, outcome)];
+        return [
+          noHitsNotice({
+            ...attempt,
+            profileShown: this.#specs.get(observation.source)?.profileShown === true,
+          }),
+          ...this.#specNotices(observation, query, filters, outcome),
+        ];
       case "no_new_documents":
         return [
           noNewDocumentsNotice(attempt),

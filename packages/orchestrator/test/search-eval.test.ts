@@ -464,6 +464,33 @@ describe("dev-search-eval(CLI)", () => {
     expect(later.filter((m) => m.includes("語数の上限を超えたため"))).toHaveLength(1);
   });
 
+  it("--spec-delivery split: 検索プロファイルの文と補足だけの summary が探索 LLM に渡り、0 件の制御メッセージは検索の仕様の制御メッセージを指す", async () => {
+    const llm = new ScriptedLlmClient(exploreScript(() => "存在しない語ZQX"));
+    const deps = { env: {}, createLlmClient: () => llm };
+    const ok = io();
+    const code = await runDevSearchEval(
+      [
+        "--modes", "esa", "--spec-delivery", "split", "--conditions", "orchestrator-utterance",
+        "--only", "ki-inc-0412",
+        "--llm", "openai-compatible", "--llm-base-url", "http://127.0.0.1:9/v1", "--model", "m1",
+      ],
+      ok.io,
+      deps,
+    );
+    expect(code).toBe(0);
+    expect(ok.out.join("\n")).toContain("| esa/split | 3 発言→探索LLM |");
+    const first = JSON.stringify(llm.requests.find((r) => r.messages.length === 1)?.messages[0]?.content);
+    expect(first).toContain("各ソースの検索の仕様");
+    expect(first).toContain("query の中で使える演算子は OR(いずれかを含む)");
+    expect(first).toContain("検索の仕様の補足(esa 型を模した開発用の方式)");
+    expect(first).toContain("OR は空白による結合より先に結び付く");
+    // summary の自由文(プロファイルと重複する記述)は入らない
+    expect(first).not.toContain("検索の仕様(esa 型を模した");
+    expect(first).not.toContain("並び順はタイトルに一致した語の数が多い順");
+    const later = llm.requests.filter((r) => r.messages.length > 1).map((r) => JSON.stringify(r.messages));
+    expect(later.some((m) => m.includes("「各ソースの検索の仕様」の制御メッセージにある"))).toBe(true);
+  });
+
   it("不正な引数は 2", async () => {
     for (const argv of [
       ["--modes", "solr"],

@@ -742,8 +742,11 @@ export class Orchestrator {
       maxIterations,
     };
     // 検索の仕様に照らした判定の材料(検証済みの describe 結果。searchFeedback が有効なときだけ
-    // 制御メッセージになる)
-    state.searchLog.registerSources(context.discovery.briefs);
+    // 制御メッセージになる)。検索プロファイルの文は v4 のときだけ最初の user ターンに置く
+    // (buildFirstUserContent)ため、ヒットなしの制御メッセージが読み直す先もそれに合わせる
+    state.searchLog.registerSources(context.discovery.briefs, {
+      profileMessageShown: this.#promptVersion === "explore.v4",
+    });
     return this.#loop(conversation, state, signal);
   }
 

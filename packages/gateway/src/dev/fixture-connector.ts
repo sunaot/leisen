@@ -18,7 +18,7 @@
  *   snippet は一致箇所の周辺を MAX_SNIPPET_CHARS 以内で切り出す。評価用に、実ソースの検索の
  *   仕様を模した方式(esa / redmine / github)を settings.searchMode で選べる(search-modes.ts。
  *   方式の仕様は describe の summary の自由文と検索プロファイルで伝え、どちらを使うかを
- *   settings.specDelivery で選べる。both / profile では search が通知 notices も返す)
+ *   settings.specDelivery で選べる。both / profile / split では search が通知 notices も返す)
  * - コーパスに、乱数の種を固定して生成した無関係な文書を足せる(settings.synthetic、
  *   synthetic-corpus.ts。検索の適合率を測るための規模の確保)
  * - fetch: 本文を pageChars 文字(コードポイント)ごとにページングする
@@ -66,6 +66,7 @@ import {
   searchModeNotices,
   searchModeProfile,
   searchModeSpec,
+  searchModeSpecSupplement,
   type DevFixtureDocumentKind,
   type DevFixtureSearchMode,
   type DevFixtureSpecDelivery,
@@ -340,7 +341,7 @@ export class DevFixtureConnector implements Connector {
   private readonly redmineAllWords: boolean;
   /** describe で返す検索プロファイル(伝え方が summary なら返さない) */
   private readonly searchProfile: SearchProfile | undefined;
-  /** search で通知を返すか(伝え方が both / profile) */
+  /** search で通知を返すか(伝え方が both / profile / split) */
   private readonly returnsNotices: boolean;
   private readonly now: () => number;
 
@@ -389,8 +390,14 @@ export class DevFixtureConnector implements Connector {
     const planOptions = { redmineAllWords: this.redmineAllWords };
     const delivery = options.specDelivery ?? defaultSpecDelivery(this.searchMode);
     // 既定の方式は summary を変えない(検索の仕様の文がない)。ほかの方式は、伝え方が summary /
-    // both なら検索の仕様を日本語で足し、profile なら内容の説明だけにする
-    const spec = delivery === "profile" ? "" : searchModeSpec(this.searchMode, planOptions);
+    // both なら検索の仕様を日本語で足し、profile なら内容の説明だけ、split なら検索プロファイルで
+    // 表せない補足だけを足す
+    const spec =
+      delivery === "profile"
+        ? ""
+        : delivery === "split"
+          ? searchModeSpecSupplement(this.searchMode, planOptions)
+          : searchModeSpec(this.searchMode, planOptions);
     this.summary = spec === "" ? contentSummary : `${contentSummary}\n${spec}`;
     this.searchProfile =
       delivery === "summary" ? undefined : searchModeProfile(this.searchMode, planOptions);
