@@ -8,5 +8,6 @@
 | 2026-10-15 | [2026-10-15-credential-locality.html](2026-10-15-credential-locality.html) | 資格情報の置き場所。bearer token の根本的な困難、設計空間、標準・製品・事故の実例、ローカル寄せの案の評価 | ADR-022 |
 | 2026-10-19 | [2026-10-19-auth-methods-comparison.html](2026-10-19-auth-methods-comparison.html) | 個人認可の方式比較。Token Vault / IdP トークン方式 / キーチェーンと MCP クライアント方式 / ESC 方式の実現方法、要件、評価、論点(2026-10-20 改訂) | ADR-022 |
 | 2026-11-14 | [2026-11-14-token-store-boundary.html](2026-11-14-token-store-boundary.html) | Token Store の境界。ADR-022 確認事項 3 の文脈、論点、選択肢の空間(A / A' / B / B'' ほか)、A と B の位置付け、B へ移る判断基準 | ADR-022 / ADR-005 |
+| 2026-11-26 | [2026-11-26-agent-definition-and-eval-harness.html](2026-11-26-agent-definition-and-eval-harness.html) | 探索の調整を繰り返せる構造。現状の問題、ランタイムとエージェント定義の分離、実験環境と実行環境、既定と固定、検査(形式・達成・禁止)、評価の 3 つの層、pass^k、試行結果に記録する版 | ADR-026 / T-027 / T-028 |
 
 2026-10-14 と 10-15 のメモで「封緘」「開封」と呼んでいるものは、10-19 のメモと ADR-022 で ESC(encrypted self-contained credential)と「復号」に呼び直した。
