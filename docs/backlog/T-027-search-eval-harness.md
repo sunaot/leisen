@@ -60,3 +60,4 @@ T-007(Orchestrator)、T-022(dev-eval の質問セットと集計)。T-008(評価
 
 ## 進捗の記録
 - 2026-11-26: 開発用コネクタの模擬の方式(esa 型・Redmine 型・GitHub 型)に、模擬の実装と一致する検索プロファイル(根拠は `tested`)と通知(Redmine 型の `terms_dropped`、esa 型の `operator_ignored`)を持たせ、検索の仕様の伝え方を `settings.specDelivery` / `dev-search-eval --spec-delivery`(`summary` / `both` / `profile`)で切り替えられるようにした。haiku・条件 3・各 3 回で 3 通りを比べた結果は `docs/eval/2026-11-26-search-eval-spec-delivery-haiku.md`(差は試行ごとのばらつきと同じ程度。esa 型の `operator_ignored` の条件が広すぎる点を記録)
+- 2026-11-26: 4 つ目の伝え方 `split`(検索プロファイル + 通知 + `summary` には内容の説明と、検索プロファイルの項目で表せない補足だけ。`searchModeSpecSupplement`)を足した。模擬の esa 型の `operator_ignored` は、`(` で始まる語と `)` で終わる語の組があるときだけ出すように直した(括弧を含む題名では出さない)。haiku・条件 3・各 3 回で `split` と、同じコードで流し直した `summary` を比べた結果は `docs/eval/2026-11-26-search-eval-spec-delivery-split-haiku.md`(esa 型の recall@1 は `split` 86% / `summary` 78% だが回ごとの範囲が重なり、Redmine 型は 81% / 83% で同程度。前回の `profile` で減った esa 型の OR の使用は 12 回から 23 回に一部戻った。同じ条件の `summary` が前回と今回で最大 7 ポイント動いた)
