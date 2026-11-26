@@ -27,7 +27,7 @@ import {
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
-import { firstHit } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched, firstHit } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -152,6 +152,7 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
     const { harness } = await setup();
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "経費精算" } }]),
+      fetchFirstHit,
       () =>
         scriptedSubmit({
           answer: "経費精算の締め日は毎月10日です。",
@@ -185,8 +186,9 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
     const { harness } = await setup();
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      fetchFirstHit,
       (context) => {
-        const hit = firstHit(context);
+        const hit = firstFetched(context);
         return scriptedSubmit({
           answer: "経費精算の締め日は毎月25日です。",
           citations: [
@@ -292,8 +294,9 @@ describe("受け入れ条件2: シナリオ(実 Gateway)", () => {
     const { harness } = await setup();
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      fetchFirstHit,
       (context) => {
-        const hit = firstHit(context);
+        const hit = firstFetched(context);
         return scriptedSubmit({
           // `<i>:</i>` を除くと参照定義が成立する(手順 2〜4 の後に現れる構文)
           answer: "経費精算の締め日は毎月25日です。\n\n[r]<i>:</i> /api/logout\n\n[押す][r]",

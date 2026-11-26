@@ -26,7 +26,13 @@
  *   照合用の申告で、一致しなければ run は error(user_mismatch)。省略時は照合しない
  * - --config は deployment.yaml(orchestrator セクションの maxIterations / costLimitPerQuery を
  *   探索の設定にする。--max-iterations が優先)。省略すると既定の設定で動く。citedDocIds の
- *   記録方針は Gateway がかける(ADR-019 決定5)ため、ここでは読まない
+ *   記録方針は Gateway がかける(ADR-019 決定5)ため、ここでは読まない。--json の searchesTried に
+ *   query と filters を載せるのは、--config で永続化できないソース(Slack 系)がないと確かめられた
+ *   ときだけ(--config がなければ除く。不変条件7、ADR-026 決定5)
+ * - --explore-prompt explore.v3|explore.v4 と --search-feedback on|off は開発・評価用(T-024 の
+ *   v3 / v4 の比較。dev-eval の `--` 以降に渡す。既定は explore.v4 で、2026-11-26 に v3 から
+ *   上げた)。本番で版を切り替えさせないため、NODE_ENV=production では引数の不備として拒否する
+ *   (leisen-ask serve には出さない)
  *
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
@@ -45,7 +51,7 @@ import {
   DeploymentConfigError,
   loadDeploymentConfig,
 } from "@leisen/gateway";
-import type { Answer } from "../answer.js";
+import { withoutSearchQueries, type Answer } from "../answer.js";
 import {
   orchestratorSettingsSchema,
   type LlmBackendConfigInput,
@@ -70,6 +76,12 @@ import type {
 } from "../llm/types.js";
 import { Orchestrator } from "../orchestrator.js";
 import {
+  EXPLORE_PROMPT_VERSION,
+  EXPLORE_PROMPT_VERSIONS,
+  isExplorePromptVersion,
+  type ExplorePromptVersion,
+} from "../prompt.js";
+import {
   ORCHESTRATOR_CREDENTIAL_DEV_DEFAULT_WARNING,
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   resolveOrchestratorCredential,
@@ -80,7 +92,13 @@ import {
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
-import { runServe, settingsFromDeployment, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import {
+  nonPersistableSourceIds,
+  runServe,
+  settingsFromDeployment,
+  waitForTerminationSignal,
+  type ServeEndpoint,
+} from "./serve.js";
 import { runDoctor } from "./doctor.js";
 import {
   INSECURE_UPSTREAM_HINT,
@@ -93,14 +111,18 @@ import {
 export const USAGE = [
   "usage: leisen-ask --gateway <MCPエンドポイントURL> [--token <セッショントークン>]",
   "              [--model <モデルID>] [--max-iterations <N>] [--effort low|medium|high|xhigh|max]",
+  "              [--explore-prompt <版>] [--search-feedback on|off]",
   "              [--user-id <userId>] [--config <deployment.yaml>]",
   "              [--json] <質問文>",
   "  セッショントークンは環境変数 LEISEN_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(Gateway が認証した利用者と食い違えば run は error になります)。",
   "  --config の orchestrator セクション(maxIterations / costLimitPerQuery / runTimeoutSec)を探索の設定にします(--max-iterations が優先)。",
+  `  --explore-prompt ${EXPLORE_PROMPT_VERSIONS.join("|")} は探索プロンプトの版(開発・評価用。既定 ${EXPLORE_PROMPT_VERSION}。NODE_ENV=production では使えません)。`,
+  "  --search-feedback on|off は検索の状況を返す制御メッセージ(開発・評価用。既定は explore.v4 のときだけ on)。",
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
+  "  --json の searchesTried に query と filters を載せるのは、--config で永続化できないソース(Slack 系)がないと確かめられたときだけです(--config がなければ除きます)。",
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
   "  MCP サーバーとして起動する: leisen-ask serve --gateway <URL> --config <deployment.yaml>(詳細は leisen-ask serve --help)",
@@ -192,6 +214,10 @@ interface CliArgs {
   readonly json: boolean;
   /** --max-iterations(--config の値より優先) */
   readonly maxIterations: number | undefined;
+  /** --explore-prompt(開発・評価用。T-024 の v3 / v4 の比較) */
+  readonly explorePrompt: ExplorePromptVersion | undefined;
+  /** --search-feedback on|off(開発・評価用) */
+  readonly searchFeedback: boolean | undefined;
   /** Gateway と共有する Orchestrator の資格情報(秘密。表示しない) */
   readonly orchestratorCredential: string;
   readonly credentialSource: "env" | "dev-default";
@@ -243,6 +269,35 @@ function parseCliArgs(
     }
   }
 
+  // 探索プロンプトの版と検索の状況の制御メッセージは開発・評価用(本番で版を切り替えさせない。
+  // prompt.ts の運用規則、T-024)
+  const promptOption = values["explore-prompt"];
+  const feedbackOption = values["search-feedback"];
+  if (
+    (promptOption !== undefined || feedbackOption !== undefined) &&
+    env["NODE_ENV"] === "production"
+  ) {
+    throw new UsageError(
+      "--explore-prompt / --search-feedback は開発・評価用のため、NODE_ENV=production では使えません。",
+    );
+  }
+  let explorePrompt: ExplorePromptVersion | undefined;
+  if (promptOption !== undefined) {
+    if (!isExplorePromptVersion(promptOption)) {
+      throw new UsageError(
+        `--explore-prompt は ${EXPLORE_PROMPT_VERSIONS.join(" / ")} のいずれかで指定してください。`,
+      );
+    }
+    explorePrompt = promptOption;
+  }
+  let searchFeedback: boolean | undefined;
+  if (feedbackOption !== undefined) {
+    if (feedbackOption !== "on" && feedbackOption !== "off") {
+      throw new UsageError("--search-feedback は on / off で指定してください。");
+    }
+    searchFeedback = feedbackOption === "on";
+  }
+
   const llm = parseLlmCliOptions(values, env, { allowInsecureHttp: insecure.enabled });
   if (!llm.ok) {
     throw new UsageError(llm.message);
@@ -262,6 +317,8 @@ function parseCliArgs(
     config: values.config,
     json: values.json === true,
     maxIterations,
+    explorePrompt,
+    searchFeedback,
     orchestratorCredential: credential.credential,
     credentialSource: credential.source,
     llm: llm.config,
@@ -277,6 +334,8 @@ function parseArgsStrict(argv: readonly string[]) {
       token: { type: "string" },
       model: { type: "string" },
       "max-iterations": { type: "string" },
+      "explore-prompt": { type: "string" },
+      "search-feedback": { type: "string" },
       effort: { type: "string" },
       llm: { type: "string" },
       "llm-base-url": { type: "string" },
@@ -452,9 +511,15 @@ export async function runCli(
 
   // --config の orchestrator セクションを探索の設定にする(--max-iterations が優先)
   let settings: OrchestratorSettingsInput = {};
+  // --json の searchesTried に query と filters を載せるのは、--config で永続化できないソース
+  // (Slack 系)がないと確かめられたときだけ。--config がない(Gateway の構成を確かめられない)
+  // ときと、永続化できないソースが有効なときは除く(安全側。ADR-026 決定5、不変条件7)
+  let omitSearchQueries = true;
   if (args.config !== undefined) {
     try {
-      settings = settingsFromDeployment(loadDeploymentConfig(resolve(args.config)));
+      const deployment = loadDeploymentConfig(resolve(args.config));
+      settings = settingsFromDeployment(deployment);
+      omitSearchQueries = nonPersistableSourceIds(deployment).length > 0;
     } catch (error) {
       await gateway.close();
       // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)
@@ -470,6 +535,12 @@ export async function runCli(
 
   if (args.maxIterations !== undefined) {
     settings = { ...settings, maxIterations: args.maxIterations };
+  }
+  if (args.explorePrompt !== undefined) {
+    settings = { ...settings, explorePrompt: args.explorePrompt };
+  }
+  if (args.searchFeedback !== undefined) {
+    settings = { ...settings, searchFeedback: args.searchFeedback };
   }
 
   let orchestrator: Orchestrator;
@@ -498,7 +569,11 @@ export async function runCli(
     if (hint !== undefined) {
       io.stderr(hint);
     }
-    io.stdout(args.json ? JSON.stringify(answer, null, 2) : renderAnswer(answer));
+    io.stdout(
+      args.json
+        ? JSON.stringify(omitSearchQueries ? withoutSearchQueries(answer) : answer, null, 2)
+        : renderAnswer(answer),
+    );
     return answer.outcome === "error" ? 1 : 0;
   } catch (error) {
     if (error instanceof OrchestratorError) {

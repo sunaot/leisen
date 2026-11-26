@@ -10,6 +10,12 @@
  *   (URL を残さない)→ 終了を申告する(POST /runs/{runId}/finish。失敗したら回答を
  *   返さない)→ Answer を返す
  *
+ * ask の追加の引数(ADR-026、ask-input.ts): userMessage / context / keepTerms / sources / period は
+ * 最初の user ターンの質問の後ろに利用者の入力の区分として置く(制御メッセージにしない)。sources は
+ * run の有効ソースを絞り(指定外のソースへの呼び出しは Gateway に送らない)、depth は maxIterations を
+ * 設定値以下で選ぶ。run API には文字列を含む引数だけを申告する。クエリは探索 LLM が書く。
+ * 返り値の searchesTried(searches-tried.ts)は Gateway に送った search を順に載せる。
+ *
  * 監査の書き手は Gateway(ADR-019)。Orchestrator は AnswerRun を書かず、run API で申告する
  * だけで、監査ストアに触れない。AnswerRun.userId は Gateway が認証した値で書かれ、ここから
  * 指定できない。引用 docId の記録の規則(Slack・プライベートスコープ)も Gateway がかける。
@@ -33,6 +39,11 @@
  * 終了条件:
  * - submit_answer が呼ばれた(同じターンの他のツール呼び出しは実行しない)
  * - submit_answer を呼ばずにターンを終えた: 1回だけ催促し、それでも提出しなければ unresolved
+ * - 検索の状況の制御メッセージが有効(settings.searchFeedback、v4 の既定)なとき、ヒットを
+ *   受け取ったのに1件も fetch せずに submit_answer を呼んだら、1回だけ差し戻す
+ *   (MAX_FETCH_PUSHBACKS。上限到達後の最終ターンでは差し戻さない)。各ツールターンの後には
+ *   0 件・重複・既出のみの通知と、試した検索の一覧・残りのターン数を制御メッセージで返す
+ *   (search-feedback.ts。query の一覧は会話の中だけに置き、warnings・申告に載せない)
  * - 上限(maxIterations / runTimeoutMs / costLimitPerQuery)に達した: 探索を止め、
  *   その時点の情報で submit_answer を促す最終ターンを1回だけ行う。ツール呼び出しの
  *   件数の上限(maxToolCallsPerTurn / maxToolCallsPerRun)を超えた分は実行せず、
@@ -55,6 +66,14 @@ import {
   type SkippedSource,
   type SubmitAnswerInput,
 } from "./answer.js";
+import {
+  askExtrasWithinLimits,
+  buildAskInputSections,
+  maxIterationsForDepth,
+  normalizeAskExtras,
+  startRunQuestion,
+  type AskInputExtras,
+} from "./ask-input.js";
 import { EvidenceLedger, verifyCitations } from "./citations.js";
 import { failureTextFor } from "./failure-text.js";
 import {
@@ -85,16 +104,23 @@ import { attemptsOf, type LlmClient, type LlmTurn } from "./llm/types.js";
 import {
   buildFirstUserContent,
   buildSystemPrompt,
+  FETCH_PUSHBACK_MESSAGE,
   finalTurnInstruction,
   loadExplorePrompt,
+  NOT_EXECUTED_WITH_SUBMIT_ERROR,
   NUDGE_MESSAGE,
+  SEARCH_SPEC_SOURCE_ID_PATTERN,
   sourceBriefFromDescribe,
+  SUBMIT_RETURNED_ERROR,
   TOOL_ERROR_PREFACE,
   TOOL_RESULT_PREFACE,
+  type ExplorePromptVersion,
   type LimitReason,
   type SourceBrief,
 } from "./prompt.js";
 import { sanitizeAnswerText } from "./sanitize.js";
+import { MAX_FETCH_PUSHBACKS, SearchLog, type ToolObservation } from "./search-feedback.js";
+import { SearchesTriedLog } from "./searches-tried.js";
 import {
   buildClaudeTools,
   isGatewayToolName,
@@ -174,13 +200,21 @@ export type UserFeedback = "resolved" | "unresolved";
 export interface OrchestratorOptions {
   readonly llm: LlmClient;
   readonly settings?: OrchestratorSettingsInput;
-  /** system prompt 固定部の差し替え(評価用)。省略時は prompts/explore.v3.md */
+  /**
+   * system prompt 固定部の差し替え(評価用)。省略時は settings.explorePrompt の版
+   * (prompts/<版>.md、既定 explore.v4)。USAGE_HINTS・前置き・制御メッセージは
+   * settings.explorePrompt の版に従う
+   */
   readonly systemPrompt?: string;
   /** テスト用の時計 */
   readonly now?: () => number;
 }
 
-export interface RunInput {
+/**
+ * run の入力。question 以外の `ask` の追加の引数(userMessage / context / keepTerms / sources /
+ * period / depth。ADR-026 決定1・2)は省略可能で、省略すると探索 LLM への入力は従来と同じ。
+ */
+export interface RunInput extends AskInputExtras {
   readonly question: string;
   /**
    * 呼び出し元(利用者を認証したチャットUIのバックエンド等)が申告する質問者の userId
@@ -280,6 +314,8 @@ interface Conversation {
   readonly tools: readonly Anthropic.Tool[];
   readonly messages: Anthropic.MessageParam[];
   readonly activeSources: ReadonlySet<string>;
+  /** この run の maxIterations(depth で設定値以下に選んだ値。ADR-026 決定1) */
+  readonly maxIterations: number;
 }
 
 /** 1 run の可変状態。 */
@@ -289,6 +325,16 @@ class RunState {
   readonly warnings: string[] = [];
   readonly skipped = new Map<string, SkippedSource>();
   readonly searched = new Set<string>();
+  /**
+   * 検索の状況の記録(制御メッセージの材料。query を含むため run の間だけ持ち、warnings・
+   * 回答・run API の申告には渡さない。不変条件7)
+   */
+  readonly searchLog = new SearchLog();
+  /**
+   * 返り値の試した検索(ADR-026 決定3)。query を含むため、永続化できないソースが有効な構成では
+   * 呼び出し側が withoutSearchQueries で除く(決定5)。run API の申告には渡さない
+   */
+  readonly searchesTried = new SearchesTriedLog();
   /** tools/list が返したソース(deployment.yaml の順) */
   allSources: readonly string[] = [];
   /** Gateway へ送ったツール呼び出しの数(describe を含む) */
@@ -333,12 +379,24 @@ export class Orchestrator {
   readonly #llm: LlmClient;
   readonly #systemPrompt: string | undefined;
   readonly #now: () => number;
+  /** 探索プロンプトの版(固定部・USAGE_HINTS・前置き・上限の制御メッセージ) */
+  readonly #promptVersion: ExplorePromptVersion;
+  /** 検索の状況を返す制御メッセージと差し戻し(search-feedback.ts)を使うか */
+  readonly #searchFeedback: boolean;
 
   constructor(options: OrchestratorOptions) {
     this.settings = orchestratorSettingsSchema.parse(options.settings ?? {});
     this.#llm = options.llm;
     this.#systemPrompt = options.systemPrompt;
     this.#now = options.now ?? Date.now;
+    this.#promptVersion = this.settings.explorePrompt;
+    this.#searchFeedback =
+      this.settings.searchFeedback ?? this.#promptVersion === "explore.v4";
+  }
+
+  /** 実際に使う探索プロンプトの版と、検索の状況の制御メッセージの有無(表示・評価用)。 */
+  get promptProfile(): { readonly version: ExplorePromptVersion; readonly searchFeedback: boolean } {
+    return { version: this.#promptVersion, searchFeedback: this.#searchFeedback };
   }
 
   /**
@@ -366,11 +424,16 @@ export class Orchestrator {
         `question must be 1..${MAX_QUESTION_CHARS} characters`,
       );
     }
+    // 追加の引数(ADR-026)。値はエラー文に出さない
+    const extras = normalizeAskExtras(input);
+    if (!askExtrasWithinLimits(extras, MAX_QUESTION_CHARS)) {
+      throw new OrchestratorError("invalid_input", "ask arguments exceed their limits");
+    }
     const declaredUserId = input.userId;
     if (declaredUserId !== undefined && declaredUserId.trim() === "") {
       throw new OrchestratorError("invalid_input", "userId must not be empty when given");
     }
-    const fixedPrompt = this.#systemPrompt ?? (await loadExplorePrompt());
+    const fixedPrompt = this.#systemPrompt ?? (await loadExplorePrompt(this.#promptVersion));
     const startedMs = this.#now();
     const deadline = new AbortController();
     let timer = setTimeout(() => deadline.abort(), this.settings.runTimeoutMs);
@@ -381,7 +444,10 @@ export class Orchestrator {
     // アクセスしない(fail-closed)
     let started: StartRunResult;
     try {
-      started = await input.gateway.startRun({ question }, { signal: deadline.signal });
+      // 申告する質問は文字列を含む引数だけ(ADR-026 決定4。正規化した JSON は Gateway が作る)
+      started = await input.gateway.startRun(startRunQuestion(question, extras), {
+        signal: deadline.signal,
+      });
     } catch (error) {
       clearTimeout(timer);
       if (deadline.signal.aborted) {
@@ -424,6 +490,7 @@ export class Orchestrator {
         result = await this.#explore(
           {
             question,
+            extras,
             gateway: input.gateway,
             fixedPrompt,
             startedMs,
@@ -560,7 +627,25 @@ export class Orchestrator {
                 if (dispatched.userId !== undefined) {
                   userIds.push(dispatched.userId);
                 }
-                return sourceBriefFromDescribe(sourceId, dispatched.result);
+                {
+                  const brief = sourceBriefFromDescribe(sourceId, dispatched.result);
+                  if (brief.searchSpecRejected !== undefined) {
+                    // 検査に通らない検索の仕様はそのソースの行だけを置かない。警告には値を
+                    // 入れない(規則の名前だけ。ADR-017 追補 1、セキュリティレビュー m-3・m-6)
+                    state.warn(
+                      `ソース ${sourceId} の検索の仕様(searchSpec)は検査に通らなかったため、探索 LLM に渡していません(${brief.searchSpecRejected})。`,
+                    );
+                  } else if (
+                    brief.searchSpec !== undefined &&
+                    !SEARCH_SPEC_SOURCE_ID_PATTERN.test(sourceId)
+                  ) {
+                    // 行の先頭に置けない形の sourceId。検索の仕様が届いていないことを運用者に知らせる
+                    state.warn(
+                      `ソース ${JSON.stringify(sourceId)} は sourceId の形式が検索の仕様の行に使えないため、検索の仕様(searchSpec)を探索 LLM に渡していません。`,
+                    );
+                  }
+                  return brief;
+                }
               case "tool_error": {
                 if (dispatched.userId !== undefined) {
                   userIds.push(dispatched.userId);
@@ -604,6 +689,7 @@ export class Orchestrator {
   async #explore(
     context: {
       readonly question: string;
+      readonly extras: AskInputExtras;
       readonly gateway: GatewayClient;
       readonly fixedPrompt: string;
       readonly startedMs: number;
@@ -615,7 +701,27 @@ export class Orchestrator {
     if (signal.aborted) {
       return unresolved(TIMEOUT_BEFORE_SEARCH_TEXT, "run_timeout");
     }
-    const activeSources = state.allSources.filter((s) => !state.skipped.has(s));
+    const requested = context.extras.sources;
+    if (requested !== undefined) {
+      if (requested.some((sourceId) => !state.allSources.includes(sourceId))) {
+        // 有効でないソースの指定(サーバーは --config で先に拒否する。ここは防御)
+        return failure("unknown_source");
+      }
+      // 利用者の指定による検索範囲の絞り込み(認可判定ではない。不変条件1)。指定外の
+      // ソースは未接続でも案内しない
+      for (const sourceId of [...state.skipped.keys()]) {
+        if (!requested.includes(sourceId)) {
+          state.skipped.delete(sourceId);
+        }
+      }
+    }
+    const activeSources = state.allSources.filter(
+      (s) => !state.skipped.has(s) && (requested === undefined || requested.includes(s)),
+    );
+    const maxIterations = maxIterationsForDepth(
+      context.extras.depth,
+      this.settings.maxIterations,
+    );
     if (activeSources.length === 0) {
       return unresolved(NO_SOURCES_TEXT, "no_searchable_sources");
     }
@@ -626,23 +732,37 @@ export class Orchestrator {
       // system は固定部だけ。ソース一覧(describe 結果)は最初の user ターンにデータとして
       // 渡す(H3。コネクタ由来の文字列を system と同じ権威で読ませない)
       system: buildSystemPrompt(context.fixedPrompt),
-      tools: buildClaudeTools(context.discovery.gatewayTools, activeSources),
+      tools: buildClaudeTools(
+        context.discovery.gatewayTools,
+        activeSources,
+        this.#promptVersion,
+      ),
       messages: [
         {
           role: "user",
           content: buildFirstUserContent({
-            sources: context.discovery.briefs.filter(
-              (brief) => !state.skipped.has(brief.sourceId),
+            sources: context.discovery.briefs.filter((brief) =>
+              activeSources.includes(brief.sourceId),
             ),
             skippedSources: [...state.skipped.values()],
-            maxIterations: this.settings.maxIterations,
+            maxIterations,
             today: localDate(context.startedMs),
             question: context.question,
-          }),
+            promptVersion: this.#promptVersion,
+            maxToolCallsPerTurn: this.settings.maxToolCallsPerTurn,
+          }).concat(
+            // 追加の引数は質問の後ろに利用者の入力の区分として置く(制御メッセージにしない。
+            // ADR-026 決定2)。追加の引数がなければ何も足さない
+            buildAskInputSections(context.extras),
+          ),
         },
       ],
       activeSources: new Set(activeSources),
+      maxIterations,
     };
+    // 非対応のフィルタの判定の材料(検証済みの describe 結果。searchFeedback が有効なときだけ
+    // 制御メッセージになる)
+    state.searchLog.registerSources(context.discovery.briefs);
     return this.#loop(conversation, state, signal);
   }
 
@@ -653,6 +773,7 @@ export class Orchestrator {
   ): Promise<RunOutcome> {
     let toolTurns = 0;
     let nudged = false;
+    let pushbacks = 0;
     for (;;) {
       const pendingLimit: LimitReason | undefined = signal.aborted
         ? "run_timeout"
@@ -662,7 +783,7 @@ export class Orchestrator {
       if (pendingLimit !== undefined) {
         conversation.messages.push({
           role: "user",
-          content: [this.#instruction(pendingLimit)],
+          content: [this.#instruction(pendingLimit, conversation)],
         });
         return this.#finalTurn(conversation, state, pendingLimit);
       }
@@ -672,7 +793,7 @@ export class Orchestrator {
         // 応答前に打ち切った要求は履歴に入らない(追記のみの原則は保たれる)
         conversation.messages.push({
           role: "user",
-          content: [this.#instruction("run_timeout")],
+          content: [this.#instruction("run_timeout", conversation)],
         });
         return this.#finalTurn(conversation, state, "run_timeout");
       }
@@ -686,6 +807,24 @@ export class Orchestrator {
       const action = interpretTurn(message);
       switch (action.kind) {
         case "submit":
+          if (
+            this.#searchFeedback &&
+            pushbacks < MAX_FETCH_PUSHBACKS &&
+            state.searchLog.needsFetchBeforeSubmit()
+          ) {
+            // ヒットを受け取ったのに1件も本文を読まずに提出した: 1回だけ差し戻す。提出は
+            // 受け付けず(tool_result はエラー)、ツールを実行したターンには数えない。上限
+            // 到達後の最終ターン(#finalTurn)では差し戻さない
+            pushbacks += 1;
+            conversation.messages.push({
+              role: "user",
+              content: [
+                ...returnedTurnResults(message),
+                { type: "text", text: FETCH_PUSHBACK_MESSAGE },
+              ],
+            });
+            continue;
+          }
           return this.#finish(action.input, state, undefined, action.ignoredCalls);
         case "invalid_submit":
           return notSubmitted("invalid_answer_submission");
@@ -702,18 +841,23 @@ export class Orchestrator {
         case "tools": {
           let limit: LimitReason | undefined;
           let results: Anthropic.ToolResultBlockParam[];
+          let turnNotices: string[] = [];
           if (state.meter.reached(this.settings.costLimitPerQuery)) {
             limit = "cost_limit_reached";
             results = action.calls.map((call) => notExecuted(call.id, "cost_limit_reached"));
           } else {
             toolTurns += 1;
-            results = await this.#executeTurn(conversation, action.calls, state, signal);
+            const executed = await this.#executeTurn(conversation, action.calls, state, signal);
+            results = executed.results;
             if (state.fatal !== undefined) {
               return failure(state.fatal);
             }
+            // 応答内の順に記録する(並列呼び出しの完了順に依らない)
+            turnNotices = state.searchLog.observeTurn(toolTurns, executed.observations);
+            state.searchesTried.observeTurn(executed.observations);
             if (signal.aborted) {
               limit = "run_timeout";
-            } else if (toolTurns >= this.settings.maxIterations) {
+            } else if (toolTurns >= conversation.maxIterations) {
               limit = "max_iterations_reached";
             }
           }
@@ -721,11 +865,22 @@ export class Orchestrator {
           if (limit !== undefined) {
             conversation.messages.push({
               role: "user",
-              content: [...results, this.#instruction(limit)],
+              content: [...results, this.#instruction(limit, conversation)],
             });
             return this.#finalTurn(conversation, state, limit);
           }
-          conversation.messages.push({ role: "user", content: results });
+          // 検索の状況(0 件・重複・既出のみ・試した検索の一覧と残りのターン数)をツール結果の
+          // 外に制御メッセージとして置く。上限到達のターンは最終ターンの指示だけにする
+          const feedback = this.#searchFeedback
+            ? state.searchLog.render(turnNotices, conversation.maxIterations - toolTurns)
+            : undefined;
+          conversation.messages.push({
+            role: "user",
+            content:
+              feedback !== undefined
+                ? [...results, { type: "text", text: feedback }]
+                : results,
+          });
           continue;
         }
       }
@@ -738,7 +893,7 @@ export class Orchestrator {
     state: RunState,
     limit: LimitReason,
   ): Promise<RunOutcome> {
-    state.warn(limitWarning(limit, this.settings));
+    state.warn(limitWarning(limit, this.settings, conversation.maxIterations));
     const called = await this.#callLlm(
       conversation,
       state,
@@ -805,13 +960,18 @@ export class Orchestrator {
    * maxToolCallsPerRun 件に達した後の分は実行しない(is_error、固定文言)。
    * iteration の採番(#dispatch 内)は同期的に行うので、並列呼び出しでも応答内の順になる。
    */
-  #executeTurn(
+  async #executeTurn(
     conversation: Conversation,
     calls: readonly Anthropic.ToolUseBlock[],
     state: RunState,
     signal: AbortSignal,
-  ): Promise<Anthropic.ToolResultBlockParam[]> {
-    return Promise.all(
+  ): Promise<{
+    readonly results: Anthropic.ToolResultBlockParam[];
+    /** Gateway へ送った search / fetch の観測(応答内の位置に置く。それ以外は undefined) */
+    readonly observations: (ToolObservation | undefined)[];
+  }> {
+    const observations: (ToolObservation | undefined)[] = calls.map(() => undefined);
+    const results = await Promise.all(
       calls.map((call, index) => {
         if (index >= this.settings.maxToolCallsPerTurn) {
           state.turnLimitSkipped += 1;
@@ -826,9 +986,12 @@ export class Orchestrator {
           return Promise.resolve(errorResult(call.id, RUN_TOOL_CALL_LIMIT_ERROR));
         }
         state.llmToolCalls += 1;
-        return this.#executeToolCall(conversation, call, planned, state, signal);
+        return this.#executeToolCall(conversation, call, planned, state, signal, (observation) => {
+          observations[index] = observation;
+        });
       }),
     );
+    return { results, observations };
   }
 
   /** 検証済みの1件のツール呼び出しを Gateway に送り、tool_result を作る。 */
@@ -838,6 +1001,7 @@ export class Orchestrator {
     planned: Extract<PlannedCall, { ok: true }>,
     state: RunState,
     signal: AbortSignal,
+    observe: (observation: ToolObservation) => void,
   ): Promise<Anthropic.ToolResultBlockParam> {
     return this.#dispatch(conversation.gateway, state, planned.tool, planned.args, signal).then(
       (dispatched) => {
@@ -850,6 +1014,16 @@ export class Orchestrator {
           state.fatal = "user_mismatch";
           return errorResult(call.id, USER_MISMATCH_ERROR);
         }
+        if (planned.tool === "search" || planned.tool === "fetch") {
+          // 検索の状況の材料(LLM に渡す結果と同じもの。権限外と不在の区別は持たない)
+          observe({
+            tool: planned.tool,
+            source: planned.source,
+            args: planned.args,
+            ok: dispatched.kind === "ok",
+            ...(dispatched.kind === "ok" ? { result: dispatched.result } : {}),
+          });
+        }
         switch (dispatched.kind) {
           case "ok":
             state.searched.add(planned.source);
@@ -861,7 +1035,12 @@ export class Orchestrator {
             return dataResult(call.id, {
               tool: planned.tool,
               source: planned.source,
-              result: dispatched.result,
+              // search の notices(connector-sdk v0.6。v0.7 で廃止、ADR-025 追補 2)は、v0.6 の
+              // Gateway から届いてもツール結果のデータに入れない(LLM に渡さない)
+              result:
+                planned.tool === "search"
+                  ? withoutSearchNotices(dispatched.result)
+                  : dispatched.result,
             });
           case "tool_error":
             if (dispatched.error.errorClass === "source_not_connected") {
@@ -1024,6 +1203,7 @@ export class Orchestrator {
         ...(estimatedCost !== undefined ? { estimatedCost } : {}),
       },
       warnings: [...state.warnings],
+      searchesTried: [...state.searchesTried.entries],
     });
   }
 
@@ -1037,10 +1217,10 @@ export class Orchestrator {
     );
   }
 
-  #instruction(limit: LimitReason): Anthropic.TextBlockParam {
+  #instruction(limit: LimitReason, conversation: Conversation): Anthropic.TextBlockParam {
     return {
       type: "text",
-      text: finalTurnInstruction(limit, this.settings.maxIterations),
+      text: finalTurnInstruction(limit, conversation.maxIterations),
     };
   }
 }
@@ -1192,6 +1372,23 @@ function errorResult(
   };
 }
 
+/**
+ * 差し戻した応答の tool_result(応答内のすべての tool_use に1つずつ返す)。submit_answer は
+ * 「差し戻した」エラー、同じターンの他の呼び出しは実行しなかったエラー。
+ */
+function returnedTurnResults(message: Anthropic.Message): Anthropic.ToolResultBlockParam[] {
+  return message.content
+    .filter((block): block is Anthropic.ToolUseBlock => block.type === "tool_use")
+    .map((block) =>
+      errorResult(
+        block.id,
+        block.name === SUBMIT_ANSWER_TOOL_NAME
+          ? SUBMIT_RETURNED_ERROR
+          : NOT_EXECUTED_WITH_SUBMIT_ERROR,
+      ),
+    );
+}
+
 function notExecuted(toolUseId: string, limit: LimitReason): Anthropic.ToolResultBlockParam {
   return errorResult(toolUseId, {
     errorClass: limit,
@@ -1227,10 +1424,14 @@ function notSubmitted(failureReason: string): RunOutcome {
   return unresolved(`${NO_CITATION_NOTICE}\n\n${NOT_SUBMITTED_TEXT}`, failureReason);
 }
 
-function limitWarning(limit: LimitReason, settings: OrchestratorSettings): string {
+function limitWarning(
+  limit: LimitReason,
+  settings: OrchestratorSettings,
+  maxIterations: number,
+): string {
   switch (limit) {
     case "max_iterations_reached":
-      return `探索の上限(maxIterations=${settings.maxIterations})に達したため、その時点の情報で回答しています。`;
+      return `探索の上限(maxIterations=${maxIterations})に達したため、その時点の情報で回答しています。`;
     case "run_timeout":
       return `探索の時間上限(runTimeoutMs=${settings.runTimeoutMs})に達したため、その時点の情報で回答しています。`;
     case "cost_limit_reached":
@@ -1258,4 +1459,19 @@ function localDate(ms: number): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * search の結果から notices を除く(形が想定外ならそのまま)。notices は connector-sdk v0.7 で
+ * 廃止した(ADR-025 追補 2)。v0.6 の Gateway につながった場合に備えて残す
+ */
+function withoutSearchNotices(result: unknown): unknown {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return result;
+  }
+  if (!Object.hasOwn(result, "notices")) {
+    return result;
+  }
+  const { notices: _notices, ...rest } = result as Record<string, unknown>;
+  return rest;
 }

@@ -32,10 +32,30 @@ export const DEFAULT_RUN_REQUEST_LIMITS: RunRequestLimits = {
   maxIdChars: 512,
 };
 
-/** `POST /runs` の本文。 */
+/**
+ * `ask` の追加の引数のうち run API で申告するもの(ADR-026 決定1・4)の上限。Orchestrator の
+ * `ask` の上限と同じ値(context 1,000 字、keepTerms 10 個 × 100 字)。userMessage の上限は
+ * maxQuestionChars と同じ。
+ */
+export const RUN_QUESTION_CONTEXT_MAX_CHARS = 1_000;
+export const RUN_QUESTION_KEEP_TERMS_MAX = 10;
+export const RUN_QUESTION_KEEP_TERM_MAX_CHARS = 100;
+
+/**
+ * `POST /runs` の本文。question に加えて、`ask` の入力のうち文字列を含む引数(userMessage /
+ * context / keepTerms。ADR-026 決定4)を受ける。どれも上限をかける(決定4: run API の上限は
+ * 追加の引数を含めた大きさにかける。本文全体のバイト数の上限は HTTP 層)。
+ */
 export function startRunRequestSchema(limits: RunRequestLimits = DEFAULT_RUN_REQUEST_LIMITS) {
   return z.strictObject({
     question: z.string().min(1).max(limits.maxQuestionChars),
+    userMessage: z.string().min(1).max(limits.maxQuestionChars).optional(),
+    context: z.string().min(1).max(RUN_QUESTION_CONTEXT_MAX_CHARS).optional(),
+    keepTerms: z
+      .array(z.string().min(1).max(RUN_QUESTION_KEEP_TERM_MAX_CHARS))
+      .min(1)
+      .max(RUN_QUESTION_KEEP_TERMS_MAX)
+      .optional(),
     /** 実行区分の申告(ADR-015)。意味の検証は呼び出し側 */
     executionClass: z.string().min(1).max(64).optional(),
     /** 呼び出し主体の申告(ADR-015)。形の検証は呼び出し側(actorSchema) */
@@ -43,6 +63,36 @@ export function startRunRequestSchema(limits: RunRequestLimits = DEFAULT_RUN_REQ
   });
 }
 export type StartRunRequest = z.infer<ReturnType<typeof startRunRequestSchema>>;
+
+/** run API で申告された質問(ask の入力のうち文字列を含む引数)。 */
+export interface RunQuestion {
+  readonly question: string;
+  readonly userMessage?: string | undefined;
+  readonly context?: string | undefined;
+  readonly keepTerms?: readonly string[] | undefined;
+}
+
+/**
+ * 申告された質問を正規化した JSON にする(ADR-026 決定4、ADR-019 への追補)。キーを辞書順に
+ * 並べ、空白を含まない(JSON.stringify の既定)。省略された引数のキーは出さない。生クエリ表の
+ * rawQuery と、AnswerRun の最終質問 digest(sha256)はこの文字列から作る。追加の引数がない
+ * 呼び出しも `{"question":"…"}` の形になる(昇格判定レポートは常に JSON として読める)。
+ */
+export function canonicalRunQuestion(input: RunQuestion): string {
+  const entries: [string, unknown][] = [];
+  if (input.context !== undefined) {
+    entries.push(["context", input.context]);
+  }
+  if (input.keepTerms !== undefined) {
+    entries.push(["keepTerms", [...input.keepTerms]]);
+  }
+  entries.push(["question", input.question]);
+  if (input.userMessage !== undefined) {
+    entries.push(["userMessage", input.userMessage]);
+  }
+  // entries は辞書順(context < keepTerms < question < userMessage)
+  return JSON.stringify(Object.fromEntries(entries));
+}
 
 /** `POST /runs/{runId}/finish` の本文。 */
 export function finishRunRequestSchema(limits: RunRequestLimits = DEFAULT_RUN_REQUEST_LIMITS) {

@@ -420,6 +420,10 @@ async function serveMcpRequest(
       ? { createGatewayClient: deps.createGatewayClient }
       : {}),
     ...(deps.feedbackTimeoutMs !== undefined ? { feedbackTimeoutMs: deps.feedbackTimeoutMs } : {}),
+    // ask の sources に指定できるソース(ADR-026 決定1。有効なソースの一覧は利用者によらない)
+    ...(deps.sourcePolicy !== undefined
+      ? { knownSourceIds: deps.sourcePolicy.knownSourceIds }
+      : {}),
   });
   // sessionIdGenerator を渡さない=ステートレスモード(Mcp-Session-Id を発行・検証しない)
   const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });

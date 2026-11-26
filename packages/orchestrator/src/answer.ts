@@ -50,6 +50,34 @@ export const answerUsageSchema = z.strictObject({
 });
 export type AnswerUsage = z.infer<typeof answerUsageSchema>;
 
+/** 試した検索の結果(ADR-026 決定3)。権限外と不在を区別する値は持たない(ADR-012)。 */
+export const searchTriedOutcomeSchema = z.enum(["hits", "no_hits", "error"]);
+export type SearchTriedOutcome = z.infer<typeof searchTriedOutcomeSchema>;
+
+/** 試した検索の filters(SearchFilters のキーで、値が文字列のものだけ)。 */
+export const searchTriedFiltersSchema = z.strictObject({
+  updatedAfter: z.string().optional(),
+  updatedBefore: z.string().optional(),
+  container: z.string().optional(),
+  author: z.string().optional(),
+});
+
+/**
+ * 試した検索 1 件(ADR-026 決定3)。run 内で探索 LLM が呼び、Gateway に送った search を順に
+ * 載せる。query と filters は、永続化できないソース(Slack)が有効な構成では載せない
+ * (決定5。withoutSearchQueries)。
+ */
+export const searchTriedSchema = z.strictObject({
+  sourceId: z.string().min(1),
+  /** 探索 LLM が渡した query */
+  query: z.string().optional(),
+  filters: searchTriedFiltersSchema.optional(),
+  outcome: searchTriedOutcomeSchema,
+  /** その run で初めて返った文書の数(認可済みで返ったヒットから数える。ADR-012) */
+  newDocuments: z.number().int().min(0),
+});
+export type SearchTried = z.infer<typeof searchTriedSchema>;
+
 export const answerSchema = z.strictObject({
   runId: z.string().min(1),
   answer: z.string(),
@@ -62,8 +90,31 @@ export const answerSchema = z.strictObject({
   outcome: answerOutcomeSchema,
   usage: answerUsageSchema,
   warnings: z.array(z.string()),
+  /**
+   * 試した検索(ADR-026 決定3)。Orchestrator は常に載せる(検索しなければ空の配列)。
+   * 省略可能なのは、この項目より前の形の Answer を読めるようにするため
+   */
+  searchesTried: z.array(searchTriedSchema).optional(),
 });
 export type Answer = z.infer<typeof answerSchema>;
+
+/**
+ * searchesTried から query と filters を除いた Answer(永続化できないソースが有効な構成。
+ * ADR-026 決定5、不変条件7。query・filters には Slack の結果に出た語が入りうる)。
+ */
+export function withoutSearchQueries(answer: Answer): Answer {
+  if (answer.searchesTried === undefined) {
+    return answer;
+  }
+  return {
+    ...answer,
+    searchesTried: answer.searchesTried.map((tried) => ({
+      sourceId: tried.sourceId,
+      outcome: tried.outcome,
+      newDocuments: tried.newDocuments,
+    })),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // submit_answer

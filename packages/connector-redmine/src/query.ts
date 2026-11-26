@@ -1,0 +1,88 @@
+/**
+ * Redmine の検索語の扱い: 最小限の正規化と、スニペットの一致箇所を探す語の取り出し
+ * (2026-11-25)。語の分け方は Redmine 本体の Redmine::Search::Tokenizer(lib/redmine/search.rb)
+ * に合わせる: `"…"` の語句は 1 語、ほかは空白(\p{Zs})区切り、重複を除き、1 文字の語は
+ * 漢字のみ残し、先頭の 5 語だけを使う。全文検索プラグインがある導入先では異なりうる。
+ */
+
+/** Redmine が使う語の数の上限(Tokenizer::MAX_TOKENS) */
+export const REDMINE_MAX_TOKENS = 5;
+
+/**
+ * 引用符の外の空白(全角空白・タブ・改行を含む)の連続を半角空白 1 つにし、前後を詰める。
+ * 引用符の中は変えない(閉じていない引用符のあとは中とみなす)。Redmine 5.1 以降は全角空白も
+ * 区切りとして扱うため、5.1 以降での語の分け方は変わらない(それより前の版では全角空白が
+ * 区切りになる)
+ */
+export function normalizeQuery(query: string): string {
+  let out = "";
+  let inQuote = false;
+  let pendingSpace = false;
+  for (const ch of query) {
+    if (!inQuote && /\s/u.test(ch)) {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && out !== "") {
+      out += " ";
+    }
+    pendingSpace = false;
+    if (ch === '"') {
+      inQuote = !inQuote;
+    }
+    out += ch;
+  }
+  return out.trim();
+}
+
+/** 一致箇所の検索に使う 1 語の長さの上限(コードポイント数)。超える語は使わない */
+export const MAX_SNIPPET_TERM_CHARS = 100;
+
+const ZS = /\p{Zs}/u;
+
+/**
+ * 先頭の `"` とその直後の空白(\p{Zs})、末尾の空白と `"` を除く(旧実装の
+ * `replace(/^"\p{Zs}*|\p{Zs}*"$/gu, "")` と同じ結果)。正規表現は
+ * 引用符の中の長い空白の連続で入力長の二乗の時間がかかるため、両端から 1 文字ずつ見る
+ * (\p{Zs} の文字はすべて BMP にあり、1 コード単位で判定できる)
+ */
+function stripQuote(token: string): string {
+  let start = 0;
+  let end = token.length;
+  if (token.startsWith('"')) {
+    start = 1;
+    while (start < end && ZS.test(token[start] as string)) {
+      start += 1;
+    }
+  }
+  if (end > start && token[end - 1] === '"') {
+    end -= 1;
+    while (end > start && ZS.test(token[end - 1] as string)) {
+      end -= 1;
+    }
+  }
+  return token.slice(start, end);
+}
+
+/**
+ * Redmine の Tokenizer と同じ規則で語を取り出す(重複を除き、漢字以外の 1 文字の語を除く)。
+ * 先頭の REDMINE_MAX_TOKENS 語に切る前の全体
+ */
+export function searchTokens(query: string): string[] {
+  const tokens = new Set<string>();
+  for (const match of query.matchAll(/"[^"]+"|[^\p{Zs}]+/gu)) {
+    tokens.add(stripQuote(match[0]));
+  }
+  return [...tokens].filter((token) => [...token].length > 1 || /\p{Script=Han}/u.test(token));
+}
+
+/**
+ * Redmine の Tokenizer と同じ規則で、スニペットの一致箇所を探す語を取り出す。Redmine が使う
+ * 先頭の REDMINE_MAX_TOKENS 語のうち、MAX_SNIPPET_TERM_CHARS を超える語は一致箇所の検索に
+ * 使わない(Redmine に渡す query は変えない)
+ */
+export function snippetTerms(query: string): string[] {
+  return searchTokens(query)
+    .slice(0, REDMINE_MAX_TOKENS)
+    .filter((token) => token.length <= MAX_SNIPPET_TERM_CHARS || [...token].length <= MAX_SNIPPET_TERM_CHARS);
+}

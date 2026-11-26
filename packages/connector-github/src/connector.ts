@@ -69,6 +69,8 @@ import {
   type GitHubDocumentRef,
 } from "./document-id.js";
 import { integerOption } from "./options.js";
+import { normalizeQuery, snippetTerms } from "./query.js";
+import { matchWindowStart, windowSnippet } from "./snippet.js";
 import {
   collapseWhitespace,
   decodeBase64Text,
@@ -146,6 +148,12 @@ export class GitHubConnector implements Connector {
     ingest: false,
     privateScopeHandling: "classified",
   };
+  /**
+   * 検索の仕様の静的な宣言(connector-sdk v0.7、ADR-017 追補 1)。実装の定数(searchSpecOf)と、
+   * 導入の設定 searchCode から決まる定型の句だけで作る。displayName などの自由な文字列の設定、
+   * GitHub から取得した文(組織名など)は入れない。構築時に決まり、利用者によらない
+   */
+  readonly searchSpec: string;
   private readonly api: GitHubApiClient;
   private readonly displayName: string;
   private readonly searchCode: boolean;
@@ -166,6 +174,7 @@ export class GitHubConnector implements Connector {
     this.displayName = options.displayName ?? "GitHub";
     this.api = new GitHubApiClient(options);
     this.searchCode = options.searchCode ?? true;
+    this.searchSpec = searchSpecOf(this.searchCode);
     this.defaultSearchLimit = integerOption(
       "defaultSearchLimit",
       options.defaultSearchLimit,
@@ -232,7 +241,8 @@ export class GitHubConnector implements Connector {
   ): Promise<SearchResult> {
     this.api.assertUsableCredential(auth);
 
-    const terms = query.trim();
+    // 引用符の外の空白だけを正規化する(演算子・修飾子・引用符の中は変えない)
+    const terms = normalizeQuery(query);
     const scope = containerQualifier(filters.container);
     const qualifiers = [
       ...(scope !== undefined ? [scope] : []),
@@ -259,6 +269,7 @@ export class GitHubConnector implements Connector {
         : initialStreams(this.resolveLimit(options.limit), codeEligible);
 
     const issueQuery = [terms, ...qualifiers].filter((part) => part !== "").join(" ");
+    const matchTerms = snippetTerms(terms);
     const codeQuery = [terms, ...(scope !== undefined ? [scope] : [])].join(" ");
 
     const settled = await Promise.allSettled(
@@ -269,6 +280,7 @@ export class GitHubConnector implements Connector {
           stream.kind === "code"
             ? codeQuery
             : `${issueQuery} ${stream.kind === "issue" ? "is:issue" : "is:pull-request"}`,
+          matchTerms,
         ),
       ),
     );
@@ -332,6 +344,7 @@ export class GitHubConnector implements Connector {
     auth: AuthContext,
     stream: SearchStreamState,
     q: string,
+    matchTerms: readonly string[],
   ): Promise<StreamOutcome> {
     const code = stream.kind === "code";
     const response = await this.api.get(auth, {
@@ -349,7 +362,7 @@ export class GitHubConnector implements Connector {
     }
     const hits: SearchHit[] = [];
     for (const item of items.slice(0, stream.perPage)) {
-      const hit = code ? this.codeHit(item) : this.issueHit(item);
+      const hit = code ? this.codeHit(item) : this.issueHit(item, matchTerms);
       if (hit !== undefined) {
         hits.push(hit);
       }
@@ -362,7 +375,7 @@ export class GitHubConnector implements Connector {
     };
   }
 
-  private issueHit(item: unknown): SearchHit | undefined {
+  private issueHit(item: unknown, matchTerms: readonly string[]): SearchHit | undefined {
     const record = asRecord(item);
     if (record === undefined) {
       return undefined;
@@ -391,10 +404,7 @@ export class GitHubConnector implements Connector {
     return {
       documentId,
       title,
-      snippet: truncateText(
-        collapseWhitespace(stripHtmlComments(body)),
-        this.snippetChars,
-      ),
+      snippet: this.bodySnippet(body, matchTerms),
       url:
         asHttpUrl(record.html_url) ??
         `${this.webBaseUrl}/${repo.owner}/${repo.repo}/${isPullRequest ? "pull" : "issues"}/${number}`,
@@ -409,6 +419,19 @@ export class GitHubConnector implements Connector {
       // 検索 API の issue / PR は通常 repository(所有者の種別)を含まない。含む場合だけ判定する
       scope: scopeOfRepository(record.repository),
     };
+  }
+
+  /**
+   * issue / PR の本文のスニペット。検索語(演算子・修飾子を除く)が本文の先頭の範囲より
+   * 後ろに現れるときはその周辺(前後に省略記号)、それ以外は従来どおり本文の先頭。
+   * 長さは snippetChars 以内(ADR-016)。タイトル・コメントだけの一致は本文の先頭になる
+   */
+  private bodySnippet(body: string, matchTerms: readonly string[]): string {
+    const text = collapseWhitespace(stripHtmlComments(body));
+    const start = matchWindowStart(text, matchTerms, this.snippetChars);
+    return start > 0
+      ? windowSnippet(text, start, this.snippetChars)
+      : truncateText(text, this.snippetChars);
   }
 
   private codeHit(item: unknown): SearchHit | undefined {
@@ -746,21 +769,16 @@ export class GitHubConnector implements Connector {
     };
   }
 
+  /**
+   * describe の summary: 対象の説明だけ(内容の説明。検索の仕様は searchSpec に置く。
+   * connector-sdk v0.7、ADR-017 追補 1)
+   */
   private summary(): string {
-    const scope =
+    return (
       "利用者本人がアクセスできる GitHub の issue・pull request" +
       (this.searchCode ? "・コード" : "") +
-      "を GitHub 検索 API で検索する(権限外のリポジトリは結果に現れない)。" +
-      "issue・PR はタイトル・本文・コメントの語彙一致検索。";
-    const code = this.searchCode
-      ? "コード検索は degraded: デフォルトブランチのみ・384KB 未満のファイル・語彙一致のみで、" +
-        "レート制限が厳しい(認証時 毎分約10回)。author / updatedAfter / updatedBefore を指定するとコード検索は行わない。"
-      : "コード検索はこの導入では無効(issue・PR のみを検索する)。";
-    const usage =
-      'filters.container は "owner/repo" または組織名で、検索範囲を絞るヒントであり安全境界ではない' +
-      "(範囲外の結果を防ぐのは GitHub 側の本人権限による認可)。filters.author は GitHub のログイン名。" +
-      "fetch は issue / PR の本文と先頭のコメント、または 1MB 以下のテキストファイルを返す。";
-    return `${scope}${code}${usage}`;
+      "を GitHub 検索 API で検索する(権限外のリポジトリは結果に現れない)。"
+    );
   }
 
   private blobUrl(owner: string, repo: string, gitRef: string, path: string): string {
@@ -1052,4 +1070,34 @@ function webBaseUrlOf(apiBaseUrl: string): string {
     return `${url.protocol}//${url.hostname.slice(4)}${url.port !== "" ? `:${url.port}` : ""}`;
   }
   return url.origin;
+}
+
+/**
+ * 検索の仕様(searchSpec に入れる事実の記述。2026-11-25 に describe の summary の一部として書き、
+ * 2026-11-26 に searchSpec へ移した。文面は変えていない)。出典は GitHub の REST 検索のドキュメントと
+ * 本コネクタの実装。実機で確認していない挙動は「不明」と書く。searchCode(導入の設定)で定型の句を
+ * 選ぶ。1 行で MAX_SEARCH_SPEC_LENGTH(1,500)字以内に収め、改行や予約の語句を含めない
+ * (connector-sdk の checkSearchSpec)
+ */
+export function searchSpecOf(searchCode: boolean): string {
+  const kinds = searchCode
+    ? "検索の仕様: 1 回の search で issue(is:issue)・PR(is:pull-request)・コードを別々に検索し、limit を 3 種に分けて交互に並べて返す。"
+    : "検索の仕様: 1 回の search で issue(is:issue)と PR(is:pull-request)を別々に検索し、limit を 2 種に分けて交互に並べて返す。";
+  const syntax =
+    "空白区切りは AND。OR・NOT と \"語句\"(完全一致)が使え、AND/OR/NOT は 5 個まで、修飾子を除き 256 文字まで(GitHub のドキュメント)。" +
+    "日本語の語の分割と AND の厳密さは不明。並び順は GitHub の既定(best match)。" +
+    "issue・PR はタイトル・本文・コメントの語彙一致。label: state: などの修飾子は query に書けるが、is: はコネクタが付ける is:issue / is:pull-request と重なる。";
+  const code = searchCode
+    ? "コード検索は degraded: デフォルトブランチのみ・384KB 未満のファイル・語彙一致のみで、" +
+      "レート制限が厳しい(認証時 毎分約10回)。author / updatedAfter / updatedBefore を指定するとコード検索は行わない。"
+    : "コード検索はこの導入では無効(issue・PR のみを検索する)。";
+  const snippet =
+    "スニペットは、issue・PR では本文のうち query の語(演算子・修飾子を除く)が現れる箇所の周辺(本文に語がなければ本文の先頭)" +
+    (searchCode ? "、コードでは GitHub が返す一致箇所の断片。" : "。");
+  const usage =
+    'filters.container は "owner/repo" または組織名(repo: / org:)で、検索範囲を絞るヒントであり安全境界ではない' +
+    "(範囲外の結果を防ぐのは GitHub 側の本人権限による認可)。filters.author は GitHub のログイン名(author:)。" +
+    "updatedAfter / updatedBefore は ISO 8601(updated:>= / updated:<=)。" +
+    "fetch は issue / PR の本文と先頭のコメント、または 1MB 以下のテキストファイルを返す。";
+  return `${kinds}${syntax}${code}${snippet}${usage}`;
 }

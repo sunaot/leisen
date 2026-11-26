@@ -46,6 +46,7 @@ import type {
   GatewayClient,
   GatewayToolError,
   GatewayToolSchema,
+  StartRunQuestion,
   StartRunResult,
 } from "./types.js";
 
@@ -210,10 +211,20 @@ export class McpGatewayClient implements GatewayClient {
   }
 
   async startRun(
-    input: { readonly question: string },
+    input: StartRunQuestion,
     options: GatewayCallOptions = {},
   ): Promise<StartRunResult> {
-    const body = await this.#postRuns(this.#runsUrl, { question: input.question }, options);
+    // 文字列を含む ask の引数だけを申告する(ADR-026 決定4。正規化した JSON は Gateway が作る)
+    const body = await this.#postRuns(
+      this.#runsUrl,
+      {
+        question: input.question,
+        ...(input.userMessage !== undefined ? { userMessage: input.userMessage } : {}),
+        ...(input.context !== undefined ? { context: input.context } : {}),
+        ...(input.keepTerms !== undefined ? { keepTerms: [...input.keepTerms] } : {}),
+      },
+      options,
+    );
     const runId = body["runId"];
     const expiresAt = body["expiresAt"];
     const feedbackUntil = body["feedbackUntil"];

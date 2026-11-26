@@ -50,6 +50,25 @@ const searchLayerSchema = z.strictObject({
     .default(DEFAULT_AUTHZ_CACHE_TTL_SEC),
 });
 
+/**
+ * connectors[] の廃止したキーの案内(未知のキーとして拒否するときの文面)。
+ * - searchProfile: 検索プロファイルの上書き(ADR-025 決定3)は connector-sdk v0.7 で廃止した
+ *   (ADR-025 追補 2)。黙って無視すると導入先が上書きが効いていると誤解するため、廃止を示す
+ *   文面で起動時に拒否する
+ */
+export const REMOVED_CONNECTOR_KEY_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
+  searchProfile:
+    "connectors[].searchProfile was removed in connector-sdk v0.7 (ADR-025 addendum 2); delete it. " +
+    "Differences in search behavior between deployments are expressed in the connector's own settings",
+});
+
+function removedConnectorKeyMessage(keys: readonly PropertyKey[]): string | undefined {
+  const messages = keys
+    .filter((key): key is string => typeof key === "string" && Object.hasOwn(REMOVED_CONNECTOR_KEY_MESSAGES, key))
+    .map((key) => REMOVED_CONNECTOR_KEY_MESSAGES[key] as string);
+  return messages.length > 0 ? messages.join("; ") : undefined;
+}
+
 /** コネクタ呼び出しタイムアウトの既定(ms)。 */
 export const DEFAULT_CONNECTOR_TIMEOUT_MS = 30_000;
 
@@ -285,6 +304,10 @@ const connectorSchema = z
     /** privateScopes: included の明示確認フラグ。なければ起動拒否(ADR-013 §1) */
     confirmPrivateScopesIncluded: z.boolean().default(false),
     searchLayer: searchLayerSchema.prefault({}),
+  }, {
+    // 廃止したキー(searchProfile など)は、未知のキーの拒否に廃止を示す文面を付ける
+    error: (issue) =>
+      issue.code === "unrecognized_keys" ? removedConnectorKeyMessage(issue.keys) : undefined,
   })
   // kind の既定は id と同じ。解析後の設定では常に kind が確定している
   .transform(({ kind, ...rest }) => ({ ...rest, kind: kind ?? rest.id }));

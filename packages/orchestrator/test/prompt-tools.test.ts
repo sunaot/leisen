@@ -25,8 +25,9 @@ import {
 
 describe("prompts/explore.v3.md(固定部)", () => {
   it("探索方針・出典必須・インジェクション防御・submit_answer での提出を含む", async () => {
-    expect(EXPLORE_PROMPT_VERSION).toBe("explore.v3");
-    const prompt = await loadExplorePrompt();
+    // 既定は v4(2026-11-26、T-024)。v3 は引き続き選べるので、v3 の文面をここで固定する
+    expect(EXPLORE_PROMPT_VERSION).toBe("explore.v4");
+    const prompt = await loadExplorePrompt("explore.v3");
     for (const phrase of [
       "類義語",
       "英語と日本語の変換",
@@ -72,7 +73,8 @@ describe("buildSystemPrompt / buildFirstUserContent(H3)", () => {
   });
 
   it("最初の user ターンは、固定の前置き・ソース一覧の JSON・制御メッセージ・質問の順", () => {
-    const blocks = buildFirstUserContent(context);
+    // v3 の前置きの文面を固定する(v4 の前置きは search-feedback.test.ts で確かめる)
+    const blocks = buildFirstUserContent({ ...context, promptVersion: "explore.v3" });
     expect(blocks.map((block) => block.type)).toEqual(["text", "text", "text", "text"]);
     const [preface, catalog, limits, question] = blocks.map((block) => block.text);
     expect(preface).toBe(SOURCE_CATALOG_PREFACE);
@@ -177,7 +179,8 @@ describe("Gateway ツール定義 → strict な Claude ツール定義", () => 
   });
 
   it("strict: true、全 object に additionalProperties: false と required、source は有効ソースに絞る", () => {
-    const tools = buildClaudeTools(gatewayTools, ["alpha"]);
+    // v3 の USAGE_HINTS の文面を固定する(v4 の文面は search-feedback.test.ts で確かめる)
+    const tools = buildClaudeTools(gatewayTools, ["alpha"], "explore.v3");
     expect(tools.map((t) => t.name)).toEqual([
       "describe",
       "fetch",

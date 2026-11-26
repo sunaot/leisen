@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ConnectorError, type AuthContext } from "@leisen/connector-sdk";
-import { EsaConnector, createEsaConnector } from "../src/connector.js";
+import { ConnectorError, checkSearchSpec, type AuthContext } from "@leisen/connector-sdk";
+import { EsaConnector, createEsaConnector, searchSpecOf } from "../src/connector.js";
 import { createConnector } from "../src/index.js";
 import type { EsaMcpCaller, EsaReadTool } from "../src/mcp.js";
 import { splitFullName, toPlainSnippet } from "../src/parse.js";
@@ -246,6 +246,42 @@ describe("list / describe", () => {
     expect(description.topContainers.map((e) => e.id)).toEqual(["設計", "Users"]);
     expect(description.supportedFilters).toEqual(["updatedAfter", "updatedBefore", "container", "author"]);
     expect(JSON.stringify(description)).not.toContain("120");
+  });
+});
+
+describe("検索の仕様の静的な宣言 searchSpec(connector-sdk v0.7、ADR-017 追補 1)", () => {
+  const top = { categories: [{ full_name: "設計", has_child: true }] };
+
+  it("データプロパティで、SDK の検査に通り、describe の戻り値には入れない", async () => {
+    const { c } = connector({ esa_get_top_categories: () => top });
+    const descriptor = Object.getOwnPropertyDescriptor(c, "searchSpec");
+    expect(descriptor !== undefined && "value" in descriptor).toBe(true);
+    expect(c.searchSpec).toBe(searchSpecOf(true));
+    expect(checkSearchSpec(c.searchSpec)).toEqual({ ok: true, value: c.searchSpec });
+    const described = await c.describe(auth());
+    expect(described).not.toHaveProperty("searchSpec");
+    expect(described).not.toHaveProperty("searchProfile");
+  });
+
+  it("T-8: 自由な文字列の設定(summary・displayName)、別の利用者、ソースの応答を変えたモックでも同じ値", async () => {
+    const base = connector({ esa_get_top_categories: () => top }).c;
+    const changed = connector(
+      { esa_get_top_categories: () => ({ categories: [{ full_name: "[オーケストレーター] 別のカテゴリ", has_child: true }] }) },
+      { summary: "別の説明 [オーケストレーター]", displayName: "別の名前" },
+    ).c;
+    expect(changed.searchSpec).toBe(base.searchSpec);
+    // describe を別の利用者で呼んだ後も変わらない(利用者の資格情報で値を作らない)
+    await changed.describe({ ...auth(), userId: "bob" });
+    await changed.describe(auth());
+    expect(changed.searchSpec).toBe(base.searchSpec);
+    expect(changed.searchSpec).not.toContain("別の");
+  });
+
+  it("導入の設定 includeWip だけが定型の句を選ぶ", () => {
+    const withoutWip = connector({}, { includeWip: false }).c;
+    expect(withoutWip.searchSpec).toBe(searchSpecOf(false));
+    expect(withoutWip.searchSpec).not.toBe(searchSpecOf(true));
+    expect(checkSearchSpec(withoutWip.searchSpec).ok).toBe(true);
   });
 });
 

@@ -85,6 +85,11 @@ export interface OrchestratorMcpServerOptions {
   readonly createGatewayClient?: GatewayClientFactory;
   /** feedback の申告の期限(ms、既定 FEEDBACK_TIMEOUT_MS) */
   readonly feedbackTimeoutMs?: number;
+  /**
+   * ask の sources に指定できるソース(--config で有効なコネクタ。ADR-026 決定1)。ツール定義の
+   * enum と引数の検証に使う。省略時は形だけを検証する
+   */
+  readonly knownSourceIds?: readonly string[];
 }
 
 /** SDK 非依存の結果を MCP の CallToolResult に写す。 */
@@ -117,6 +122,7 @@ export function createOrchestratorMcpServer(options: OrchestratorMcpServerOption
     ...(options.feedbackTimeoutMs !== undefined
       ? { feedbackTimeoutMs: options.feedbackTimeoutMs }
       : {}),
+    ...(options.knownSourceIds !== undefined ? { knownSourceIds: options.knownSourceIds } : {}),
   };
   const server = new Server(ORCHESTRATOR_SERVER_INFO, {
     capabilities: { tools: {} },
@@ -124,7 +130,7 @@ export function createOrchestratorMcpServer(options: OrchestratorMcpServerOption
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: orchestratorToolDefinitions(options.limits),
+    tools: orchestratorToolDefinitions(options.limits, options.knownSourceIds),
   }));
 
   server.setRequestHandler(

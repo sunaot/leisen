@@ -9,6 +9,7 @@
  * 想定外の形は source_unavailable にする(黙って空にしない)
  */
 import { ConnectorError } from "@leisen/connector-sdk";
+import { matchWindowStart, windowSnippet } from "./snippet.js";
 
 export interface EsaPost {
   readonly number: number;
@@ -156,8 +157,21 @@ export function nextPageOf(value: unknown): number | null | undefined {
   return typeof next === "number" && Number.isInteger(next) && next > 0 ? next : null;
 }
 
-/** スニペット用の平文化(front matter・HTML コメント・Markdown の記号を落として詰める)。 */
-export function toPlainSnippet(markdown: string, maxChars: number): string {
+/**
+ * スニペット用の平文化(front matter・HTML コメント・Markdown の記号を落として詰める)。
+ * terms(検索語から演算子・修飾子を除いた語)が本文の先頭の範囲より後ろに現れるときは、
+ * その周辺を切り出す(前後に省略記号)。語が見つからなければ従来どおり本文の先頭
+ */
+export function toPlainSnippet(markdown: string, maxChars: number, terms: readonly string[] = []): string {
+  const text = toPlainText(markdown);
+  const start = matchWindowStart(text, terms, maxChars);
+  if (start > 0) {
+    return windowSnippet(text, start, maxChars);
+  }
+  return [...text].slice(0, maxChars).join("");
+}
+
+function toPlainText(markdown: string): string {
   let text = markdown.replace(/\r\n?/g, "\n");
   text = text.replace(/^---\n[\s\S]*?\n---\n/, "");
   text = text.replace(/<!--[\s\S]*?-->/g, " ");
@@ -166,6 +180,5 @@ export function toPlainSnippet(markdown: string, maxChars: number): string {
   text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
   text = text.replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.|>)\s+/gm, "");
   text = text.replace(/[*_`~|]/g, "");
-  text = text.replace(/\s+/g, " ").trim();
-  return [...text].slice(0, maxChars).join("");
+  return text.replace(/\s+/g, " ").trim();
 }

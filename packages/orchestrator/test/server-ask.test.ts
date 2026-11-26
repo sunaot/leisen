@@ -153,11 +153,12 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
           url: "https://alpha.example.test/docs/doc-expense-policy",
         },
       ],
-      usage: { llmTurns: 2, toolCalls: 2 },
+      // 脚本は search → fetch → submit_answer(既定の v4 では fetch せずに提出すると差し戻される)
+      usage: { llmTurns: 3, toolCalls: 3 },
     });
     expect(structured).not.toHaveProperty("errorClass");
     await expectValidAgainstOutputSchema(client, structured);
-    expect(llm.requests).toHaveLength(2);
+    expect(llm.requests).toHaveLength(3);
     // 利用者のトークンは結果(text・structuredContent)に載らない(不変条件6)
     expect(JSON.stringify({ text, structured })).not.toContain(ALICE_TOKEN);
 
@@ -173,7 +174,7 @@ describe("ask: 実 Gateway + 脚本 LLM の e2e", () => {
     });
     // ToolInvocation は Gateway が同じ runId・同じ利用者で記録している
     const invocations = gateway.toolInvocations(runId);
-    expect(invocations.map((record) => record.tool)).toEqual(["describe", "search"]);
+    expect(invocations.map((record) => record.tool)).toEqual(["describe", "search", "fetch"]);
     expect(invocations.every((record) => record.userId === "alice")).toBe(true);
     // 監査レコードにトークン・質問の原文・回答本文を書かない
     const audit = JSON.stringify(gateway.records());

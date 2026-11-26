@@ -17,7 +17,7 @@ import {
   type GatewayHarness,
   type GatewayHarnessOptions,
 } from "./helpers/harness.js";
-import { firstHit } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -38,8 +38,9 @@ async function runWith(options: Partial<GatewayHarnessOptions>) {
   harnesses.push(harness);
   const llm = new ScriptedLlmClient([
     () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+    fetchFirstHit,
     (context) => {
-      const hit = firstHit(context);
+      const hit = firstFetched(context);
       return scriptedSubmit({
         answer: "経費精算の締め日は毎月25日です。",
         citations: [{ documentId: hit.documentId, sourceId: hit.source }],

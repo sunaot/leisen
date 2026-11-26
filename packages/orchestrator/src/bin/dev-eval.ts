@@ -31,6 +31,38 @@ import {
 } from "../dev-eval.js";
 import { EXPLORE_PROMPT_VERSION } from "../prompt.js";
 
+/**
+ * leisen-ask に渡す引数から、実際に使われる探索プロンプトの版と検索の状況の制御メッセージの
+ * 有無を読む(レポートの表示用)。leisen-ask の規則と同じく、--explore-prompt がなければ既定の版、
+ * --search-feedback がなければ explore.v4 のときだけ有効。版は deployment.yaml からは指定
+ * できないので、引数だけで決まる。不正な値は leisen-ask が拒否する(その run はエラーになる)ので、
+ * 指定された値をそのまま表示する
+ */
+export function promptProfileFromLeisenAskArgs(args: readonly string[]): {
+  readonly version: string;
+  readonly searchFeedback: boolean;
+} {
+  const valueOf = (name: string): string | undefined => {
+    let value: string | undefined;
+    for (let i = 0; i < args.length; i += 1) {
+      const arg = args[i] as string;
+      if (arg === name) {
+        value = args[i + 1];
+        i += 1;
+      } else if (arg.startsWith(`${name}=`)) {
+        value = arg.slice(name.length + 1);
+      }
+    }
+    return value;
+  };
+  const version = valueOf("--explore-prompt") ?? EXPLORE_PROMPT_VERSION;
+  const feedback = valueOf("--search-feedback");
+  return {
+    version,
+    searchFeedback: feedback === undefined ? version === "explore.v4" : feedback === "on",
+  };
+}
+
 const DEFAULT_QUESTIONS = fileURLToPath(
   new URL("../../../../examples/eval/dev-questions.json", import.meta.url),
 );
@@ -226,9 +258,11 @@ export async function runDevEval(
       }
     }
   }
+  const profile = promptProfileFromLeisenAskArgs(args.leisenAskArgs);
   io.stdout(
     formatReport(results, {
-      promptVersion: EXPLORE_PROMPT_VERSION,
+      promptVersion: profile.version,
+      searchFeedback: profile.searchFeedback,
       ...(args.label === undefined ? {} : { label: args.label }),
     }),
   );

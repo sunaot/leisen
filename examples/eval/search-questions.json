@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "description": "検索方式の比較実験(dev-search-eval、packages/orchestrator/src/search-eval/)の質問セット。合成データのみ。種類は既知項目検索(known-item: 題名・ID が分かっている 1 文書を探す)、複数文書(multi-doc: 答えに 2 文書が要る。secondExplicit は 2 つ目の事柄が発言に明示されているか)、答えられない質問(unanswerable: コーパスに答えがない)の 3 種。各質問に、利用者の発言(utterance)、人が検索欄に直接入力するキーワード(keywords。1 要素が 1 回の search の query。複数文書の質問は事柄ごと)、正解の文書(relevant。sourceId:documentId)を持たせる。unanswerable の mustNotAppear は、コーパスのどの文書にも同時に現れてはならない語の組(空白区切りの語をすべて含む文書があれば質問が成り立たない。テストで確かめる)。2026-11-25 に、検索方式の切り替え・探索プロンプトの改訂より前のコミットで固定した(T-024 の規則。計測後に質問・期待値を差し替えない)。書き手は評価の仕組みの担当のセッションで、探索プロンプトの改訂は担当していない。",
+  "source": "dev-docs",
+  "corpus": {
+    "files": ["../fixtures/dev-corpus.yaml", "../fixtures/search-eval-corpus.yaml"],
+    "synthetic": { "seed": 20261125, "count": 400 }
+  },
+  "questions": [
+    {
+      "id": "ki-inc-0412",
+      "category": "known-item",
+      "utterance": "INC-2026-0412 の障害報告書を見せて",
+      "keywords": ["INC-2026-0412"],
+      "relevant": ["dev-docs:incident-report-0412"]
+    },
+    {
+      "id": "ki-carryout-rule",
+      "category": "known-item",
+      "utterance": "情報セキュリティ規程の第7条って何が書いてあるんだっけ?",
+      "keywords": ["情報セキュリティ規程 第7条"],
+      "relevant": ["dev-docs:sec-device-carryout"]
+    },
+    {
+      "id": "ki-expense-rules",
+      "category": "known-item",
+      "utterance": "「経費精算ルール(2026年度版)」のページを開きたい",
+      "keywords": ["経費精算ルール"],
+      "relevant": ["dev-docs:expense-rules"]
+    },
+    {
+      "id": "ki-cache-note",
+      "category": "known-item",
+      "utterance": "設計メモの「検索キャッシュの方針」を読みたいんだけど、どこにある?",
+      "keywords": ["検索キャッシュの方針"],
+      "relevant": ["dev-docs:cache-design-note"]
+    },
+    {
+      "id": "ki-pr-1287",
+      "category": "known-item",
+      "utterance": "#1287 の勤怠 CSV のプルリク、何を直したんだっけ",
+      "keywords": ["1287"],
+      "relevant": ["dev-docs:pr-1287"]
+    },
+    {
+      "id": "ki-minutes-0909",
+      "category": "known-item",
+      "utterance": "2026-09-09 の部長会の議事録ある?",
+      "keywords": ["部長会 2026-09-09"],
+      "relevant": ["dev-docs:minutes-bucho-20260909"]
+    },
+    {
+      "id": "ki-eng-checklist",
+      "category": "known-item",
+      "utterance": "エンジニア向けの入社チェックリストってどれ?",
+      "keywords": ["入社チェックリスト"],
+      "relevant": ["dev-docs:eng-onboarding-checklist"]
+    },
+    {
+      "id": "ki-mfp-3f",
+      "category": "known-item",
+      "utterance": "3階の複合機でスキャンするやり方のマニュアルが見たい",
+      "keywords": ["複合機"],
+      "relevant": ["dev-docs:mfp-3f-manual"]
+    },
+    {
+      "id": "ki-retry-policy",
+      "category": "known-item",
+      "utterance": "retry-policy.yaml の最大リトライ回数の設定を確認したい",
+      "keywords": ["retry-policy.yaml"],
+      "relevant": ["dev-docs:retry-policy-config"]
+    },
+    {
+      "id": "ki-vpn-timeout",
+      "category": "known-item",
+      "utterance": "VPN が30分で切れるって問い合わせ、前にあったよね?",
+      "keywords": ["VPN 30分"],
+      "relevant": ["dev-docs:inquiry-vpn-timeout"]
+    },
+    {
+      "id": "md-trip",
+      "category": "multi-doc",
+      "secondExplicit": true,
+      "utterance": "来月大阪に出張する。新幹線の予約と、出張費の精算はどうすればいい?",
+      "keywords": ["出張 手配", "出張 精算"],
+      "relevant": ["dev-docs:travel-booking", "dev-docs:travel-expense"]
+    },
+    {
+      "id": "md-pc-broken",
+      "category": "multi-doc",
+      "secondExplicit": true,
+      "utterance": "PC が壊れた。修理の依頼先と、修理中に代わりの PC を借りる方法を教えて",
+      "keywords": ["修理依頼", "代替機"],
+      "relevant": ["dev-docs:pc-repair-request", "dev-docs:loaner-pc"]
+    },
+    {
+      "id": "md-telework-vpn",
+      "category": "multi-doc",
+      "secondExplicit": true,
+      "utterance": "在宅勤務の申請方法と、家から VPN につなぐ手順を教えて",
+      "keywords": ["在宅勤務 申請", "VPN 接続手順"],
+      "relevant": ["dev-docs:telework-rule", "dev-docs:vpn-setup"]
+    },
+    {
+      "id": "md-incident-report",
+      "category": "multi-doc",
+      "secondExplicit": true,
+      "utterance": "勤怠システムが止まったときの連絡の流れと、あとで書く報告書のテンプレートは?",
+      "keywords": ["障害 連絡フロー", "障害報告書 テンプレート"],
+      "relevant": ["dev-docs:incident-flow", "dev-docs:incident-report-template"]
+    },
+    {
+      "id": "md-leave-handover",
+      "category": "multi-doc",
+      "secondExplicit": false,
+      "utterance": "来週1週間有給を取る。休む前に何をしておけばいい?",
+      "keywords": ["有給休暇 申請", "引き継ぎ"],
+      "relevant": ["dev-docs:leave-request", "dev-docs:handover-guide"]
+    },
+    {
+      "id": "md-new-member-setup",
+      "category": "multi-doc",
+      "secondExplicit": false,
+      "utterance": "来月中途のエンジニアが入る。初日までに準備しておくことは?",
+      "keywords": ["入社チェックリスト", "アカウント発行"],
+      "relevant": ["dev-docs:eng-onboarding-checklist", "dev-docs:account-request"]
+    },
+    {
+      "id": "md-expense-howto",
+      "category": "multi-doc",
+      "secondExplicit": false,
+      "utterance": "経費精算ってどうやるの? いつまでに出せばいいかも知りたい",
+      "keywords": ["経費精算ルール", "経費精算システム 操作マニュアル"],
+      "relevant": ["dev-docs:expense-rules", "dev-docs:expense-system-manual"]
+    },
+    {
+      "id": "un-parking",
+      "category": "unanswerable",
+      "utterance": "社員駐車場の申し込み方法は?",
+      "keywords": ["駐車場"],
+      "relevant": [],
+      "mustNotAppear": ["駐車場"]
+    },
+    {
+      "id": "un-daycare",
+      "category": "unanswerable",
+      "utterance": "社内保育所の利用条件を知りたい",
+      "keywords": ["保育所"],
+      "relevant": [],
+      "mustNotAppear": ["保育"]
+    },
+    {
+      "id": "un-inc-0999",
+      "category": "unanswerable",
+      "utterance": "INC-2026-0999 の障害報告書を見せて",
+      "keywords": ["INC-2026-0999"],
+      "relevant": [],
+      "mustNotAppear": ["INC-2026-0999"]
+    },
+    {
+      "id": "un-minutes-1014",
+      "category": "unanswerable",
+      "utterance": "2026-10-14 の部長会の議事録ある?",
+      "keywords": ["部長会 2026-10-14"],
+      "relevant": [],
+      "mustNotAppear": ["部長会 2026-10-14", "部長会 2026年10月14日"]
+    },
+    {
+      "id": "un-gym",
+      "category": "unanswerable",
+      "utterance": "スポーツジムの利用補助ってある?",
+      "keywords": ["ジム 補助"],
+      "relevant": [],
+      "mustNotAppear": ["ジム"]
+    },
+    {
+      "id": "un-book-subsidy",
+      "category": "unanswerable",
+      "utterance": "書籍購入補助の上限額はいくら?",
+      "keywords": ["書籍購入補助"],
+      "relevant": [],
+      "mustNotAppear": ["書籍"]
+    }
+  ]
+}

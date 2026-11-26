@@ -111,6 +111,18 @@ describe("run の途中で未接続になったソース(m11)", () => {
       if (call.name === "describe") {
         return describeOk(source, "alice");
       }
+      if (call.name === "fetch" && source === "beta") {
+        return {
+          ok: true,
+          result: {
+            documentId: String(call.args["documentId"]),
+            title: "doc-2 の文書",
+            content: "経費精算の締め日は毎月25日です。",
+            url: "https://beta.example.test/docs/doc-2",
+          },
+          userId: "alice",
+        };
+      }
       if (source === "alpha") {
         searches += 1;
         // 1回目は成功、2回目は資格情報の失効で未接続
@@ -131,6 +143,8 @@ describe("run の途中で未接続になったソース(m11)", () => {
           { name: "search", input: { source: "beta", query: "締め日" } },
         ]),
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日 2" } }]),
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、提出の前に読む
+      () => scriptedToolUse([{ name: "fetch", input: { source: "beta", documentId: "doc-2" } }]),
       () =>
         scriptedSubmit({
           answer: "経費精算の締め日は毎月25日です。",

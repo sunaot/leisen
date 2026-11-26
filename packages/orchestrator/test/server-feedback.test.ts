@@ -104,7 +104,7 @@ describe("feedback: 本人だけが記録できる(Gateway が runId の署名�
       userFeedback: "resolved",
     });
     // 本人確認のための describe は呼ばない(ToolInvocation は run のものだけ)
-    expect(gateway.toolInvocations().map((record) => record.tool)).toEqual(["describe", "search"]);
+    expect(gateway.toolInvocations().map((record) => record.tool)).toEqual(["describe", "search", "fetch"]);
 
     // 同じ利用者は評価を付け直せる(最新が採られる)
     const again = await call(client, "feedback", { runId, outcome: "unresolved" });

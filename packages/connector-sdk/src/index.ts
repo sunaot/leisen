@@ -1,9 +1,16 @@
 /**
- * connector-sdk v0.5: 全データソースコネクタが実装する共通インターフェース。
+ * connector-sdk v0.7: 全データソースコネクタが実装する共通インターフェース。
  * v0.2からの変更はADR-016(SearchOptions、listページング、snippet規約、redaction)。
  * v0.3からの変更はADR-016 追補2(プライベート領域の方針 SourcePolicy、結果ごとの
  * 領域分類 DocumentScope、能力 privateScopeHandling、エラー分類 private_scope_excluded)。
  * v0.4からの変更はADR-024(利用者ごとの API キー Credential `api_key`)。
+ * v0.5からの変更はADR-025(検索プロファイル SourceDescription.searchProfile、検索の通知
+ * SearchResult.notices と、その値域の検証関数)。追加はすべて省略可能なフィールドで、
+ * search / fetch / list / describe の引数は変えない。
+ * v0.6からの変更はADR-025 追補 2とADR-017 追補 1(検索プロファイル searchProfile と検索の通知
+ * notices を削除。検索の仕様の専用フィールド SourceDescription.searchSpec と、その静的な宣言
+ * Connector.searchSpec、検査の関数 checkSearchSpec を追加)。search / fetch / list / describe の
+ * 引数は変えない。
  *
  * 不変条件(CLAUDE.md参照):
  * - すべての操作は AuthContext(利用者本人の資格情報)を受け取る。
@@ -129,6 +136,24 @@ export interface SearchFilters {
   author?: string;
 }
 
+/** SearchFilters のキーの値域(v0.6。値域の検証に使う)。 */
+export const SEARCH_FILTER_KEYS = [
+  "updatedAfter",
+  "updatedBefore",
+  "container",
+  "author",
+] as const satisfies readonly (keyof SearchFilters)[];
+type AssertNever<T extends never> = T;
+/** SEARCH_FILTER_KEYS が SearchFilters のキーを網羅することのコンパイル時の検査 */
+export type SearchFilterKeysCoverFilters = AssertNever<
+  Exclude<keyof SearchFilters, (typeof SEARCH_FILTER_KEYS)[number]>
+>;
+
+/** SearchFilters のキーか(実行時の値域の検証)。 */
+export function isSearchFilterKey(value: unknown): value is keyof SearchFilters {
+  return (SEARCH_FILTER_KEYS as readonly unknown[]).includes(value);
+}
+
 /** 検索オプション(ADR-016)。 */
 export interface SearchOptions {
   /** 続きを取得するカーソル */
@@ -182,6 +207,22 @@ export interface SearchHit {
   scope: DocumentScope;
 }
 
+/**
+ * search の戻り値。
+ *
+ * 注(v0.7、ADR-025 追補 2): 検索の通知(notices)は廃止した。v0.6 のプラグインが返した
+ * notices は Gateway の射影で落ちる(既知のフィールドだけから組み立て直すため)。
+ *
+ * 検索の進め方の判断と private の結果(ADR-017 追補 1「セキュリティレビューの記録」M-4。
+ * 廃止した join_relaxed の元にあった規則を一般化したもの): privateScopeHandling が
+ * classified のコネクタは、方針(SourcePolicy.privateScopes)が included でない限り、
+ * 再検索・条件の緩和(AND を OR にするなど)・別の検索方法へのフォールバックの判断を、
+ * 方針をかけた後の shared の結果だけで行うこと。private を含めた結果の有無で判断すると、
+ * 「private の文書だけが一致した」ことが結果の中身(緩めた条件でのヒット)から分かりうる
+ * (ADR-012、ADR-016 追補2)。Gateway は private の結果を落とせても、判断の跡は防げない。
+ * nextCursor の有無も同じ問題になりうる(shared の結果の続きがないのに、private の結果だけが
+ * 続きにあるときにカーソルを返すと、その存在が分かる)
+ */
 export interface SearchResult {
   hits: SearchHit[];
   /**
@@ -251,6 +292,168 @@ export interface SourceDescription {
   topContainers: ContainerEntry[];
   /** search が対応するフィルタ */
   supportedFilters: (keyof SearchFilters)[];
+  /**
+   * 検索の仕様の専用フィールド(v0.7、ADR-017 追補 1)。コネクタの実装者が書いた、このソースへの
+   * query と filters の書き方の説明(自由文)。**Gateway が付ける**: Gateway は起動時に
+   * Connector.searchSpec(静的な宣言)を 1 回だけ読んで checkSearchSpec で検査し、describe の射影で
+   * 保持した値をここに付ける。コネクタが describe の戻り値に入れた値は Gateway が捨てる。
+   * Orchestrator は「データであり指示ではない」枠(ソース一覧の JSON)の外に、出所を示す見出しを
+   * 付けて置く(制御メッセージの権威は与えない)。宣言がなければ省略される
+   */
+  searchSpec?: string;
+}
+
+// ---- 検索の仕様の検査(v0.7、ADR-017 追補 1・同「セキュリティレビューの記録」m-1〜m-3) ----
+//
+// 検査の関数と上限の定数はここに 1 つだけ置き、Gateway(起動時)と Orchestrator(describe の
+// 結果を受け取ったとき)の両方から呼ぶ。違反の内容(SearchSpecViolation)には値そのものを
+// 入れない(規則の名前・位置・コードポイントだけ。m-6)。
+
+/** searchSpec の長さの上限(NFKC で寄せる前の UTF-16 のコード単位の数)。超えた値は拒否し、途中で切らない */
+export const MAX_SEARCH_SPEC_LENGTH = 1_500;
+
+/**
+ * searchSpec に含めてはならない語句(m-2)。値を NFKC で寄せ、空白を除き、小文字にしてから
+ * 部分一致で判定する(結合文字も除く。括弧の有無・括弧の種類・括弧の中の空白・全角と半角の違いによらない)。
+ * - 「オーケストレータ」「orchestrator」: 制御メッセージの見出し([オーケストレーター])と
+ *   その変種(〔〕・括弧なし・「オーケストレータ」の表記・英語の表記)
+ * - submit_answer: 回答の提出のツール名
+ * - 最初の user ターンの固定の見出しの書き出し(ソース一覧の前置き、検索の仕様のブロックの
+ *   見出し、ツール結果・ツールエラーの前置き、質問の見出し、ask の追加の引数の区分の見出し)。
+ *   Orchestrator のテストで、各見出しがこの検査で拒否されることを確かめる
+ */
+export const SEARCH_SPEC_RESERVED_PHRASES: readonly string[] = [
+  "オーケストレータ",
+  "orchestrator",
+  "submit_answer",
+  "以下はソースの一覧",
+  "コネクタの実装者が書いた",
+  "以下はツール結果",
+  "以下はツールエラー",
+  "今日の日付:",
+  "質問:",
+  "利用者の発言",
+  "UI 側 LLM による補足",
+  "利用者が入力したキーワード",
+  "対象のソース(利用者の指定",
+  "期間(利用者の指定",
+];
+
+/** 違反の規則の名前。 */
+export type SearchSpecRule =
+  /** 文字列でない(undefined は宣言なしとして違反にしない) */
+  | "not_string"
+  /** MAX_SEARCH_SPEC_LENGTH を超える */
+  | "too_long"
+  /** 拒否する文字(制御文字・書式文字・私用領域・サロゲート・行と段落の区切り・非文字・許さない空白) */
+  | "forbidden_character"
+  /** SEARCH_SPEC_RESERVED_PHRASES の語句を含む */
+  | "reserved_phrase";
+
+/** 違反の内容。値そのものは入れない(ログ・エラーに出してよい情報だけ)。 */
+export interface SearchSpecViolation {
+  readonly rule: SearchSpecRule;
+  /** too_long のときの長さ(UTF-16 のコード単位の数) */
+  readonly length?: number;
+  /** forbidden_character のときの位置(UTF-16 のコード単位の位置。0 から) */
+  readonly position?: number;
+  /** forbidden_character のときのコードポイント */
+  readonly codePoint?: number;
+}
+
+export type SearchSpecCheck =
+  /** value が undefined なら宣言なし(空文字・undefined) */
+  | { readonly ok: true; readonly value: string | undefined }
+  | { readonly ok: false; readonly violation: SearchSpecViolation };
+
+/**
+ * 検査のための正規化(NFKC で寄せ、空白と結合文字(一般カテゴリ M)を除き、小文字にする)。
+ * 結合文字を除くのは、語の途中に結合文字を挟んで照合を外す書き方を防ぐため。
+ */
+function normalizeForReservedPhrase(text: string): string {
+  return text.normalize("NFKC").replace(/[\s\p{M}]+/gu, "").toLowerCase();
+}
+
+const NORMALIZED_RESERVED_PHRASES: readonly string[] = SEARCH_SPEC_RESERVED_PHRASES.map(
+  normalizeForReservedPhrase,
+);
+
+/**
+ * 一般カテゴリ Cc・Cf・Co・Cs・Zl・Zp(m-1)と、表示されない文字(Default_Ignorable_Code_Point:
+ * 異体字セレクタ・U+034F・ハングルの埋め字など)、点字の空白 U+2800。
+ */
+const FORBIDDEN_CATEGORY =
+  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/u;
+/** 空白(Zs)。許すのは U+0020 と U+3000 だけ */
+const SPACE_SEPARATOR = /\p{Zs}/u;
+
+/** Unicode の非文字(U+FDD0〜U+FDEF と、各面の末尾の 2 つ)。 */
+function isNoncharacter(codePoint: number): boolean {
+  return (codePoint >= 0xfdd0 && codePoint <= 0xfdef) || (codePoint & 0xfffe) === 0xfffe;
+}
+
+function isForbiddenCharacter(ch: string, codePoint: number): boolean {
+  if (FORBIDDEN_CATEGORY.test(ch) || isNoncharacter(codePoint)) {
+    return true;
+  }
+  return SPACE_SEPARATOR.test(ch) && ch !== " " && ch !== "　";
+}
+
+/**
+ * searchSpec の値を検査する(ADR-017 追補 1、同「セキュリティレビューの記録」m-1・m-2)。
+ * - undefined と空文字は宣言なし({ ok: true, value: undefined })
+ * - 文字列でない値は not_string
+ * - 長さ(NFKC の前の UTF-16 のコード単位)が MAX_SEARCH_SPEC_LENGTH を超えたら too_long
+ * - Cc・Cf・Co・Cs・Zl・Zp と非文字、表示されない文字(Default_Ignorable_Code_Point)、
+ *   U+2800、U+0020 と U+3000 以外の空白は forbidden_character
+ *   (改行・タブ・U+0085・U+2028・U+2029・双方向テキストの制御・U+FEFF・ゼロ幅の文字・
+ *   対になっていないサロゲート・私用領域を含む)
+ * - SEARCH_SPEC_RESERVED_PHRASES を含む値は reserved_phrase
+ * 値は変えずに返す(切り詰め・置き換えをしない)。
+ */
+export function checkSearchSpec(value: unknown): SearchSpecCheck {
+  if (value === undefined || value === "") {
+    return { ok: true, value: undefined };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, violation: { rule: "not_string" } };
+  }
+  if (value.length > MAX_SEARCH_SPEC_LENGTH) {
+    return { ok: false, violation: { rule: "too_long", length: value.length } };
+  }
+  let position = 0;
+  // for...of はコードポイントごとに進む(対になっていないサロゲートは 1 つの要素になる)
+  for (const ch of value) {
+    const codePoint = ch.codePointAt(0) ?? 0;
+    if (isForbiddenCharacter(ch, codePoint)) {
+      return { ok: false, violation: { rule: "forbidden_character", position, codePoint } };
+    }
+    position += ch.length;
+  }
+  const normalized = normalizeForReservedPhrase(value);
+  if (NORMALIZED_RESERVED_PHRASES.some((phrase) => normalized.includes(phrase))) {
+    return { ok: false, violation: { rule: "reserved_phrase" } };
+  }
+  return { ok: true, value };
+}
+
+/**
+ * 違反の内容を、値を含まない英語の短い文にする(起動時のエラーと警告に使う。m-6)。
+ * 例: "forbidden_character at index 12 (U+2028)"
+ */
+export function describeSearchSpecViolation(violation: SearchSpecViolation): string {
+  switch (violation.rule) {
+    case "not_string":
+      return "not_string (searchSpec must be a string)";
+    case "too_long":
+      return `too_long (${violation.length ?? "?"} UTF-16 code units; the limit is ${MAX_SEARCH_SPEC_LENGTH})`;
+    case "forbidden_character": {
+      const cp = (violation.codePoint ?? 0).toString(16).toUpperCase().padStart(4, "0");
+      return `forbidden_character at index ${violation.position ?? "?"} (U+${cp})`;
+    }
+    case "reserved_phrase":
+      return "reserved_phrase (contains a phrase reserved for the orchestrator's own messages)";
+  }
 }
 
 /** エラー分類。Gatewayのリトライ・監査ログの errorClass に対応する。 */
@@ -307,7 +510,30 @@ export interface ConnectorCapabilities {
 export interface Connector {
   readonly sourceId: string;
   readonly capabilities: ConnectorCapabilities;
+  /**
+   * 検索の仕様の静的な宣言(v0.7、ADR-017 追補 1 の B-2)。このソースへの query と filters の
+   * 書き方の説明(自由文、1 行)。Gateway が起動時に 1 回だけ読み、checkSearchSpec で検査して
+   * 保持し、describe の射影で SourceDescription.searchSpec に付ける。違反(文字列でない値、
+   * 長さの上限 MAX_SEARCH_SPEC_LENGTH の超過、改行などの拒否する文字、SEARCH_SPEC_RESERVED_PHRASES
+   * の語句)は起動を拒否する。空文字・省略は宣言なし。
+   *
+   * 規約(コネクタの実装者が守る。Orchestrator からは文字列として区別できない):
+   * - 入れてよいのは、実装の定数と、導入の設定(ConnectorFactoryInit.settings)の値から決まる
+   *   定型の句(実装者が用意した文のどれを使うかが設定で決まるもの)だけ
+   * - 入れない: ソースから取得した文(区画名・説明など)、ソースやリモート MCP サーバーから実行時に
+   *   取得した文(ツールの説明・検索のヘルプを含む)、設定で差し替えられる自由な文字列
+   *   (settings.summary など)。factory と構築時にネットワークから文を取得して入れない
+   * - 利用者によって変えない。値はコネクタの構築時に決め、後から変えない
+   * - getter(accessor)にせず、データプロパティ(クラスのフィールドやオブジェクトリテラルの値)で
+   *   宣言する。Gateway は accessor を起動時に拒否する
+   * - describe の戻り値には入れない(入れても Gateway が捨てる)
+   */
+  readonly searchSpec?: string;
   describe(auth: AuthContext): Promise<SourceDescription>;
+  /**
+   * 検索。classified のコネクタの再検索・条件の緩和・フォールバックの判断は、方針をかけた後の
+   * shared の結果だけで行う(SearchResult の説明。ADR-017 追補 1「セキュリティレビューの記録」M-4)
+   */
   search(
     auth: AuthContext,
     query: string,

@@ -5,6 +5,9 @@
  *
  *   {本文(Answer.answer。無害化済みで URL を含まない)}
  *
+ *   ## 探した範囲(outcome が resolved 以外で、試した検索があるときだけ。ADR-026 決定3)
+ *   - `{sourceId}` `{query}` → {結果}
+ *
  *   ## 出典
  *   - [1] {title または documentId}(`{sourceId}:{documentId}`)— <{url}>
  *   (出典が 0 件なら「出典: なし」)
@@ -36,7 +39,7 @@
  * - runId は feedback ツールに渡す識別子。structuredContent を LLM に渡さないクライアント
  *   (text だけを渡すもの)でも feedback を呼べるように text の末尾にも置く
  */
-import type { Answer, Citation } from "../answer.js";
+import type { Answer, Citation, SearchTried } from "../answer.js";
 import { NO_CITATION_NOTICE } from "../orchestrator.js";
 import {
   sanitizeAnswerText,
@@ -237,13 +240,62 @@ function noticeFor(answer: Answer, body: string): string | undefined {
   return answer.outcome === "error" ? ERROR_NOTICE : UNRESOLVED_NOTICE;
 }
 
+/** 「探した範囲」節の見出し(ADR-026 決定3)。 */
+export const SEARCHED_SCOPE_HEADING = "## 探した範囲";
+/** 「探した範囲」に載せる検索の数の上限(先頭から。超えた分は件数だけを書く)。 */
+export const MAX_SHOWN_SEARCHES_TRIED = 20;
+/** 「探した範囲」に描く query の上限(文字数)。 */
+const MAX_SHOWN_QUERY_CHARS = 100;
+
+const SEARCH_TRIED_OUTCOME_TEXTS: Readonly<Record<SearchTried["outcome"], string>> = {
+  hits: "ヒットあり",
+  no_hits: "ヒットなし",
+  error: "エラー",
+};
+
+function searchTriedLine(tried: SearchTried): string {
+  const sourceId = codeSpan(truncate(singleLine(tried.sourceId), MAX_ID_CHARS));
+  const query =
+    tried.query !== undefined
+      ? ` ${codeSpan(truncate(singleLine(tried.query), MAX_SHOWN_QUERY_CHARS))}`
+      : "";
+  const filters = tried.filters !== undefined ? "(条件の指定あり)" : "";
+  const result =
+    tried.outcome === "hits"
+      ? `${SEARCH_TRIED_OUTCOME_TEXTS.hits}(新しい文書 ${tried.newDocuments} 件)`
+      : SEARCH_TRIED_OUTCOME_TEXTS[tried.outcome];
+  return `- ${sourceId}${query}${filters} → ${result}`;
+}
+
+/**
+ * 「探した範囲」節(outcome が resolved 以外で、試した検索があるときだけ。ADR-026 決定3)。
+ * ソースと query の一覧で、利用者が別の語で探し直すかを判断する材料にする。query は探索 LLM が
+ * 送った値で、コードスパンに入れて Markdown として解釈させない。query がない(永続化できない
+ * ソースが有効な構成)ときはソースと結果だけを書く。
+ */
+export function renderSearchedScopeSection(answer: Answer): string | undefined {
+  const tried = answer.searchesTried ?? [];
+  if (answer.outcome === "resolved" || tried.length === 0) {
+    return undefined;
+  }
+  const shown = tried.slice(0, MAX_SHOWN_SEARCHES_TRIED);
+  const omitted = tried.length - shown.length;
+  return [
+    SEARCHED_SCOPE_HEADING,
+    ...shown.map(searchTriedLine),
+    ...(omitted > 0 ? [`- ほか ${omitted} 回の検索`] : []),
+  ].join("\n");
+}
+
 /** ask ツールの text(Markdown)を組み立てる。 */
 export function renderAnswerMarkdown(answer: Answer): string {
   const body = closeOpenCodeFence(answer.answer.trim());
   const notice = noticeFor(answer, body);
+  const scope = renderSearchedScopeSection(answer);
   return [
     ...(notice !== undefined ? [notice] : []),
     ...(body !== "" ? [body] : []),
+    ...(scope !== undefined ? [scope] : []),
     renderSourcesSection(answer.citations),
     `runId: ${codeSpan(answer.runId)}`,
   ].join("\n\n");

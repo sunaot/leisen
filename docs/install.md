@@ -418,7 +418,7 @@ server {
 
 | プロセス | stdout(機械が読む結果) | stderr(人が読むログ) | 監査(ファイル) |
 |---|---|---|---|
-| `leisen-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink、`run api: /runs (signing key: env LEISEN_RUN_ID_KEY, kid …; orchestrator credential: env …; ttl …)`)、`WARNING`(開発部品の使用・一時鍵や開発用の資格情報・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation、AnswerRun の `answer_run` / `answer_run_finish` / `answer_run_feedback`)と `rawQueryPath`(生クエリ原文。run の質問原文を含む) |
+| `leisen-gateway serve` | 何も出さない。例外は開発用の `audit.sink: stdout`(監査レコード `{"kind":"audit",…}` を 1 行 1 件。本番では拒否) | 起動ログ(listening、deployment 名、有効ソース、IdP、sink、`run api: /runs (signing key: env LEISEN_RUN_ID_KEY, kid …; orchestrator credential: env …; ttl …)`)、`WARNING`(開発部品の使用・一時鍵や開発用の資格情報・組み立て時の警告)、設定エラー、予期しない例外(例外の名前だけ。メッセージ・スタックは出さない) | `audit.sink: jsonl` の `audit.jsonl.path`(ToolInvocation、AnswerRun の `answer_run` / `answer_run_finish` / `answer_run_feedback`)と `rawQueryPath`(生クエリ原文。run の質問原文 = `ask` の入力の JSON を含む。ADR-026 決定4) |
 | `leisen-gateway validate` | `validate: OK` と要約 | 設定の不備(`[code] path: message`)、`WARNING` | 書かない(ファイルも作らない) |
 | `leisen-ask`(一回実行) | 回答本文。`--json` なら Answer の JSON を 1 つ(失敗時も `{ "outcome": "error", … }`) | 進捗・警告(開発用の資格情報の使用)・エラー | 書かない(run は Gateway の run API に申告し、Gateway が記録する。ADR-019) |
 | `leisen-ask serve` | `--help` だけ | 起動ログ(`run api: gateway (orchestrator credential: …)` を含む)・エラー | 書かない(同上) |
@@ -469,6 +469,20 @@ server {
    リリースノートに従って deployment.yaml を新しい版に書き換え、手順3で確かめる
 5. 再起動: `docker compose up -d gateway`(停止時は処理中のリクエストを待って監査を flush する)
 6. スモーク(§2)。問題があれば旧イメージのタグに戻す(監査 JSONL は追記のみのため、そのまま使える)
+
+**Gateway と Orchestrator の版をそろえる(2026-11-26、connector-sdk v0.7、T-032)**: Gateway と Orchestrator
+(`leisen-ask serve`)は同じ版のイメージ(同じタグ)に同時に切り替える。connector-sdk v0.7 で、検索の仕様は
+`describe` の `summary` から専用のフィールド `searchSpec` に移った(ADR-017 追補 1)。版がずれると次のように
+なる(どちらも動作は続くが、探索 LLM に検索の仕様が届かない)。
+
+- 新しい Gateway + 古い Orchestrator: 古い Orchestrator は `searchSpec` を読まないため、検索の仕様が探索 LLM に
+  届かない(新しいコネクタは `summary` に検索の仕様を書かない)
+- 古い Gateway + 新しい Orchestrator: 古い Gateway は `searchSpec` を付けないため、検索の仕様のブロックが置かれない
+  (古い Gateway の検索の通知 `notices` は新しい Orchestrator が捨てる)
+
+あわせて、deployment.yaml の `connectors[].searchProfile`(検索プロファイルの上書き。ADR-025 追補 2 で廃止)は
+新しい Gateway の `validate` / `serve` で拒否されるので、手順3の前に消す。開発用コネクタの `settings.specDelivery`
+も同じく削除した。
 
 ## 10. 導入チェックリスト
 

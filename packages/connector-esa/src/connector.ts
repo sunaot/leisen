@@ -33,13 +33,19 @@ import { EsaMcpClient, type EsaMcpCaller, type EsaReadTool, type FetchLike } fro
 import { nextPageOf, parseCategories, parsePost, parseSearchResult, toPlainSnippet, type EsaPost } from "./parse.js";
 import { decodeCursor, encodeCursor } from "./cursor.js";
 import { integerOption } from "./options.js";
+import { normalizeQuery, shouldParenthesize, snippetTerms } from "./query.js";
 
 export interface EsaConnectorOptions {
   readonly sourceId: string;
   /** esa のチーム名(<team>.esa.io の <team>) */
   readonly team: string;
   readonly displayName?: string;
-  /** describe の summary(このソースに何があるかの説明。エージェントの初手選択に使う) */
+  /**
+   * describe の summary(このソースに何があるかの説明。エージェントの初手選択に使う)。内容の
+   * 説明だけを書く。検索の仕様は summary に入れず、静的な宣言 searchSpec(searchSpecOf)で渡す
+   * (connector-sdk v0.7、ADR-017 追補 1)。この値は searchSpec に入らない。Orchestrator は summary を
+   * 1,000 字で切るため、ここは短くする
+   */
   readonly summary?: string;
   /** リモート MCP サーバーの URL(既定 https://mcp.esa.io/) */
   readonly mcpUrl?: string;
@@ -113,6 +119,13 @@ export class EsaConnector implements Connector {
     ingest: false,
     privateScopeHandling: "classified",
   };
+  /**
+   * 検索の仕様の静的な宣言(connector-sdk v0.7、ADR-017 追補 1)。実装の定数(searchSpecOf)と、
+   * 導入の設定 includeWip から決まる定型の句だけで作る。settings.summary などの自由な文字列、
+   * esa から取得した文(カテゴリ名、リモート MCP サーバーのツールの説明・検索のヘルプ)は入れない。
+   * 構築時に決まり、利用者によらない
+   */
+  readonly searchSpec: string;
   readonly #team: string;
   readonly #displayName: string;
   readonly #summary: string;
@@ -135,9 +148,11 @@ export class EsaConnector implements Connector {
     this.sourceId = options.sourceId;
     this.#team = options.team;
     this.#displayName = options.displayName ?? `esa (${options.team})`;
-    this.#summary =
+    const contents =
       options.summary ??
-      `esa team ${options.team}: Markdown posts (design docs, meeting notes, how-tos, daily reports) organized by category`;
+      `esa チーム ${options.team} の Markdown の投稿(設計書・議事録・手順書・日報など)。カテゴリで整理されている。`;
+    this.#summary = contents.trim();
+    this.searchSpec = searchSpecOf(options.includeWip ?? true);
     const timeoutMs = integerOption("timeoutMs", options.timeoutMs, 15_000, 1_000, 120_000);
     this.#defaultLimit = integerOption("defaultSearchLimit", options.defaultSearchLimit, 10, 1, 100);
     this.#snippetChars = integerOption("snippetChars", options.snippetChars, 300, 1, MAX_SNIPPET_CHARS);
@@ -207,7 +222,8 @@ export class EsaConnector implements Connector {
     if (typeof query !== "string") {
       throw new ConnectorError("invalid_request", "query must be a string");
     }
-    const parts = [query.trim()];
+    const terms = normalizeQuery(query);
+    const parts: string[] = [];
     if (filters?.updatedAfter !== undefined) {
       parts.push(`updated:>${esaDate(filters.updatedAfter, "updatedAfter")}`);
     }
@@ -229,7 +245,10 @@ export class EsaConnector implements Connector {
     if (!this.#includeWip) {
       parts.push("wip:false");
     }
-    return parts.filter((p) => p !== "").join(" ");
+    // 修飾子を後ろに付けるとき、OR を含む検索語は括弧で包み、修飾子が全体に掛かるようにする
+    // (esa のヘルプの例と同じ形に限る。shouldParenthesize)
+    const head = parts.length > 0 && shouldParenthesize(terms) ? `(${terms})` : terms;
+    return [head, ...parts].filter((p) => p !== "").join(" ");
   }
 
   async search(auth: AuthContext, query: string, filters?: SearchFilters, options?: SearchOptions): Promise<SearchResult> {
@@ -243,7 +262,8 @@ export class EsaConnector implements Connector {
       sort: "best_match",
     });
     const posts = parseSearchResult(raw);
-    const hits = posts.map((post) => this.#toHit(post));
+    const terms = snippetTerms(query);
+    const hits = posts.map((post) => this.#toHit(post, terms));
     const next = nextPageOf(raw);
     const hasMore = next === undefined ? posts.length >= limit : next !== null;
     return {
@@ -252,7 +272,7 @@ export class EsaConnector implements Connector {
     };
   }
 
-  #toHit(post: EsaPost): SearchHit {
+  #toHit(post: EsaPost, terms: readonly string[]): SearchHit {
     const meta: Record<string, string> = {};
     if (post.category !== "") {
       meta["category"] = post.category;
@@ -266,7 +286,7 @@ export class EsaConnector implements Connector {
     return {
       documentId: `post:${post.number}`,
       title: post.name,
-      snippet: toPlainSnippet(post.bodyMd, this.#snippetChars),
+      snippet: toPlainSnippet(post.bodyMd, this.#snippetChars, terms),
       url: this.#postUrl(post.number),
       ...(post.updatedAt !== undefined ? { updatedAt: post.updatedAt } : {}),
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
@@ -360,6 +380,30 @@ export class EsaConnector implements Connector {
       supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"],
     };
   }
+}
+
+/**
+ * 検索の仕様(searchSpec に入れる事実の記述。2026-11-25 に summary の後ろに付ける文として書き、
+ * 2026-11-26 に searchSpec へ移した。文面は変えていない)。出典は esa の検索ヘルプ
+ * (docs.esa.io/posts/104、/389)と本コネクタの実装。リモート MCP 経由で実機確認していない
+ * 挙動は「不明」「未確認」と書く。1 行で MAX_SEARCH_SPEC_LENGTH(1,500)字以内に収め、改行や
+ * 予約の語句を含めない(connector-sdk の checkSearchSpec)
+ */
+export function searchSpecOf(includeWip: boolean): string {
+  return (
+    "検索の仕様: query は esa の検索構文として esa_search_posts に渡す(esa のヘルプの記述。MCP 経由での実機の挙動は未確認)。" +
+    "空白区切りは AND(MCP 経由での厳密さは不明)。A OR B または A | B で OR、-語 で否定、\"語句\" で完全一致。" +
+    "左から順に処理され、() で優先順位を変えられる。" +
+    "修飾子: title:(記事名)、body:(本文)、in:(カテゴリの前方一致)、on:(カテゴリの完全一致)、#タグ、user:(作成者の screen_name)、" +
+    "created: / updated: に >YYYY-MM-DD や <YYYY-MM-DD(after: before: は esa の構文にない)、wip:true/false、kind:stock/flow。" +
+    "通常の語は表記の揺れを考慮した照合とされるが、範囲は不明。語数・文字数の上限は不明。" +
+    "並び順は best_match(記事名の一致・Ship It 済み・ストックを優遇。重みは非公開)。" +
+    "返るのは投稿だけ(title は記事名、カテゴリは meta.category、タグは meta.tags)。" +
+    "スニペットは本文を平文にしたもののうち、query の語(演算子・修飾子を除く)が現れる箇所の周辺で、本文に語がなければ本文の先頭。" +
+    "filters: updatedAfter / updatedBefore は ISO 8601(日付にして updated:> / updated:<)、container はカテゴリのパス(in:)、author は screen_name(user:)。" +
+    "filters は query の後ろに修飾子として付き、query が語と OR だけのときは query を () で包む。" +
+    (includeWip ? "" : "この導入では wip:false も付く。")
+  );
 }
 
 function integerOptionOrInvalid(name: string, value: number | undefined, fallback: number, min: number, max: number): number {

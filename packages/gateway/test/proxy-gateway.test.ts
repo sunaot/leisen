@@ -422,6 +422,27 @@ describe("audit logging (acceptance: exactly one record per request)", () => {
     expect(JSON.stringify(sink.records[0])).not.toContain("社内の秘密の質問");
   });
 
+  it("Slack が有効な構成では、どのソースへの search のクエリ原文も生クエリ表に書かず digest だけを残す(ADR-026 決定5、不変条件7)", async () => {
+    const rawQueryStore = new InMemoryRawQueryStore();
+    const sink = new CollectingAuditSink();
+    const config = testConfig({
+      connectors: [{ id: "alpha" }, { id: "beta", kind: "slack-rts" }],
+    });
+    const { gateway } = build({ config, rawQueryStore, sink });
+    const session = await gateway.resolveSession("session-alice");
+    // Slack 以外のソース宛ての検索にも Slack の結果に出た語が入りうるため、どちらも書かない
+    await search(gateway, session, "alpha", "general-channel-語");
+    await search(gateway, session, "beta", "slack-語");
+    expect(await rawQueryStore.findByDigest(digestQuery("general-channel-語"))).toEqual([]);
+    expect(await rawQueryStore.findByDigest(digestQuery("slack-語"))).toEqual([]);
+    // 監査レコードは digest だけ(従来どおり)
+    expect(sink.records.map((r) => r.recordType === "tool_invocation" && r.queryDigest)).toEqual([
+      digestQuery("general-channel-語"),
+      digestQuery("slack-語"),
+    ]);
+    expect(JSON.stringify(sink.records)).not.toContain("語");
+  });
+
   it("tolerates raw-query store failure once the audit record is persisted", async () => {
     // rawQueryは監査本体と別の短期補助テーブル(ADR-011 §3)。監査レコードが
     // 書けている以上、原文保存の失敗でツール呼び出しを拒否しない

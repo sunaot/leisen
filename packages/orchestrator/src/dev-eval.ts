@@ -305,13 +305,23 @@ function seconds(ms: number): string {
 /** 結果を Markdown にする(質問文・回答本文は含めない)。 */
 export function formatReport(
   results: readonly DevEvalResult[],
-  context: { readonly label?: string; readonly promptVersion: string },
+  context: {
+    readonly label?: string;
+    readonly promptVersion: string;
+    /** 検索の状況の制御メッセージが有効か(省略時は表示しない) */
+    readonly searchFeedback?: boolean;
+  },
 ): string {
   const lines: string[] = [];
   const summary = summarize(results);
   lines.push(`## dev-eval${context.label === undefined ? "" : `: ${cell(context.label)}`}`);
   lines.push("");
-  lines.push(`- プロンプト: ${context.promptVersion}`);
+  lines.push(
+    `- プロンプト: ${cell(context.promptVersion)}` +
+      (context.searchFeedback === undefined
+        ? ""
+        : `(検索の状況の制御メッセージ ${context.searchFeedback ? "有効" : "無効"})`),
+  );
   lines.push(
     `- 合格 ${summary.pass} / ${summary.total}(不合格 ${summary.fail}、エラー ${summary.error})、` +
       `上限到達 ${summary.hitLimit}`,

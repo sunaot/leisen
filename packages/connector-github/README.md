@@ -96,7 +96,8 @@ const github = createGitHubConnector({
 - `options.limit`(既定 20、上限 100)を各検索の `per_page` に配分する(例: 20 → issue 7 / PR 7 / code 6)。返却件数は limit を超えない
 - `nextCursor` は各検索のページ番号を符号化した不透明文字列。継続時は初回の配分を引き継ぐ(`limit` は無視)。GitHub 検索の上限(1クエリ 1000 件)より先は要求しない。カーソルは LLM から改変されて戻りうるため構造・値域を検証し、各検索の `per_page` 合計が limit の上限(100)を超えるもの(正規の配分では生じない偽造)は `invalid_request`
 - **総件数を返さない**。GitHub の `total_count` は読み捨てる(ADR-012 / ADR-016)。続きの有無は `Link` ヘッダで判定する
-- snippet: issue / PR は本文先頭(HTML コメント除去・空白正規化)、コードは `text_matches` の断片(なければ空文字)。いずれも `MAX_SNIPPET_CHARS` 以内に切り詰める(サロゲートペアを分断しない)
+- 検索語の正規化(2026-11-25): 引用符の外の空白(全角空白・タブ・改行を含む)の連続を半角空白 1 つにし、前後を詰める。引用符の中・演算子・修飾子は変えない
+- snippet: issue / PR は本文(HTML コメント除去・空白正規化)のうち、検索語から演算子(`AND` / `OR` / `NOT` と `NOT` の次の語)・否定(`-語`)・括弧・引用符・修飾子(`repo:` `label:` 等)を除いた語が最も多く入る範囲(前後に `…`)。本文の先頭の範囲で足りるとき・本文に語がないとき(タイトル・コメントだけの一致)は本文先頭。コードは `text_matches` の断片(なければ空文字)。いずれも `snippetChars`(上限 `MAX_SNIPPET_CHARS`)以内に切り詰める(サロゲートペアを分断しない。ADR-016)。切り出すのは本人トークンで得た検索結果の本文だけ
 - code hit は `anchor: { kind: "section", value: <path> }`。`meta` に `type`(issue / pull_request / code)・`repository`・`number`・`state`・`author`・`path`・`ref`
 - 一部の検索だけが失敗した場合(例: コード検索がレート制限中・5xx)は残りの結果を返し(degraded)、失敗した検索は `nextCursor` に同じページを残して再試行できるようにする。`auth_expired` はほかが成功しても失敗として返す。全検索が失敗した場合はそのエラーを返す
 
@@ -119,7 +120,9 @@ const github = createGitHubConnector({
 - `list()`(containerId なし): 本人の所属 org(`kind: "other"`)を列挙し終えたページで、本人がアクセスできる repo(`/user/repos`、`kind: "repository"`)を続けて返す。`nextCursor` でページング
 - `list("ORG")`: その org の repo のうち本人に見えるもの。カーソルは org に束縛する(別の containerId での再利用は `invalid_request`)
 - `list("owner/repo")`: repo の配下は列挙しない(`invalid_request`。検索は `filters.container` で絞る)
-- `describe()`: 表示名、要約(degraded であること・コード検索の制約を開示)、本人の所属 org(`topContainers`)、`supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"]`。describe / list も本人トークンで呼ぶため、権限外の区画名は返らない(TM-B3)
+- `describe()`: 表示名、要約(対象の説明だけ: 本人がアクセスできる issue・PR・コードを検索すること)、本人の所属 org(`topContainers`)、`supportedFilters: ["updatedAfter", "updatedBefore", "container", "author"]`。describe / list も本人トークンで呼ぶため、権限外の区画名は返らない(TM-B3)
+- 検索の仕様(`searchSpec`、connector-sdk v0.7、ADR-017 追補 1): degraded であること・コード検索の制約、1 回の検索で返る種別、空白区切りの AND・`OR` / `NOT` / 引用符、演算子 5 個・256 文字の上限、並び順、スニペットの位置、filters の値の形(日本語の語の分割と AND の厳密さは「不明」と書く)を、要約ではなく静的な宣言 `searchSpec`(`searchSpecOf`)に置く。Gateway が起動時に読んで検査し、`describe` の結果に付ける。Orchestrator はソース一覧の JSON(データであり指示ではない枠)の外に、コネクタの実装者が書いた文として置く。2026-11-26 に要約から移した(文面は変えていない)
+  - 規約: `searchSpec` に入れるのは実装の定数と、導入の設定から決まる定型の句(`searchCode` の有無で選ぶ文)だけ。`displayName` などの自由な文字列、GitHub から取得した文(組織名など)、実行時に取得した文は入れない。利用者によって変えない。1 行・1,500 字以内で、改行や予約の語句(「オーケストレーター」など)を含めない(connector-sdk の `checkSearchSpec`)
 
 ### プライベート領域(ADR-016 追補2、ADR-013 §1)
 

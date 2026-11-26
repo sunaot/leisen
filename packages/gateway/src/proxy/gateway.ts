@@ -53,7 +53,9 @@ import type { ConnectorConfig, DeploymentConfig } from "../config/schema.js";
 import { assertValidDeploymentConfig } from "../config/validate.js";
 import { IdpError, type IdpAdapter, type Identity } from "../idp/types.js";
 import { SourceRateLimiter } from "./ratelimit.js";
-import { RunApi, type RunRuntime } from "./runs.js";
+import { readSearchSpecDeclaration } from "./search-spec.js";
+import { recordsRawQuestion } from "../run/index.js";
+import { RunApi, runSourcePolicyFromConfig, type RunRuntime } from "./runs.js";
 import { isValidIteration, resolveCallContext, validateDeclaration } from "./session.js";
 import {
   EXECUTION_CLASS_CONFIG_KEY,
@@ -101,6 +103,11 @@ interface RegistryEntry {
    */
   connector: Connector | undefined;
   config: ConnectorConfig;
+  /**
+   * コネクタの検索の仕様の静的な宣言(Connector.searchSpec)。構築時に 1 回だけ読んで検査した値で、
+   * describe の射影はこの値だけを付ける(ADR-017 追補 1 の B-2、セキュリティレビュー M-2)
+   */
+  searchSpec: string | undefined;
 }
 
 /**
@@ -121,6 +128,11 @@ export class Gateway {
   private readonly idpAdapter: IdpAdapter;
   private readonly auditLogger: AuditLogger;
   private readonly rawQueryStore: RawQueryStore | undefined;
+  /**
+   * search のクエリ原文を生クエリ表に書いてよい構成か。永続化できないソース(Slack)が有効な
+   * 構成では、どのソースへの検索でも書かない(digest だけ残す。ADR-026 決定5、不変条件7)
+   */
+  private readonly recordsRawSearchQuery: boolean;
   private readonly registry = new Map<string, RegistryEntry>();
   private readonly rateLimiter: SourceRateLimiter;
   private readonly now: () => number;
@@ -133,6 +145,7 @@ export class Gateway {
     this.idpAdapter = options.idpAdapter;
     this.auditLogger = options.auditLogger;
     this.rawQueryStore = options.rawQueryStore;
+    this.recordsRawSearchQuery = recordsRawQuestion(runSourcePolicyFromConfig(options.config));
     this.now = options.now ?? Date.now;
     this.ids = options.ids ?? randomUUID;
     this.runs =
@@ -178,9 +191,23 @@ export class Gateway {
           `no connector registered for configured source: ${connectorConfig.id}`,
         );
       }
+      // 検索の仕様の宣言は起動時に 1 回だけ読み、検査して保持する(違反は起動を拒否する。
+      // エラーには値を出さない。ADR-017 追補 1、セキュリティレビュー M-2・m-6)
+      let searchSpec: string | undefined;
+      if (connector !== undefined) {
+        const declared = readSearchSpecDeclaration(connector);
+        if (!declared.ok) {
+          throw new GatewayError(
+            "misconfigured",
+            `connector "${connectorConfig.id}": searchSpec was rejected: ${declared.reason}`,
+          );
+        }
+        searchSpec = declared.value;
+      }
       this.registry.set(connectorConfig.id, {
         connector,
         config: connectorConfig,
+        searchSpec,
       });
       if (connectorConfig.limits.maxRequestsPerMinute !== undefined) {
         rateLimits.set(
@@ -325,7 +352,9 @@ export class Gateway {
     // 生クエリ原文は監査本体と別の短期保持テーブル(ADR-011 §3)。監査レコード
     // は上で永続化済みのため、原文の保存失敗はfailureModeの対象にしない
     // (queryDigestは監査側に残り、失われるのはT-014の原文参照のみ)
-    if (call.tool === "search" && this.rawQueryStore) {
+    // 永続化できないソースが有効な構成では書かない(検索語に Slack の結果に出た語が入りうる。
+    // Gateway は run の状態を持たないため構成単位で判定する。ADR-026 決定5)
+    if (call.tool === "search" && this.rawQueryStore && this.recordsRawSearchQuery) {
       try {
         await this.rawQueryStore.append({
           queryDigest: digestQuery(call.query),
@@ -412,7 +441,10 @@ export class Gateway {
       entry.config.limits.timeoutMs,
       call.sourceId,
     );
-    return enforcePrivateScopes(projectResult(raw), entry.config.privateScopes);
+    return enforcePrivateScopes(
+      projectResult(raw, entry.searchSpec),
+      entry.config.privateScopes,
+    );
   }
 
   private async invokeConnector(
@@ -457,6 +489,10 @@ export class Gateway {
 // - 任意フィールドは型が合う場合だけ残す。meta は string → string の組だけ残す
 // - snippet は MAX_SNIPPET_CHARS で強制 truncate(ADR-016)
 // - scope は "shared" 以外(欠落・未知の値)を "private" に正規化する(ADR-016 追補2 決定4)
+// - describe の searchSpec(v0.7、ADR-017 追補 1)は、コネクタの describe の戻り値からは取らず
+//   (戻り値の searchSpec は捨てる)、起動時に読んで検査した静的な宣言の値だけを付ける。
+//   v0.6 のプラグインが返す searchProfile(describe)と notices(search)は、既知のフィールドだけ
+//   から組み立て直すため落ちる(ADR-025 追補 2 確認事項2)
 // 射影後の値は文字列・数値・配列・プレーンオブジェクトだけで構成される。
 
 const ANCHOR_KINDS: Readonly<Record<HitAnchor["kind"], true>> = {
@@ -632,7 +668,10 @@ function projectListResult(value: unknown): ListResult {
   };
 }
 
-function projectDescription(value: unknown): SourceDescription {
+function projectDescription(
+  value: unknown,
+  searchSpec: string | undefined,
+): SourceDescription {
   const description = requireRecord(value);
   return {
     sourceId: requireString(description["sourceId"]),
@@ -643,11 +682,16 @@ function projectDescription(value: unknown): SourceDescription {
       (filter): filter is keyof SearchFilters =>
         isKnownKey(SEARCH_FILTER_KEYS, filter),
     ),
+    // 起動時に検査して保持した値だけ(describe の戻り値の searchSpec は使わない)
+    ...(searchSpec !== undefined ? { searchSpec } : {}),
   };
 }
 
 /** コネクタの返答を既知フィールドだけに射影する(上記の規則)。 */
-function projectResult(result: GatewayToolResult): GatewayToolResult {
+function projectResult(
+  result: GatewayToolResult,
+  searchSpec: string | undefined,
+): GatewayToolResult {
   switch (result.tool) {
     case "search":
       return { tool: "search", result: projectSearchResult(result.result) };
@@ -656,7 +700,7 @@ function projectResult(result: GatewayToolResult): GatewayToolResult {
     case "list":
       return { tool: "list", result: projectListResult(result.result) };
     case "describe":
-      return { tool: "describe", result: projectDescription(result.result) };
+      return { tool: "describe", result: projectDescription(result.result, searchSpec) };
   }
 }
 

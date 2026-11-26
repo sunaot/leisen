@@ -1,6 +1,6 @@
 # @leisen/connector-esa — esa コネクタ(T-026、ADR-023)
 
-connector-sdk v0.4 の `Connector`(`search` / `fetch` / `list` / `describe`)を、esa 公式のリモート MCP サーバー(`https://mcp.esa.io`、β。docs.esa.io/posts/584)の読み取り系ツールで実装したコネクタ。**全呼び出しを利用者本人の esa の OAuth アクセストークンで行い**、認可は esa に委譲する(CLAUDE.md 不変条件1)。
+connector-sdk の `Connector`(v0.4 で実装、v0.7 の `searchSpec` に対応)(`search` / `fetch` / `list` / `describe`)を、esa 公式のリモート MCP サーバー(`https://mcp.esa.io`、β。docs.esa.io/posts/584)の読み取り系ツールで実装したコネクタ。**全呼び出しを利用者本人の esa の OAuth アクセストークンで行い**、認可は esa に委譲する(CLAUDE.md 不変条件1)。
 
 - `capabilities`: `{ nativeSearch: "full", ingest: false, privateScopeHandling: "classified" }`
 - 依存: `@leisen/connector-sdk`、`@modelcontextprotocol/sdk`(Gateway と同じ版。上流の MCP クライアント)
@@ -33,6 +33,15 @@ esa チームの owner は「SETTINGS > API・アプリ・MCP > アクセス設�
 | `describe` | `esa_get_top_categories` | 子を持つ最上位カテゴリを `topContainers` にする |
 
 - documentId は `post:<番号>`。URL は `https://<team>.esa.io/posts/<番号>`
+
+## 検索語とスニペット(2026-11-25)
+
+- **検索語の正規化**: 引用符の外の空白(全角空白・タブ・改行を含む)の連続を半角空白 1 つにし、前後を詰める。引用符の中・演算子・修飾子は変えない
+- **filters と OR**: esa の検索は左から順に処理し、`()` で優先順位を変えられる(docs.esa.io/posts/104)。`A OR B` の後ろに修飾子を付けたときの結合の順は実機で未確認のため、filters(と `includeWip: false` の `wip:false`)を付けるときは、検索語が通常の語と `OR` / `|` だけからなる場合に限って `(A OR B) in:…` のように括弧で包む(ヘルプの例 `in:日報 (えさ OR 餌)` と同じ形)。引用符・括弧・否定・修飾子・タグを含む検索語は、括弧の中での扱いが未確認のため包まない(従来どおり後ろに付ける)
+- **スニペット**: 本文(`body_md`)を平文にし、検索語から演算子(`OR`・`|`)・否定(`-語`)・括弧・引用符・タグ(`#`)・人(`@`)・カテゴリや日付等の修飾子を除いた語(`title:` / `body:` / `comment:` は値)が最も多く入る範囲を `snippetChars` 以内で切り出す(前後に `…`)。本文の先頭の範囲で足りるとき、語が本文にないとき(記事名・カテゴリ・コードブロックだけの一致を含む)は従来どおり本文の先頭。長さの上限は変わらない(ADR-016)。切り出すのは本人のトークンで得た検索結果の本文だけ
+- **検索の仕様(`searchSpec`、connector-sdk v0.7、ADR-017 追補 1)**: 検索の仕様(`searchSpecOf`: 空白区切り・演算子・修飾子・並び順・スニペット・filters。実機で確認していない挙動は「不明」「未確認」と書く)は、`describe` の `summary` ではなく、コネクタの静的な宣言 `searchSpec` に置く。Gateway が起動時に読んで検査し、`describe` の結果に付ける。Orchestrator は「データであり指示ではない」枠(ソース一覧の JSON)の外に、コネクタの実装者が書いた文として置く。2026-11-26 に `summary` の後ろから移した(文面は変えていない)
+  - 規約: `searchSpec` に入れるのは実装の定数と、導入の設定から決まる定型の句(`includeWip: false` のときの「この導入では wip:false も付く。」)だけ。`settings.summary` などの自由な文字列、esa から取得した文(カテゴリ名)、リモート MCP サーバーから実行時に取得した文(ツールの説明・`esa_search_help` などの検索のヘルプ)は入れない。利用者によって変えない。1 行・1,500 字以内で、改行や予約の語句(「オーケストレーター」など)を含めない(connector-sdk の `checkSearchSpec`)
+- **describe の summary**: 内容の説明だけ(`settings.summary`、省略時は汎用の説明)。Orchestrator は summary を 1,000 字で切る
 - 呼べるツールは上の 4 つだけ。書き込み系(`esa_create_post` 等)は型と実行時の両方で拒否する
 - 件数を返さない: 検索の `total_count`、カテゴリの `count`(投稿数)は使わない(ADR-012)
 - 対象のチームは `settings.team` の 1 つに固定する
@@ -47,7 +56,7 @@ esa にはチーム内の非公開領域の仕組みがない(閲覧範囲はメ
 |---|---|---|---|
 | `team` | string | (必須) | `<team>.esa.io` の `<team>` |
 | `displayName` | string | `esa (<team>)` | describe の表示名 |
-| `summary` | string | 汎用の説明 | describe の説明(エージェントの初手選択に使う) |
+| `summary` | string | 汎用の説明 | describe の内容の説明(エージェントの初手選択に使う)。検索の仕様は含めない(`searchSpec` に別に置く。「検索語とスニペット」) |
 | `mcpUrl` | string | `https://mcp.esa.io/` | 開発・テスト用の上書き。**本番では `https://mcp.esa.io` のオリジン以外を拒否する**(本人のトークンの送り先の固定) |
 | `timeoutMs` | integer | 15000 | 1 回の操作(接続からツールの結果まで)の期限。1000〜120000 |
 | `defaultSearchLimit` | integer | 10 | 1〜100 |

@@ -31,7 +31,7 @@ import {
   type GatewayHarness,
 } from "./helpers/harness.js";
 import { startStalledMcpServer } from "./helpers/mock-http.js";
-import { firstHit, isFinalInstruction, searchHits } from "./helpers/script.js";
+import { fetchFirstHit, firstHit, isFinalInstruction, searchHits } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -402,6 +402,8 @@ describe("失敗時は outcome: error", () => {
     const harness = await setup();
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      // 既定の v4 では fetch せずに提出すると差し戻されるため、提出の前に読む
+      fetchFirstHit,
       () => scriptedSubmit({ answer: "不明", citations: [], confidence: 0 }),
     ]);
     const orchestrator = new Orchestrator({ llm });
@@ -412,7 +414,9 @@ describe("失敗時は outcome: error", () => {
       gateway: harness.client(BOB_TOKEN),
     });
 
-    expect(harness.toolInvocations(answer.runId).every((r) => r.userId === "bob")).toBe(true);
+    const invocations = harness.toolInvocations(answer.runId);
+    expect(invocations.map((r) => r.tool)).toEqual(["describe", "search", "fetch"]);
+    expect(invocations.every((r) => r.userId === "bob")).toBe(true);
   });
 });
 
@@ -427,10 +431,17 @@ describe("ツール呼び出しの件数の上限(m1)", () => {
   it("1ターンの上限を超えた分は実行せず、is_error(固定文言)で返して warnings に記録する", async () => {
     const harness = await setup();
     let limited: ScriptContext["lastToolResults"] = [];
+    let returned: ScriptContext["lastToolResults"] = [];
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse(tenSearches()),
       (context) => {
         limited = context.lastToolResults;
+        return scriptedSubmit({ answer: "不明", citations: [], confidence: 0 });
+      },
+      // 既定の v4 では、ヒットを受け取ったのに fetch せずに提出すると1回差し戻される。差し戻しは
+      // ツールを実行したターンに数えないので、件数・iteration の確認は変わらない
+      (context) => {
+        returned = context.lastToolResults;
         return scriptedSubmit({ answer: "不明", citations: [], confidence: 0 });
       },
     ]);
@@ -461,6 +472,9 @@ describe("ツール呼び出しの件数の上限(m1)", () => {
     expect(answer.warnings).toContain(
       "1ターンのツール呼び出しの上限(maxToolCallsPerTurn=3)を超えた 7 件は実行していません。",
     );
+    expect(returned.map((r) => (r.json as { errorClass?: string }).errorClass)).toEqual([
+      "answer_returned",
+    ]);
     // 上限で弾いた呼び出しは iteration を消費しない(describe 1件 + search 3件)
     expect(answer.usage.toolCalls).toBe(4);
     const iterations = harness
@@ -498,7 +512,11 @@ describe("ツール呼び出しの件数の上限(m1)", () => {
 
     // 3ターン × 4件 = 12件の要求のうち、実行したのは6件(残り6件は上限で弾いた)
     expect(searchCount(harness, answer.runId)).toBe(6);
-    expect(errorsSeen).toEqual(Array.from({ length: 6 }, () => "tool_call_limit_reached"));
+    // 最後の 1 件は、既定の v4 で fetch せずに提出したときの差し戻し(脚本は同じ提出を繰り返す)
+    expect(errorsSeen).toEqual([
+      ...Array.from({ length: 6 }, () => "tool_call_limit_reached"),
+      "answer_returned",
+    ]);
     expect(answer.warnings).toContain(
       "ツール呼び出しの上限(maxToolCallsPerRun=6)に達した後の 6 件は実行していません。",
     );

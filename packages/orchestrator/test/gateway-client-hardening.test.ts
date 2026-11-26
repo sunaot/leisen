@@ -15,7 +15,7 @@ import {
   TEST_ORCHESTRATOR_CREDENTIAL,
   startGateway,
 } from "./helpers/harness.js";
-import { firstHit } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched } from "./helpers/script.js";
 import { startMockHttpServer } from "./helpers/mock-http.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -67,8 +67,9 @@ describe("run API のパスは MCP のパスと同じディレクトリ", () => 
     expect(harness.url).toMatch(/\/leisen\/mcp$/);
     const llm = new ScriptedLlmClient([
       () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+      fetchFirstHit,
       (context) => {
-        const hit = firstHit(context);
+        const hit = firstFetched(context);
         return scriptedSubmit({
           answer: "経費精算の締め日は毎月25日です。",
           citations: [{ documentId: hit.documentId, sourceId: hit.source }],

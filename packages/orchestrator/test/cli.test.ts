@@ -35,7 +35,7 @@ import {
   startGateway,
   type GatewayHarness,
 } from "./helpers/harness.js";
-import { firstHit } from "./helpers/script.js";
+import { fetchFirstHit, firstFetched } from "./helpers/script.js";
 
 const harnesses: GatewayHarness[] = [];
 afterEach(async () => {
@@ -74,8 +74,10 @@ function deps(llm: (settings: Parameters<CliDependencies["createLlmClient"]>[0])
 function resolvingScript(): ScriptedLlmClient {
   return new ScriptedLlmClient([
     () => scriptedToolUse([{ name: "search", input: { source: "alpha", query: "締め日" } }]),
+    // 既定の v4 では fetch せずに提出すると差し戻されるため、提出の前に読む
+    fetchFirstHit,
     (context) => {
-      const hit = firstHit(context);
+      const hit = firstFetched(context);
       return scriptedSubmit({
         answer: "経費精算の締め日は毎月25日です。",
         citations: [{ documentId: hit.documentId, sourceId: hit.source }],
@@ -157,7 +159,8 @@ describe("leisen-ask: 実行", () => {
     expect(text).toContain("[1] 経費精算規程 (alpha:doc-expense-policy) https://alpha.example.test/docs/doc-expense-policy");
     expect(text).toContain("検索したソース: alpha");
     expect(text).toContain("結果: resolved");
-    expect(text).toContain("LLM 2 ターン、ツール呼び出し 2 回");
+    // 脚本は search → fetch → submit_answer(describe 1 回 + search + fetch)
+    expect(text).toContain("LLM 3 ターン、ツール呼び出し 3 回");
     // AnswerRun は Gateway の run API が書く(ADR-019)。leisen-ask は監査レコードを出力しない
     expect(err.filter((line) => line.startsWith("{"))).toEqual([]);
     expect(harness.answerRuns()).toEqual([
@@ -200,6 +203,46 @@ describe("leisen-ask: 実行", () => {
     );
 
     expect(received).toEqual([{ provider: "anthropic", model: "claude-opus-5-5", effort: "low" }]);
+  });
+
+  it("既定は探索プロンプト v4。--explore-prompt explore.v3 で v3 を選べる(開発・評価用)", async () => {
+    const harness = await setup();
+    const systems: string[] = [];
+    const run = async (extra: string[]) => {
+      const llm = resolvingScript();
+      await runCli(
+        ["--gateway", harness.url, "--token", ALICE_TOKEN, ...extra, "締め日は?"],
+        capture().io,
+        deps(() => llm),
+      );
+      systems.push(llm.requests[0]?.system.map((block) => block.text).join("") ?? "");
+    };
+    await run([]);
+    await run(["--explore-prompt", "explore.v3"]);
+    await run(["--explore-prompt", "explore.v4", "--search-feedback", "off"]);
+    expect(systems[0]).toContain("# 止める基準と続ける基準");
+    expect(systems[0]).not.toContain("名詞を 1〜2 語だけ");
+    expect(systems[1]).toContain("名詞を 1〜2 語だけ");
+    expect(systems[2]).toContain("# 止める基準と続ける基準");
+  });
+
+  it("--explore-prompt / --search-feedback は不正な値と NODE_ENV=production で終了コード 2", async () => {
+    for (const [extra, env] of [
+      [["--explore-prompt", "explore.v9"], {}],
+      [["--search-feedback", "yes"], {}],
+      [["--explore-prompt", "explore.v4"], { NODE_ENV: "production" }],
+      [["--explore-prompt", "explore.v3"], { NODE_ENV: "production" }],
+      [["--search-feedback", "on"], { NODE_ENV: "production" }],
+    ] as const) {
+      const { err, io } = capture();
+      const code = await runCli(
+        ["--gateway", "http://127.0.0.1:1/mcp", "--token", "dev-only-t", ...extra, "q"],
+        io,
+        deps(() => resolvingScript(), env),
+      );
+      expect(code).toBe(2);
+      expect(err[0]).toMatch(/--explore-prompt|--search-feedback/);
+    }
   });
 
   it("Claude API の資格情報が無ければ「資格情報が必要」と表示して終了コード 2(実 SDK、外部に出ない)", async () => {
@@ -347,6 +390,64 @@ describe("leisen-ask: 利用者の束縛(H1)と --config", () => {
     );
 
     expect(lastAnswerRun(harness)).toMatchObject({ finalOutcome: "resolved", citedDocIds: ["alpha:doc-expense-policy"] });
+  });
+
+  it("--config で Slack が有効なら、--json の searchesTried に query を載せない(ADR-026 決定5、不変条件7)", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(
+      DEPLOYMENT_YAML.replace("audit:", "  - id: slack\n    kind: slack-rts\naudit:"),
+    );
+    const { out, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "--json", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    const answer = answerSchema.parse(JSON.parse(out.join("\n")));
+    expect(answer.searchesTried).toEqual([{ sourceId: "alpha", outcome: "hits", newDocuments: 1 }]);
+    expect(out.join("\n")).not.toContain("\"query\"");
+  });
+
+  it("--config がなければ(Slack の有無を確かめられない)、--json の searchesTried に query と filters を載せない(安全側。不変条件7)", async () => {
+    const harness = await setup();
+    const { out, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--json", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    const answer = answerSchema.parse(JSON.parse(out.join("\n")));
+    expect(answer.searchesTried).toEqual([{ sourceId: "alpha", outcome: "hits", newDocuments: 1 }]);
+    expect(out.join("\n")).not.toContain("\"query\"");
+    expect(out.join("\n")).not.toContain("\"filters\"");
+  });
+
+  it("USAGE に --json の searchesTried の query の扱いを書く", () => {
+    expect(USAGE).toContain("--config で永続化できないソース(Slack 系)がないと確かめられたときだけ");
+  });
+
+  it("--config で Slack が無効なら、--json の searchesTried に query を載せる(ADR-026 決定3)", async () => {
+    const harness = await setup();
+    const config = await writeDeployment(DEPLOYMENT_YAML);
+    const { out, io } = capture();
+
+    const code = await runCli(
+      ["--gateway", harness.url, "--token", ALICE_TOKEN, "--config", config, "--json", "締め日は?"],
+      io,
+      deps(() => resolvingScript()),
+    );
+
+    expect(code).toBe(0);
+    const answer = answerSchema.parse(JSON.parse(out.join("\n")));
+    expect(answer.searchesTried).toEqual([
+      { sourceId: "alpha", query: "締め日", outcome: "hits", newDocuments: 1 },
+    ]);
   });
 
   it("--config の deployment.yaml が不正なら終了コード 2", async () => {
