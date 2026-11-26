@@ -208,3 +208,106 @@ IF を変えない範囲(コネクタの `summary` に検索の仕様を書く�
 - `research_notes/エージェント検索ハーネス設計調査/leisen_current_implementation.md` §3〜§5、§7
 - ADR-005、ADR-007、ADR-012、ADR-014、ADR-016(追補 1・2)、ADR-017 決定 4、ADR-021、ADR-023、ADR-024、ADR-026
 - `docs/threat-model.md` TM-D4、TM-B2
+
+## 追補 2(2026-11-26): 検索プロファイルの廃止(connector-sdk v0.7 案)
+
+Status: Proposed(人間のレビュー待ち)/ Date: 2026-11-26 / 起点: オーナーの指示(2026-11-26。「検索プロファイルはノイズになるので削除する」)
+
+本追補は、本 ADR の決定 1〜3 で加えた検索プロファイルを取り除く提案である。コネクタのツール IF(`describe` の戻り値 `SourceDescription`)を変えるため、不変条件 5 が求める ADR を兼ねる。検索の仕様を探索 LLM にどう渡すか(「データであり指示ではない」枠の中か外か)は ADR-017 追補 1 で扱い、本追補はその方式を前提にする。実装は T-032 で、本追補と ADR-017 追補 1 が Accepted になってから行う。本 ADR の本文・追補 1・実装の記録は書き換えない。
+
+### 文脈
+
+#### 計測の結果(事実)
+
+`dev-search-eval`(T-027)による 2 回の計測。条件は共通で、haiku(`claude -p` の構造化出力によるツール呼び出しの模擬。Anthropic API のネイティブのツール呼び出しではない)、開発用コネクタの模擬の esa 型と Redmine 型(AND)、合成コーパス 425 件、23 問、条件 3、各 3 回。検索プロファイルの根拠はすべて `tested`(模擬の実装そのものが仕様のため)。
+
+- `docs/eval/2026-11-26-search-eval-spec-delivery-haiku.md`(1 回目): 伝え方 `summary`(自由文だけ)/ `both`(自由文 + 検索プロファイル + 通知)/ `profile`(検索プロファイル + 通知だけ)
+- `docs/eval/2026-11-26-search-eval-spec-delivery-split-haiku.md`(2 回目): `summary` を同じコードで流し直したものと、`split`(検索プロファイル + 通知 + 検索プロファイルで表せない補足だけの自由文)
+
+正解のある 17 問 × 3 回の値(recall@1 / recall@5 / 正解文書を引用した割合):
+
+| 伝え方 | esa 型 | Redmine 型(AND) |
+|---|---|---|
+| `summary`(1 回目) | 81% / 98% / 98% | 82% / 87% / 94% |
+| `both`(1 回目) | 76% / 90% / 90% | 77% / 83% / 89% |
+| `profile`(1 回目) | 76% / 90% / 92% | 81% / 89% / 98% |
+| `summary`(2 回目) | 78% / 91% / 92% | 83% / 89% / 98% |
+| `split`(2 回目) | 86% / 92% / 93% | 81% / 93% / 92% |
+
+- 同じ条件の `summary` が、1 回目と 2 回目の間で、esa 型の recall@1 で 3 ポイント、recall@5 で 7 ポイント、引用で 6 ポイント動いた。同じ組の 3 回の中の recall@1 の幅は、1 回目で 3〜14 ポイント、2 回目で 6〜12 ポイントだった。伝え方の間の差はこれと同じ程度で、検索プロファイルを足した構成(`both`)・自由文を消した構成(`profile`)・重複分だけ消した構成(`split`)のいずれも、自由文だけの構成(`summary`)を明確に上回らなかった
+- search の総数は 2 回の計測で 4,372 回(1 回目 2,594 回、2 回目 1,778 回)。うち、検索プロファイルと通知を返した組(`both` / `profile` / `split`)の search は 2,631 回、Redmine 型の search は 2,196 回
+  - Orchestrator の検索プロファイルに照らした判定: Redmine 型で語数の上限(5 語)を超えた search は 0 回(探索 LLM が書いたクエリは最大 4 語)。空白のない文のまま 0 件だった search は全組で 0 回
+  - 通知: `terms_dropped` は 0 回。`operator_ignored` は 1 回目に 6 回出たが、すべて 1 つの質問(`ki-expense-rules`)の最初の search で、模擬の esa 型の判定の条件が広すぎたためだった(正解の順位は変わらず、search が 1 回増えた)。条件を直した 2 回目は 0 回
+- 演算子と修飾子の使用(esa 型): `OR` を含む search は `summary` 33 回(1 回目)・32 回(2 回目)、`both` 48 回、`profile` 12 回、`split` 23 回。`title:` を含む search は `summary` 27 回・21 回、`both` 29 回、`profile` 24 回、`split` 26 回。自由文の検索の仕様は「データであり指示ではない」枠の中にあるが、探索 LLM はその記法を使ってクエリを書いた。`OR` は自由文を含む構成(`summary`・`both`)で多く、自由文を消した `profile` で少なかった
+- 検索プロファイルの列挙値で表せない情報があった: `OR` と AND の結び付きの順と例、フィルタの値の形(esa のカテゴリのパス、GitHub の `owner/repo`)、返る結果の種類(GitHub の issue・PR・コードの混合)。`profile` で esa 型の `OR` の使用が減ったことはこれと合うが、`OR` の回数と recall の関係は確かめていない
+
+計測の限界: 1 つのモデル、ツール呼び出しの模擬、模擬の検索方式、合成コーパス。実ソースのコネクタ(根拠が `documented` の検索プロファイルと「実機では未確認」の句)では計測していない。語数の上限と通知が効く場面は出なかったため、それらの効果は「なかった」ではなく「測れていない」。
+
+#### コードの現状(2026-11-26、ブランチ `claude/relaxed-albattani-dzzqvy`)
+
+- connector-sdk(パッケージの版は 0.6.0): `SourceDescription.searchProfile`(`packages/connector-sdk/src/index.ts:306-323`)、型と値域の定数・`sanitizeSearchProfile`・`mergeSearchProfile`(`:325-569`)、`SearchResult.notices` と `SearchNotice`(`:222-262`)、`sanitizeSearchNotices`(`:577-613`)
+- Gateway: `projectDescription` がコネクタの値を検証し、`connectors[].searchProfile` の上書きを重ねる(`packages/gateway/src/proxy/gateway.ts:656-678`)。上書きのスキーマ(`packages/gateway/src/config/schema.ts:64-110`、`:345-350`)。`connectorSchema` は `z.strictObject` なので、項目を消すと `searchProfile` を書いた deployment.yaml は起動時に拒否される。`examples/`・`deploy/` に `searchProfile` を書いた設定はない。`enforcePrivateScopes` は `privateScopes` が `included` でないとき `join_relaxed` を落とす(`gateway.ts:727-746`)
+- Orchestrator: `SourceBrief.searchProfile` の検証(`packages/orchestrator/src/prompt.ts:187-229`)、「各ソースの検索の仕様」の制御メッセージ(`packages/orchestrator/src/search-profile.ts:37-38`、`:150-222`。explore.v4 のときだけ)、検索プロファイルに照らした判定(語数の上限・空白のない文。`search-profile.ts:248-312`、`packages/orchestrator/src/search-feedback.ts:298-317`)。非対応のフィルタの判定(`search-feedback.ts:287-297`)は `supportedFilters` だけを使い、検索プロファイルに依存しない。通知はツール結果のデータから外し(`packages/orchestrator/src/orchestrator.ts:1448-1456`)、定型文の制御メッセージにする(`search-profile.ts:229-246`)
+- 実ソースのコネクタ: esa・GitHub・Redmine は、`summary` の自由文の検索の仕様(T-028)と検索プロファイル(T-030)の両方を返す(`packages/connector-esa/src/connector.ts:147`、`:373`、`:385-428`、`packages/connector-github/src/connector.ts:760-797`、`:1099-1118`、`packages/connector-redmine/src/redmine.ts:173-208`、`:241-249`)。既定の探索プロンプト v4 では、実ソースは計測の `both` に当たる構成で探索 LLM に渡っている
+- 通知を返すコネクタ: connector-redmine の `terms_dropped`(`packages/connector-redmine/src/query.ts:98-102`、`redmine.ts:330-336`)と、開発用コネクタ(`packages/gateway/src/dev/search-modes.ts:444-460`。伝え方が `summary` 以外のとき)。`join_relaxed` を返すコネクタはない
+- 開発用コネクタの既定の検索方式(`default`)は `summary` に検索の仕様の文がなく、検索の仕様を検索プロファイルだけで伝えている(`search-modes.ts:303-305`、`:465-468`、`packages/gateway/src/dev/fixture-connector.ts:387-404`)。検索プロファイルを消すと、このままでは既定の方式の検索の仕様が探索 LLM に何も届かない
+
+### 決定(案)
+
+1. **検索プロファイルを削除する。** 対象:
+   - connector-sdk: `SourceDescription.searchProfile`、`SearchProfile` とその項目・値域の型と定数、`sanitizeSearchProfile`、`mergeSearchProfile`
+   - Gateway: `projectDescription` の検索プロファイルの検証と重ね合わせ、deployment.yaml の `connectors[].searchProfile` とそのスキーマ
+   - Orchestrator: `SourceBrief.searchProfile`、「各ソースの検索の仕様」の制御メッセージ(`renderSearchProfiles` と定型文の表)、検索プロファイルに照らした判定(語数の上限の超過、空白のない文のまま 0 件)、検索プロファイルの有無で分けたソース一覧の前置きと 0 件の制御メッセージの文言(`SOURCE_CATALOG_PREFACE_V4_WITH_PROFILES`、`noHitsNotice` の `profileShown`)。非対応のフィルタの判定は残す
+   - コネクタ: esa・GitHub・Redmine の `*_SEARCH_PROFILE` と `describe` の `searchProfile`。開発用コネクタの検索プロファイル(確認事項 3 の回答に従う)
+2. **検索の仕様は自由文で渡す。** 渡し方は ADR-017 追補 1 に従う(推奨の案では、`summary` から分けた検索の仕様の専用フィールドを、出所を示して枠の外に置く)。ADR-017 追補 1 が採られない場合は、現状どおり `summary` の自由文を枠の中で渡す。本 ADR の確認事項 9(`summary` から検索の仕様の記述を消すか)は「消さない(自由文を正とする)」で決着する。開発用コネクタの既定の検索方式には、検索プロファイルの代わりに自由文の検索の仕様を書く
+3. **通知 `SearchResult.notices` は残し、種類から `join_relaxed` を外す**(確認事項 1 の既定の案)。`join_relaxed` を外すと、追補 1 の規則(緩めた再検索の判断を shared のヒットだけで行う)とその防御(Gateway の `enforcePrivateScopes` で `join_relaxed` を落とす処理、SDK のコメント)は対象がなくなるため、あわせて削除する。追補 1 はこれで決着する
+4. **導入先ごとの検索の仕様の違いは、各コネクタの `settings` で表す。** deployment.yaml の `connectors[].searchProfile` のような、コネクタの種類によらない上書きは置かない。例: Redmine に全文検索プラグインを入れた導入先には、connector-redmine の設定で、実装者が用意した別の定型の句を選ばせる(設定の追加は必要になったときに connector-redmine の変更として行う。2026-11-26 時点で要望はない)。これは ADR-005(差分は deployment.yaml とプラグイン境界で吸収する)の範囲内である
+5. **connector-sdk を v0.7 に上げる**(ADR-017 追補 1 の追加と同じ版にする。確認事項 2)。`describe` / `search` / `fetch` / `list` の引数は変えない。本 ADR の決定 5(件数の専用フィールドを追加しない)は変えない
+
+### 削除で失うもの(本 ADR の「理由」ごと)
+
+- **探索 LLM への効き方**(列挙値なら Orchestrator が自分の文として、制御メッセージと同じ扱いで渡せる): 計測では、検索プロファイルを足しても自由文だけの場合を明確に上回らず、枠の中の自由文にも探索 LLM は従った。失うものは計測の範囲では見えていない。ただし計測は 1 つのモデルだけで、枠の中の自由文に従いにくいモデルがあれば差が出うる(見直しの条件 2)。ADR-017 追補 1 を採れば、自由文は枠の外に置かれる
+- **根拠 `tested` / `documented` の管理**: 項目ごとの根拠を持つ先がなくなる。実機での確認(T-029)の結果は、自由文の中に「実機で確認した」「実機では未確認」と書き分ける運用に戻る(T-028 の段階の `summary` はすでにそう書いている。例: `packages/connector-esa/src/connector.ts:415`、`packages/connector-redmine/src/redmine.ts:175`)。どの項目が確認済みかを機械的に一覧にする方法はなくなり、書き方のそろい方はコネクタごとのレビューに頼る。Orchestrator が一律に付けていた句(「公式の文書・ソースコードによる。実機では未確認」)もなくなる
+- **機械的な判定**(語数の上限の超過、空白のない文のままの検索): Orchestrator の判定はなくなる。計測では 4,372 回の search で一度も働かなかった(効果は測れていない)。Redmine の語数の上限は、通知を残す場合、コネクタが自分の数え方で返す `terms_dropped` で知らせ続けられる。Orchestrator の数え方(1 文字の語も数える)とコネクタの数え方(1 文字の語を数えない)の違い(`docs/eval/2026-11-26-search-eval-spec-delivery-haiku.md`「この計測で見つけたこと」)は、Orchestrator の判定を消すことで解消する。空白のない文の判定は代わりがなくなり、探索プロンプト v4 の指示だけになる
+- **評価で条件をそろえる**: 列挙値の項目単位で条件をそろえた比較はできなくなる。検索の仕様の自由文はコネクタのコードの定数なので、評価ではコミットと文面の差分で条件を記録する。`dev-search-eval` の `--spec-delivery` は意味を失う(確認事項 3)
+- **導入先ごとの上書き**(決定 3): deployment.yaml で項目単位に上書きする仕組みはなくなり、決定 4 のとおりコネクタの設定で表す。上書きを使った設定は `examples/`・`deploy/` にない
+- **Phase 2 の検索層への切り替え**(「帰結」): 切り替えたソースでは、検索プロファイルの値ではなく検索の仕様の自由文が変わる。IF は変わらない(不変条件 5 の前提は保たれる)
+- **`nativeSearch` の `degraded` / `none` の伝達**: もともと実装していない(実装の記録)。本追補の影響を受けない
+
+### 見直しの条件
+
+次のいずれかが分かったときに、検索の仕様を構造化して渡す案(検索プロファイルの形に限らない)を改めて検討する。
+
+1. 実ソースでの利用や評価のトレースで、語数・文字数の上限に当たる検索が繰り返し観測され、自由文の検索の仕様と通知では減らなかった
+2. 別のモデル(Anthropic API のネイティブのツール呼び出し、LM Studio の手元のモデルなど)の評価で、自由文の検索の仕様に従わない(例: 演算子のないソースで演算子を書く、AND のソースで言い換えを 1 つのクエリに並べる)ことが示され、構造化した伝え方で改善した
+3. コードで最初の検索を実行する方式(2026-11-25 のオーナー方針で範囲外)を採ることになり、Orchestrator がクエリを組み立てるために機械が読める検索の仕様が必要になった
+4. ソースの数が増え、検索の仕様の自由文の合計が最初の user ターンを大きく占めるようになった
+
+### 検討した代替案(却下した変更)
+
+- **残して広げない**(省略可能のまま置き、列挙値を足さない): 実装はあるため追加の費用は小さい。ただし、実ソースのコネクタは自由文と検索プロファイルの両方を返す構成(計測の `both`)のままになり、2 つの記述の食い違いを防ぐ保守(本 ADR の「帰結」が挙げた「二重に書くと食い違う」)と、テンプレート・上書きのスキーマ・値域の検証の保守が残る。計測ではその構成が自由文だけの構成を上回らなかった。採らない
+- **機械的な判定に使う数値だけに絞る**(`maxTerms` などの上限の項目だけを残す): 判定は計測で一度も働かず、Redmine の語数の上限はコネクタの `terms_dropped` で知らせられる。Orchestrator とコネクタで語の数え方が食い違う問題も残る。採らない
+- **削除する**(本案)
+
+### 人間に確認してほしい点
+
+1. **通知 `SearchResult.notices` を残すか。** 通知は検索プロファイルとは独立した仕組み(コネクタが実際に起きたことを返す)だが、計測では有用な場面が出ていない(`terms_dropped` 0 回、`operator_ignored` は模擬の判定条件の誤りによる 6 回だけ)
+   - (a) **残す。種類から `join_relaxed` を外す【既定】**。理由: 語数の上限を超えた語を黙って捨てるソース(Redmine)では、探索 LLM はその検索で何が起きたかを結果から知ることができない。検索の仕様の自由文は規則を伝えるだけで、その検索で実際に語を捨てたかは伝えない。Orchestrator の判定を消すと、この情報の経路は通知だけになる。通知は実装済みで、自由文を持たず、Orchestrator は定型文にするだけなので、残す費用は小さい。一方 `join_relaxed` は、返すコネクタがなく、出すかどうかの判断を誤ると、private の文書の存在が通知の有無と結果の中身から分かりうる(追補 1)。Gateway は通知を落とせても、再検索の有無は結果の中身に出るため防げず、守れるのはコネクタの規律だけである。消費者のいない項目を危険を抱えたまま残さない(ADR-016 追補 1 の `totalCount` の削除と同じ考え方)。Redmine で緩めた再検索が必要だと T-029 で分かったら、その時点で ADR を書いて足す
+   - (b) 種類を、実際に返すコネクタがあるもの(`terms_dropped`)だけに絞る。`query_truncated` / `operator_ignored` / `filter_ignored` を返す実ソースのコネクタはない(`operator_ignored` は開発用コネクタだけ)。(a) との違いは IF の小ささと、将来のコネクタ(GitHub の 256 文字の上限など)が使える種類が残るかどうか
+   - (c) 通知ごと削除する。IF が最も小さくなる。語数の上限は検索の仕様の自由文(「先頭の 5 語まで」)だけで伝える。計測では探索 LLM が 5 語を超えるクエリを書かなかった
+   - (d) `join_relaxed` を含めてすべて残す(追補 1 の規則と Gateway の防御も残す)
+2. **connector-sdk の版の付け方と、検索プロファイルを返す既存のプラグインの扱い。**
+   - 版: v0.7 とし、ADR-017 追補 1 の追加(推奨の案の専用フィールド)と同じ版にする【既定】。フィールドの削除は互換を壊す変更だが、0.x の版なので小数点以下を上げる
+   - 既存のプラグイン(v0.6 の型で `searchProfile` を返すもの)の実行時の扱い: (a) **無視する【既定】**。Gateway の射影は既知のフィールドだけから組み立て直すため(TM-A1。`gateway.ts:656-678`)、削除後は追加の処理なしに落ちる。Orchestrator の `describeSchema`(zod の `z.object`)も未知のキーを捨てる。v0.7 の型で再ビルドしたプラグインは、戻り値のオブジェクトリテラルに `searchProfile` があれば型検査で気づける。(b) Gateway が `searchProfile` を見つけたら、フィールド名だけを WARNING に出す(値は出さない)。(c) エラーにする。エラーにすると、そのソースの `describe` が全利用者で失敗する
+   - deployment.yaml の `connectors[].searchProfile`: **起動時に拒否する【既定】**(`connectorSchema` は `strictObject` のため、項目を消せば未知のキーとして拒否される。エラーの文面で本追補を示す)。黙って無視すると、導入先が上書きが効いていると誤解する
+3. **開発用コネクタと `dev-search-eval` の `--spec-delivery`(`summary` / `both` / `profile` / `split`)を消すか。**
+   - (a) **消す【既定】**。残すには SDK の型・値域の検証と Orchestrator のテンプレートを開発用に残すことになり、削除にならない。過去の計測の再現は、評価文書に記録したコミット(`7860c93`、`6fa7a69`)を取り出して行う。開発用コネクタの模擬の方式は、伝え方 `summary` の構成(自由文だけ)に固定し、既定の方式にも自由文の検索の仕様を書く
+   - (b) 残す(開発用コネクタと評価の中だけで検索プロファイルを持つ)。本番の経路と評価の経路が分かれ、評価の結果が本番の構成を表さなくなる
+4. **見直しの条件(上の 1〜4)はこれでよいか。**
+
+### 参照
+
+- `docs/eval/2026-11-26-search-eval-spec-delivery-haiku.md`、`docs/eval/2026-11-26-search-eval-spec-delivery-split-haiku.md`
+- ADR-017 追補 1(describe の結果を出所で分けて渡す)
+- ADR-005、ADR-007、ADR-012、ADR-016 追補 1・追補 2
+- T-032(実装)、T-029(実機での確認。結果は検索の仕様の自由文に書く)、T-030(削除の対象を実装したタスク)

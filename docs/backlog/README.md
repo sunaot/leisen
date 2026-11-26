@@ -29,6 +29,7 @@
 | T-029 | 実機での検索の仕様の確認(Redmine の `all_words`、esa の MCP 経由の AND と OR、各ソースの日本語の扱い) | T-026, T-025 | 実機(esa・Redmine・GitHub)と本人の資格情報、確認用の文書 |
 | T-030 | 検索プロファイルと `SearchResult.notices` の実装(connector-sdk v0.6)【ADR-025 Accepted 2026-11-25】 | ADR-025, T-028, T-029 | なし |
 | T-031 | `ask` の引数の追加と返り値の「試した検索」【ADR-026 Accepted 2026-11-25】 | ADR-026, T-023, T-024 | なし |
+| T-032 | 検索プロファイルの廃止と、検索の仕様を出所で分けた受け渡し(connector-sdk v0.7)【ADR-025 追補 2・ADR-017 追補 1 は Proposed。Accepted まで着手しない】 | ADR-025 追補 2, ADR-017 追補 1, T-030, T-027 | 両追補の承認、security-reviewer のレビュー(実装の前と後)。前後の評価の実走は LLM |
 | T-025 | 自分の GitHub で試す開発用設定(本人の PAT と mock_env) | T-019, T-010, T-007 | 試す人の fine-grained PAT(開発専用)。GitHub App の承認は不要 |
 | T-026 | esa コネクタ(公式リモート MCP、Token Vault / ESC。ADR-023) | T-004, T-003 | esa チームの owner によるリモート MCP の許可と OAuth クライアントの承認(実疎通のみ) |
 | T-008 | 評価ハーネス+評価セットv0 | T-007 | クエリサンプル+テストアイデンティティ |
