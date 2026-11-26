@@ -65,11 +65,11 @@ Keycloak の場合:
 auth:
   provider: token_vault        # または esc
   oauth:
-    preset: github             # github / google / slack / esa / custom
+    preset: github             # github / google / slack / esa / redmine / custom
     clientId: Iv23li...
     clientSecretEnv: LEISEN_GITHUB_APP_SECRET
     scopes: []                 # プリセットが本人照合に要るスコープを足す
-    identityCheck: email       # 既定。none は confirmIdentityCheckDisabled: true が要る
+    identityCheck: email       # 既定(redmine は username)。none は confirmIdentityCheckDisabled: true が要る
 ```
 
 - ソース側にアプリ(OAuth クライアント)を登録し、コールバック URL に **`<publicBaseUrl>/connections/callback`** を登録する(`token_vault` / `esc` 共通)
@@ -80,8 +80,41 @@ auth:
   - Slack: `users.info` の `profile.email`。`authed_user.id` は照会にだけ使い、保管しない(不変条件 7)。スコープ `users:read` `users:read.email` を自動で足す
   - esa: MCP の `esa_get_team_members` の `myself: true` の行の `email`(ADR-023。`mcp` スコープのトークンでは REST の `GET /v1/user` が 403 になるため、コネクタと同じ MCP サーバー・チームで引く。`kind: esa` と `settings.team` が要る)
   - custom: `endpoints.userinfoEndpoint` の `email` / `email_verified`
+  - redmine: メールアドレスではなく**ログイン名**で照合する(`identityCheck: username`。下の「Redmine」)
 - プリセットの端点は `endpoints` で上書きできる(GitHub Enterprise Server は `authorizationEndpoint` / `tokenEndpoint` / `apiBaseUrl`)
 - `resource`(RFC 8707)はトークンの受け手。リモート MCP サーバーを上流にするソースで使い、認可要求・コード交換・更新の 3 つに同じ値を載せる。`esa` プリセットの既定は `https://mcp.esa.io`
+
+### Redmine(ADR-024 追補。Redmine 6.1 以降)
+
+```yaml
+- id: redmine
+  kind: redmine                # 公式コネクタ(@leisen/connector-redmine)
+  settings:
+    baseUrl: https://redmine.example.com/
+  auth:
+    provider: token_vault      # または esc
+    oauth:
+      preset: redmine
+      clientId: <Redmine の OAuth アプリの UID>
+      clientSecretEnv: LEISEN_REDMINE_CLIENT_SECRET
+      scopes: [view_project, view_issues, view_wiki_pages, view_private_notes, search_project]
+      endpoints:
+        apiBaseUrl: https://redmine.example.com   # 端点(/oauth/authorize・/oauth/token・/oauth/revoke)をここから導く
+      # identityCheck: username(既定。redmine で使える照合はこれだけ)
+```
+
+- Redmine 6.1 で本体に入った OAuth2 プロバイダ(Doorkeeper)を使う。管理者が「管理 > アプリケーション」でアプリを登録する。リダイレクト URI は `<publicBaseUrl>/connections/callback`、機密クライアント(Confidential)にする。「管理 > 設定 > API」で REST API を有効にしておく
+- スコープは Redmine の権限名。上の 5 つが読み取り専用のコネクタに要る最小の組で、`view_project` がないとプロジェクト一覧が空になる。登録したアプリに許したスコープの範囲を超えて要求すると認可で拒否される。書き込み系の権限は登録しない
+- 認可コード方式だけで、PKCE(S256)を受ける。アクセストークンは 2 時間で切れ、リフレッシュトークンが発行される(Gateway が更新する)。`/.well-known` の端点メタデータはないので、端点は `apiBaseUrl` から導く
+- **本人照合はログイン名で行う**(`identityCheck: username`): 接続時に `GET /users/current.json` の `login` と、IdP のログイン名(OIDC の `preferred_username`)を大文字小文字を区別せずに比べ、完全一致を求める。Redmine のメールアドレスは既定で利用者本人の設定で隠され(「メールアドレスを隠す」)、検証済みの印もないため使わない(`identityCheck: email` は起動時に拒否)。ログイン名は管理者が決め、利用者は変えられない
+  - 前提: IdP の `preferred_username` と Redmine のログイン名がそろっていること(LDAP / SSO で同じ ID を使う運用)。そろっていなければ接続は `identity_mismatch` で拒否される。ドメイン付きの UPN(`alice@corp.example`)とドメインなしのログイン名(`alice`)は一致しない
+  - Keycloak は `preferred_username` をイントロスペクションの応答に含める(既定のクライアントスコープ `profile`)
+  - **導入の前提(必須)**: 照合が意味を持つのは、ログイン名を利用者が選べない場合だけである。次をそろえる(ADR-024 追補 決定 8)
+    - Keycloak: レルムの「ユーザー名の編集」(`editUsernameAllowed`)を無効にする。ユーザープロファイルで username を利用者が編集できる設定にしない。IdP 連携(ブローカー)の初回ログインで利用者にユーザー名を選ばせない(Review Profile でユーザー名を編集させない)。`registrationEmailAsUsername` を使う場合はメールアドレスも利用者が変えられないようにする。`preferred_username` を利用者が変えられる属性から作るマッパーを使わない
+    - Redmine: 自己登録を無効にする(「管理 > 設定 > 認証 > ユーザーによるアカウント登録」)か、ログイン名を LDAP / SSO から作る
+  - ログイン名は印字可能な ASCII(空白を除く)だけを照合する。ASCII 以外や前後の空白を含む値は一致しない
+- `endpoints.apiBaseUrl` は、コネクタの `settings.baseUrl` と同じ Redmine(origin とパスが同じ)でなければ起動時に拒否する(本人のトークンを別のホストへ送らないため)。`kind: redmine` 以外のコネクタでは `preset: redmine` を使えない
+- 開発用に個人 API キーで試すときは `provider: mock_env` と `credentialKind: api_key`(`packages/connector-redmine/README.md`)
 
 ### esa(ADR-023)
 

@@ -23,7 +23,7 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CredentialEventSink } from "../credentials/events.js";
-import { emailMatches, SourceOAuthError, type SourceOAuthClient } from "../credentials/oauth.js";
+import { emailMatches, SourceOAuthError, usernameMatches, type SourceOAuthClient } from "../credentials/oauth.js";
 import { needsRefresh, subSourceKey } from "../credentials/providers.js";
 import type { CredentialRevocation } from "../credentials/revocation.js";
 import type { CredentialStore, SourceTokenSet } from "../credentials/types.js";
@@ -57,7 +57,7 @@ export interface ConfiguredSource {
   readonly sourceId: string;
   readonly kind: CredentialProviderKind;
   readonly oauth?: SourceOAuthClient;
-  readonly identityCheck: "email" | "none";
+  readonly identityCheck: "email" | "username" | "none";
 }
 
 export interface RegisteredClient {
@@ -106,6 +106,7 @@ interface BrowserSession {
   readonly iat: number;
   readonly sub: string;
   readonly email?: string;
+  readonly username?: string;
   readonly name?: string;
   readonly csrf: string;
   readonly exp: number;
@@ -450,6 +451,7 @@ export class AuthHttpHandler {
       iat: this.#now(),
       sub: identity.userId,
       ...(identity.email !== undefined ? { email: identity.email } : {}),
+      ...(identity.username !== undefined ? { username: identity.username } : {}),
       ...(identity.displayName !== undefined ? { name: identity.displayName } : {}),
       csrf: randomId(),
       exp: this.#now() + this.#o.browserSessionTtlMs,
@@ -752,7 +754,11 @@ export class AuthHttpHandler {
       this.#html(res, 502, messagePage("接続できませんでした", `${source.sourceId} とのやり取りに失敗しました。時間をおいてやり直してください。`, "err", { href: back, label: "戻る" }));
       return;
     }
-    const idpEmail = tx?.identity?.email ?? (await this.#session(req))?.email;
+    // 照合に使う IdP の属性は、この接続を始めた本人のものに限る: ESC の取引(tx)があれば取引の
+    // 本人だけ(別の利用者のブラウザのセッションに寄せない)、なければ state の本人と同じセッション
+    const browserSession = tx === undefined ? await this.#session(req) : undefined;
+    const sameUser = browserSession !== undefined && browserSession.sub === state.sub ? browserSession : undefined;
+    const idpEmail = tx !== undefined ? tx.identity?.email : sameUser?.email;
     if (source.identityCheck === "email" && !emailMatches(idpEmail, result.verifiedEmails)) {
       // 誤接続(私用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
       await source.oauth.revoke(result.tokens);
@@ -768,6 +774,25 @@ export class AuthHttpHandler {
         ),
       );
       return;
+    }
+    if (source.identityCheck === "username") {
+      const idpUsername = tx !== undefined ? tx.identity?.username : sameUser?.username;
+      if (!usernameMatches(idpUsername, result.usernames)) {
+        // 誤接続(別の利用者・共用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
+        await source.oauth.revoke(result.tokens);
+        await this.#o.events({ userId: state.sub, event: "connect_failed", sourceId: source.sourceId, method, outcome: "failure", reason: "identity_mismatch" });
+        this.#html(
+          res,
+          403,
+          messagePage(
+            "接続できませんでした",
+            `${source.sourceId} のアカウントのログイン名が、Leisen にログインしたアカウント(${idpUsername ?? "ログイン名不明"})と一致しません。自分のアカウントで接続してください。`,
+            "err",
+            { href: back, label: "戻る" },
+          ),
+        );
+        return;
+      }
     }
     if (tx !== undefined) {
       // 監査に残せない接続は成立させない(不変条件2): 記録してから取引に入れる
@@ -1062,6 +1087,7 @@ export class AuthHttpHandler {
     const claims: GrantClaims = {
       sub: identity.userId,
       ...(identity.email !== undefined ? { email: identity.email } : {}),
+      ...(identity.username !== undefined ? { username: identity.username } : {}),
       ...(identity.displayName !== undefined ? { name: identity.displayName } : {}),
       sid: randomId(),
       cid: tx.client.clientId,

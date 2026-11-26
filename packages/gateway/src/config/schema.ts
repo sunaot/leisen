@@ -191,7 +191,7 @@ const oauthEndpointsSchema = z.strictObject({
 /** token_vault / esc のソース OAuth(ADR-022 決定 7・8)。 */
 const sourceOAuthSchema = z.strictObject({
   /** 端点と本人照合の方式のプリセット。custom は endpoints が必須 */
-  preset: z.enum(["github", "google", "slack", "esa", "custom"]),
+  preset: z.enum(["github", "google", "slack", "esa", "redmine", "custom"]),
   clientId: z.string().min(1),
   /** client secret を保持する環境変数の名前(値ではない) */
   clientSecretEnv: z.string().regex(ENV_VAR_NAME_PATTERN, {
@@ -201,9 +201,11 @@ const sourceOAuthSchema = z.strictObject({
   endpoints: oauthEndpointsSchema.optional(),
   /**
    * 接続時の本人照合(決定 8)。email: ソース側の検証済みメールと IdP のメールの一致を要求する。
-   * none は confirmIdentityCheckDisabled: true が要る(起動時に WARNING)
+   * username: ソース側のログイン名と IdP の preferred_username の一致を要求する(preset redmine
+   * だけ。ADR-024 追補)。none は confirmIdentityCheckDisabled: true が要る(起動時に WARNING)。
+   * 省略時は preset redmine なら username、それ以外は email
    */
-  identityCheck: z.enum(["email", "none"]).default("email"),
+  identityCheck: z.enum(["email", "username", "none"]).optional(),
   confirmIdentityCheckDisabled: z.boolean().optional(),
   /**
    * RFC 8707 の resource(トークンの受け手)。省略時はプリセットの既定(esa は
@@ -213,7 +215,7 @@ const sourceOAuthSchema = z.strictObject({
 }).refine((o) => o.resource === undefined || o.preset === "esa" || o.preset === "custom", {
   path: ["resource"],
   error: "resource is only for preset esa or custom (sources whose upstream is a remote MCP server)",
-});
+}).transform((o) => ({ ...o, identityCheck: o.identityCheck ?? (o.preset === "redmine" ? "username" : "email") }));
 
 const connectorAuthSchema = z.discriminatedUnion("provider", [
   z.strictObject({

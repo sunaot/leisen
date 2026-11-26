@@ -1,6 +1,6 @@
 # ADR-024: Redmine コネクタと個人 API キーの資格情報表現
 
-Status: Accepted(2026-11-24 オーナー決定。決定 5 は 2026-11-16 オーナー決定)/ Date: 2026-11-12 / 改訂: 2026-11-16、2026-11-24
+Status: Accepted(2026-11-24 オーナー決定。決定 5 は 2026-11-16 オーナー決定)/ Date: 2026-11-12 / 改訂: 2026-11-16、2026-11-24、2026-11-25(追補)
 
 元は外部からの PR(sunaot/leisen#74、作者 ashie)で ADR-022 として起案された。同じ日に ADR-022(本人資格情報の置き場所)と ADR-023(esa)が採番・Accepted になったため番号を 024 に改め、ADR-022 の決定と整合するように決定を組み替えた。
 
@@ -41,15 +41,47 @@ connector-sdk の `Credential` は `oauth_bearer` と `delegated_identity` だ�
 
 ## 帰結
 
-- `Credential` 共用体の追加は Gateway の資格情報キャッシュ・モックの Provider・redaction に及ぶ。`oauth_bearer` だけを受け付ける既存のコネクタ(GitHub・esa)は、`api_key` を受け取ると従来どおりエラーにする(Redmine コネクタは逆に `api_key` 以外を拒否する)
+- `Credential` 共用体の追加は Gateway の資格情報キャッシュ・モックの Provider・redaction に及ぶ。`oauth_bearer` だけを受け付ける既存のコネクタ(GitHub・esa)は、`api_key` を受け取ると従来どおりエラーにする(Redmine コネクタは `api_key` と `oauth_bearer` を受け、それ以外を拒否する。追補)
 - Redmine の REST Search と Wiki Pages API は Redmine の公式文書で Alpha とされる。結果の形式・検索対象はバージョンやプラグイン(`redmine_full_text_search` 等)で差があり得るため、導入先で確認する(`packages/connector-redmine/README.md`)
 - 検索 1 回につき Issue のヒットごとに Issue を取得する(ノートの閲覧の確認)。limit を大きくするとソースのレート制限に当たりやすい
 - 実疎通の確認は作者の環境の 1 件のみ。リポジトリのテストはモックで行う
 
+## 追補(2026-11-25): Redmine の OAuth2 による本番の経路(オーナー決定)
+
+Redmine 6.1.6(公式の Docker イメージ `redmine:6.1`)を立て、OAuth2 プロバイダを実機で確かめた。結果に基づき、本番の経路を **Redmine の OAuth2 + `token_vault` / `esc`** とし、次を決めた(2026-11-25 オーナー決定)。
+
+**実機での確認結果**(テスト用の利用者・非公開プロジェクト・ノート付きの Issue・OAuth アプリを入れて確認):
+
+| 項目 | 結果 |
+|---|---|
+| プロバイダ | 本体に組み込み(Doorkeeper 5.8)。管理者がアプリを登録する。認可コード方式だけ(`grant_flows ['authorization_code']`) |
+| PKCE | S256 で通る |
+| アクセストークン | Bearer、2 時間(`expires_in: 7200`) |
+| リフレッシュトークン | 発行される(`use_refresh_token`)。更新で新しい組が返る |
+| 失効 | `/oauth/revoke`(RFC 7009)。失効したトークンは 401 |
+| スコープ | Redmine の権限名。登録したアプリの範囲を超える要求は認可で拒否。閲覧スコープだけのトークンでの更新(PUT)は 403。`view_project` がないとプロジェクト一覧が空 |
+| 端点のメタデータ | `/.well-known/oauth-authorization-server`・`openid-configuration` とも 404 |
+| `/users/current.json` | `login` は返る。`mail` は本人が「メールアドレスを隠す」を外したときだけ返る(既定は隠す)。検証済みの印はない |
+| Gateway 経由の通し(本追補の実装) | Token Vault で接続 → 検索・ノートの取得ができた。ログイン名の不一致は `identity_mismatch` で拒否し、得たトークンは Redmine で失効した。接続の解除で Redmine のトークンが失効した |
+
+**決定:**
+
+6. **Redmine コネクタは `oauth_bearer` も受ける。** `Authorization: Bearer` で送る(`api_key` は従来どおり `X-Redmine-API-Key`)。失効時刻の扱いは両方とも同じ(0 以下は不明)
+7. **Gateway の OAuth プリセットに `redmine` を加える。** 自前で運用するインスタンスなので、端点は `endpoints.apiBaseUrl`(Redmine の基点 URL)から導く(`/oauth/authorize`・`/oauth/token`・`/oauth/revoke`)。`apiBaseUrl` は必須
+8. **本人照合の属性に `username` を加え、redmine はこれだけを使う(ADR-022 決定 8 の具体化)。** 接続時に `/users/current.json` の `login` と IdP のログイン名(OIDC の `preferred_username`)を、大文字小文字を区別しない完全一致で比べる。メールアドレスは既定で隠され、利用者が変えられ、検証済みの印もないため使わない(redmine の `identityCheck: email` は起動時に拒否する)。ログイン名は管理者が決め、利用者は変えられない。`username` は redmine 以外では拒否する(他のソースはメールアドレスで照合できるため)。redmine の `identityCheck` の既定は `username`
+   - `Identity` に `username`(個人情報。ログ・監査に出さない)を加え、Keycloak アダプタは `preferred_username` を、モック IdP は `username=` 属性を入れる。ブラウザのセッションと ESC のトークンにも `email` と同じく載せる
+   - 前提は IdP の `preferred_username` と Redmine のログイン名がそろうこと(LDAP / SSO の同じ ID)。ドメイン付きの UPN とドメインなしのログイン名を寄せる変換は設けない(必要になったら別に決める)
+   - 照合が意味を持つのは、ログイン名を利用者が選べない場合だけである(メールアドレスの照合と同じ性質)。Keycloak でユーザー名の編集・ブローカーの初回ログインでの選択を許さないこと、Redmine の自己登録を無効にする(またはログイン名を LDAP / SSO から作る)ことを導入の前提とし、docs/personal-auth.md に記す。コードでは検査できない
+   - 比べるのは印字可能な ASCII(空白を除く)だけで、それ以外は不一致とする(Unicode の大文字小文字の畳み込みで別の名前が一致しないように)
+   - ESC の接続では取引の本人の属性だけを使い、同じブラウザの別の利用者のセッションに寄せない(メールアドレスの照合も同じに改めた)
+   - `preset: redmine` は `kind: redmine` のコネクタに限り、`endpoints.apiBaseUrl` はコネクタの `settings.baseUrl` と同じ Redmine(origin とパス。認証情報・クエリ・断片なし)でなければ起動時に拒否する(本人のトークンを OAuth を行った Redmine 以外へ送らないため)
+9. **API キーの位置づけ。** 本番の経路が OAuth2 に決まったので、`api_key`(決定 1)は開発用の `mock_env` と、OAuth2 のない Redmine(6.1 未満)を試すためのものになる。6.1 未満を本番で扱う「接続ページでの API キー登録」は、必要になったときに別の ADR で決める
+
 ## 残る確認事項
 
 - 本番の経路(決定 3)。いまの仕組み(ADR-022)の上での候補は次のとおり
-  - **Redmine の OAuth2 プロバイダ + `token_vault`(第一候補)**: Redmine は Doorkeeper による OAuth2 プロバイダを本体に取り込んだ(Feature #24808。6.1 で入ったとされる。版は要確認)。Redmine の権限をスコープに使う。管理者がアプリを登録すれば、`provider: token_vault` の `preset: custom`(端点を指定)で接続ページの OAuth に載り、資格情報は `oauth_bearer`(`Authorization: Bearer`)になる。新しい方式も、クライアントによる平文の提示も要らない。確かめること: 対応する版、更新トークンの発行、失効エンドポイント、本人照合(`/users/current.json` の自分のメールアドレス)、スコープの強制の不具合(Bug #44271)が直っているか
+  - **Redmine の OAuth2 プロバイダ + `token_vault` / `esc`**: 追補(2026-11-25)で採用した。残るのは、スコープの強制の不具合(Bug #44271: `add_issue_notes` を持つアプリで Issue の編集ができた報告)が 6.1 の各版で直っているかの確認。コネクタは書き込み系のスコープを求めないため影響は小さい
   - **接続ページでの API キーの登録(Redmine 6.1 未満向けの代替)**: 利用者が Gateway の接続ページに自分の API キーを入力し、Token Vault と同じ封筒暗号化で保管する。クライアントが毎回平文で提示するのではないので、ADR-022 決定 11 には当たらない。ただし、OAuth ではない接続を Token Vault に加える変更として新しい ADR が要る。論点は、期限のない全権限のキーを保管すること、Gateway からはソース側で失効させられないこと(利用者が Redmine でキーを再生成する。アカウントのロックでキーは無効になる)、接続時の本人照合
   - `esc` に API キーを封じる案、`token_exchange` は、Redmine が交換に対応しないこと、ローテーションの仕組み(ADR-022 決定 5)に乗らないことから候補にしない
-- 本番の経路の実機確認: 作者の環境の Redmine は OAuth2 に対応しておらず、OAuth2 のアプリ登録・リフレッシュトークン・`/users/current.json` での本人照合は未確認(2026-11-24 時点)。Redmine 6.1 以降の環境で確かめる
+- 本番の経路の実機確認は追補(2026-11-25)で行った(Docker の Redmine 6.1.6)。実運用の Redmine(LDAP / SSO 連携、リバースプロキシ配下)での確認と、Gateway 経由のトークンの更新(2 時間の失効後)の通しは未確認
+- ESC での通しは未確認(OAuth の前提は Token Vault と同じで、リフレッシュトークンがあるため成り立つ見込み)
