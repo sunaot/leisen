@@ -34,3 +34,7 @@ Gateway はコネクタ実装を deployment.yaml の `connectors[]` から解決
 
 - npm の組織 `leisen` の確保(ADR-020、オーナーの作業)。許可表の行は `@leisen/*` を指すので、確保は引き続き必要
 - IdP Adapter など、他の境界での動的読み込みの扱い(issue #23)
+
+## 追記(2026-11-14): esa の行
+
+- 決定 4 に従い、公式コネクタ `@leisen/connector-esa`(ADR-023、T-026)を追加する変更で `esa` → `@leisen/connector-esa` の行を足した。許可表は `github` と `esa` の 2 行になった

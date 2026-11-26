@@ -35,8 +35,8 @@
 1. 下記「[セットアップ](#セットアップ)」と「[手元で動かす(5分)](#手元で動かす5分)」— モック IdP と開発用コネクタで Gateway と leisen-ask を動かす
 2. [CLAUDE.md](CLAUDE.md) — 不変条件(違反するコードは書かない)、開発ルール、現在のフェーズ。人が書く場合も同じ規則に従う
 3. [docs/backlog/](docs/backlog/) — タスクと受け入れ条件。1 タスク = 1 ブランチ = 1 PR で、PR は [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) のチェックリストを埋める
-4. 下記「[構成](#構成)」とパッケージ別の README: [orchestrator](packages/orchestrator/README.md)、[audit](packages/audit/README.md)、[connector-github](packages/connector-github/README.md)
-5. プラグインを書く: コネクタは `packages/connector-sdk` の IF と [connector-github](packages/connector-github/README.md) を参考に、IdP Adapter は [docs/idp-adapter-guide.md](docs/idp-adapter-guide.md)、Keycloak の参照統合は [e2e/keycloak/README.md](e2e/keycloak/README.md)
+4. 下記「[構成](#構成)」とパッケージ別の README: [orchestrator](packages/orchestrator/README.md)、[audit](packages/audit/README.md)、[connector-github](packages/connector-github/README.md)、[connector-esa](packages/connector-esa/README.md)、[connector-redmine](packages/connector-redmine/README.md)
+5. プラグインを書く: コネクタは `packages/connector-sdk` の IF と [connector-github](packages/connector-github/README.md) を参考に、IdP Adapter は [docs/idp-adapter-guide.md](docs/idp-adapter-guide.md)、Keycloak の参照統合は [e2e/keycloak/README.md](e2e/keycloak/README.md)。ビルドは TypeScript 7(ルートの devDependencies)で、各パッケージの tsconfig は `tsconfig.base.json` を継承する(Node の型は `"types": ["node"]` で明示する。TypeScript 6 以降は自動で読み込まれない)。TypeScript のコンパイラ API(JS から呼ぶ API)を使うツール(typescript-eslint、ts-morph、ts-node 等)は TypeScript 7 に未対応の場合がある
 6. CI: `build-test`、`keycloak-e2e`、`reference-deploy` に加え、本番依存の監査(`audit`)と履歴全体の秘密情報スキャン(`secret-scan`、`scripts/ci/gitleaks.sh`)が走る。開発用のダミー値を足すときは `.gitleaks.toml` に理由と一緒に許可を書く。CI の Action はコミットの SHA で固定してあり、依存と Action の更新は Dependabot の PR で届く。パッケージはすべて `private`(npm には配布していない)
 
 ## セットアップ
@@ -49,7 +49,7 @@ npm test
 
 ## 手元で動かす(5分)
 
-モックIdPと開発用コネクタ(合成の社内文書 `examples/fixtures/dev-corpus.yaml`)で Gateway を起動し、MCPクライアントから検索する。実SaaS・実資格情報は不要。Node 22 を前提とする。
+モックIdPと開発用コネクタ(合成の社内文書 `examples/fixtures/dev-corpus.yaml`)で Gateway を起動し、MCPクライアントから検索する。実SaaS・実資格情報は不要。Node 26 以上を前提とする(ADR-025)。
 
 ```bash
 npm ci && npm run build
@@ -127,6 +127,60 @@ npx leisen-ask --gateway http://127.0.0.1:8787/mcp --config examples/deployment.
 - **自作の MCP クライアントなど新しいクライアントを使うとき**: realm(`e2e/keycloak/realm/leisen-realm.json`、本番では IdP の管理画面)にクライアントを登録し、`requireAudience: true` なら Gateway を audience に加えるマッパー(`oidc-audience-mapper`、`included.client.audience: gateway`)を付けたうえで、deployment.yaml の `allowedClients` に追記して `leisen-gateway validate` → 再起動する。realm を取り込み直すには `docker compose -f e2e/keycloak/docker-compose.yml down -v` してから起動する(既存の realm は上書きされない)
 - 開発だけで使う明示の逃げ道として `allowedClients: ["*"]` がある(`azp` の検証だけを省く。`iss` / `typ` / `aud` は検証する)。`validate` / `serve` は `WARNING: any client is accepted (azp check disabled; idp.adapter.allowedClients contains "*")` を出し、`NODE_ENV=production` では `dev_only_in_production` で起動を拒否する
 
+### 自分の esa で試す
+
+自分の esa チームの投稿を、本人の権限で Gateway 経由で検索する(T-026、ADR-023)。モック IdP で利用者を名乗り、esa には接続ページから本人の OAuth で接続する(Token Vault)。設定は `examples/deployment.dev-esa.yaml`。**実チームでの疎通は未確認**(下の ⚠️ は詰まりうる箇所。結果は ADR-023「残る確認事項」に追記する)。
+
+**1. esa チーム側の準備(owner の操作)**
+
+- 「SETTINGS > API・アプリ・MCP > アクセス設定 > リモートMCPサーバー」でアクセスを許可する(既定は拒否)。試すだけなら「ポリシーで制限」にし、スコープを読み取り系に絞る
+- OAuth クライアントを動的登録で一度だけ作り、返る `client_id` を `examples/deployment.dev-esa.yaml` の `clientId` に、`client_secret` を控える(ファイルには書かない)
+
+```bash
+curl -s https://api.esa.io/oauth/dcr \
+  -H 'Content-Type: application/json' \
+  -d '{"client_name":"leisen (local)","redirect_uris":["http://127.0.0.1:8787/connections/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post","scope":"mcp"}'
+```
+
+⚠️ esa がリダイレクト先の `http://127.0.0.1` を受け付けるかは未確認。拒否されたら https のトンネル(ngrok 等)の URL を `publicBaseUrl` とリダイレクト先の両方に使う。
+
+**2. 設定と起動**
+
+`settings.team` を自分のチーム名に置き換え、環境変数を設定して起動する。`LEISEN_MOCK_SESSIONS` のメールアドレスは **esa のアカウントのメールアドレスと同じ**にする(接続時の本人照合で突き合わせる)。
+
+```bash
+mkdir -p var && chmod 700 var   # 状態 DB の置き場所(.gitignore の対象)
+export LEISEN_MOCK_SESSIONS='dev-token=alice;email=<esa に登録しているメールアドレス>'
+export LEISEN_VAULT_KEY="$(openssl rand -base64 32)"   # 続けて使うなら値を固定する(変えると保管した接続が読めない)
+export LEISEN_ESC_KEY="$(openssl rand -base64 32)"     # 接続ページのセッションを封じる鍵(LEISEN_VAULT_KEY と別の値)
+read -rs LEISEN_ESA_CLIENT_SECRET && export LEISEN_ESA_CLIENT_SECRET   # 履歴に残さず入力する
+
+npx leisen-gateway validate --config examples/deployment.dev-esa.yaml
+npx leisen-gateway serve --config examples/deployment.dev-esa.yaml
+```
+
+**3. ブラウザで esa に接続する**
+
+`http://127.0.0.1:8787/connections?source=esa` を開き、モック IdP のフォームに `dev-token` を入れてログインし、esa の「接続」を押して esa の認可画面で許可する。接続ページに戻って「接続済み」になれば完了。
+
+本人照合は esa の MCP のメンバー一覧(`myself: true` の行)のメールアドレスで行う。失敗するとサーバーログ(標準エラー出力)に `connecting source "esa" failed: …` の形で段階と HTTP 状態が出る。切り分けのためだけなら `oauth` に `identityCheck: none` と `confirmIdentityCheckDisabled: true` を足すと照合を省ける(本番では使わない)。
+
+**4. 検索する**
+
+```bash
+curl -s http://127.0.0.1:8787/mcp \
+  -H 'Authorization: Bearer dev-token' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'mcp-protocol-version: 2025-11-25' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","arguments":{"source":"esa","query":"設計"}}}'
+```
+
+- `post:<番号>` の付いた結果が返れば成功。`fetch`(`documentId: "post:<番号>"`)で本文を読める。leisen-ask から質問するときも同じ Gateway を指す
+- 呼ぶのは esa の読み取り系のツールだけで、検索するのは `settings.team` のチームだけ。本人が見られない投稿は esa が返さない
+- 解除は接続ページの「解除」。Gateway は保管を消し、esa に失効を依頼する
+- 使い終わったら `var/esa-credentials.db` を消してよい(暗号化した本人の esa トークンが入っている)
+
 ### 本番では開発用の部品が拒否される
 
 モックIdP(`idp.adapter.kind: mock`)・モック資格情報(`auth.provider: mock_env`)・開発用コネクタ(`kind: dev-fixture`)・監査シンク `stdout`・Keycloak の `allowedClients: ["*"]` は開発専用で、`NODE_ENV=production` では起動時に拒否される(`dev_only_in_production`)。
@@ -153,14 +207,16 @@ LEISEN_SESSION_TOKEN="$(../../scripts/smoke/keycloak-token.sh)" ../../scripts/sm
 
 ## 構成
 
-- `packages/connector-sdk` — コネクタ共通IF(v0.4。ADR-016 追補2: 結果ごとのプライベート領域の分類 `scope`、能力 `privateScopeHandling`、factory への方針 `policy`)
+- `packages/connector-sdk` — コネクタ共通IF(v0.5。ADR-016 追補2: 結果ごとのプライベート領域の分類 `scope`、能力 `privateScopeHandling`、factory への方針 `policy`。ADR-022: 個人 API キー資格情報)
 - `packages/audit` — 監査ログの共通モジュール(ADR-011 の 2 層モデル。Gateway が書き、Orchestrator が申告し、昇格判定レポートが読む型と実装。ADR-019 決定10 で Gateway から切り出した。依存は zod と Node 標準のみ)
 - `packages/gateway` — MCP Gateway(認証・IdP Adapter・監査・ルーティング・MCPサーバー面・Streamable HTTP。HTTPトランスポートは配線済みで `leisen-gateway serve` で起動する)と起動コード(`leisen-gateway` CLI、`assembleGateway`、開発用コネクタ、JSONL監査sink)
 - `packages/promotion-report` — 昇格判定レポートCLI(T-014、ADR-006)
 - `packages/connector-github` — GitHubコネクタ(T-019)。Search / Issues / Contents API を本人トークンで呼ぶ(nativeSearch: degraded、privateScopeHandling: classified。GitHub App は組織にだけインストールする前提)。モックテスト済み、実アカウント疎通は GitHub App 承認待ち
+- `packages/connector-redmine` — Redmine コネクターの読み取り専用プロトタイプ。本人 API キーによる Issue / Wiki 検索と取得、Project 一覧に対応。現時点で検索フィルタと本番 Credential Provider は未対応
 - `packages/orchestrator` — Orchestrator 探索戦略 v1(T-007)と `leisen-ask` CLI(`leisen-ask serve` で MCP サーバーとして公開する。T-021、ADR-018)。LLM バックエンドは設定で選ぶ(Anthropic Messages API / OpenAI 互換。LM Studio・llama.cpp 等のローカルモデルは `--llm openai-compatible`)。使い方・LM Studio 手順・出典検証の契約は `packages/orchestrator/README.md`。設計は ADR-017(Proposed)
 - `examples/deployment.yaml` — Deployment Profileのサンプル(T-010)。導入1件=このファイル1枚(ADR-005)。スキーマの正は `packages/gateway/src/config/`
 - `examples/deployment.dev.yaml` — 手元で動かすための開発用設定(上記「手元で動かす」)
+- `examples/deployment.dev-esa.yaml` — 自分の esa チームを手元で検索する開発用設定(上記「自分の esa で試す」)
 - `deploy/` — リファレンスデプロイ(T-012): `Dockerfile` と `compose/`(gateway + keycloak の評価用構成と、LibreChat の overlay)。導入手順は `docs/install.md`、UI からの利用は `docs/ui-librechat.md`
 - `scripts/smoke/` — スモークテスト(`gateway-smoke.sh`、LibreChat overlay の `orchestrator-smoke.sh` / `librechat-smoke.sh`)と開発・CI 専用のトークン取得(`keycloak-token.sh`)
 - `docs/adr` — 設計判断の記録

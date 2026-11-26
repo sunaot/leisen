@@ -163,7 +163,12 @@ function createMockCredentialProvider(
   auth: ConnectorAuthConfig,
   env: Readonly<Record<string, string | undefined>>,
 ): CredentialProvider | undefined {
-  return auth.provider === "mock_env" ? new MockCredentialProvider(sourceId, { env }) : undefined;
+  return auth.provider === "mock_env"
+    ? new MockCredentialProvider(sourceId, {
+        env,
+        ...(auth.credentialKind !== undefined ? { credentialKind: auth.credentialKind } : {}),
+      })
+    : undefined;
 }
 
 function collect(issues: ConfigIssue[], error: unknown): void {

@@ -207,21 +207,26 @@ describe("敵対的な長大入力でも線形時間(再レビュー 2026-09-27 
     return best;
   }
 
-  // 絶対時間ではなく入力長 4 倍に対する所要時間の比で判定する(並列実行の負荷で
-  // 絶対時間は数倍ぶれる)。線形なら約 4 倍、旧実装の約 1.5 乗なら約 8 倍、二乗なら 16 倍。
+  // 絶対時間ではなく入力長 16 倍に対する所要時間の比で判定する(並列実行の負荷で
+  // 絶対時間は数倍ぶれる)。線形なら約 16 倍、旧実装の約 1.5 乗なら約 64 倍、二乗なら 256 倍。
+  // 閾値 36 は約 1.29 乗に当たる(以前の「4 倍で 6 倍」と同じ冪)。幅を 4 倍から 16 倍に
+  // 広げたのは、冪の推定のぶれを半分にするため。4 倍の幅では、線形の実装でも GC 等で比が
+  // 5.5 前後まで振れ、Node 26 の CI で閾値 6 を超えた(ADR-025。手元の計測では
+  // 16 倍の幅の比は負荷下でも 16〜28 = 1.00〜1.20 乗)
   it.each([
     ["昇順の連", ascendingBacktickRuns],
     ["遠い対と空行", farPairedRuns],
   ])(
-    "%s: 入力長 4 倍で所要時間が 6 倍を超えない(線形)",
+    "%s: 入力長 16 倍で所要時間が 36 倍を超えない(線形)",
     (_name, generate) => {
-      const small = generate(300_000);
+      const small = generate(75_000);
       const large = generate(1_200_000);
       // ウォームアップ(JIT)後に計測する
       elapsedMs(small);
-      const smallMs = Math.max(minElapsedMs(small, 3), 5);
+      elapsedMs(small);
+      const smallMs = Math.max(minElapsedMs(small, 5), 2);
       const largeMs = minElapsedMs(large, 3);
-      expect(largeMs / smallMs).toBeLessThan(6);
+      expect(largeMs / smallMs).toBeLessThan(36);
       // 約120万文字の絶対時間の上限(負荷下でも十分に余裕のある値)
       expect(largeMs).toBeLessThan(20_000);
     },

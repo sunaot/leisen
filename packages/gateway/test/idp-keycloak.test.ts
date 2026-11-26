@@ -65,6 +65,8 @@ describe("KeycloakIdpAdapter.authenticate", () => {
     );
     expect(identity.userId).toBe("user-uuid-1");
     expect(identity.displayName).toBe("alice");
+    // 本人照合 identityCheck: username に使う(ADR-024 追補)
+    expect(identity.username).toBe("alice");
     expect(identity.session.subjectToken).toBe("the-access-token");
     expect(identity.session.expiresAt).toBe(1_700_000_000_000);
   });

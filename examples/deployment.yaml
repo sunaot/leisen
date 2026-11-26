@@ -90,6 +90,9 @@ gateway:
 orchestrator:
   maxIterations: 6
   costLimitPerQuery: 0.5
+  # 探索の時間上限(秒)。省略時は 120。手元の LLM で遅い場合は 300〜600 に上げる
+  # (gateway.runs.ttlSec(既定 900)より短くする)
+  # runTimeoutSec: 600
 
 audit:
   # 監査レコードを JSONL ファイルへ追記する(ADR-011。at-least-once、fail-closed)。

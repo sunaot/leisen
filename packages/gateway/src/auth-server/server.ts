@@ -23,7 +23,7 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CredentialEventSink } from "../credentials/events.js";
-import { emailMatches, SourceOAuthError, type SourceOAuthClient } from "../credentials/oauth.js";
+import { emailMatches, SourceOAuthError, usernameMatches, type SourceOAuthClient } from "../credentials/oauth.js";
 import { needsRefresh, subSourceKey } from "../credentials/providers.js";
 import type { CredentialRevocation } from "../credentials/revocation.js";
 import type { CredentialStore, SourceTokenSet } from "../credentials/types.js";
@@ -57,7 +57,7 @@ export interface ConfiguredSource {
   readonly sourceId: string;
   readonly kind: CredentialProviderKind;
   readonly oauth?: SourceOAuthClient;
-  readonly identityCheck: "email" | "none";
+  readonly identityCheck: "email" | "username" | "none";
 }
 
 export interface RegisteredClient {
@@ -106,6 +106,7 @@ interface BrowserSession {
   readonly iat: number;
   readonly sub: string;
   readonly email?: string;
+  readonly username?: string;
   readonly name?: string;
   readonly csrf: string;
   readonly exp: number;
@@ -150,6 +151,28 @@ type StatePayload =
     };
 
 const STATE_TTL_MS = 10 * 60_000;
+/**
+ * トークン交換の min_lifetime の判定で「更新直後」とみなす元のトークンの経過時間。これより新しい
+ * トークンは、残り時間が足りなくても受け付ける(更新しても延びない構成で 401 と更新を繰り返さない)
+ */
+export const FRESH_SUBJECT_WINDOW_MS = 60_000;
+
+/**
+ * トークン交換の min_lifetime の判定。元のトークンの残りが足りず、かつ更新直後でなければ
+ * "expires_soon"(クライアントが更新すれば延びうる)。それ以外は "ok"
+ */
+export function subjectLifetimeDecision(input: {
+  readonly now: number;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+  readonly minLifetimeMs: number | undefined;
+  readonly freshWindowMs?: number;
+}): "ok" | "expires_soon" {
+  if (input.minLifetimeMs === undefined || input.expiresAt - input.now >= input.minLifetimeMs) {
+    return "ok";
+  }
+  return input.now - input.issuedAt > (input.freshWindowMs ?? FRESH_SUBJECT_WINDOW_MS) ? "expires_soon" : "ok";
+}
 
 function hashBinding(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("base64url").slice(0, 32);
@@ -428,6 +451,7 @@ export class AuthHttpHandler {
       iat: this.#now(),
       sub: identity.userId,
       ...(identity.email !== undefined ? { email: identity.email } : {}),
+      ...(identity.username !== undefined ? { username: identity.username } : {}),
       ...(identity.displayName !== undefined ? { name: identity.displayName } : {}),
       csrf: randomId(),
       exp: this.#now() + this.#o.browserSessionTtlMs,
@@ -722,10 +746,19 @@ export class AuthHttpHandler {
     } catch (error) {
       const reason = error instanceof SourceOAuthError ? `oauth_${error.kind}` : "oauth_failed";
       await this.#o.events({ userId: state.sub, event: "connect_failed", sourceId: source.sourceId, method, outcome: "failure", reason });
+      // 切り分け用にどの段階で失敗したかをサーバーログへ(SourceOAuthError の文言は段階・HTTP 状態・
+      // 正規化した OAuth のエラーコードだけで、トークン・応答本文・利用者を含まない。不変条件6)
+      this.#o.warn?.(
+        `connecting source "${source.sourceId}" failed: ${error instanceof SourceOAuthError ? error.message : "unexpected error"}`,
+      );
       this.#html(res, 502, messagePage("接続できませんでした", `${source.sourceId} とのやり取りに失敗しました。時間をおいてやり直してください。`, "err", { href: back, label: "戻る" }));
       return;
     }
-    const idpEmail = tx?.identity?.email ?? (await this.#session(req))?.email;
+    // 照合に使う IdP の属性は、この接続を始めた本人のものに限る: ESC の取引(tx)があれば取引の
+    // 本人だけ(別の利用者のブラウザのセッションに寄せない)、なければ state の本人と同じセッション
+    const browserSession = tx === undefined ? await this.#session(req) : undefined;
+    const sameUser = browserSession !== undefined && browserSession.sub === state.sub ? browserSession : undefined;
+    const idpEmail = tx !== undefined ? tx.identity?.email : sameUser?.email;
     if (source.identityCheck === "email" && !emailMatches(idpEmail, result.verifiedEmails)) {
       // 誤接続(私用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
       await source.oauth.revoke(result.tokens);
@@ -741,6 +774,25 @@ export class AuthHttpHandler {
         ),
       );
       return;
+    }
+    if (source.identityCheck === "username") {
+      const idpUsername = tx !== undefined ? tx.identity?.username : sameUser?.username;
+      if (!usernameMatches(idpUsername, result.usernames)) {
+        // 誤接続(別の利用者・共用アカウント等)。取得したトークンはソースへ失効を依頼して捨てる
+        await source.oauth.revoke(result.tokens);
+        await this.#o.events({ userId: state.sub, event: "connect_failed", sourceId: source.sourceId, method, outcome: "failure", reason: "identity_mismatch" });
+        this.#html(
+          res,
+          403,
+          messagePage(
+            "接続できませんでした",
+            `${source.sourceId} のアカウントのログイン名が、Leisen にログインしたアカウント(${idpUsername ?? "ログイン名不明"})と一致しません。自分のアカウントで接続してください。`,
+            "err",
+            { href: back, label: "戻る" },
+          ),
+        );
+        return;
+      }
     }
     if (tx !== undefined) {
       // 監査に残せない接続は成立させない(不変条件2): 記録してから取引に入れる
@@ -1035,6 +1087,7 @@ export class AuthHttpHandler {
     const claims: GrantClaims = {
       sub: identity.userId,
       ...(identity.email !== undefined ? { email: identity.email } : {}),
+      ...(identity.username !== undefined ? { username: identity.username } : {}),
       ...(identity.displayName !== undefined ? { name: identity.displayName } : {}),
       sid: randomId(),
       cid: tx.client.clientId,
@@ -1205,6 +1258,9 @@ export class AuthHttpHandler {
       } catch (error) {
         const kind = error instanceof SourceOAuthError ? error.kind : "failed";
         await this.#o.events({ userId: payload.sub, event: "refresh_failed", sourceId, method: "esc", outcome: "failure", reason: kind });
+        this.#o.warn?.(
+          `refreshing source "${sourceId}" failed: ${error instanceof SourceOAuthError ? error.message : "unexpected error"}`,
+        );
         if (kind !== "invalid_grant") {
           src[sourceId] = tokens; // 一時的な失敗は持ち越す(アクセストークンからは外れる)
         }
@@ -1234,6 +1290,16 @@ export class AuthHttpHandler {
     if (target !== this.resource) {
       return this.#oauthError(res, 400, "invalid_target", "token exchange can only target this gateway");
     }
+    // 拡張パラメータ min_lifetime(秒): 交換後のトークンに要る残り時間(Orchestrator の長い run)。
+    // 元のトークンの残りが足りず、かつ更新直後でなければ拒否して、クライアントに更新させる
+    const minLifetimeRaw = form.get("min_lifetime");
+    let minLifetimeMs: number | undefined;
+    if (minLifetimeRaw !== null) {
+      if (!/^\d{1,5}$/.test(minLifetimeRaw) || Number(minLifetimeRaw) < 1 || Number(minLifetimeRaw) > 86_400) {
+        return this.#oauthError(res, 400, "invalid_request", "min_lifetime must be an integer number of seconds (1-86400)");
+      }
+      minLifetimeMs = Number(minLifetimeRaw) * 1000;
+    }
     let subject;
     try {
       subject = await as.tokens.openAccessToken(form.get("subject_token") ?? "", as.orchestratorResource);
@@ -1242,6 +1308,11 @@ export class AuthHttpHandler {
         await this.#o.events({ userId: "anonymous", event: "token_exchanged", method: "gateway_token", outcome: "failure", reason: `subject_${error.kind}`, clientId: ORCHESTRATOR_CLIENT_ID });
       }
       throw error;
+    }
+    if (subjectLifetimeDecision({ now: this.#now(), issuedAt: subject.iat, expiresAt: subject.exp, minLifetimeMs }) === "expires_soon") {
+      // 更新すれば延びうる(更新直後のトークンは、延びなくても受け付ける。401 と更新を繰り返さない)
+      await this.#o.events({ userId: subject.sub, event: "token_exchanged", method: "gateway_token", outcome: "failure", reason: "subject_expires_soon", clientId: ORCHESTRATOR_CLIENT_ID });
+      return this.#oauthError(res, 400, "invalid_grant", "the subject token expires before the requested lifetime; refresh it and retry");
     }
     const { v: _v, iat: _i, exp, jti: _j, ...claims } = subject;
     const issued = as.tokens.issue({ ...claims, aud: this.resource }, { withRefresh: false, maxExp: exp });

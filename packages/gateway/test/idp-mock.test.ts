@@ -194,6 +194,35 @@ describe("MockCredentialProvider", () => {
     );
   });
 
+  it("Redmine の利用者別 API キーと GitHub の Bearer トークンを区別する", async () => {
+    const env = {
+      [`${mockTokenEnvVar("redmine")}__ALICE`]: "test-key-alice",
+      [`${mockTokenEnvVar("redmine")}__BOB`]: "test-key-bob",
+      [`${mockTokenEnvVar("github")}__ALICE`]: "test-bearer-alice",
+    };
+    const options = { env, now: () => 0, tokenLifetimeMs: 1000 };
+    const redmine = new MockCredentialProvider("redmine", {
+      ...options,
+      credentialKind: "api_key",
+    });
+    const github = new MockCredentialProvider("github", options);
+    await expect(redmine.getCredential(identity)).resolves.toEqual({
+      kind: "api_key",
+      apiKey: "test-key-alice",
+      expiresAt: 0,
+    });
+    await expect(redmine.getCredential({ ...identity, userId: "bob" })).resolves.toEqual({
+      kind: "api_key",
+      apiKey: "test-key-bob",
+      expiresAt: 0,
+    });
+    await expect(github.getCredential(identity)).resolves.toEqual({
+      kind: "oauth_bearer",
+      accessToken: "test-bearer-alice",
+      expiresAt: 1000,
+    });
+  });
+
   it("未注入のソースはsource_not_connected(未接続の認可分岐)", async () => {
     const provider = new MockCredentialProvider("gdrive");
     const error = await provider.getCredential(identity).catch((e) => e);
@@ -262,5 +291,15 @@ describe("redactIdentity", () => {
       displayName: "Alice",
       session: { redacted: true },
     });
+  });
+});
+
+describe("MockCredentialProvider(api_key、ADR-024)", () => {
+  it("全利用者で共有される変数にフォールバックしない", async () => {
+    const env = { [mockTokenEnvVar("redmine")]: "test-key-shared" };
+    const provider = new MockCredentialProvider("redmine", { env, credentialKind: "api_key" });
+    await expect(
+      provider.getCredential({ userId: "alice", session: { subjectToken: "dev-session-alice" } }),
+    ).rejects.toMatchObject({ errorClass: "source_not_connected" });
   });
 });

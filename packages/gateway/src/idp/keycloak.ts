@@ -286,6 +286,9 @@ export class KeycloakIdpAdapter extends CredentialResolvingIdpAdapter {
       userId,
       ...(displayName !== undefined ? { displayName } : {}),
       ...(email !== undefined ? { email } : {}),
+      ...(typeof body.preferred_username === "string" && body.preferred_username !== ""
+        ? { username: body.preferred_username }
+        : {}),
       session: {
         subjectToken: sessionToken,
         ...(body.exp !== undefined ? { expiresAt: body.exp * 1000 } : {}),

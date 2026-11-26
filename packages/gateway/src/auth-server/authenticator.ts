@@ -47,6 +47,7 @@ export class GatewayTokenIdpAdapter implements IdpAdapter {
         userId: payload.sub,
         ...(payload.name !== undefined ? { displayName: payload.name } : {}),
         ...(payload.email !== undefined ? { email: payload.email } : {}),
+        ...(payload.username !== undefined ? { username: payload.username } : {}),
         session: {
           subjectToken: payload.idp.accessToken,
           expiresAt: payload.exp,

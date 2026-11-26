@@ -8,6 +8,8 @@ dist/
 # LibreChat overlay の秘密(雛形の librechat.env.example だけを管理する)
 deploy/compose/librechat/librechat.env
 coverage/
+# 手元の作業用ディレクトリ(開発用の設定・状態 DB・監査ログ。README の例は ../var/ を使う)
+var/
 
 # Claude Code subagent worktrees (harness-managed, never commit)
 .claude/worktrees/

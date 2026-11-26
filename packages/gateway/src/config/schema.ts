@@ -166,7 +166,8 @@ const connectorSettingsSchema = z
 /**
  * コネクタの本人資格情報の取得方式(ADR-010 のソース別 Auth Adapter、ADR-022 決定 1)。
  * - mock_env: 開発用。MockCredentialProvider が環境変数 LEISEN_MOCK_TOKEN_<SOURCEID> の固定
- *   トークンを渡す(NODE_ENV=production では起動時に拒否)
+ *   値を渡す(NODE_ENV=production では起動時に拒否)。渡す形式は credentialKind
+ *   (oauth_bearer / api_key。ADR-024)で選ぶ
  * - token_vault: Gateway の接続ページで OAuth を行い、更新トークンを Token Vault に保管する
  * - esc: 同じく OAuth で得たトークンを、Gateway の認可サーバーが発行するトークン(ESC)に
  *   封じてクライアントに持たせる(gateway.authorizationServer.enabled が要る)
@@ -190,7 +191,7 @@ const oauthEndpointsSchema = z.strictObject({
 /** token_vault / esc のソース OAuth(ADR-022 決定 7・8)。 */
 const sourceOAuthSchema = z.strictObject({
   /** 端点と本人照合の方式のプリセット。custom は endpoints が必須 */
-  preset: z.enum(["github", "google", "slack", "custom"]),
+  preset: z.enum(["github", "google", "slack", "esa", "redmine", "custom"]),
   clientId: z.string().min(1),
   /** client secret を保持する環境変数の名前(値ではない) */
   clientSecretEnv: z.string().regex(ENV_VAR_NAME_PATTERN, {
@@ -200,14 +201,28 @@ const sourceOAuthSchema = z.strictObject({
   endpoints: oauthEndpointsSchema.optional(),
   /**
    * 接続時の本人照合(決定 8)。email: ソース側の検証済みメールと IdP のメールの一致を要求する。
-   * none は confirmIdentityCheckDisabled: true が要る(起動時に WARNING)
+   * username: ソース側のログイン名と IdP の preferred_username の一致を要求する(preset redmine
+   * だけ。ADR-024 追補)。none は confirmIdentityCheckDisabled: true が要る(起動時に WARNING)。
+   * 省略時は preset redmine なら username、それ以外は email
    */
-  identityCheck: z.enum(["email", "none"]).default("email"),
+  identityCheck: z.enum(["email", "username", "none"]).optional(),
   confirmIdentityCheckDisabled: z.boolean().optional(),
-});
+  /**
+   * RFC 8707 の resource(トークンの受け手)。省略時はプリセットの既定(esa は
+   * https://mcp.esa.io)。リモート MCP サーバーを上流にする custom のソースで使う(ADR-023)
+   */
+  resource: httpsOrLoopbackUrl("resource").optional(),
+}).refine((o) => o.resource === undefined || o.preset === "esa" || o.preset === "custom", {
+  path: ["resource"],
+  error: "resource is only for preset esa or custom (sources whose upstream is a remote MCP server)",
+}).transform((o) => ({ ...o, identityCheck: o.identityCheck ?? (o.preset === "redmine" ? "username" : "email") }));
 
 const connectorAuthSchema = z.discriminatedUnion("provider", [
-  z.strictObject({ provider: z.literal("mock_env") }),
+  z.strictObject({
+    provider: z.literal("mock_env"),
+    /** mock_env で渡す資格情報の形式(ADR-024)。開発専用。既定は oauth_bearer */
+    credentialKind: z.enum(["oauth_bearer", "api_key"]).optional(),
+  }),
   z.strictObject({ provider: z.literal("token_vault"), oauth: sourceOAuthSchema }),
   z.strictObject({ provider: z.literal("esc"), oauth: sourceOAuthSchema }),
   z.strictObject({
@@ -577,6 +592,14 @@ const orchestratorSchema = z.strictObject({
   maxIterations: z.number().int().min(1).max(20).default(6),
   /** 1質問あたりのLLMコスト上限(通貨単位は導入先の課金通貨)。消費者はT-007 */
   costLimitPerQuery: z.number().positive().optional(),
+  /**
+   * 探索フェーズの時間上限(秒、run の開始から)。省略時は Orchestrator の既定(120 秒)。
+   * 手元の LLM(LM Studio 等)では 1 手に数十秒かかり、長い本文の読み込みで既定を超えうる。
+   * 上限に達した後に回答を促す最終ターン(60 秒)が別にある。Orchestrator は runId の有効期間
+   * (gateway.runs.ttlSec、既定 900 秒)に収まるよう短くする(WARNING)。呼び出し側(LibreChat の
+   * MCP の timeout 等)の待ち時間は「この値 + 最終ターン」より長くする
+   */
+  runTimeoutSec: z.number().int().min(10).max(3_600).optional(),
 });
 
 /** 起動コード(bootstrap/audit.ts)が解決できる監査シンクの識別子。 */

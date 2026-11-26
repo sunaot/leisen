@@ -43,10 +43,10 @@ Gateway を Docker Compose で起動するリファレンスデプロイの手�
 - Docker Engine 23 以降(BuildKit が既定。Dockerfile はキャッシュマウントを使う)と Docker Compose v2
   (`docker compose up --wait` が使えること)
 - ホストの `127.0.0.1:8787`(Gateway)と `127.0.0.1:8080`(Keycloak)が空いていること
-- スモーク用に `curl` と Node.js(22 を推奨。スクリプトは JSON の解析にだけ使う)
+- スモーク用に `curl` と Node.js(26 以上。スクリプトは JSON の解析にだけ使う)
 - LibreChat overlay を使う場合は、加えて `127.0.0.1` の 3080 / 8443 / 8790 が空いていることと、LLM
   (LM Studio 等の OpenAI 互換 API)が要る([docs/ui-librechat.md](ui-librechat.md) §1.1)
-- コンテナを使わずに動かす場合は Node 22 と npm(§3)
+- コンテナを使わずに動かす場合は Node 26 以上と npm(§3。ADR-025)
 
 ## 2. 5分手順(Docker Compose)
 
@@ -92,7 +92,7 @@ LibreChat のセッションを偽造できる。手順・前提(LM Studio、鍵
 履歴の保持と不変条件7・MCP クライアント(Claude Code 等)からの接続・トラブルシュートは
 [docs/ui-librechat.md](ui-librechat.md)。
 
-## 3. コンテナを使わない同等手順(Node 22)
+## 3. コンテナを使わない同等手順(Node 26 以上)
 
 イメージと同じビルド成果物をそのまま動かす。README「手元で動かす(5分)」と同じ(モック IdP)。
 

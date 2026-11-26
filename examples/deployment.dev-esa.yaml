@@ -1,0 +1,58 @@
+# deployment.dev-esa.yaml — 自分の esa チームを手元の Gateway から検索する開発用設定(T-026、ADR-023)
+#
+# README「自分の esa で試す」を参照。モック IdP で利用者を名乗り、esa には本人の OAuth で接続する
+# (Token Vault。接続ページ http://127.0.0.1:8787/connections)。
+#
+# 前提(esa チームの owner の操作):
+# - リモート MCP サーバーへのアクセスを許可する(既定は拒否)
+# - OAuth クライアントを https://api.esa.io/oauth/dcr で登録し、client_id を下の clientId に書く。
+#   リダイレクト URI は http://127.0.0.1:8787/connections/callback
+#
+# 秘密はこのファイルに書かない(不変条件6)。client secret・鍵・モックのセッションは環境変数で渡す:
+#   LEISEN_MOCK_SESSIONS='dev-token=alice;email=<esa のメールアドレス>'
+#   LEISEN_VAULT_KEY / LEISEN_ESC_KEY(各 32 バイト。openssl rand -base64 32。別の値にする)
+#   LEISEN_ESA_CLIENT_SECRET
+# - idp.adapter.kind: mock と audit.sink: stdout は開発専用で、NODE_ENV=production では拒否される
+# - 相対パスはこのファイルの所在ディレクトリ(examples/)が基準。状態 DB は ../var/ に置く
+#   (var/ は .gitignore の対象。事前に mkdir -p var && chmod 700 var)
+schemaVersion: 1
+
+deployment:
+  name: dev-esa
+
+idp:
+  adapter:
+    # 開発用モック。メールアドレスは esa のアカウントと同じにする(接続時の本人照合に使う)
+    kind: mock
+
+gateway:
+  http:
+    host: 127.0.0.1 # ループバックのみで待ち受ける
+    port: 8787
+    path: /mcp
+  # ブラウザから見た Gateway の URL。esa に登録するリダイレクト URI はこれに /connections/callback を足したもの
+  publicBaseUrl: http://127.0.0.1:8787
+  credentials:
+    # Token Vault の暗号文を置く状態 DB(本人の esa トークンを暗号化して保管する)
+    store: { kind: sqlite, path: ../var/esa-credentials.db }
+    # データ鍵を包む鍵は環境変数 LEISEN_VAULT_KEY(開発用の local)
+    keys: { kind: local }
+
+connectors:
+  - id: esa
+    kind: esa
+    settings:
+      team: your-team # <team>.esa.io の <team> に置き換える
+      # 個人の場所として使うカテゴリを private に分類する(既定の方針では検索結果から除かれる)
+      privateCategories: [Users]
+    auth:
+      provider: token_vault
+      oauth:
+        preset: esa # 端点と resource=https://mcp.esa.io はプリセットが与える
+        clientId: replace-with-your-esa-client-id
+        clientSecretEnv: LEISEN_ESA_CLIENT_SECRET
+        scopes: [mcp]
+
+audit:
+  # 監査レコードを標準出力へ JSON で出す(開発用)
+  sink: stdout

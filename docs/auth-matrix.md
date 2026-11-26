@@ -10,6 +10,7 @@ Accepted 化する根拠を与える。各セルの記述には一次情報(公�
 - 「本人性」= 認可判定が利用者本人に対して行われるか(不変条件1)。「資格情報の形態」とは
   分けて評価する(ADR-010 決定4)
 - 未確認・推測の箇所は明示的に「推測」「要確認」と記す
+- Redmine は当初の T-000a 調査対象外。2026-11-12 のコネクタ試作で Redmine 公式 REST API の個人 API キー方式を確認し、追加した
 
 ---
 
@@ -20,8 +21,10 @@ Accepted 化する根拠を与える。各セルの記述には一次情報(公�
 | Google Drive | ◎ `files.list`(q)/ Cloud Search | ×(WIFはGoogle Cloud限定) | 個別OAuth(3-legged) | ◎ | 不要 | ドメインインストール/事前承認可 |
 | Slack | ◎ RTS `assistant.search.context` | ×(本人OAuthのみ) | 個別OAuth(xoxp user token) | ◎ | 不可(ADR-014、ToSで禁止) | アプリ承認要 |
 | GitHub | ◎ Search API | ×(GitHub App OAuthのみ) | GitHub App user-to-server token | ◎(app∩user権限) | 不要 | Org承認・SAML SSO要件あり |
+| Redmine | ◎ REST Search(`/search.json`) | ― | 利用者個人 API キー(`X-Redmine-API-Key`) | ◎(本人 API キー) | 不要 | インスタンス管理者が REST API を有効化 |
 | SharePoint/OneDrive | ◎ Graph `/search/query` | **◎ Entra ID OBO(唯一の成立例)** | OBO(delegated) | ◎ | 不要 | admin consent 必須 |
 | Confluence | ◎ CQL `/wiki/rest/api/search` | ×(3LOのみ) | 個別OAuth(3LO) | ◎ | 不要 | 組織のアプリ承認ポリシー次第 |
+| esa | ◎ 公式リモート MCP `esa_search_posts`(`https://mcp.esa.io`、β) | ×(jwt-bearer 非対応。token-exchange の受け付け条件は未確認。ADR-023) | 個別OAuth(`resource=https://mcp.esa.io`、scope `mcp`) | ◎(メンバー・ゲストのカテゴリ制限を esa が判定) | 不要 | owner がリモート MCP のアクセスを許可(既定は拒否)。アプリごとの承認も可 |
 | Notion | △ `/v1/search`(共有範囲のみ) | ×(public integration OAuthのみ) | 個別OAuth(bot user) | **△ 部分的** | 不要(ただし検索範囲に構造的限界) | Enterprise承認リスト |
 | Box(参考) | ◎ `GET /search` | △(RFC 8693はdownscope用途) | 個別OAuth + downscope | ◎ | 不要 | 組織設定次第 |
 | ファイル共有(SMB/NAS) | ×(中央検索API不在) | ×(OIDC→Kerberos直接経路なし) | KCD/RBCD + S4U(**T-017で検証**) | ○(ACL評価は本人SID、資格はサービスアサート) | **必須(index-required)** | AD管理者設定 |
@@ -40,6 +43,12 @@ Accepted 化する根拠を与える。各セルの記述には一次情報(公�
    中核コンポーネントであることが確定
 3. ファイル共有・S3・社内DBは「中央検索API不在(index-required)」かつ「委譲身元が必要」の
    交差クラスであり、T-015(検索層)+ T-017(delegated identity スパイク)の両方を要する
+
+### Redmine (2026-11-12 追加、プロトタイプ)
+
+Redmine は `/search.json` で本人の検索を行い、`X-Redmine-API-Key` ヘッダーに個人 API キーを送る。REST API を管理者が有効化する必要がある。Search と Wiki Pages API は Redmine の公式文書で Alpha とされるため、結果形式・利用可能な検索対象は導入先で確認する。
+
+一次情報: [REST API / Authentication](https://www.redmine.org/projects/redmine/wiki/rest_api#Authentication)、[Search](https://www.redmine.org/projects/redmine/wiki/Rest_Search)、[Projects](https://www.redmine.org/projects/redmine/wiki/Rest_Projects)、[Wiki Pages](https://www.redmine.org/projects/redmine/wiki/Rest_WikiPages)。本項の実接続確認は未実施。
 
 ---
 
@@ -213,7 +222,7 @@ Notion を採用する場合、この限界を describe/README で利用者に�
 
 | 方式 | 該当ソース | Token Vault 要否 |
 |---|---|---|
-| A. 個別OAuth(3-legged、本人トークン) | Google Drive, Slack, GitHub, Confluence, Notion, Box | **要**(リフレッシュトークン保管・失効) |
+| A. 個別OAuth(3-legged、本人トークン) | Google Drive, Slack, GitHub, Confluence, Notion, Box, esa(ADR-023) | **要**(リフレッシュトークン保管・失効) |
 | B. token exchange(OBO) | SharePoint/OneDrive(Entra ID)のみ | 不要(都度交換。IdPセッションに追随) |
 | C. delegated identity(委譲身元) | SMB/NAS(RBCD+S4U)、S3(identity propagation)、社内DB(SET ROLE) | 不要(ただし方式ごとにADR承認必須) |
 | D. サービスアカウント+本人判定(DWD等) | Google Drive(DWD)— 既定不採用、ソース別ADRで例外承認 | — |
@@ -242,6 +251,7 @@ Notion を採用する場合、この限界を describe/README で利用者に�
 - Atlassian: 組織アプリ承認ポリシーの既定と near-real-time 失効の有無
 - Box: 即時失効仕様
 - Slack: docs.slack.dev の一部ページは anti-bot のため全文精読未了(スコープ名・数値は裏取り済み)
+- esa: ADR-023「残る確認事項」(resource 付きトークンでの接続、更新トークンの寿命、メンバー削除での失効、レート制限、ゲストのカテゴリ制限)
 
 ## 13. 後続タスクへの反映
 

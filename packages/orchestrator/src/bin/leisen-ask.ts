@@ -31,6 +31,7 @@
  * 終了コード: 0 回答した(resolved / unresolved)、1 実行時エラー、2 引数・資格情報の不備
  *
  * サブコマンド `leisen-ask serve`(bin/serve.ts): Orchestrator を MCP サーバーとして公開する
+ * サブコマンド `leisen-ask doctor`(bin/doctor.ts): serve と同じ引数で、設定・LLM・Gateway への経路を診断する
  * (T-021、ADR-018)。最初の引数が `serve` のときだけ振り分ける。
  *
  * npm の bin(`npx leisen-ask`)からは、リポジトリに含まれる起動シム packages/orchestrator/bin/leisen-ask.js
@@ -79,7 +80,8 @@ import {
   credentialsMessageFor,
   parseLlmCliOptions,
 } from "./llm-options.js";
-import { runServe, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import { runServe, settingsFromDeployment, waitForTerminationSignal, type ServeEndpoint } from "./serve.js";
+import { runDoctor } from "./doctor.js";
 import {
   INSECURE_UPSTREAM_HINT,
   INSECURE_UPSTREAM_USAGE_LINE,
@@ -96,12 +98,13 @@ export const USAGE = [
   "  セッショントークンは環境変数 LEISEN_SESSION_TOKEN でも渡せます(推奨)。",
   "  Claude API の資格情報は ANTHROPIC_API_KEY 等の環境から解決します。",
   "  --user-id は照合用(Gateway が認証した利用者と食い違えば run は error になります)。",
-  "  --config の orchestrator セクション(maxIterations / costLimitPerQuery)を探索の設定にします(--max-iterations が優先)。",
+  "  --config の orchestrator セクション(maxIterations / costLimitPerQuery / runTimeoutSec)を探索の設定にします(--max-iterations が優先)。",
   ORCHESTRATOR_CREDENTIAL_USAGE_LINE,
   "  --json は回答を返せない失敗でも stdout に JSON を1つ出します({ outcome: \"error\", errorClass, message })。",
   ...LLM_USAGE_LINES,
   INSECURE_UPSTREAM_USAGE_LINE,
   "  MCP サーバーとして起動する: leisen-ask serve --gateway <URL> --config <deployment.yaml>(詳細は leisen-ask serve --help)",
+  "  接続を診断する: leisen-ask doctor <serve と同じ引数>(設定・LLM・Gateway への経路を順に確かめる。leisen-ask doctor --help)",
 ].join("\n");
 
 export {
@@ -367,6 +370,9 @@ export async function runCli(
   if (argv[0] === "serve") {
     return runServe(argv.slice(1), io, deps);
   }
+  if (argv[0] === "doctor") {
+    return runDoctor(argv.slice(1), io, { env: deps.env });
+  }
   // 回答を返せない失敗: 説明を stderr に出し、--json なら失敗の表現を stdout に1つ出す
   // (出力契約。終了コードは --json の有無で変えない)
   const json = wantsJson(argv);
@@ -448,11 +454,7 @@ export async function runCli(
   let settings: OrchestratorSettingsInput = {};
   if (args.config !== undefined) {
     try {
-      const { maxIterations, costLimitPerQuery } = loadDeploymentConfig(resolve(args.config)).orchestrator;
-      settings = {
-        maxIterations,
-        ...(costLimitPerQuery !== undefined ? { costLimitPerQuery } : {}),
-      };
+      settings = settingsFromDeployment(loadDeploymentConfig(resolve(args.config)));
     } catch (error) {
       await gateway.close();
       // DeploymentConfigError の文言は秘密情報を含まない(設定スキーマに秘密のフィールドがない)

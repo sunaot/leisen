@@ -9,6 +9,9 @@
  * - 交換結果は受けたトークンの SHA-256 をキーに、期限の 30 秒前までプロセス内で再利用する
  *   (受けたトークンそのものはキーに残さない。件数の上限あり)
  * - Gateway の 400 / 401(無効・期限切れ・失効・受け手違い)は invalid、到達不能・5xx は unavailable
+ * - minLifetimeMs(長い run の前): 交換後のトークンにその残り時間が要る。キャッシュの残りが足りなければ
+ *   min_lifetime を添えて交換し直す。元のトークンの残りが足りず更新直後でもなければ Gateway が拒否し
+ *   (invalid)、呼び出し元は 401 を返してクライアントに更新させる
  * トークン・資格情報をログ・エラーに出さない(不変条件6)。
  */
 import { createHash } from "node:crypto";
@@ -42,8 +45,13 @@ export interface GatewayTokenExchangerOptions {
   readonly now?: () => number;
 }
 
+export interface ExchangeOptions {
+  /** 交換後のトークンに要る残り時間(ms) */
+  readonly minLifetimeMs?: number;
+}
+
 export interface TokenExchanger {
-  exchange(subjectToken: string): Promise<string>;
+  exchange(subjectToken: string, options?: ExchangeOptions): Promise<string>;
 }
 
 export class GatewayTokenExchanger implements TokenExchanger {
@@ -59,11 +67,18 @@ export class GatewayTokenExchanger implements TokenExchanger {
     this.#now = options.now ?? Date.now;
   }
 
-  async exchange(subjectToken: string): Promise<string> {
+  async exchange(subjectToken: string, options: ExchangeOptions = {}): Promise<string> {
     const key = createHash("sha256").update(subjectToken, "utf8").digest("base64url");
+    const minLifetimeMs = options.minLifetimeMs ?? 0;
     const cached = this.#cache.get(key);
-    if (cached !== undefined && cached.expiresAt - REUSE_MARGIN_MS > this.#now()) {
+    if (cached !== undefined && cached.expiresAt - REUSE_MARGIN_MS > this.#now() + minLifetimeMs) {
       return cached.token;
+    }
+    if (minLifetimeMs > 0) {
+      // 残り時間の要る交換は相乗りしない(相乗り先の結果は短いかもしれない)
+      const { token, expiresAt } = await this.#request(subjectToken, Math.ceil(minLifetimeMs / 1000));
+      this.#cache.set(key, { token, expiresAt });
+      return token;
     }
     this.#cache.delete(key);
     const pending = this.#inflight.get(key);
@@ -98,7 +113,7 @@ export class GatewayTokenExchanger implements TokenExchanger {
     }
   }
 
-  async #request(subjectToken: string): Promise<{ token: string; expiresAt: number }> {
+  async #request(subjectToken: string, minLifetimeSec?: number): Promise<{ token: string; expiresAt: number }> {
     const basic = Buffer.from(
       `${encodeURIComponent(ORCHESTRATOR_CLIENT_ID)}:${encodeURIComponent(this.#o.credential)}`,
     ).toString("base64");
@@ -117,6 +132,7 @@ export class GatewayTokenExchanger implements TokenExchanger {
           subject_token_type: ACCESS_TOKEN_TYPE,
           requested_token_type: ACCESS_TOKEN_TYPE,
           resource: this.#o.gatewayResource,
+          ...(minLifetimeSec !== undefined ? { min_lifetime: String(minLifetimeSec) } : {}),
         }).toString(),
         redirect: "manual",
         signal: AbortSignal.timeout(this.#o.timeoutMs ?? DEFAULT_TIMEOUT_MS),

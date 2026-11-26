@@ -23,6 +23,8 @@ export const MIN_ACCESS_TOKEN_MS = 30_000;
 export interface GrantClaims {
   readonly sub: string;
   readonly email?: string;
+  /** IdP のログイン名(本人照合 identityCheck: username。ADR-024 追補) */
+  readonly username?: string;
   readonly name?: string;
   readonly sid: string;
   /** クライアント ID(動的登録は封じた client_id のまま) */

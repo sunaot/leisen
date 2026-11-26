@@ -36,6 +36,7 @@ export type AnswerRunRecord = Extract<AuditRecord, { recordType: "answer_run" }>
 
 export interface OrchestratorServerOptions {
   readonly tokenExchange?: TokenExchanger;
+  readonly askTokenLifetimeMs?: number;
   readonly protectedResource?: { readonly resource: string; readonly authorizationServer: string };
   readonly gatewayUrl: string;
   readonly llm: LlmClient;
@@ -95,6 +96,7 @@ export async function startOrchestratorServer(
         : {}),
       ...(options.sourcePolicy !== undefined ? { sourcePolicy: options.sourcePolicy } : {}),
       ...(options.tokenExchange !== undefined ? { tokenExchange: options.tokenExchange } : {}),
+      ...(options.askTokenLifetimeMs !== undefined ? { askTokenLifetimeMs: options.askTokenLifetimeMs } : {}),
       ...(options.protectedResource !== undefined ? { protectedResource: options.protectedResource } : {}),
     },
     {

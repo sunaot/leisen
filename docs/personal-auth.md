@@ -30,7 +30,7 @@ gateway:
     keys: { kind: local }                     # local / aws_kms / gcp_kms
 ```
 
-- **状態 DB**(`credentials.store`): SQLite の 1 ファイル。Token Vault の暗号文と、ESC・認可サーバーの拒否リスト・使用済みの印(資格情報を含まない)を置く。ボリュームに置いてバックアップの対象にする。ファイルは 0600 で作られる。Node 22.13 以上が要る(`node:sqlite`。起動時に実験的機能の警告が 1 行出る)
+- **状態 DB**(`credentials.store`): SQLite の 1 ファイル。Token Vault の暗号文と、ESC・認可サーバーの拒否リスト・使用済みの印(資格情報を含まない)を置く。ボリュームに置いてバックアップの対象にする。ファイルは 0600 で作られる。Node 26 以上が要る(`node:sqlite`。ADR-025)
 - **鍵**(`credentials.keys`): Token Vault のデータ鍵(資格情報 1 件ごとに生成)を包む鍵
   - `local`: 環境変数 `LEISEN_VAULT_KEY`(32 バイト。`openssl rand -base64 32`)。入れ替え中の旧鍵は `LEISEN_VAULT_KEY_PREVIOUS`(カンマ区切り)
   - `aws_kms`: `keyId`(ARN またはエイリアス)と `region`。KMS を呼ぶ IAM は環境変数(`AWS_ACCESS_KEY_ID` 等)かコンテナの資格情報(ECS / EKS Pod Identity)から得る。キーポリシーで Gateway のロールに `kms:Encrypt` / `kms:Decrypt` だけを許す
@@ -65,11 +65,11 @@ Keycloak の場合:
 auth:
   provider: token_vault        # または esc
   oauth:
-    preset: github             # github / google / slack / custom
+    preset: github             # github / google / slack / esa / redmine / custom
     clientId: Iv23li...
     clientSecretEnv: LEISEN_GITHUB_APP_SECRET
     scopes: []                 # プリセットが本人照合に要るスコープを足す
-    identityCheck: email       # 既定。none は confirmIdentityCheckDisabled: true が要る
+    identityCheck: email       # 既定(redmine は username)。none は confirmIdentityCheckDisabled: true が要る
 ```
 
 - ソース側にアプリ(OAuth クライアント)を登録し、コールバック URL に **`<publicBaseUrl>/connections/callback`** を登録する(`token_vault` / `esc` 共通)
@@ -78,8 +78,66 @@ auth:
   - GitHub: `GET /user/emails` の verified なもの(GitHub App は「Email addresses」の読み取り権限が要る)
   - Google: userinfo の `email`(`email_verified: true`)。スコープ `openid email` を自動で足す
   - Slack: `users.info` の `profile.email`。`authed_user.id` は照会にだけ使い、保管しない(不変条件 7)。スコープ `users:read` `users:read.email` を自動で足す
+  - esa: MCP の `esa_get_team_members` の `myself: true` の行の `email`(ADR-023。`mcp` スコープのトークンでは REST の `GET /v1/user` が 403 になるため、コネクタと同じ MCP サーバー・チームで引く。`kind: esa` と `settings.team` が要る)
   - custom: `endpoints.userinfoEndpoint` の `email` / `email_verified`
+  - redmine: メールアドレスではなく**ログイン名**で照合する(`identityCheck: username`。下の「Redmine」)
 - プリセットの端点は `endpoints` で上書きできる(GitHub Enterprise Server は `authorizationEndpoint` / `tokenEndpoint` / `apiBaseUrl`)
+- `resource`(RFC 8707)はトークンの受け手。リモート MCP サーバーを上流にするソースで使い、認可要求・コード交換・更新の 3 つに同じ値を載せる。`esa` プリセットの既定は `https://mcp.esa.io`
+
+### Redmine(ADR-024 追補。Redmine 6.1 以降)
+
+```yaml
+- id: redmine
+  kind: redmine                # 公式コネクタ(@leisen/connector-redmine)
+  settings:
+    baseUrl: https://redmine.example.com/
+  auth:
+    provider: token_vault      # または esc
+    oauth:
+      preset: redmine
+      clientId: <Redmine の OAuth アプリの UID>
+      clientSecretEnv: LEISEN_REDMINE_CLIENT_SECRET
+      scopes: [view_project, view_issues, view_wiki_pages, view_private_notes, search_project]
+      endpoints:
+        apiBaseUrl: https://redmine.example.com   # 端点(/oauth/authorize・/oauth/token・/oauth/revoke)をここから導く
+      # identityCheck: username(既定。redmine で使える照合はこれだけ)
+```
+
+- Redmine 6.1 で本体に入った OAuth2 プロバイダ(Doorkeeper)を使う。管理者が「管理 > アプリケーション」でアプリを登録する。リダイレクト URI は `<publicBaseUrl>/connections/callback`、機密クライアント(Confidential)にする。「管理 > 設定 > API」で REST API を有効にしておく
+- スコープは Redmine の権限名。上の 5 つが読み取り専用のコネクタに要る最小の組で、`view_project` がないとプロジェクト一覧が空になる。登録したアプリに許したスコープの範囲を超えて要求すると認可で拒否される。書き込み系の権限は登録しない
+- 認可コード方式だけで、PKCE(S256)を受ける。アクセストークンは 2 時間で切れ、リフレッシュトークンが発行される(Gateway が更新する)。`/.well-known` の端点メタデータはないので、端点は `apiBaseUrl` から導く
+- **本人照合はログイン名で行う**(`identityCheck: username`): 接続時に `GET /users/current.json` の `login` と、IdP のログイン名(OIDC の `preferred_username`)を大文字小文字を区別せずに比べ、完全一致を求める。Redmine のメールアドレスは既定で利用者本人の設定で隠され(「メールアドレスを隠す」)、検証済みの印もないため使わない(`identityCheck: email` は起動時に拒否)。ログイン名は管理者が決め、利用者は変えられない
+  - 前提: IdP の `preferred_username` と Redmine のログイン名がそろっていること(LDAP / SSO で同じ ID を使う運用)。そろっていなければ接続は `identity_mismatch` で拒否される。ドメイン付きの UPN(`alice@corp.example`)とドメインなしのログイン名(`alice`)は一致しない
+  - Keycloak は `preferred_username` をイントロスペクションの応答に含める(既定のクライアントスコープ `profile`)
+  - **導入の前提(必須)**: 照合が意味を持つのは、ログイン名を利用者が選べない場合だけである。次をそろえる(ADR-024 追補 決定 8)
+    - Keycloak: レルムの「ユーザー名の編集」(`editUsernameAllowed`)を無効にする。ユーザープロファイルで username を利用者が編集できる設定にしない。IdP 連携(ブローカー)の初回ログインで利用者にユーザー名を選ばせない(Review Profile でユーザー名を編集させない)。`registrationEmailAsUsername` を使う場合はメールアドレスも利用者が変えられないようにする。`preferred_username` を利用者が変えられる属性から作るマッパーを使わない
+    - Redmine: 自己登録を無効にする(「管理 > 設定 > 認証 > ユーザーによるアカウント登録」)か、ログイン名を LDAP / SSO から作る
+  - ログイン名は印字可能な ASCII(空白を除く)だけを照合する。ASCII 以外や前後の空白を含む値は一致しない
+- `endpoints.apiBaseUrl` は、コネクタの `settings.baseUrl` と同じ Redmine(origin とパスが同じ)でなければ起動時に拒否する(本人のトークンを別のホストへ送らないため)。`kind: redmine` 以外のコネクタでは `preset: redmine` を使えない
+- 開発用に個人 API キーで試すときは `provider: mock_env` と `credentialKind: api_key`(`packages/connector-redmine/README.md`)
+
+### esa(ADR-023)
+
+```yaml
+- id: esa
+  kind: esa                    # 公式コネクタ(@leisen/connector-esa)
+  settings:
+    team: example-team         # <team>.esa.io の <team>。このチームだけを検索する
+    privateCategories: [Users] # 個人の場所として使うカテゴリを private に分類する
+  auth:
+    provider: token_vault      # または esc
+    oauth:
+      preset: esa
+      clientId: <esa の OAuth クライアント ID>
+      clientSecretEnv: LEISEN_ESA_CLIENT_SECRET
+      scopes: [mcp]
+```
+
+- esa チームの owner が「SETTINGS > API・アプリ・MCP > アクセス設定 > リモートMCPサーバー」でアクセスを許可する(既定は拒否)。「ポリシー+アプリごとに承認」にして leisen のクライアントだけを承認し、ポリシーで読み取り系に絞ることを推奨する
+- クライアントは `https://api.esa.io/oauth/dcr`(動的登録)で一度だけ登録する。リダイレクト URI は `<publicBaseUrl>/connections/callback`、認証方式は `client_secret_post`。得た client secret は環境変数で渡す
+- コネクタは esa の読み取り系のツールだけを呼ぶ。書き込み系のツールは MCP クライアントに見えない。`mcp` スコープ自体は書き込みも許すので、owner のポリシーで読み取りに絞ることは**必須**とする
+- 本番ではトークンの送り先を `https://mcp.esa.io` に固定する(`settings.mcpUrl` の上書きは開発・テスト用)
+- 本人照合はメールアドレスの一致による。esa がメールアドレスの変更時に確認を求めるかは未確認(ADR-023 確認事項 8)
 
 ## 5. IdP トークン方式(token_exchange)
 
@@ -126,6 +184,7 @@ leisen-ask serve --gateway http://gateway:8787/mcp --config deployment.yaml \
 
 - deployment.yaml の `authorizationServer.orchestratorResource` を `--public-url` と同じ URL にする
 - 交換のクライアント認証は `LEISEN_ORCHESTRATOR_CREDENTIAL`(run API と同じ値)。Gateway 宛ての受け手は `--gateway-resource`(既定 `<--authorization-server>/mcp`)
+- `ask` の前に、run に要る残り時間(`orchestrator.runTimeoutSec` + 最終ターン 60 秒 + 30 秒)を添えて交換する(拡張パラメータ `min_lifetime`)。元のトークンの残りが足りなければ、更新直後でない限り 401 を返し、LibreChat・MCP クライアントが更新してやり直す(ADR-022 追補 2026-11-15)。**`authorizationServer.accessTokenTtlSec` は run に要る時間より長くする**(既定の 120 秒の探索なら 210 秒以上。`runTimeoutSec: 600` なら 690 秒以上。上限 3600)。短いと Orchestrator が起動時に WARNING を出す
 - LibreChat は MCP サーバー(Orchestrator)の OAuth 設定で、`authorization_url` を `<publicBaseUrl>/authorize`、`token_url` を `<publicBaseUrl>/token`、`client_id` / `client_secret` を事前登録の値にする。LibreChat のコールバック URL を `redirectUris` に、`defaultResource` を `orchestratorResource` にする(設定キーは LibreChat のバージョンで異なる。docs/ui-librechat.md を参照し、導入時に実機で確かめる)
 
 ## 7. 失効と利用停止

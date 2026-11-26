@@ -39,6 +39,9 @@
  * (T-005/T-006)で追加する。IF境界は変えない(不変条件5)。
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import {
   CallToolRequestSchema,
@@ -216,4 +219,76 @@ export function createGatewayMcpServer(gateway: Gateway): Server {
   );
 
   return server;
+}
+
+// ---------------------------------------------------------------------------
+// 上流の MCP サーバーを MCP クライアントとして呼ぶ接合部(SDK 依存をここに閉じ込める)。
+// 用途: ソースの本人照合をソースのリモート MCP サーバーで行う(esa。credentials/esa-identity.ts、
+// ADR-023 決定 9)。呼び出し側は SDK の型を知らずに、1 回の接続の中でツールを呼べる。
+
+/** 上流の MCP の呼び出しの失敗。status は HTTP の状態(分からなければ undefined)。 */
+export class RemoteMcpError extends Error {
+  constructor(
+    public readonly status: number | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RemoteMcpError";
+  }
+}
+
+export interface RemoteMcpSessionOptions {
+  readonly url: string;
+  /** 本人のアクセストークン(Authorization: Bearer)。ログ・エラーに出さない(不変条件6) */
+  readonly accessToken: string;
+  /** 1 回の要求の期限 */
+  readonly timeoutMs: number;
+  /** セッション全体の期限 */
+  readonly totalTimeoutMs: number;
+  readonly fetchImpl?: typeof fetch;
+}
+
+/** ツールの呼び出し。結果は SDK の CallToolResult をそのまま(unknown として)返す。 */
+export type RemoteMcpCall = (name: string, args: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * 上流の MCP サーバーに接続し、work の中でツールを呼び、最後に切断する。リダイレクトは追わない
+ * (トークンを別のオリジンへ送らない)。トランスポートの失敗は RemoteMcpError(HTTP 状態だけ。
+ * 応答本文を含めない)にする
+ */
+export async function withRemoteMcpSession<T>(options: RemoteMcpSessionOptions, work: (call: RemoteMcpCall) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.totalTimeoutMs);
+  timer.unref?.();
+  const baseFetch = options.fetchImpl ?? fetch;
+  const transport = new StreamableHTTPClientTransport(new URL(options.url), {
+    fetch: (input, init) => baseFetch(input, { ...init, signal: controller.signal, redirect: "error" }),
+    requestInit: { headers: { authorization: `Bearer ${options.accessToken}` } },
+  });
+  const client = new Client({ name: "leisen-gateway", version: "0.1.0" });
+  const wrap = (error: unknown): RemoteMcpError => {
+    if (error instanceof RemoteMcpError) return error;
+    if (error instanceof StreamableHTTPError && typeof error.code === "number" && error.code > 0) {
+      return new RemoteMcpError(error.code, `remote MCP server returned HTTP ${error.code}`);
+    }
+    return new RemoteMcpError(undefined, controller.signal.aborted ? "remote MCP request timed out" : "remote MCP request failed");
+  };
+  try {
+    try {
+      // SDK の型宣言が exactOptionalPropertyTypes に非対応のため型だけ合わせる(http.ts と同じ)
+      await client.connect(transport as Transport, { timeout: options.timeoutMs, signal: controller.signal });
+    } catch (error) {
+      throw wrap(error);
+    }
+    return await work(async (name, args) => {
+      try {
+        return await client.callTool({ name, arguments: args }, undefined, { timeout: options.timeoutMs, signal: controller.signal });
+      } catch (error) {
+        throw wrap(error);
+      }
+    });
+  } finally {
+    clearTimeout(timer);
+    await client.close().catch(() => undefined);
+  }
 }

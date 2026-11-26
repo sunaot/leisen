@@ -29,6 +29,8 @@ export interface MockUser {
   readonly displayName?: string;
   /** 本人照合(ADR-022 決定 8)の開発用。LEISEN_MOCK_SESSIONS の `token=userId;email=...` */
   readonly email?: string;
+  /** 本人照合 identityCheck: username の開発用。`token=userId;username=...`(ADR-024 追補) */
+  readonly username?: string;
 }
 
 export interface MockIdpAdapterOptions {
@@ -86,21 +88,28 @@ export function parseMockSessions(
     if (!token || !userId) {
       throw new IdpError(
         "misconfigured",
-        "LEISEN_MOCK_SESSIONS must be 'token=userId[;email=addr][,token=userId...]'",
+        "LEISEN_MOCK_SESSIONS must be 'token=userId[;email=addr][;username=name][,token=userId...]'",
       );
     }
     let email: string | undefined;
+    let username: string | undefined;
     for (const attr of attrs) {
       if (attr.startsWith("email=") && attr.length > "email=".length) {
         email = attr.slice("email=".length);
+      } else if (attr.startsWith("username=") && attr.length > "username=".length) {
+        username = attr.slice("username=".length);
       } else if (attr !== "") {
         throw new IdpError(
           "misconfigured",
-          "LEISEN_MOCK_SESSIONS attributes must be 'email=<address>'",
+          "LEISEN_MOCK_SESSIONS attributes must be 'email=<address>' or 'username=<name>'",
         );
       }
     }
-    sessions[token] = { userId, ...(email !== undefined ? { email } : {}) };
+    sessions[token] = {
+      userId,
+      ...(email !== undefined ? { email } : {}),
+      ...(username !== undefined ? { username } : {}),
+    };
   }
   return sessions;
 }
@@ -150,6 +159,7 @@ export class MockIdpAdapter extends CredentialResolvingIdpAdapter {
         ? { displayName: user.displayName }
         : {}),
       ...(user.email !== undefined ? { email: user.email } : {}),
+      ...(user.username !== undefined ? { username: user.username } : {}),
       session: { subjectToken: sessionToken },
     };
   }
@@ -169,6 +179,8 @@ export interface MockCredentialProviderOptions {
    * 起動コードが注入された環境(assembleGateway の env)を渡す。
    */
   env?: Readonly<Record<string, string | undefined>>;
+  /** 開発用に注入する資格情報の形式。既定は OAuth bearer。 */
+  credentialKind?: "oauth_bearer" | "api_key";
 }
 
 /**
@@ -188,6 +200,7 @@ export class MockCredentialProvider implements CredentialProvider {
   private readonly tokenLifetimeMs: number;
   private readonly now: () => number;
   private readonly env: Readonly<Record<string, string | undefined>>;
+  private readonly credentialKind: "oauth_bearer" | "api_key";
 
   constructor(
     public readonly sourceId: string,
@@ -197,6 +210,7 @@ export class MockCredentialProvider implements CredentialProvider {
     this.tokenLifetimeMs = options.tokenLifetimeMs ?? 60 * 60 * 1000;
     this.now = options.now ?? Date.now;
     this.env = options.env ?? process.env;
+    this.credentialKind = options.credentialKind ?? "oauth_bearer";
   }
 
   async getCredential(identity: Identity): Promise<Credential> {
@@ -205,17 +219,20 @@ export class MockCredentialProvider implements CredentialProvider {
       this.env[
         `${base}__${identity.userId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
       ];
-    const token = perUser ?? this.env[base];
+    // api_key は期限のない全権限の個人キーなので、全利用者で共有される <BASE> への
+    // フォールバックを認めない(利用者別の <BASE>__<USERID> だけ。ADR-024)
+    const token = this.credentialKind === "api_key" ? perUser : (perUser ?? this.env[base]);
     if (!token) {
       throw new IdpError(
         "source_not_connected",
-        `no mock credential injected for source '${this.sourceId}' (set ${base})`,
+        this.credentialKind === "api_key"
+          ? `no mock credential injected for source '${this.sourceId}' (set ${base}__<USERID>; the shared ${base} is not used for api_key)`
+          : `no mock credential injected for source '${this.sourceId}' (set ${base})`,
       );
     }
-    return {
-      kind: "oauth_bearer",
-      accessToken: token,
-      expiresAt: this.now() + this.tokenLifetimeMs,
-    };
+    if (this.credentialKind === "api_key") {
+      return { kind: "api_key", apiKey: token, expiresAt: 0 };
+    }
+    return { kind: "oauth_bearer", accessToken: token, expiresAt: this.now() + this.tokenLifetimeMs };
   }
 }

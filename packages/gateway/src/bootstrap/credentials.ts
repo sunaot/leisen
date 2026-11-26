@@ -20,6 +20,7 @@ import { discardCredentialEvents, type CredentialEventSink } from "../credential
 import { GcpKmsKeyProvider } from "../credentials/gcp-kms.js";
 import { decodeKeyBytes, LocalKeyProvider, type KeyProvider } from "../credentials/keys.js";
 import { SourceOAuthClient } from "../credentials/oauth.js";
+import { esaIdentityLookup } from "../credentials/esa-identity.js";
 import {
   EscCredentialProvider,
   TokenExchangeCredentialProvider,
@@ -278,6 +279,7 @@ export function createSourceCredentialProvider(
   for (const [name, url] of Object.entries(o.endpoints ?? {})) {
     checkEndpoint(url, `${path}.oauth.endpoints.${name}`, issues, warnings);
   }
+  checkEndpoint(o.resource, `${path}.oauth.resource`, issues, warnings);
   if (o.identityCheck === "none") {
     if (o.confirmIdentityCheckDisabled !== true) {
       issues.push({
@@ -293,6 +295,44 @@ export function createSourceCredentialProvider(
     issues.push({ code: "oauth_endpoints_missing", path: `${path}.oauth.endpoints`, message: "preset custom requires endpoints.authorizationEndpoint and endpoints.tokenEndpoint" });
     return undefined;
   }
+  // redmine(ADR-024 追補): 端点は Redmine の基点 URL から導く。本人照合はログイン名だけ
+  if (o.preset === "redmine" && o.endpoints?.apiBaseUrl === undefined) {
+    issues.push({ code: "oauth_endpoints_missing", path: `${path}.oauth.endpoints.apiBaseUrl`, message: "preset redmine requires endpoints.apiBaseUrl (the Redmine base URL)" });
+    return undefined;
+  }
+  if (o.preset === "redmine") {
+    // 本人のトークンの送り先をそろえる: OAuth の端点を導く基点と、コネクタが Bearer で呼ぶ基点が
+    // 同じ Redmine であること(取り違えると別のホストへトークンを送る)
+    const baseUrl = (connector.settings as Record<string, unknown> | undefined)?.["baseUrl"];
+    if (connector.kind !== "redmine" || typeof baseUrl !== "string") {
+      issues.push({
+        code: "redmine_oauth_requires_redmine_connector",
+        path: `${path}.oauth.preset`,
+        message: "preset redmine requires kind: redmine with settings.baseUrl (the connector sends the tokens to that Redmine)",
+      });
+      return undefined;
+    }
+    if (!sameRedmineBase(o.endpoints?.apiBaseUrl as string, baseUrl)) {
+      issues.push({
+        code: "redmine_api_base_url_mismatch",
+        path: `${path}.oauth.endpoints.apiBaseUrl`,
+        message: "preset redmine requires endpoints.apiBaseUrl to be the same Redmine as settings.baseUrl, without credentials, query or fragment",
+      });
+      return undefined;
+    }
+  }
+  if (o.preset === "redmine" && o.identityCheck === "email") {
+    issues.push({
+      code: "identity_check_unsupported",
+      path: `${path}.oauth.identityCheck`,
+      message: "preset redmine does not support identityCheck: email (Redmine hides e-mail addresses by default and does not mark them verified); use identityCheck: username",
+    });
+    return undefined;
+  }
+  if (o.preset !== "redmine" && o.identityCheck === "username") {
+    issues.push({ code: "identity_check_unsupported", path: `${path}.oauth.identityCheck`, message: "identityCheck: username is supported only by preset redmine" });
+    return undefined;
+  }
   if (o.preset === "custom" && o.identityCheck === "email" && o.endpoints?.userinfoEndpoint === undefined) {
     issues.push({ code: "oauth_endpoints_missing", path: `${path}.oauth.endpoints.userinfoEndpoint`, message: "preset custom with identityCheck: email requires endpoints.userinfoEndpoint" });
     return undefined;
@@ -305,6 +345,34 @@ export function createSourceCredentialProvider(
     });
     return undefined;
   }
+  // esa の本人照合は、接続するコネクタと同じ MCP エンドポイント・チームで行う(ADR-023)
+  let identityLookup: ((accessToken: string) => Promise<string[]>) | undefined;
+  if (o.preset === "esa" && o.identityCheck === "email") {
+    const settings = connector.settings as Record<string, unknown> | undefined;
+    const team = settings?.["team"];
+    const mcpUrl = settings?.["mcpUrl"];
+    if (connector.kind !== "esa" || typeof team !== "string" || team === "") {
+      issues.push({
+        code: "esa_identity_check_requires_esa_connector",
+        path: `${path}.oauth.preset`,
+        message: "preset esa with identityCheck: email requires kind: esa with settings.team (the identity check calls the team's esa MCP server)",
+      });
+      return undefined;
+    }
+    const lookupUrl = typeof mcpUrl === "string" ? mcpUrl : "https://mcp.esa.io/";
+    // 本番では本人のトークンの送り先を mcp.esa.io に固定する(コネクタと同じ規則。ADR-023 決定 12)
+    let lookupOrigin: string | undefined;
+    try {
+      lookupOrigin = new URL(lookupUrl).origin;
+    } catch {
+      lookupOrigin = undefined;
+    }
+    if (isProduction() && lookupOrigin !== "https://mcp.esa.io") {
+      issues.push({ code: "esa_mcp_url_not_allowed", path: `${path}.settings.mcpUrl`, message: "the esa identity check must call https://mcp.esa.io in production" });
+      return undefined;
+    }
+    identityLookup = esaIdentityLookup({ team, mcpUrl: lookupUrl });
+  }
   const secret = secretFromEnv(env, o.clientSecretEnv, `${path}.oauth.clientSecretEnv`, issues);
   if (secret === undefined) return undefined;
   const oauth = new SourceOAuthClient({
@@ -316,7 +384,10 @@ export function createSourceCredentialProvider(
     ...(o.endpoints !== undefined
       ? { endpoints: Object.fromEntries(Object.entries(o.endpoints).filter(([, v]) => v !== undefined)) as Record<string, string> }
       : {}),
-    fetchIdentity: o.identityCheck === "email",
+    fetchIdentity: o.identityCheck !== "none",
+    identityAttribute: o.identityCheck === "username" ? "username" : "email",
+    ...(o.resource !== undefined ? { resource: o.resource } : {}),
+    ...(identityLookup !== undefined ? { identityLookup } : {}),
   }, runtime.fetchImpl !== undefined ? { fetchImpl: runtime.fetchImpl } : {});
   runtime.sources.set(connector.id, { sourceId: connector.id, kind: auth.provider, oauth, identityCheck: o.identityCheck });
   const publicBaseUrl = config.gateway.publicBaseUrl;
@@ -497,4 +568,21 @@ export function assembleAuth(input: {
       `authorization server ${as.enabled ? `on (issuer ${publicBaseUrl}, ${settings?.clients.size ?? 0} clients${as.allowDynamicRegistration ? ", dynamic registration" : ""})` : "off"}` +
       (runtime.keyDescription !== undefined ? `; vault keys ${runtime.keyDescription}` : ""),
   };
+}
+
+/** Redmine の基点 URL が同じか(origin とパスを末尾の / を除いて比べる。認証情報・クエリ・断片は不可)。 */
+function sameRedmineBase(apiBaseUrl: string, connectorBaseUrl: string): boolean {
+  let a: URL;
+  let b: URL;
+  try {
+    a = new URL(apiBaseUrl);
+    b = new URL(connectorBaseUrl);
+  } catch {
+    return false;
+  }
+  if (a.username !== "" || a.password !== "" || a.search !== "" || a.hash !== "") {
+    return false;
+  }
+  const path = (u: URL) => u.pathname.replace(/\/+$/, "");
+  return a.origin === b.origin && path(a) === path(b);
 }

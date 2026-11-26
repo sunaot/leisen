@@ -108,6 +108,13 @@ export interface OrchestratorHttpDeps {
    */
   readonly tokenExchange?: TokenExchanger;
   /**
+   * ask の run に要るトークンの残り時間(ms。探索の時間上限 + 最終ターン + 余裕)。tokenExchange と
+   * 併せて指定すると、ask の前に交換後のトークンの残りを確かめ、足りなければ(元のトークンが
+   * 更新直後でない限り)401 を返してクライアントに更新させる。run の途中で Gateway への呼び出しが
+   * 期限切れで拒否されるのを防ぐ
+   */
+  readonly askTokenLifetimeMs?: number;
+  /**
    * RFC 9728 の保護リソースメタデータ(この Orchestrator の MCP の公開 URL と認可サーバー)。
    * 指定すると /.well-known/oauth-protected-resource<path> で公開し、401 に resource_metadata を添える
    */
@@ -358,6 +365,17 @@ type ParsedBody =
   | { readonly kind: "batch" }
   | { readonly kind: "invalid" };
 
+/** tools/call の ask(長い run)か。 */
+function isAskCall(message: Record<string, unknown>): boolean {
+  const params = message["params"];
+  return (
+    message["method"] === "tools/call" &&
+    typeof params === "object" &&
+    params !== null &&
+    (params as Record<string, unknown>)["name"] === "ask"
+  );
+}
+
 /** 本文を1つの JSON-RPC メッセージ(JSON のオブジェクト)として解釈する。配列はバッチ。 */
 function parseSingleMessage(text: string): ParsedBody {
   let parsed: unknown;
@@ -497,6 +515,20 @@ async function routeMcp(
       parsed.kind === "batch" ? REJECTIONS.batchNotAccepted : REJECTIONS.invalidBody,
     );
     return;
+  }
+  if (deps.tokenExchange !== undefined && deps.askTokenLifetimeMs !== undefined && isAskCall(parsed.message)) {
+    try {
+      token = await deps.tokenExchange.exchange(presented, { minLifetimeMs: deps.askTokenLifetimeMs });
+    } catch (error) {
+      if (error instanceof TokenExchangeError && error.kind === "invalid") {
+        sendRejection(res, 401, REJECTIONS.unauthenticated, {
+          "www-authenticate": `Bearer error="invalid_token", error_description="the access token expires before the answer run can finish; refresh it"${metadataUrl !== undefined ? `, resource_metadata="${metadataUrl}"` : ""}`,
+        });
+        return;
+      }
+      sendRejection(res, 503, REJECTIONS.gatewayUnavailable);
+      return;
+    }
   }
   const sources = checkGatewaySources(
     deps.sourcePolicy,
