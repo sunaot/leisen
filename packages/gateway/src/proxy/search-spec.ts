@@ -43,7 +43,13 @@ function findDescriptor(
  * getter を呼ばない。
  */
 export function readSearchSpecDeclaration(connector: object): SearchSpecDeclaration {
-  const found = findDescriptor(connector);
+  let found: ReturnType<typeof findDescriptor>;
+  try {
+    found = findDescriptor(connector);
+  } catch {
+    // Proxy のトラップなどが投げた例外。メッセージはプラグインが決めた文なので出さない
+    return { ok: false, reason: "unreadable (reading the searchSpec declaration threw)" };
+  }
   if (found === undefined) {
     return { ok: true, value: undefined };
   }

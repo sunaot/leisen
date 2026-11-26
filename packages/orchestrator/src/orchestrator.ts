@@ -109,6 +109,7 @@ import {
   loadExplorePrompt,
   NOT_EXECUTED_WITH_SUBMIT_ERROR,
   NUDGE_MESSAGE,
+  SEARCH_SPEC_SOURCE_ID_PATTERN,
   sourceBriefFromDescribe,
   SUBMIT_RETURNED_ERROR,
   TOOL_ERROR_PREFACE,
@@ -633,6 +634,14 @@ export class Orchestrator {
                     // 入れない(規則の名前だけ。ADR-017 追補 1、セキュリティレビュー m-3・m-6)
                     state.warn(
                       `ソース ${sourceId} の検索の仕様(searchSpec)は検査に通らなかったため、探索 LLM に渡していません(${brief.searchSpecRejected})。`,
+                    );
+                  } else if (
+                    brief.searchSpec !== undefined &&
+                    !SEARCH_SPEC_SOURCE_ID_PATTERN.test(sourceId)
+                  ) {
+                    // 行の先頭に置けない形の sourceId。検索の仕様が届いていないことを運用者に知らせる
+                    state.warn(
+                      `ソース ${JSON.stringify(sourceId)} は sourceId の形式が検索の仕様の行に使えないため、検索の仕様(searchSpec)を探索 LLM に渡していません。`,
                     );
                   }
                   return brief;

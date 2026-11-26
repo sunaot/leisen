@@ -314,7 +314,7 @@ export const MAX_SEARCH_SPEC_LENGTH = 1_500;
 
 /**
  * searchSpec に含めてはならない語句(m-2)。値を NFKC で寄せ、空白を除き、小文字にしてから
- * 部分一致で判定する(括弧の有無・括弧の種類・括弧の中の空白・全角と半角の違いによらない)。
+ * 部分一致で判定する(結合文字も除く。括弧の有無・括弧の種類・括弧の中の空白・全角と半角の違いによらない)。
  * - 「オーケストレータ」「orchestrator」: 制御メッセージの見出し([オーケストレーター])と
  *   その変種(〔〕・括弧なし・「オーケストレータ」の表記・英語の表記)
  * - submit_answer: 回答の提出のツール名
@@ -366,17 +366,24 @@ export type SearchSpecCheck =
   | { readonly ok: true; readonly value: string | undefined }
   | { readonly ok: false; readonly violation: SearchSpecViolation };
 
-/** 検査のための正規化(NFKC で寄せ、空白を除き、小文字にする)。 */
+/**
+ * 検査のための正規化(NFKC で寄せ、空白と結合文字(一般カテゴリ M)を除き、小文字にする)。
+ * 結合文字を除くのは、語の途中に結合文字を挟んで照合を外す書き方を防ぐため。
+ */
 function normalizeForReservedPhrase(text: string): string {
-  return text.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
+  return text.normalize("NFKC").replace(/[\s\p{M}]+/gu, "").toLowerCase();
 }
 
 const NORMALIZED_RESERVED_PHRASES: readonly string[] = SEARCH_SPEC_RESERVED_PHRASES.map(
   normalizeForReservedPhrase,
 );
 
-/** 一般カテゴリ Cc・Cf・Co・Cs・Zl・Zp(m-1)。 */
-const FORBIDDEN_CATEGORY = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}]/u;
+/**
+ * 一般カテゴリ Cc・Cf・Co・Cs・Zl・Zp(m-1)と、表示されない文字(Default_Ignorable_Code_Point:
+ * 異体字セレクタ・U+034F・ハングルの埋め字など)、点字の空白 U+2800。
+ */
+const FORBIDDEN_CATEGORY =
+  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/u;
 /** 空白(Zs)。許すのは U+0020 と U+3000 だけ */
 const SPACE_SEPARATOR = /\p{Zs}/u;
 
@@ -397,7 +404,8 @@ function isForbiddenCharacter(ch: string, codePoint: number): boolean {
  * - undefined と空文字は宣言なし({ ok: true, value: undefined })
  * - 文字列でない値は not_string
  * - 長さ(NFKC の前の UTF-16 のコード単位)が MAX_SEARCH_SPEC_LENGTH を超えたら too_long
- * - Cc・Cf・Co・Cs・Zl・Zp と非文字、U+0020 と U+3000 以外の空白は forbidden_character
+ * - Cc・Cf・Co・Cs・Zl・Zp と非文字、表示されない文字(Default_Ignorable_Code_Point)、
+ *   U+2800、U+0020 と U+3000 以外の空白は forbidden_character
  *   (改行・タブ・U+0085・U+2028・U+2029・双方向テキストの制御・U+FEFF・ゼロ幅の文字・
  *   対になっていないサロゲート・私用領域を含む)
  * - SEARCH_SPEC_RESERVED_PHRASES を含む値は reserved_phrase

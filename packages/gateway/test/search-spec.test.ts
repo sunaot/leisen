@@ -197,6 +197,21 @@ describe("T-2: 静的であることの保証", () => {
     expect(calls).toBe(0);
   });
 
+  it("記述子の読み取りが例外を投げるコネクタ(Proxy)は、例外の文を出さずに拒否する", () => {
+    const MARKER = "PLUGIN-CHOSEN-MESSAGE";
+    const proxied = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error(MARKER);
+        },
+      },
+    );
+    const result = readSearchSpecDeclaration(proxied);
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(MARKER);
+  });
+
   it("クラスの getter(プロトタイプの accessor)も拒否する", () => {
     class GetterConnector extends RawConnector {
       get searchSpec(): string {
