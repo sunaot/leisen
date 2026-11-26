@@ -43,7 +43,8 @@ import {
   type TraceCaseContext,
   type TraceSink,
 } from "./trace.js";
-import { reproduceUiQuestion } from "./ui-question.js";
+import { DEFAULT_UI_PROMPT_STYLE, isLibreChatStyle, runAskLikeLibreChat, type UiPromptStyle } from "./librechat-ui.js";
+import { UI_DEFAULT_MAX_QUESTION_CHARS, reproduceUiAsk, simpleQuestionOf } from "./ui-question.js";
 
 /** 比較する検索方式(Redmine 型は AND / OR を別の方式として扱う)。 */
 export const SEARCH_EVAL_MODES = ["default", "esa", "redmine-or", "redmine-and", "github"] as const;
@@ -168,6 +169,8 @@ export interface SearchEvalRunOptions {
   readonly orchestrator?: Orchestrator;
   /** 条件 4 の UI 側 LLM */
   readonly uiLlm?: LlmClient;
+  /** 条件 4 の UI 側 LLM への入力の再現の種類(既定 simple) */
+  readonly uiPrompt?: UiPromptStyle;
   readonly onProgress?: (message: string) => void;
   /**
    * LLM の使用量の累計を返す関数(claude -p のクライアントなど、費用と時間を数えられる場合)。
@@ -251,6 +254,88 @@ async function runOrchestrated(
   }
 }
 
+/**
+ * 条件 4: UI 側 LLM に ask を呼ばせ、その引数で探索 LLM を回す。
+ * - simple: 従来どおり question だけを Orchestrator に渡す
+ * - librechat / librechat-instructions: 引数をすべて leisen-ask serve と同じ検証(runOrchestratorTool)に
+ *   かけて渡す(LibreChat は書かれた引数をそのまま tools/call に載せる)
+ * どちらも UI 側 LLM が書いた引数をトレースに残す。
+ */
+async function runOrchestratorUi(
+  orchestrator: Orchestrator,
+  uiLlm: LlmClient,
+  options: SearchEvalRunOptions,
+  context: TraceCaseContext,
+  sink: TraceSink,
+  utterance: string,
+): Promise<void> {
+  const uiPrompt = options.uiPrompt ?? DEFAULT_UI_PROMPT_STYLE;
+  const ui = await reproduceUiAsk(uiLlm, utterance, { style: uiPrompt });
+  if (!ui.ok) {
+    sink.write({ ...context, type: "ui_question", question: null, uiPrompt });
+    // simple は従来の分類のまま(引数がオブジェクトでなければ ui_invalid_question)
+    const errorClass =
+      !isLibreChatStyle(uiPrompt) && ui.errorClass === "ui_invalid_arguments" ? "ui_invalid_question" : ui.errorClass;
+    sink.write({ ...context, type: "case_error", errorClass });
+    return;
+  }
+  const recorded = { uiPrompt, toolName: ui.toolName, arguments: ui.arguments };
+  if (!isLibreChatStyle(uiPrompt)) {
+    const question = simpleQuestionOf(ui.arguments);
+    sink.write({ ...context, type: "ui_question", question: question ?? null, ...recorded });
+    if (question === undefined) {
+      sink.write({ ...context, type: "case_error", errorClass: "ui_invalid_question" });
+      return;
+    }
+    await runOrchestrated(orchestrator, options, context, sink, question);
+    return;
+  }
+  const rawQuestion = ui.arguments["question"];
+  const traced = new TracingGatewayClient(options.gateway, sink, context);
+  let uiWritten = false;
+  const writeUi = (rejectedErrorClass?: string) => {
+    if (!uiWritten) {
+      uiWritten = true;
+      sink.write({
+        ...context,
+        type: "ui_question",
+        question: typeof rawQuestion === "string" ? rawQuestion : null,
+        ...recorded,
+        ...(rejectedErrorClass !== undefined ? { rejectedErrorClass } : {}),
+      });
+    }
+  };
+  const result = await runAskLikeLibreChat({
+    orchestrator,
+    gateway: traced,
+    args: ui.arguments,
+    maxQuestionChars: UI_DEFAULT_MAX_QUESTION_CHARS,
+    knownSourceIds: [options.source],
+    onRunStart: (input) => {
+      writeUi();
+      sink.write({ ...context, type: "case_start", input: input.question });
+    },
+    onRunResult: ({ answer }) => {
+      sink.write({
+        ...context,
+        type: "answer",
+        outcome: answer.outcome,
+        citations: answer.citations.map((c) => ({ sourceId: c.sourceId, documentId: c.documentId })),
+        llmTurns: answer.usage.llmTurns,
+        toolCalls: answer.usage.toolCalls,
+      });
+    },
+  });
+  if (!result.runStarted) {
+    const rejected = result.outcome.structuredContent["errorClass"];
+    const errorClass = typeof rejected === "string" ? rejected : "invalid_request";
+    writeUi(errorClass);
+    sink.write({ ...context, type: "case_error", errorClass: `ui_ask_rejected_${errorClass}` });
+  } else if ("runError" in result) {
+    sink.write({ ...context, type: "case_error", errorClass: errorClassOf(result.runError) });
+  }
+}
+
 const isOrchestrated = (condition: SearchEvalCondition) =>
   condition === "orchestrator-utterance" || condition === "orchestrator-ui";
 
@@ -294,16 +379,16 @@ export async function runSearchEval(options: SearchEvalRunOptions): Promise<Case
             case "orchestrator-utterance":
               await runOrchestrated(options.orchestrator as Orchestrator, options, context, sink, question.utterance);
               break;
-            case "orchestrator-ui": {
-              const ui = await reproduceUiQuestion(options.uiLlm as LlmClient, question.utterance);
-              sink.write({ ...context, type: "ui_question", question: ui.ok ? ui.question : null });
-              if (ui.ok) {
-                await runOrchestrated(options.orchestrator as Orchestrator, options, context, sink, ui.question);
-              } else {
-                sink.write({ ...context, type: "case_error", errorClass: ui.errorClass });
-              }
+            case "orchestrator-ui":
+              await runOrchestratorUi(
+                options.orchestrator as Orchestrator,
+                options.uiLlm as LlmClient,
+                options,
+                context,
+                sink,
+                question.utterance,
+              );
               break;
-            }
           }
         } catch (error) {
           sink.write({ ...context, type: "case_error", errorClass: errorClassOf(error) });

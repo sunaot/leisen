@@ -26,6 +26,9 @@
  *   both = 自由文 + 検索プロファイル + 通知 / profile = 検索プロファイル + 通知だけ)。カンマ区切りで
  *   複数を選ぶと、方式 × 伝え方ごとに実行し、表の方式の欄を「方式/伝え方」にする。省略時は
  *   開発用コネクタの既定(既定の方式は検索プロファイルを返し、模擬の方式は自由文だけ)
+ * - --ui-prompt: 条件 4 の UI 側 LLM への入力の再現(simple = 従来の近似 / librechat = LibreChat v0.8.7 の
+ *   リファレンス構成どおり / librechat-instructions = serverInstructions に instructions の文字列を書いた場合。
+ *   search-eval/librechat-ui.ts)。既定は simple。表の注記とトレースの ui_question に種類を出す
  * - 外部の Gateway・実ソースには接続しない(接続先を指定する引数がない)
  * - 終了コード: 0 実行できた、1 実行中の失敗、2 引数・質問セットの不備
  */
@@ -68,6 +71,13 @@ import {
   type SearchEvalMode,
   type TraceSink,
 } from "../search-eval/index.js";
+import {
+  DEFAULT_UI_PROMPT_STYLE,
+  LIBRECHAT_SOURCE,
+  UI_PROMPT_STYLES,
+  isUiPromptStyle,
+  type UiPromptStyle,
+} from "../search-eval/librechat-ui.js";
 import { LLM_USAGE_LINES, parseLlmCliOptions } from "./llm-options.js";
 
 const DEFAULT_QUESTIONS = fileURLToPath(
@@ -80,11 +90,12 @@ const USAGE = [
   "                       [--k 1,5,10] [--repeat N] [--only id1,id2] [--trace <file.jsonl>] [--label <見出し>]",
   "                       [--limit N] [--explore-prompt explore.v3|explore.v4] [--search-feedback on|off]",
   "                       [--spec-delivery summary,both,profile]",
-  "                       [--ui-model <モデル>] [--max-iterations N] [--run-timeout-sec N] [LLM の指定]",
+  "                       [--ui-model <モデル>] [--ui-prompt simple|librechat|librechat-instructions]",
+  "                       [--max-iterations N] [--run-timeout-sec N] [LLM の指定]",
   "  --llm claude-cli --model <モデル> は条件 3・4 の LLM に `claude -p` を使う(開発・評価専用。構造化出力による",
   "  ツール呼び出しの模擬)。[--claude-cli-command <コマンド>] [--claude-cli-timeout-sec N] [--claude-cli-max-total-usd X]",
   "  条件 3・4(orchestrator-*)には LLM の指定が要る(leisen-ask と同じ)。--ui-model は条件 4 の UI 側の",
-  "  モデル(省略時は探索 LLM と同じ)。",
+  "  モデル(省略時は探索 LLM と同じ)。--ui-prompt は条件 4 の UI 側 LLM への入力の再現(既定 simple)。",
   `  --explore-prompt は探索プロンプトの版(既定 ${EXPLORE_PROMPT_VERSION})。--search-feedback は検索の状況の制御メッセージ(既定は explore.v4 のときだけ on)。`,
   "  --spec-delivery は検索の仕様の伝え方(summary: summary の自由文だけ / both: 自由文 + 検索プロファイル + 通知 /",
   "  profile: 検索プロファイル + 通知だけ)。省略時は開発用コネクタの既定。",
@@ -154,6 +165,7 @@ export async function runDevSearchEval(
         trace: { type: "string" },
         label: { type: "string" },
         "ui-model": { type: "string" },
+        "ui-prompt": { type: "string" },
         "max-iterations": { type: "string" },
         "run-timeout-sec": { type: "string" },
         llm: { type: "string" },
@@ -231,6 +243,16 @@ export async function runDevSearchEval(
   if (runTimeoutSec === null) {
     return usage("--run-timeout-sec は 1〜3600 の整数で指定してください。");
   }
+
+  // 条件 4 の UI 側 LLM への入力の再現(T-027。search-eval/librechat-ui.ts)
+  const uiPromptOption = values["ui-prompt"];
+  if (uiPromptOption !== undefined && !isUiPromptStyle(uiPromptOption)) {
+    return usage(`--ui-prompt は ${UI_PROMPT_STYLES.join(" / ")} のいずれかで指定してください。`);
+  }
+  if (uiPromptOption !== undefined && !conditions.includes("orchestrator-ui")) {
+    return usage("--ui-prompt は条件 orchestrator-ui を含めるときだけ指定できます。");
+  }
+  const uiPrompt: UiPromptStyle | undefined = uiPromptOption;
 
   const limit = intIn(values.limit, 1, 10_000);
   if (limit === null) {
@@ -436,6 +458,7 @@ export async function runDevSearchEval(
             ...(repeat !== undefined ? { repeat } : {}),
             ...(orchestrator !== undefined ? { orchestrator } : {}),
             ...(uiLlm !== undefined ? { uiLlm } : {}),
+            ...(uiPrompt !== undefined ? { uiPrompt } : {}),
             ...(cliClients.length > 0 ? { llmUsage: () => cliUsageSnapshot(cliClients) } : {}),
             onProgress: (message) => io.stderr(message),
           })),
@@ -448,6 +471,9 @@ export async function runDevSearchEval(
     if (orchestrator !== undefined) {
       const profile = orchestrator.promptProfile;
       notes.push(`探索プロンプト ${profile.version}、検索の状況の制御メッセージ ${profile.searchFeedback ? "有効" : "無効"}`);
+    }
+    if (conditions.includes("orchestrator-ui")) {
+      notes.push(uiPromptNote(uiPrompt ?? DEFAULT_UI_PROMPT_STYLE));
     }
     if (cliClients.length > 0) {
       const models = [...new Set(cliClients.map((c) => c.model))].join(", ");
@@ -469,6 +495,17 @@ export async function runDevSearchEval(
     return 0;
   } finally {
     closeAll(cliClients);
+  }
+}
+
+function uiPromptNote(style: UiPromptStyle): string {
+  switch (style) {
+    case "simple":
+      return "条件 4 の UI 側 LLM への入力: simple(MCP の instructions をそのままシステムプロンプトにし、ツール名は ask。探索 LLM には question だけを渡す)";
+    case "librechat":
+      return `条件 4 の UI 側 LLM への入力: librechat(LibreChat ${LIBRECHAT_SOURCE.tag} のリファレンス構成どおり。ツール名は ask_mcp_leisen、システムプロンプトは MCP の instructions の定型文で、startup: false のため instructions の位置は "true"。引数はすべて探索 LLM に渡す)`;
+    case "librechat-instructions":
+      return `条件 4 の UI 側 LLM への入力: librechat-instructions(LibreChat ${LIBRECHAT_SOURCE.tag} で serverInstructions に instructions の文字列を書いた場合。ツール名は ask_mcp_leisen、引数はすべて探索 LLM に渡す)`;
   }
 }
 

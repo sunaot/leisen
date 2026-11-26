@@ -488,15 +488,25 @@ dev-eval の検索方式モード。同じ質問と正解文書に対して、�
 | 1 `keywords` | 人が書いたキーワード(質問セットの `keywords`。1 要素 = 1 回の search)を `search` に直接入力 | 不要 |
 | 2 `utterance` | 利用者の発言(`utterance`)をそのまま `search` に入力 | 不要 |
 | 3 `orchestrator-utterance` | 利用者の発言を Orchestrator(探索 LLM)に渡す。クエリは探索 LLM が書く | 探索 LLM |
-| 4 `orchestrator-ui` | UI 側 LLM が作った `question` を Orchestrator に渡す | UI 側 LLM + 探索 LLM |
+| 4 `orchestrator-ui` | UI 側 LLM が作った `ask` の引数を Orchestrator に渡す(`--ui-prompt` で UI 側 LLM への入力の再現を選ぶ。下の「条件 4 の UI 側 LLM への入力」) | UI 側 LLM + 探索 LLM |
 
 1 と 3 の差が探索 LLM のクエリ生成による損失、3 と 4 の差が UI 側 LLM を通すことによる損失の目安になる。
+
+**条件 4 の UI 側 LLM への入力**(`--ui-prompt`、`src/search-eval/ui-question.ts`・`src/search-eval/librechat-ui.ts`):
+
+| 値 | システムプロンプト | ツール名 | 探索 LLM に渡す引数 |
+|---|---|---|---|
+| `simple`(既定。従来の近似) | initialize の instructions(`SERVER_INSTRUCTIONS`)をそのまま | `ask` / `feedback` | `question` だけ |
+| `librechat` | LibreChat v0.8.7 の MCP の instructions の定型文(`# MCP Server Instructions` …)。リファレンス構成は `startup: false` のため、instructions の位置に入るのは `true`(調査の記録 `research_notes/エージェント検索ハーネス設計調査/librechat_ui_prompt.md`) | `ask_mcp_leisen` / `feedback_mcp_leisen` | UI 側 LLM が書いた引数すべて(`leisen-ask serve` と同じ検証 `runOrchestratorTool` を通す。拒否されたら `ui_ask_rejected_<分類>` の失敗) |
+| `librechat-instructions` | 同じ定型文で、instructions の位置に `SERVER_INSTRUCTIONS`(`librechat.yaml` の `serverInstructions` に文字列を書いた場合) | 同上 | 同上 |
+
+どれもツールの説明とスキーマは `orchestratorToolDefinitions` のまま(LibreChat は加工しない)、利用者の発言 1 つだけを渡す(会話履歴なし)。LibreChat の再現は LibreChat の v0.8.7(コミット 9e74cc0e)のソースコードを読んで組み立てたもので、実機の LibreChat が送るリクエストとは突き合わせていない。LangChain がツール定義を API の形に変える部分、利用者のカスタム指示・artifacts・ファイル・メモリの文、`ask` がエラーを返したときの言い直しは再現していない。表の注記に種類を出し、トレースの `ui_question` に種類(`uiPrompt`)・ツール名・UI 側 LLM が書いた引数(`arguments`)・拒否の分類(`rejectedErrorClass`)を書く
 
 - **検索方式**(`--modes`): 検索方式ごとに、プロセス内に Gateway(127.0.0.1 の空きポート、モック IdP、監査はメモリに書いて捨てる)を起動し、開発用コネクタ(`dev-fixture`)を 1 つ載せる。条件 1・2 も Gateway の `tools/call` を通す。方式は `default`(現行の AND 部分一致・タイトル一致優先・一致箇所のスニペット)/ `esa`(空白は AND、`OR`・引用符・`title:` を解釈、タイトル一致を優遇、スニペットは本文の先頭 300 字)/ `redmine-or`・`redmine-and`(部分一致、先頭 5 語だけを使う、関連度なしの更新日降順、スニペットは本文の先頭、フィルタ非対応)/ `github`(空白は AND、issue・PR・コードを種別ごとに等分して交互に並べる)。各方式の仕様は describe の `summary` に日本語で載る(探索 LLM に届く)。実装は `packages/gateway/src/dev/search-modes.ts`。実ソースの挙動を実機で確かめたものではなく、調査の読解に基づく模擬である
 - **検索の仕様の伝え方**(`--spec-delivery`): 各方式は、模擬の実装と一致する検索プロファイル(ADR-025。根拠はすべて `tested`。実装そのものが仕様であるため)と、検索の通知(`notices`。Redmine 型で使える語が 6 語以上のとき `terms_dropped`、esa 型で `title:` 以外の修飾子・`-語`・`( )` を含むとき `operator_ignored`)を持つ。`summary`(`summary` の自由文だけ。検索プロファイルと通知を返さない)/ `both`(自由文 + 検索プロファイル + 通知)/ `profile`(検索プロファイル + 通知だけ。`summary` は内容の説明だけ)から選ぶ。カンマ区切りで複数を選ぶと、方式 × 伝え方ごとに Gateway を起動し、表・トレースの方式の欄を `esa/profile` のように「方式/伝え方」にする。省略時は開発用コネクタの既定(`default` は検索プロファイルを返す。模擬の方式は `summary` と同じ = これまでの計測の条件)。検索プロファイルの文は探索プロンプト v4 のときだけ、通知の文と検索プロファイルに照らした判定は検索の状況の制御メッセージが有効なときだけ探索 LLM に届く。トレースの `search` には、返った通知(`notices`)を書く
 - **コーパス**: 質問セットの `corpus` が指すファイル(`examples/fixtures/dev-corpus.yaml` の 7 件 + `examples/fixtures/search-eval-corpus.yaml` の正解文書 18 件)に、乱数の種を固定して生成した無関係な文書(`packages/gateway/src/dev/synthetic-corpus.ts`。同じ語を含む議事録・週報・問い合わせ・PR・コード・お知らせ。既定 400 件)を足す。起動時に、正解の文書がコーパスにあること、答えられない質問の `mustNotAppear` の語の組を含む文書がないことを確かめる
 - **質問セット**: `examples/eval/search-questions.json`(既知項目検索 10・複数文書 7・答えられない 6)。各質問に `utterance`・`keywords`・`relevant` を持たせる。検索方式の切り替えより前のコミットで固定した(T-024 の規則)
-- **トレース**(`--trace <file.jsonl>`): 試行(方式 × 条件 × 質問 × 回)ごとに、`case_start`(入力)、`ui_question`(条件 4 の UI 側 LLM の question)、`search`(ソース・query・filters・limit・順位付きのヒットの documentId と title)、`fetch`(documentId)、`answer`(outcome・出典)、`case_error` を 1 行 1 イベントで書く。監査ログ(`@leisen/audit`)とは別物で、Gateway の本番経路は変えない。記録は Orchestrator に渡す `GatewayClient` を包んで行う(`TracingGatewayClient`)
+- **トレース**(`--trace <file.jsonl>`): 試行(方式 × 条件 × 質問 × 回)ごとに、`case_start`(入力)、`ui_question`(条件 4 の UI 側 LLM の question・再現の種類・書いた引数)、`search`(ソース・query・filters・limit・順位付きのヒットの documentId と title)、`fetch`(documentId)、`answer`(outcome・出典)、`case_error` を 1 行 1 イベントで書く。監査ログ(`@leisen/audit`)とは別物で、Gateway の本番経路は変えない。記録は Orchestrator に渡す `GatewayClient` を包んで行う(`TracingGatewayClient`)
 - **指標**: recall@k は正解の文書のうち、試行中のいずれかの search で k 位以内に返った割合(search を複数回呼んだら文書ごとに最もよい順位)。最初の正解の順位、fetch 率・引用率(条件 3・4)、答えられない質問の棄権(条件 3・4 で resolved 以外)、0 件の search の割合。表には方式・条件・質問 ID・指標だけを出し、発言・クエリ・回答本文はトレースにだけ残す
 
 ```sh
@@ -517,6 +527,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js --trace var/search-trace.
 | `--label <見出し>` | 表の見出し |
 | `--max-iterations <N>` / `--run-timeout-sec <N>` | 探索の上限(Orchestrator の `maxIterations` / `runTimeoutMs`) |
 | `--ui-model <モデル>` | 条件 4 の UI 側 LLM のモデル(省略時は探索 LLM と同じ。プロバイダ・接続先は探索 LLM と同じ) |
+| `--ui-prompt <種類>` | 条件 4 の UI 側 LLM への入力の再現(`simple` / `librechat` / `librechat-instructions`。既定 `simple`。上の「条件 4 の UI 側 LLM への入力」) |
 | LLM の指定 | `--llm` / `--model` / `--llm-base-url` / `--llm-api-key-env` / `--reasoning-effort` / `--effort`(leisen-ask と同じ。環境変数 `LEISEN_LLM_*` も同じ) |
 | `--limit <N>` | 質問を先頭の N 問に絞る(`--only` の後にかける) |
 | `--spec-delivery <a,b>` | 検索の仕様の伝え方(`summary` / `both` / `profile`。上の「検索の仕様の伝え方」。省略時は開発用コネクタの既定) |
@@ -575,7 +586,7 @@ node packages/orchestrator/dist/bin/dev-search-eval.js \
 
    Claude API なら `--llm anthropic --model <モデル>`(`--ui-model` も Claude のモデル)
 5. 表の条件 1 と 3、3 と 4 の行を比べる。原因の切り分けはトレースで行う(探索 LLM がどの query を投げ、何位に正解が返り、fetch・引用したか。条件 4 は `ui_question` に利用者の語が残ったか)。評価レポートは `docs/eval/` に置く
-6. 条件 4 は UI 側 LLM の簡易な再現である(`src/search-eval/ui-question.ts`: `ask` のツール定義と initialize の instructions だけを与え、発言 1 つで `ask` を呼ばせる)。LibreChat が UI 側の LLM に渡すシステムプロンプト全体は再現していないので、LibreChat の実走で採った `ask` の引数と突き合わせて妥当性を確かめる
+6. 条件 4 は UI 側 LLM の再現である。既定の `simple` は `ask` のツール定義と initialize の instructions だけを与える近似で、`--ui-prompt librechat` は LibreChat v0.8.7 のソースコードに合わせた再現(上の「条件 4 の UI 側 LLM への入力」)。どちらも LibreChat の実走で採った `ask` の引数とは突き合わせていないので、実走の引数と比べて妥当性を確かめる
 
 ### 開発用コネクタの設定(deployment.yaml の `kind: dev-fixture`)
 
